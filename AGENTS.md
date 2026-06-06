@@ -32,6 +32,14 @@ npm run dev        # Vite dev server on :5173
 npm run build      # tsc && vite build
 ```
 
+### Tests
+
+```sh
+cd backend && pytest          # backend tests (pytest + httpx, in-memory SQLite)
+cd frontend && npm test       # frontend tests (vitest + @testing-library/react, jsdom)
+cd frontend && npm test -- --watch  # frontend tests in watch mode
+```
+
 ## Key gotchas
 
 - **`seed.py` destroys existing data** — calls `Base.metadata.drop_all` then re-inserts sample rows.
@@ -43,3 +51,6 @@ npm run build      # tsc && vite build
 - **Frontend entrypoint chain:** `index.html → main.tsx → App.tsx → Dashboard.tsx`.
 - **New frontend files** — `TransactionsPage.tsx` (full CRUD table with account/category dropdowns).
 - **Inline editing** — list views support New/Edit/Delete via inline forms, no modals.
+- **Backend test DB** — uses `sqlite:///:memory:` with `dependency_overrides[get_db]`; tables are created/dropped per test session
+- **Frontend test mocks** — component tests mock `src/api/client` via `vi.mock`; API client tests mock `global.fetch` directly
+- **`alert()`/`confirm()` in tests** — components using `alert()`/`confirm()` must have these mocked via `vi.spyOn` in component tests
