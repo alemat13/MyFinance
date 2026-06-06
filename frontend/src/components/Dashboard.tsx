@@ -26,7 +26,6 @@ export default function Dashboard() {
 
   return (
     <div>
-      <h1 style={{ marginBottom: '20px' }}>MyFinance</h1>
       <div style={{ display: 'flex', flexWrap: 'wrap', marginBottom: '32px' }}>
         {data.accounts.map(acc => (
           <AccountCard key={acc.id} account={acc} />
