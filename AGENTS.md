@@ -38,5 +38,8 @@ npm run build      # tsc && vite build
 - **CORS allows only `http://localhost:5173`** — hardcoded in `backend/main.py`.
 - **API base URL hardcoded** — `http://localhost:8000/api` in `frontend/src/api/client.ts`.
 - **No `.env` used** though `.env` is gitignored.
-- **Backend endpoints are read-only** — only GET `/api/accounts`, `/api/categories`, `/api/transactions`, `/api/dashboard`.
+- **Full CRUD via REST** — each entity has `GET / POST / PUT / DELETE`.
+- **Delete protected** — accounts/categories with transactions return **409 Conflict**.
 - **Frontend entrypoint chain:** `index.html → main.tsx → App.tsx → Dashboard.tsx`.
+- **New frontend files** — `TransactionsPage.tsx` (full CRUD table with account/category dropdowns).
+- **Inline editing** — list views support New/Edit/Delete via inline forms, no modals.

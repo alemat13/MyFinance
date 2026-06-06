@@ -2,8 +2,16 @@ import { useState } from 'react'
 import Dashboard from './components/Dashboard'
 import AccountsList from './components/AccountsList'
 import CategoriesList from './components/CategoriesList'
+import TransactionsPage from './components/TransactionsPage'
 
-type View = 'dashboard' | 'accounts' | 'categories'
+type View = 'dashboard' | 'accounts' | 'categories' | 'transactions'
+
+const viewLabels: Record<View, string> = {
+  dashboard: 'Dashboard',
+  accounts: 'Accounts',
+  categories: 'Categories',
+  transactions: 'Transactions',
+}
 
 export default function App() {
   const [view, setView] = useState<View>('dashboard')
@@ -45,7 +53,7 @@ export default function App() {
               minWidth: '160px',
               overflow: 'hidden',
             }}>
-              {(['dashboard', 'accounts', 'categories'] as View[]).map(v => (
+              {(Object.keys(viewLabels) as View[]).map(v => (
                 <button
                   key={v}
                   onClick={() => { setView(v); setMenuOpen(false) }}
@@ -61,7 +69,7 @@ export default function App() {
                     textTransform: 'capitalize' as const,
                   }}
                 >
-                  {v === 'dashboard' ? 'Dashboard' : v === 'accounts' ? 'Accounts' : 'Categories'}
+                  {viewLabels[v]}
                 </button>
               ))}
             </div>
@@ -72,6 +80,7 @@ export default function App() {
       {view === 'dashboard' && <Dashboard />}
       {view === 'accounts' && <AccountsList onBack={() => setView('dashboard')} />}
       {view === 'categories' && <CategoriesList onBack={() => setView('dashboard')} />}
+      {view === 'transactions' && <TransactionsPage onBack={() => setView('dashboard')} />}
 
       {menuOpen && (
         <div
