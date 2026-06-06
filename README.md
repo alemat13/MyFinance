@@ -13,7 +13,7 @@ Personal finance dashboard for tracking accounts and transactions.
 
 ```
 backend/     FastAPI app with 4 read-only GET endpoints
-frontend/    Single-page React app with no routing or state management
+frontend/    Single-page React app with state-based view switching
 ```
 
 All data is stored in a single `backend/finance.db` SQLite file (not tracked in git — recreated via `seed.py`).
@@ -78,7 +78,9 @@ frontend/
 │   └── components/
 │       ├── Dashboard.tsx        Main dashboard view
 │       ├── AccountCard.tsx      Account balance card
-│       └── TransactionList.tsx  Transaction table
+│       ├── TransactionList.tsx  Transaction table
+│       ├── AccountsList.tsx     Full accounts table view
+│       └── CategoriesList.tsx   Categories table view
 ├── index.html
 ├── package.json
 ├── tsconfig.json
