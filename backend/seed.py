@@ -1,7 +1,7 @@
 from datetime import date
 
 from database import engine, SessionLocal, Base
-from models import Account, Category, Transaction
+from models import Account, Category, Transaction, User, AccountUser
 
 
 def seed():
@@ -10,12 +10,25 @@ def seed():
 
     session = SessionLocal()
 
+    users = [
+        User(name="Alice", email="alice@example.com"),
+        User(name="Bob", email="bob@example.com"),
+    ]
+    session.add_all(users)
+    session.flush()
+
     accounts = [
         Account(name="Joint Checking", type="Checking", balance=5420.00),
         Account(name="Personal Savings", type="Savings", balance=12800.00),
     ]
     session.add_all(accounts)
     session.flush()
+
+    session.add_all([
+        AccountUser(account_id=accounts[0].id, user_id=users[0].id, ownership_percentage=50.0),
+        AccountUser(account_id=accounts[0].id, user_id=users[1].id, ownership_percentage=50.0),
+        AccountUser(account_id=accounts[1].id, user_id=users[0].id, ownership_percentage=100.0),
+    ])
 
     categories = [
         Category(name="Salary", type="Income"),

@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 
 from database import Base, get_db
 from main import app
-from models import Account, Category, Transaction
+from models import Account, Category, Transaction, User, AccountUser
 
 
 engine = create_engine(
@@ -61,6 +61,23 @@ def sample_category(db):
     db.commit()
     db.refresh(category)
     return category
+
+
+@pytest.fixture()
+def sample_user(db):
+    user = User(name="Test User", email="test@example.com")
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@pytest.fixture()
+def sample_account_with_user(db, sample_account, sample_user):
+    au = AccountUser(account_id=sample_account.id, user_id=sample_user.id, ownership_percentage=100.0)
+    db.add(au)
+    db.commit()
+    return sample_account
 
 
 @pytest.fixture()

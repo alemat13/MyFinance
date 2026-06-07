@@ -51,3 +51,29 @@ def test_update_transaction_404(client):
 def test_delete_transaction_404(client):
     response = client.delete("/api/transactions/999")
     assert response.status_code == 404
+
+
+def test_get_transactions_filtered_by_user(client, sample_account_with_user, sample_user, sample_category, db):
+    from datetime import date
+    from models import Transaction
+    t = Transaction(
+        date=date(2026, 1, 15),
+        payee="User Specific",
+        amount=100.0,
+        account_id=sample_account_with_user.id,
+        category_id=sample_category.id,
+    )
+    db.add(t)
+    db.commit()
+
+    response = client.get(f"/api/transactions?user_id={sample_user.id}")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 1
+    assert data[0]["payee"] == "User Specific"
+
+
+def test_get_transactions_filtered_by_user_no_match(client, sample_user):
+    response = client.get(f"/api/transactions?user_id={sample_user.id}")
+    assert response.status_code == 200
+    assert response.json() == []
