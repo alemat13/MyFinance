@@ -2,11 +2,12 @@ import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import AccountsList from '../AccountsList'
 
-const { mockFetchAccounts, mockCreateAccount, mockUpdateAccount, mockDeleteAccount } = vi.hoisted(() => ({
+const { mockFetchAccounts, mockCreateAccount, mockUpdateAccount, mockDeleteAccount, mockFetchUsers } = vi.hoisted(() => ({
   mockFetchAccounts: vi.fn(),
   mockCreateAccount: vi.fn(),
   mockUpdateAccount: vi.fn(),
   mockDeleteAccount: vi.fn(),
+  mockFetchUsers: vi.fn().mockResolvedValue([]),
 }))
 
 vi.mock('../../api/client', () => ({
@@ -14,7 +15,10 @@ vi.mock('../../api/client', () => ({
   createAccount: mockCreateAccount,
   updateAccount: mockUpdateAccount,
   deleteAccount: mockDeleteAccount,
+  fetchUsers: mockFetchUsers,
 }))
+
+const baseAccount = { id: 1, name: 'Checking', type: 'Checking', balance: 100, created_at: '2026-01-01', users: [] }
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -29,15 +33,15 @@ afterEach(() => {
 test('shows loading initially', () => {
   mockFetchAccounts.mockReturnValue(new Promise(() => {}))
 
-  render(<AccountsList onBack={() => {}} />)
+  render(<AccountsList onBack={() => {}} selectedUserId={null} />)
 
   expect(screen.getByText('Loading...')).toBeInTheDocument()
 })
 
 test('renders accounts from API', async () => {
-  mockFetchAccounts.mockResolvedValue([{ id: 1, name: 'Checking', type: 'Checking', balance: 100, created_at: '2026-01-01' }])
+  mockFetchAccounts.mockResolvedValue([baseAccount])
 
-  render(<AccountsList onBack={() => {}} />)
+  render(<AccountsList onBack={() => {}} selectedUserId={null} />)
 
   await waitFor(() => {
     expect(screen.getByText(/\$?100/)).toBeInTheDocument()
@@ -47,7 +51,7 @@ test('renders accounts from API', async () => {
 test('shows empty message when no accounts', async () => {
   mockFetchAccounts.mockResolvedValue([])
 
-  render(<AccountsList onBack={() => {}} />)
+  render(<AccountsList onBack={() => {}} selectedUserId={null} />)
 
   await waitFor(() => {
     expect(screen.getByText('No accounts yet')).toBeInTheDocument()
@@ -56,9 +60,9 @@ test('shows empty message when no accounts', async () => {
 
 test('can open and submit new account form', async () => {
   mockFetchAccounts.mockResolvedValue([])
-  mockCreateAccount.mockResolvedValue({ id: 1, name: 'New', type: 'Savings', balance: 50, created_at: '2026-01-01' })
+  mockCreateAccount.mockResolvedValue({ ...baseAccount, id: 2, name: 'New', type: 'Savings', balance: 50 })
 
-  render(<AccountsList onBack={() => {}} />)
+  render(<AccountsList onBack={() => {}} selectedUserId={null} />)
 
   await waitFor(() => {
     expect(screen.getByText('No accounts yet')).toBeInTheDocument()
@@ -73,15 +77,15 @@ test('can open and submit new account form', async () => {
   fireEvent.click(screen.getByText('Save'))
 
   await waitFor(() => {
-    expect(mockCreateAccount).toHaveBeenCalledWith({ name: 'New', type: 'Savings', balance: 50 })
+    expect(mockCreateAccount).toHaveBeenCalledWith({ name: 'New', type: 'Savings', balance: 50, users: [] })
   })
 })
 
 test('can edit an account inline', async () => {
-  mockFetchAccounts.mockResolvedValue([{ id: 1, name: 'Checking', type: 'Checking', balance: 100, created_at: '2026-01-01' }])
-  mockUpdateAccount.mockResolvedValue({ id: 1, name: 'Updated', type: 'Checking', balance: 100, created_at: '2026-01-01' })
+  mockFetchAccounts.mockResolvedValue([baseAccount])
+  mockUpdateAccount.mockResolvedValue({ ...baseAccount, name: 'Updated' })
 
-  render(<AccountsList onBack={() => {}} />)
+  render(<AccountsList onBack={() => {}} selectedUserId={null} />)
 
   await waitFor(() => {
     expect(screen.getByText(/\$?100/)).toBeInTheDocument()
@@ -100,10 +104,10 @@ test('can edit an account inline', async () => {
 })
 
 test('can delete an account', async () => {
-  mockFetchAccounts.mockResolvedValue([{ id: 1, name: 'Checking', type: 'Checking', balance: 100, created_at: '2026-01-01' }])
+  mockFetchAccounts.mockResolvedValue([baseAccount])
   mockDeleteAccount.mockResolvedValue(undefined)
 
-  render(<AccountsList onBack={() => {}} />)
+  render(<AccountsList onBack={() => {}} selectedUserId={null} />)
 
   await waitFor(() => {
     expect(screen.getByText(/\$?100/)).toBeInTheDocument()
@@ -119,10 +123,10 @@ test('can delete an account', async () => {
 test('cancels delete when confirm is false', async () => {
   vi.mocked(window.confirm).mockReturnValue(false)
 
-  mockFetchAccounts.mockResolvedValue([{ id: 1, name: 'Checking', type: 'Checking', balance: 100, created_at: '2026-01-01' }])
+  mockFetchAccounts.mockResolvedValue([baseAccount])
   mockDeleteAccount.mockResolvedValue(undefined)
 
-  render(<AccountsList onBack={() => {}} />)
+  render(<AccountsList onBack={() => {}} selectedUserId={null} />)
 
   await waitFor(() => {
     expect(screen.getByText(/\$?100/)).toBeInTheDocument()
@@ -136,7 +140,7 @@ test('cancels delete when confirm is false', async () => {
 test('shows error state on fetch failure', async () => {
   mockFetchAccounts.mockRejectedValue(new Error('Failed to load'))
 
-  render(<AccountsList onBack={() => {}} />)
+  render(<AccountsList onBack={() => {}} selectedUserId={null} />)
 
   await waitFor(() => {
     expect(screen.getByText('Error: Failed to load')).toBeInTheDocument()

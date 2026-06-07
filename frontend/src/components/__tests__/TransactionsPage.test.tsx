@@ -20,6 +20,9 @@ vi.mock('../../api/client', () => ({
   deleteTransaction: mockDeleteTransaction,
 }))
 
+const baseAccount = { id: 1, name: 'Checking', type: 'Checking', balance: 100, created_at: '2026-01-01', users: [] }
+const baseCategory = { id: 1, name: 'Salary', type: 'Income' }
+
 beforeEach(() => {
   vi.clearAllMocks()
   vi.spyOn(window, 'confirm').mockReturnValue(true)
@@ -35,17 +38,17 @@ test('shows loading state', () => {
   mockFetchAccounts.mockReturnValue(new Promise(() => {}))
   mockFetchCategories.mockReturnValue(new Promise(() => {}))
 
-  render(<TransactionsPage onBack={() => {}} />)
+  render(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
 
   expect(screen.getByText('Loading...')).toBeInTheDocument()
 })
 
 test('renders transactions with account/category dropdowns', async () => {
   mockFetchTransactions.mockResolvedValue([{ id: 1, date: '2026-01-15', payee: 'Test', memo: null, amount: 50, account_id: 1, account_name: 'Checking', category_id: 1, category_name: 'Salary' }])
-  mockFetchAccounts.mockResolvedValue([{ id: 1, name: 'Checking', type: 'Checking', balance: 100, created_at: '2026-01-01' }])
-  mockFetchCategories.mockResolvedValue([{ id: 1, name: 'Salary', type: 'Income' }])
+  mockFetchAccounts.mockResolvedValue([baseAccount])
+  mockFetchCategories.mockResolvedValue([baseCategory])
 
-  render(<TransactionsPage onBack={() => {}} />)
+  render(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
 
   await waitFor(() => {
     expect(screen.getByText('Test')).toBeInTheDocument()
@@ -57,7 +60,7 @@ test('shows error state on fetch failure', async () => {
   mockFetchAccounts.mockResolvedValue([])
   mockFetchCategories.mockResolvedValue([])
 
-  render(<TransactionsPage onBack={() => {}} />)
+  render(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
 
   await waitFor(() => {
     expect(screen.getByText('Error: Failed to load')).toBeInTheDocument()
@@ -69,7 +72,7 @@ test('can open new transaction form', async () => {
   mockFetchAccounts.mockResolvedValue([])
   mockFetchCategories.mockResolvedValue([])
 
-  render(<TransactionsPage onBack={() => {}} />)
+  render(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
 
   await waitFor(() => {
     expect(screen.getByText('No transactions yet')).toBeInTheDocument()
@@ -83,11 +86,11 @@ test('can open new transaction form', async () => {
 
 test('create new transaction', async () => {
   mockFetchTransactions.mockResolvedValue([])
-  mockFetchAccounts.mockResolvedValue([{ id: 1, name: 'Checking', type: 'Checking', balance: 100, created_at: '2026-01-01' }])
-  mockFetchCategories.mockResolvedValue([{ id: 1, name: 'Salary', type: 'Income' }])
+  mockFetchAccounts.mockResolvedValue([baseAccount])
+  mockFetchCategories.mockResolvedValue([baseCategory])
   mockCreateTransaction.mockResolvedValue({ id: 1, date: '2026-01-15', payee: 'New Payee', memo: '', amount: 100, account_id: 1, account_name: 'Checking', category_id: 1, category_name: 'Salary' })
 
-  render(<TransactionsPage onBack={() => {}} />)
+  render(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
 
   await waitFor(() => {
     expect(screen.getByText('No transactions yet')).toBeInTheDocument()
@@ -112,11 +115,11 @@ test('create new transaction', async () => {
 test('can edit inline', async () => {
   const txn = { id: 1, date: '2026-01-15', payee: 'Test', memo: null, amount: 50, account_id: 1, account_name: 'Checking', category_id: 1, category_name: 'Salary' }
   mockFetchTransactions.mockResolvedValue([txn])
-  mockFetchAccounts.mockResolvedValue([{ id: 1, name: 'Checking', type: 'Checking', balance: 100, created_at: '2026-01-01' }])
-  mockFetchCategories.mockResolvedValue([{ id: 1, name: 'Salary', type: 'Income' }])
+  mockFetchAccounts.mockResolvedValue([baseAccount])
+  mockFetchCategories.mockResolvedValue([baseCategory])
   mockUpdateTransaction.mockResolvedValue({ ...txn, payee: 'Updated' })
 
-  render(<TransactionsPage onBack={() => {}} />)
+  render(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
 
   await waitFor(() => {
     expect(screen.getByText('Test')).toBeInTheDocument()
@@ -137,11 +140,11 @@ test('can edit inline', async () => {
 test('can delete', async () => {
   const txn = { id: 1, date: '2026-01-15', payee: 'Test', memo: null, amount: 50, account_id: 1, account_name: 'Checking', category_id: 1, category_name: 'Salary' }
   mockFetchTransactions.mockResolvedValue([txn])
-  mockFetchAccounts.mockResolvedValue([{ id: 1, name: 'Checking', type: 'Checking', balance: 100, created_at: '2026-01-01' }])
-  mockFetchCategories.mockResolvedValue([{ id: 1, name: 'Salary', type: 'Income' }])
+  mockFetchAccounts.mockResolvedValue([baseAccount])
+  mockFetchCategories.mockResolvedValue([baseCategory])
   mockDeleteTransaction.mockResolvedValue(undefined)
 
-  render(<TransactionsPage onBack={() => {}} />)
+  render(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
 
   await waitFor(() => {
     expect(screen.getByText('Test')).toBeInTheDocument()

@@ -8,6 +8,7 @@ import {
 
 interface Props {
   onBack: () => void
+  selectedUserId: number | null
 }
 
 const emptyForm: TransactionCreate = {
@@ -19,7 +20,7 @@ const emptyForm: TransactionCreate = {
   category_id: 0,
 }
 
-export default function TransactionsPage({ onBack }: Props) {
+export default function TransactionsPage({ onBack, selectedUserId }: Props) {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
   const [categories, setCategories] = useState<Category[]>([])
@@ -33,8 +34,8 @@ export default function TransactionsPage({ onBack }: Props) {
   const loadAll = () => {
     setLoading(true)
     Promise.all([
-      fetchTransactions(),
-      fetchAccounts(),
+      fetchTransactions(selectedUserId ?? undefined),
+      fetchAccounts(selectedUserId ?? undefined),
       fetchCategories(),
     ])
       .then(([txns, accts, cats]) => {
@@ -46,7 +47,7 @@ export default function TransactionsPage({ onBack }: Props) {
       .finally(() => setLoading(false))
   }
 
-  useEffect(loadAll, [])
+  useEffect(loadAll, [selectedUserId])
 
   const startEdit = (t: Transaction) => {
     setEditingId(t.id)

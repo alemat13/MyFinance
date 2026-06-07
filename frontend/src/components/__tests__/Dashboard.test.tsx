@@ -21,7 +21,7 @@ afterEach(() => {
 test('shows loading state initially', () => {
   mockFetchDashboard.mockReturnValue(new Promise(() => {}))
 
-  render(<Dashboard />)
+  render(<Dashboard selectedUserId={null} />)
 
   expect(screen.getByText('Loading...')).toBeInTheDocument()
 })
@@ -29,7 +29,7 @@ test('shows loading state initially', () => {
 test('shows error state when fetch fails', async () => {
   mockFetchDashboard.mockRejectedValue(new Error('API Error'))
 
-  render(<Dashboard />)
+  render(<Dashboard selectedUserId={null} />)
 
   await waitFor(() => {
     expect(screen.getByText('Error: API Error')).toBeInTheDocument()
@@ -38,11 +38,11 @@ test('shows error state when fetch fails', async () => {
 
 test('renders accounts and recent transactions on success', async () => {
   mockFetchDashboard.mockResolvedValue({
-    accounts: [{ id: 1, name: 'Checking', type: 'Checking', balance: 100, created_at: '2026-01-01' }],
+    accounts: [{ id: 1, name: 'Checking', type: 'Checking', balance: 100, created_at: '2026-01-01', users: [] }],
     recent_transactions: [{ id: 1, date: '2026-01-15', payee: 'Test', memo: null, amount: 50, account_id: 1, account_name: 'Checking', category_id: 1, category_name: 'Salary' }],
   })
 
-  render(<Dashboard />)
+  render(<Dashboard selectedUserId={null} />)
 
   await waitFor(() => {
     expect(screen.getByRole('heading', { name: 'Checking' })).toBeInTheDocument()

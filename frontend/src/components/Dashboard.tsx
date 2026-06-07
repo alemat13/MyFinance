@@ -3,18 +3,22 @@ import { DashboardData, fetchDashboard } from '../api/client'
 import AccountCard from './AccountCard'
 import TransactionList from './TransactionList'
 
-export default function Dashboard() {
+interface Props {
+  selectedUserId: number | null
+}
+
+export default function Dashboard({ selectedUserId }: Props) {
   const [data, setData] = useState<DashboardData | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    fetchDashboard()
+    fetchDashboard(selectedUserId ?? undefined)
       .then(setData)
       .catch(err => {
         console.error(err)
         setError(err.message)
       })
-  }, [])
+  }, [selectedUserId])
 
   if (error) {
     return <div style={{ color: 'red', padding: '20px' }}>Error: {error}</div>
