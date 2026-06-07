@@ -1,21 +1,35 @@
+export interface AccountUser {
+  user_id: number
+  user_name: string
+  ownership_percentage: number
+}
+
 export interface Account {
   id: number
   name: string
   type: string
   balance: number
   created_at: string
+  users: AccountUser[]
+}
+
+export interface AccountUserCreate {
+  user_id: number
+  ownership_percentage: number
 }
 
 export interface AccountCreate {
   name: string
   type: string
   balance?: number
+  users?: AccountUserCreate[]
 }
 
 export interface AccountUpdate {
   name?: string
   type?: string
   balance?: number
+  users?: AccountUserCreate[]
 }
 
 export interface Category {
@@ -64,6 +78,23 @@ export interface TransactionUpdate {
   category_id?: number
 }
 
+export interface User {
+  id: number
+  name: string
+  email: string | null
+  created_at: string
+}
+
+export interface UserCreate {
+  name: string
+  email?: string | null
+}
+
+export interface UserUpdate {
+  name?: string
+  email?: string | null
+}
+
 export interface DashboardData {
   accounts: Account[]
   recent_transactions: Transaction[]
@@ -84,8 +115,9 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json()
 }
 
-export function fetchAccounts(): Promise<Account[]> {
-  return request<Account[]>("/accounts")
+export function fetchAccounts(userId?: number): Promise<Account[]> {
+  const params = userId ? `?user_id=${userId}` : ''
+  return request<Account[]>(`/accounts${params}`)
 }
 
 export function createAccount(data: AccountCreate): Promise<Account> {
@@ -116,8 +148,9 @@ export function deleteCategory(id: number): Promise<void> {
   return request<void>(`/categories/${id}`, { method: 'DELETE' })
 }
 
-export function fetchTransactions(): Promise<Transaction[]> {
-  return request<Transaction[]>("/transactions")
+export function fetchTransactions(userId?: number): Promise<Transaction[]> {
+  const params = userId ? `?user_id=${userId}` : ''
+  return request<Transaction[]>(`/transactions${params}`)
 }
 
 export function createTransaction(data: TransactionCreate): Promise<Transaction> {
@@ -132,6 +165,23 @@ export function deleteTransaction(id: number): Promise<void> {
   return request<void>(`/transactions/${id}`, { method: 'DELETE' })
 }
 
-export function fetchDashboard(): Promise<DashboardData> {
-  return request<DashboardData>("/dashboard")
+export function fetchUsers(): Promise<User[]> {
+  return request<User[]>("/users")
+}
+
+export function createUser(data: UserCreate): Promise<User> {
+  return request<User>("/users", { method: 'POST', body: JSON.stringify(data) })
+}
+
+export function updateUser(id: number, data: UserUpdate): Promise<User> {
+  return request<User>(`/users/${id}`, { method: 'PUT', body: JSON.stringify(data) })
+}
+
+export function deleteUser(id: number): Promise<void> {
+  return request<void>(`/users/${id}`, { method: 'DELETE' })
+}
+
+export function fetchDashboard(userId?: number): Promise<DashboardData> {
+  const params = userId ? `?user_id=${userId}` : ''
+  return request<DashboardData>(`/dashboard${params}`)
 }
