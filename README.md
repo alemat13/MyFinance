@@ -48,21 +48,47 @@ Open http://localhost:5173 in your browser.
 
 ## API Endpoints
 
+### Users
+
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/accounts` | List all accounts |
-| POST | `/api/accounts` | Create a new account |
+| GET | `/api/users` | List all users |
+| POST | `/api/users` | Create a user |
+| PUT | `/api/users/{id}` | Update a user |
+| DELETE | `/api/users/{id}` | Delete a user (409 if owns accounts) |
+
+### Accounts
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/accounts?user_id=X` | List accounts (optional filter by user ownership) |
+| POST | `/api/accounts` | Create an account (with optional `users` array) |
 | PUT | `/api/accounts/{id}` | Update an account |
 | DELETE | `/api/accounts/{id}` | Delete an account (409 if has transactions) |
+
+### Categories
+
+| Method | Path | Description |
+|--------|------|-------------|
 | GET | `/api/categories` | List all categories |
 | POST | `/api/categories` | Create a new category |
 | PUT | `/api/categories/{id}` | Update a category |
 | DELETE | `/api/categories/{id}` | Delete a category (409 if has transactions) |
-| GET | `/api/transactions` | List all transactions (with account/category names) |
+
+### Transactions
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/transactions?user_id=X` | List transactions (optional filter by user ownership) |
 | POST | `/api/transactions` | Create a transaction |
 | PUT | `/api/transactions/{id}` | Update a transaction |
 | DELETE | `/api/transactions/{id}` | Delete a transaction |
-| GET | `/api/dashboard` | All accounts + 10 most recent transactions |
+
+### Dashboard
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/dashboard?user_id=X` | All accounts + 10 most recent transactions (optional filter by user) |
 
 ## Running Tests
 
@@ -90,21 +116,22 @@ Uses `vitest` with `@testing-library/react` and `jsdom`. Component tests mock th
 backend/
 ├── database.py      SQLAlchemy engine and session
 ├── main.py          FastAPI app and route definitions
-├── models.py        ORM models: Account, Category, Transaction
+├── models.py        ORM models: User, Account, Category, Transaction, AccountUser
 ├── schemas.py       Pydantic response schemas
 ├── seed.py          Database seeder (destructive)
 ├── requirements.txt
 └── tests/
-    ├── conftest.py          Shared fixtures (in-memory DB, test client)
-    ├── test_accounts.py     Account CRUD + error tests
-    ├── test_categories.py   Category CRUD + error tests
-    ├── test_transactions.py Transaction CRUD + error tests
-    └── test_dashboard.py    Dashboard aggregate tests
+    ├── conftest.py              Shared fixtures (in-memory DB, test client)
+    ├── test_accounts.py         Account CRUD + ownership tests
+    ├── test_categories.py       Category CRUD + error tests
+    ├── test_dashboard.py        Dashboard aggregate + user filtering tests
+    ├── test_transactions.py     Transaction CRUD + user filtering tests
+    └── test_users.py            User CRUD + ownership 409 tests
 
 frontend/
 ├── src/
 │   ├── main.tsx                 App entrypoint
-│   ├── App.tsx                  Root component (view router)
+│   ├── App.tsx                  Root component (view router, user selection)
 │   ├── App.css                  Global styles
 │   ├── setupTests.ts            Test setup (jest-dom matchers)
 │   ├── api/
@@ -112,19 +139,21 @@ frontend/
 │   │   └── __tests__/
 │   │       └── client.test.ts   API client unit tests
 │   └── components/
-│       ├── Dashboard.tsx        Main dashboard view
+│       ├── Dashboard.tsx        Main dashboard view (user-filterable)
 │       ├── AccountCard.tsx      Account balance card
 │       ├── TransactionList.tsx  Transaction table
-│       ├── AccountsList.tsx     Full accounts CRUD view
+│       ├── AccountsList.tsx     Full accounts CRUD (with user ownership sub-table)
 │       ├── CategoriesList.tsx   Categories CRUD view
-│       ├── TransactionsPage.tsx Full transactions CRUD view
+│       ├── TransactionsPage.tsx Full transactions CRUD (user-filterable)
+│       ├── UsersList.tsx        Full users CRUD view
 │       └── __tests__/
 │           ├── AccountCard.test.tsx
 │           ├── Dashboard.test.tsx
 │           ├── AccountsList.test.tsx
 │           ├── CategoriesList.test.tsx
 │           ├── TransactionList.test.tsx
-│           └── TransactionsPage.test.tsx
+│           ├── TransactionsPage.test.tsx
+│           └── UsersList.test.tsx
 ├── index.html
 ├── package.json
 ├── tsconfig.json

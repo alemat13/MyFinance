@@ -47,10 +47,13 @@ cd frontend && npm test -- --watch  # frontend tests in watch mode
 - **API base URL hardcoded** — `http://localhost:8000/api` in `frontend/src/api/client.ts`.
 - **No `.env` used** though `.env` is gitignored.
 - **Full CRUD via REST** — each entity has `GET / POST / PUT / DELETE`.
-- **Delete protected** — accounts/categories with transactions return **409 Conflict**.
+- **Delete protected** — accounts/categories with transactions return **409 Conflict**. Users with account ownership also return 409.
+- **Multi-user support** — `users` table with `account_users` junction (ownership percentage). Accounts can be joint-owned.
+- **User filtering** — `?user_id=X` query param on `/api/transactions`, `/api/dashboard`, `/api/accounts` filters by accounts where user has >0% ownership.
+- **Ownership validation** — account ownership percentages must sum to exactly 100% (backend returns 422 otherwise).
+- **Frontend user selection** — dropdown in App.tsx header; stored in localStorage; filters all views.
 - **Frontend entrypoint chain:** `index.html → main.tsx → App.tsx → Dashboard.tsx`.
-- **New frontend files** — `TransactionsPage.tsx` (full CRUD table with account/category dropdowns).
-- **Inline editing** — list views support New/Edit/Delete via inline forms, no modals.
+- **Inline editing** — list views support New/Edit/Delete via inline forms, no modals. Account forms include a multi-row user ownership sub-table.
 - **Backend test DB** — uses `sqlite:///:memory:` with `dependency_overrides[get_db]`; tables are created/dropped per test session
 - **Frontend test mocks** — component tests mock `src/api/client` via `vi.mock`; API client tests mock `global.fetch` directly
 - **`alert()`/`confirm()` in tests** — components using `alert()`/`confirm()` must have these mocked via `vi.spyOn` in component tests
