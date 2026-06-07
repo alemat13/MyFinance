@@ -1,7 +1,37 @@
 from datetime import date, datetime
 from typing import List, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
+
+
+class UserOut(BaseModel):
+    id: int
+    name: str
+    email: str | None = None
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
+class UserCreate(BaseModel):
+    name: str
+    email: str | None = None
+
+
+class UserUpdate(BaseModel):
+    name: str | None = None
+    email: str | None = None
+
+
+class AccountUserOut(BaseModel):
+    user_id: int
+    user_name: str
+    ownership_percentage: float
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AccountUserCreate(BaseModel):
+    user_id: int
+    ownership_percentage: float
 
 
 class AccountOut(BaseModel):
@@ -12,18 +42,21 @@ class AccountOut(BaseModel):
     type: str
     balance: float
     created_at: datetime
+    users: list[AccountUserOut] = []
 
 
 class AccountCreate(BaseModel):
     name: str
     type: str
     balance: float = 0.0
+    users: list[AccountUserCreate] = []
 
 
 class AccountUpdate(BaseModel):
     name: Optional[str] = None
     type: Optional[str] = None
     balance: Optional[float] = None
+    users: list[AccountUserCreate] | None = None
 
 
 class CategoryOut(BaseModel):
