@@ -1,9 +1,12 @@
+import os
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import join, func, or_
 
-from database import get_db
+from database import get_db, engine, Base
 from models import (
     Account, Category, Transaction, User, AccountUser,
     CategorySplit, GlobalSplitWeight, TransactionSplit,
@@ -26,15 +29,24 @@ import split_engine
 from filtering import build_where_clause
 from import_csv import preview_import
 
-app = FastAPI(title="Personal Finance Manager API")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    Base.metadata.create_all(bind=engine)
+    yield
+
+
+app = FastAPI(title="Personal Finance Manager API", lifespan=lifespan)
+
+_default_cors_origins = (
+    "http://localhost:5173,"
+    "http://100.127.164.124:5173,"
+    "http://surfacealex.tail047989.ts.net:5173"
+)
+allow_origins = os.environ.get("CORS_ALLOWED_ORIGINS", _default_cors_origins).split(",")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://100.127.164.124:5173",
-        "http://surfacealex.tail047989.ts.net:5173",
-    ],
+    allow_origins=allow_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
