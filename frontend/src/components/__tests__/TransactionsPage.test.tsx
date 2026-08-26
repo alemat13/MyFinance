@@ -1,5 +1,6 @@
-import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { describe, test, expect, vi, beforeEach } from 'vitest'
+import { screen, fireEvent, waitFor, within } from '@testing-library/react'
+import { renderWithProviders } from '../../test-utils'
 import TransactionsPage from '../TransactionsPage'
 
 const { mockFetchTransactions, mockFetchAccounts, mockFetchCategories, mockCreateTransaction, mockUpdateTransaction, mockDeleteTransaction, mockFetchUsers, mockFetchSplitPreview } = vi.hoisted(() => ({
@@ -24,19 +25,13 @@ vi.mock('../../api/client', () => ({
   fetchSplitPreview: mockFetchSplitPreview,
 }))
 
-const baseAccount = { id: 1, name: 'Checking', type: 'Checking', balance: 100, created_at: '2026-01-01', users: [] }
+const baseAccount = { id: 1, name: 'Checking', type: 'Checking', balance: 100, currency: 'USD', created_at: '2026-01-01', users: [] }
 const baseCategory = { id: 1, name: 'Salary', type: 'Income', splits: [] }
 
 beforeEach(() => {
   vi.clearAllMocks()
   mockFetchUsers.mockResolvedValue([])
   mockFetchSplitPreview.mockResolvedValue([])
-  vi.spyOn(window, 'confirm').mockReturnValue(true)
-  vi.spyOn(window, 'alert').mockImplementation(() => {})
-})
-
-afterEach(() => {
-  vi.restoreAllMocks()
 })
 
 test('shows loading state', () => {
@@ -44,7 +39,7 @@ test('shows loading state', () => {
   mockFetchAccounts.mockReturnValue(new Promise(() => {}))
   mockFetchCategories.mockReturnValue(new Promise(() => {}))
 
-  render(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
 
   expect(screen.getByText('Loading...')).toBeInTheDocument()
 })
@@ -54,7 +49,7 @@ test('renders transactions with account/category dropdowns', async () => {
   mockFetchAccounts.mockResolvedValue([baseAccount])
   mockFetchCategories.mockResolvedValue([baseCategory])
 
-  render(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
 
   await waitFor(() => {
     expect(screen.getByText('Test')).toBeInTheDocument()
@@ -66,7 +61,7 @@ test('shows error state on fetch failure', async () => {
   mockFetchAccounts.mockResolvedValue([])
   mockFetchCategories.mockResolvedValue([])
 
-  render(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
 
   await waitFor(() => {
     expect(screen.getByText('Error: Failed to load')).toBeInTheDocument()
@@ -78,7 +73,7 @@ test('can open new transaction form', async () => {
   mockFetchAccounts.mockResolvedValue([])
   mockFetchCategories.mockResolvedValue([])
 
-  render(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
 
   await waitFor(() => {
     expect(screen.getByText('No transactions yet')).toBeInTheDocument()
@@ -96,7 +91,7 @@ test('create new transaction', async () => {
   mockFetchCategories.mockResolvedValue([baseCategory])
   mockCreateTransaction.mockResolvedValue({ id: 1, date: '2026-01-15', payee: 'New Payee', memo: '', amount: 100, account_id: 1, account_name: 'Checking', category_id: 1, category_name: 'Salary', splits: [] })
 
-  render(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
 
   await waitFor(() => {
     expect(screen.getByText('No transactions yet')).toBeInTheDocument()
@@ -125,7 +120,7 @@ test('can edit inline', async () => {
   mockFetchCategories.mockResolvedValue([baseCategory])
   mockUpdateTransaction.mockResolvedValue({ ...txn, payee: 'Updated' })
 
-  render(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
 
   await waitFor(() => {
     expect(screen.getByText('Test')).toBeInTheDocument()
@@ -154,7 +149,7 @@ test('shows default split preview and can submit a custom override', async () =>
   ])
   mockCreateTransaction.mockResolvedValue({ id: 1, date: '2026-01-15', payee: 'New Payee', memo: '', amount: 100, account_id: 1, account_name: 'Checking', category_id: 1, category_name: 'Salary', splits: [] })
 
-  render(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
 
   await waitFor(() => {
     expect(screen.getByText('No transactions yet')).toBeInTheDocument()
@@ -167,7 +162,7 @@ test('shows default split preview and can submit a custom override', async () =>
   fireEvent.change(selects[1], { target: { value: '1' } })
 
   await waitFor(() => {
-    expect(screen.getByText(/Default split: Alex 60.00 \/ Olivia 40.00/)).toBeInTheDocument()
+    expect(screen.getByText(/Default split: Alex \$60.00 \/ Olivia \$40.00/)).toBeInTheDocument()
   })
 
   fireEvent.click(screen.getByLabelText('Customize split'))
@@ -196,7 +191,7 @@ test('rejects a custom split that does not sum to the amount', async () => {
   mockFetchUsers.mockResolvedValue([{ id: 1, name: 'Alex', email: null, created_at: '' }])
   mockFetchSplitPreview.mockResolvedValue([{ user_id: 1, user_name: 'Alex', share_amount: 100, source: 'global_default' }])
 
-  render(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
 
   await waitFor(() => {
     expect(screen.getByText('No transactions yet')).toBeInTheDocument()
@@ -229,13 +224,16 @@ test('can delete', async () => {
   mockFetchCategories.mockResolvedValue([baseCategory])
   mockDeleteTransaction.mockResolvedValue(undefined)
 
-  render(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
 
   await waitFor(() => {
     expect(screen.getByText('Test')).toBeInTheDocument()
   })
 
   fireEvent.click(screen.getByText('Delete'))
+
+  const dialog = await screen.findByRole('dialog')
+  fireEvent.click(within(dialog).getByText('Delete'))
 
   await waitFor(() => {
     expect(mockDeleteTransaction).toHaveBeenCalledWith(1)

@@ -30,6 +30,7 @@ erDiagram
         string name
         string type
         float balance
+        string currency "ISO 4217 code, e.g. EUR, USD"
         datetime created_at
     }
 
@@ -99,6 +100,7 @@ Financial accounts (checking, savings, credit card, etc.).
 | `name` | String(100) | Required |
 | `type` | String(50) | Required |
 | `balance` | Float | Default: 0.0 |
+| `currency` | String(3) | ISO 4217 code, e.g. `EUR`, `USD`. Default: `EUR` |
 | `created_at` | DateTime | Default: current UTC time |
 
 ### `categories`
@@ -119,7 +121,7 @@ Individual financial transactions.
 | `date` | Date | Required |
 | `payee` | String(200) | Required |
 | `memo` | Text | Optional |
-| `amount` | Float | Negative = expense, positive = income |
+| `amount` | Float | Negative = expense, positive = income. Denominated in the parent account's `currency` — a transaction has no currency of its own |
 | `account_id` | Integer | Foreign key → `accounts.id` |
 | `category_id` | Integer | Foreign key → `categories.id` |
 | `created_at` | DateTime | Default: current UTC time |
@@ -160,3 +162,4 @@ The resolved split for one transaction, computed once and stored — never silen
 - **User filtering**: API endpoints `/api/transactions`, `/api/dashboard`, `/api/accounts` accept an optional `?user_id=X` query parameter to filter by account ownership (where `ownership_percentage > 0`).
 - **Split resolution** (`backend/split_engine.py`): for each transaction, the split is resolved in priority order — an explicit override (`manual`) > `category_splits` for its category (`category_default`) > `global_split_weights` (`global_default`). If nothing is configured at any tier, no `transaction_splits` rows are created (the feature is opt-in).
 - **Splits are frozen, ownership is live**: `transaction_splits.share_amount` (what a user is *liable* for) is computed once at write time and persisted. What a user *paid* is instead derived live from the account's *current* `account_users.ownership_percentage` — so historical liability stays stable even if account ownership changes later, but the settlement report always reflects today's ownership. The household balance report (`GET /api/balances`, also embedded in `GET /api/dashboard`) is `sum(paid) − sum(share_amount)` per user — positive means the household owes them, negative means they owe the household.
+- **Multi-currency accounts, no conversion**: each account has its own `currency`; transactions and splits inherit it from their account rather than storing it themselves. Amounts are never converted or summed across currencies — `compute_balances()` (`backend/split_engine.py`) partitions by `(user_id, currency)`, so `GET /api/balances` returns one net position per user *per currency*, and a household with mixed-currency accounts gets a separate settlement line for each currency instead of a single blended total.

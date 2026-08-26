@@ -88,36 +88,49 @@ def apply_split(db: Session, transaction: Transaction, override: list[tuple[int,
         ))
 
 
-def compute_balances(db: Session) -> list[tuple[int, str, float]]:
-    """Net position per user: sum(share_amount) - sum(live paid_amount) across all transactions.
+def compute_balances(db: Session) -> list[tuple[int, str, str, float]]:
+    """Net position per user per currency: sum(share_amount) - sum(live paid_amount).
 
     Positive = this user paid more than they were liable for (a creditor: the
     household owes them). Negative = they owe the household. Sums to ~0 across
-    all users, since per transaction both paid_amount and share_amount sum to
-    the transaction's amount.
+    all users within a currency, since per transaction both paid_amount and
+    share_amount sum to the transaction's amount. Balances are never summed
+    across currencies — each (user, currency) pair is tracked independently,
+    since accounts (and therefore transactions) can be in different currencies.
     """
-    from models import User
+    from models import Account, User
 
-    net: dict[int, float] = {}
+    net: dict[tuple[int, str], float] = {}
 
-    splits = db.query(TransactionSplit).all()
-    for s in splits:
-        net[s.user_id] = net.get(s.user_id, 0.0) + s.share_amount
+    splits = (
+        db.query(TransactionSplit, Account.currency)
+        .join(Transaction, Transaction.id == TransactionSplit.transaction_id)
+        .join(Account, Account.id == Transaction.account_id)
+        .all()
+    )
+    for s, currency in splits:
+        key = (s.user_id, currency)
+        net[key] = net.get(key, 0.0) + s.share_amount
 
     # Only transactions that actually have a resolved split contribute a
     # "paid" side — an unsplit transaction carries no liability claim, so it
     # must not skew anyone's balance.
-    split_transaction_ids = {s.transaction_id for s in splits}
+    split_transaction_ids = {s.transaction_id for s, _ in splits}
     if split_transaction_ids:
         ownerships = (
-            db.query(Transaction.id, Transaction.amount, AccountUser.user_id, AccountUser.ownership_percentage)
+            db.query(Transaction.id, Transaction.amount, Account.currency, AccountUser.user_id, AccountUser.ownership_percentage)
+            .join(Account, Account.id == Transaction.account_id)
             .join(AccountUser, AccountUser.account_id == Transaction.account_id)
             .filter(Transaction.id.in_(split_transaction_ids))
             .all()
         )
-        for _, amount, user_id, ownership_percentage in ownerships:
+        for _, amount, currency, user_id, ownership_percentage in ownerships:
             paid = amount * ownership_percentage / 100.0
-            net[user_id] = net.get(user_id, 0.0) - paid
+            key = (user_id, currency)
+            net[key] = net.get(key, 0.0) - paid
 
     users = {u.id: u.name for u in db.query(User).all()}
-    return [(user_id, users.get(user_id, "Unknown"), round(net_position, 2)) for user_id, net_position in net.items()]
+    return [
+        (user_id, users.get(user_id, "Unknown"), currency, round(net_position, 2))
+        for (user_id, currency), net_position in net.items()
+    ]

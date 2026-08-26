@@ -22,8 +22,8 @@ def seed():
     session.flush()
 
     accounts = [
-        Account(name="Joint Checking", type="Checking", balance=5420.00),
-        Account(name="Personal Savings", type="Savings", balance=12800.00),
+        Account(name="Joint Checking", type="Checking", balance=5420.00, currency="EUR"),
+        Account(name="Personal Savings", type="Savings", balance=12800.00, currency="USD"),
     ]
     session.add_all(accounts)
     session.flush()

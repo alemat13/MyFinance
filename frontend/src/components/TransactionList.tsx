@@ -1,4 +1,6 @@
 import { Transaction } from '../api/client'
+import { Table, Thead, Tbody, Tr, Th, Td } from './ui'
+import { formatMoney } from '../utils/currency'
 
 interface Props {
   transactions: Transaction[]
@@ -9,40 +11,31 @@ export default function TransactionList({ transactions }: Props) {
   const hasMemo = sorted.some(t => t.memo !== null)
 
   return (
-    <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff' }}>
-      <thead>
-        <tr style={{ background: '#eee', textAlign: 'left' }}>
-          <th style={thStyle}>Date</th>
-          <th style={thStyle}>Payee</th>
-          <th style={thStyle}>Category</th>
-          <th style={thStyle}>Account</th>
-          {hasMemo && <th style={thStyle}>Memo</th>}
-          <th style={{ ...thStyle, textAlign: 'right' }}>Amount</th>
-        </tr>
-      </thead>
-      <tbody>
+    <Table>
+      <Thead>
+        <Tr>
+          <Th>Date</Th>
+          <Th>Payee</Th>
+          <Th>Category</Th>
+          <Th>Account</Th>
+          {hasMemo && <Th>Memo</Th>}
+          <Th className="text-right">Amount</Th>
+        </Tr>
+      </Thead>
+      <Tbody>
         {sorted.map(t => (
-          <tr key={t.id} style={{ borderBottom: '1px solid #ddd' }}>
-            <td style={tdStyle}>{t.date}</td>
-            <td style={tdStyle}>{t.payee}</td>
-            <td style={tdStyle}>{t.category_name}</td>
-            <td style={tdStyle}>{t.account_name}</td>
-            {hasMemo && <td style={tdStyle}>{t.memo ?? ''}</td>}
-            <td style={{ ...tdStyle, textAlign: 'right', color: t.amount >= 0 ? 'green' : 'red' }}>
-              {t.amount.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
-            </td>
-          </tr>
+          <Tr key={t.id}>
+            <Td>{t.date}</Td>
+            <Td>{t.payee}</Td>
+            <Td>{t.category_name}</Td>
+            <Td>{t.account_name}</Td>
+            {hasMemo && <Td>{t.memo ?? ''}</Td>}
+            <Td className={`text-right ${t.amount >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+              {formatMoney(t.amount, t.currency)}
+            </Td>
+          </Tr>
         ))}
-      </tbody>
-    </table>
+      </Tbody>
+    </Table>
   )
-}
-
-const thStyle: React.CSSProperties = {
-  padding: '10px 12px',
-  borderBottom: '2px solid #ccc',
-}
-
-const tdStyle: React.CSSProperties = {
-  padding: '8px 12px',
 }

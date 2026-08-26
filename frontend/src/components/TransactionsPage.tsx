@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { ArrowLeft } from 'lucide-react'
 import {
   Transaction, TransactionCreate, TransactionUpdate, TransactionSplit,
   Account, Category, User,
@@ -6,15 +7,18 @@ import {
   fetchAccounts, fetchCategories, fetchUsers, fetchSplitPreview,
 } from '../api/client'
 import SplitEditor, { SplitRow } from './SplitEditor'
+import { useToast } from '../context/ToastContext'
+import { Button, Input, Select, Table, Thead, Tbody, Tr, Th, Td, StatusMessage, ConfirmDialog } from './ui'
+import { formatMoney } from '../utils/currency'
 
 interface Props {
   onBack: () => void
   selectedUserId: number | null
 }
 
-const splitsDisplay = (splits: TransactionSplit[]) => {
-  if (splits.length === 0) return <span style={{ color: '#999' }}>—</span>
-  return splits.map(s => `${s.user_name} ${s.share_amount.toFixed(2)}`).join(' / ')
+const splitsDisplay = (splits: TransactionSplit[], currency: string) => {
+  if (splits.length === 0) return <span className="text-slate-400">—</span>
+  return splits.map(s => `${s.user_name} ${formatMoney(s.share_amount, currency)}`).join(' / ')
 }
 
 const emptyForm: TransactionCreate = {
@@ -41,6 +45,8 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
   const [newData, setNewData] = useState<TransactionCreate>(emptyForm)
   const [newSplit, setNewSplit] = useState<SplitRow[] | null>(null)
   const [newPreview, setNewPreview] = useState<TransactionSplit[]>([])
+  const [deletingTransaction, setDeletingTransaction] = useState<Transaction | null>(null)
+  const { showToast } = useToast()
 
   const loadAll = () => {
     setLoading(true)
@@ -109,7 +115,7 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
     if (editSplit !== null) {
       const total = editSplit.reduce((s, r) => s + r.value, 0)
       if (Math.abs(total - amount) > 0.01) {
-        alert(`Custom split must sum to the transaction amount (${amount})`); return
+        showToast(`Custom split must sum to the transaction amount (${amount})`); return
       }
     }
     updateTransaction(id, {
@@ -117,24 +123,25 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
       split_overrides: editSplit ? editSplit.map(r => ({ user_id: r.user_id, share_amount: r.value })) : null,
     })
       .then(() => { cancelEdit(); loadAll() })
-      .catch(err => alert(err.message))
+      .catch(err => showToast(err.message))
   }
 
-  const del = (id: number, payee: string) => {
-    if (!confirm(`Delete transaction "${payee}"?`)) return
-    deleteTransaction(id)
+  const confirmDelete = () => {
+    if (!deletingTransaction) return
+    deleteTransaction(deletingTransaction.id)
       .then(() => loadAll())
-      .catch(err => alert(err.message))
+      .catch(err => showToast(err.message))
+      .finally(() => setDeletingTransaction(null))
   }
 
   const saveNew = () => {
     if (!newData.payee || !newData.account_id || !newData.category_id) {
-      alert('Payee, account, and category are required'); return
+      showToast('Payee, account, and category are required'); return
     }
     if (newSplit !== null) {
       const total = newSplit.reduce((s, r) => s + r.value, 0)
       if (Math.abs(total - newData.amount) > 0.01) {
-        alert(`Custom split must sum to the transaction amount (${newData.amount})`); return
+        showToast(`Custom split must sum to the transaction amount (${newData.amount})`); return
       }
     }
     createTransaction({
@@ -142,7 +149,7 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
       split_overrides: newSplit ? newSplit.map(r => ({ user_id: r.user_id, share_amount: r.value })) : undefined,
     })
       .then(() => { setShowNew(false); setNewData(emptyForm); setNewSplit(null); loadAll() })
-      .catch(err => alert(err.message))
+      .catch(err => showToast(err.message))
   }
 
   const cancelNew = () => {
@@ -165,12 +172,13 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
 
   const renderSplitSection = (
     amount: number,
+    currency: string,
     split: SplitRow[] | null,
     preview: TransactionSplit[],
     setSplit: (s: SplitRow[] | null) => void,
   ) => (
-    <div style={{ marginTop: '8px' }}>
-      <label style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+    <div className="mt-2">
+      <label className="text-xs flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
         <input
           type="checkbox"
           checked={split !== null}
@@ -179,16 +187,19 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
         Customize split
       </label>
       {split !== null ? (
-        <SplitEditor rows={split} allUsers={allUsers} total={amount} unit="currency" label="Split" onChange={setSplit} />
+        <SplitEditor rows={split} allUsers={allUsers} total={amount} unit="currency" currency={currency} label="Split" onChange={setSplit} />
       ) : (
         preview.length > 0 && (
-          <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>
-            Default split: {preview.map(p => `${p.user_name} ${p.share_amount.toFixed(2)}`).join(' / ')}
+          <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+            Default split: {preview.map(p => `${p.user_name} ${formatMoney(p.share_amount, currency)}`).join(' / ')}
           </div>
         )
       )}
     </div>
   )
+
+  const currencyFor = (accountId: number | undefined) =>
+    accounts.find(a => a.id === accountId)?.currency ?? 'EUR'
 
   const sorted = [...transactions].sort(
     (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
@@ -199,161 +210,123 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
   const catOptions = categories.map(c => ({ value: c.id, label: `${c.name} (${c.type})` }))
 
   if (error) {
-    return <div style={{ color: 'red', padding: '20px' }}>Error: {error}</div>
+    return <StatusMessage error={error} />
   }
 
   return (
     <div>
-      <button onClick={onBack} style={backBtnStyle}>
-        ← Back to Dashboard
+      <button onClick={onBack} className="flex items-center gap-1 text-accent hover:underline text-sm mb-4 cursor-pointer">
+        <ArrowLeft size={14} /> Back
       </button>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-        <h2 style={{ margin: 0 }}>Transactions</h2>
-        <button onClick={() => setShowNew(true)} style={newBtnStyle}>
-          + New Transaction
-        </button>
+      <div className="flex justify-between items-center mb-3">
+        <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Transactions</h2>
+        <Button onClick={() => setShowNew(true)}>+ New Transaction</Button>
       </div>
 
       {showNew && (
-        <div style={{ padding: '12px', marginBottom: '12px', border: '1px solid #ccc', borderRadius: '6px', background: '#f9f9f9' }}>
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-            <input type="date" value={newData.date} onChange={e => setNewData({ ...newData, date: e.target.value })} style={inputStyle} />
-            <input placeholder="Payee" value={newData.payee} onChange={e => setNewData({ ...newData, payee: e.target.value })} style={inputStyle} />
-            <input placeholder="Memo" value={newData.memo ?? ''} onChange={e => setNewData({ ...newData, memo: e.target.value || null })} style={inputStyle} />
-            <input placeholder="Amount" type="number" step="0.01" value={newData.amount} onChange={e => setNewData({ ...newData, amount: parseFloat(e.target.value) || 0 })} style={{ ...inputStyle, width: '110px' }} />
-            <select value={newData.account_id} onChange={e => setNewData({ ...newData, account_id: parseInt(e.target.value) || 0 })} style={selectStyle}>
+        <div className="p-3 mb-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60">
+          <div className="flex gap-2 flex-wrap items-end">
+            <Input type="date" value={newData.date} onChange={e => setNewData({ ...newData, date: e.target.value })} />
+            <Input placeholder="Payee" value={newData.payee} onChange={e => setNewData({ ...newData, payee: e.target.value })} />
+            <Input placeholder="Memo" value={newData.memo ?? ''} onChange={e => setNewData({ ...newData, memo: e.target.value || null })} />
+            <Input placeholder="Amount" type="number" step="0.01" value={newData.amount} onChange={e => setNewData({ ...newData, amount: parseFloat(e.target.value) || 0 })} className="w-[110px]" />
+            <Select value={newData.account_id} onChange={e => setNewData({ ...newData, account_id: parseInt(e.target.value) || 0 })} className="min-w-[140px]">
               <option value={0}>Account</option>
               {acctOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-            <select value={newData.category_id} onChange={e => setNewData({ ...newData, category_id: parseInt(e.target.value) || 0 })} style={selectStyle}>
+            </Select>
+            <Select value={newData.category_id} onChange={e => setNewData({ ...newData, category_id: parseInt(e.target.value) || 0 })} className="min-w-[140px]">
               <option value={0}>Category</option>
               {catOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-            <button onClick={saveNew} style={saveBtnStyle}>Save</button>
-            <button onClick={cancelNew} style={cancelBtnStyle}>Cancel</button>
+            </Select>
+            <Button onClick={saveNew}>Save</Button>
+            <Button variant="secondary" onClick={cancelNew}>Cancel</Button>
           </div>
-          {renderSplitSection(newData.amount, newSplit, newPreview, setNewSplit)}
+          {renderSplitSection(newData.amount, currencyFor(newData.account_id), newSplit, newPreview, setNewSplit)}
         </div>
       )}
 
-      {loading && <div style={{ padding: '20px' }}>Loading...</div>}
+      <StatusMessage loading={loading} />
 
       {!loading && (
-        <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff' }}>
-          <thead>
-            <tr style={{ background: '#eee', textAlign: 'left' }}>
-              <th style={thStyle}>Date</th>
-              <th style={thStyle}>Payee</th>
-              <th style={thStyle}>Category</th>
-              <th style={thStyle}>Account</th>
-              {hasMemo && <th style={thStyle}>Memo</th>}
-              <th style={{ ...thStyle, textAlign: 'right' }}>Amount</th>
-              <th style={thStyle}>Split</th>
-              <th style={{ ...thStyle, textAlign: 'center' }}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
+        <Table>
+          <Thead>
+            <Tr>
+              <Th>Date</Th>
+              <Th>Payee</Th>
+              <Th>Category</Th>
+              <Th>Account</Th>
+              {hasMemo && <Th>Memo</Th>}
+              <Th className="text-right">Amount</Th>
+              <Th>Split</Th>
+              <Th className="text-center">Actions</Th>
+            </Tr>
+          </Thead>
+          <Tbody>
             {sorted.length === 0 && (
-              <tr><td colSpan={hasMemo ? 8 : 7} style={{ textAlign: 'center', padding: '20px', color: '#888' }}>No transactions yet</td></tr>
+              <Tr><Td colSpan={hasMemo ? 8 : 7} className="text-center py-5 text-slate-400">No transactions yet</Td></Tr>
             )}
             {sorted.map(t => (
-              <tr key={t.id} style={{ borderBottom: '1px solid #ddd' }}>
+              <Tr key={t.id}>
                 {editingId === t.id ? (
                   <>
-                    <td style={tdStyle}><input type="date" value={editData.date ?? ''} onChange={e => setEditData({ ...editData, date: e.target.value })} style={inputStyle} /></td>
-                    <td style={tdStyle}><input value={editData.payee ?? ''} onChange={e => setEditData({ ...editData, payee: e.target.value })} style={inputStyle} /></td>
-                    <td style={tdStyle}>
-                      <select value={editData.category_id ?? 0} onChange={e => setEditData({ ...editData, category_id: parseInt(e.target.value) || 0 })} style={selectStyle}>
+                    <Td><Input type="date" value={editData.date ?? ''} onChange={e => setEditData({ ...editData, date: e.target.value })} /></Td>
+                    <Td><Input value={editData.payee ?? ''} onChange={e => setEditData({ ...editData, payee: e.target.value })} /></Td>
+                    <Td>
+                      <Select value={editData.category_id ?? 0} onChange={e => setEditData({ ...editData, category_id: parseInt(e.target.value) || 0 })} className="min-w-[140px]">
                         <option value={0}>Category</option>
                         {catOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                      </select>
-                    </td>
-                    <td style={tdStyle}>
-                      <select value={editData.account_id ?? 0} onChange={e => setEditData({ ...editData, account_id: parseInt(e.target.value) || 0 })} style={selectStyle}>
+                      </Select>
+                    </Td>
+                    <Td>
+                      <Select value={editData.account_id ?? 0} onChange={e => setEditData({ ...editData, account_id: parseInt(e.target.value) || 0 })} className="min-w-[140px]">
                         <option value={0}>Account</option>
                         {acctOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                      </select>
-                    </td>
+                      </Select>
+                    </Td>
                     {hasMemo && (
-                      <td style={tdStyle}><input value={editData.memo ?? ''} onChange={e => setEditData({ ...editData, memo: e.target.value || null })} style={inputStyle} /></td>
+                      <Td><Input value={editData.memo ?? ''} onChange={e => setEditData({ ...editData, memo: e.target.value || null })} /></Td>
                     )}
-                    <td style={{ ...tdStyle, textAlign: 'right' }}>
-                      <input type="number" step="0.01" value={editData.amount ?? 0} onChange={e => setEditData({ ...editData, amount: parseFloat(e.target.value) || 0 })} style={{ ...inputStyle, width: '110px', textAlign: 'right' }} />
-                    </td>
-                    <td style={tdStyle} colSpan={2}>
-                      {renderSplitSection(editData.amount ?? 0, editSplit, editPreview, setEditSplit)}
-                      <div style={{ marginTop: '6px', display: 'flex', gap: '4px' }}>
-                        <button onClick={() => saveEdit(t.id)} style={saveBtnStyle}>Save</button>
-                        <button onClick={cancelEdit} style={cancelBtnStyle}>Cancel</button>
+                    <Td className="text-right">
+                      <Input type="number" step="0.01" value={editData.amount ?? 0} onChange={e => setEditData({ ...editData, amount: parseFloat(e.target.value) || 0 })} className="w-[110px] text-right" />
+                    </Td>
+                    <Td colSpan={2}>
+                      {renderSplitSection(editData.amount ?? 0, currencyFor(editData.account_id), editSplit, editPreview, setEditSplit)}
+                      <div className="mt-1.5 flex gap-1">
+                        <Button size="sm" onClick={() => saveEdit(t.id)}>Save</Button>
+                        <Button size="sm" variant="secondary" onClick={cancelEdit}>Cancel</Button>
                       </div>
-                    </td>
+                    </Td>
                   </>
                 ) : (
                   <>
-                    <td style={tdStyle}>{t.date}</td>
-                    <td style={tdStyle}>{t.payee}</td>
-                    <td style={tdStyle}>{t.category_name}</td>
-                    <td style={tdStyle}>{t.account_name}</td>
-                    {hasMemo && <td style={tdStyle}>{t.memo ?? ''}</td>}
-                    <td style={{ ...tdStyle, textAlign: 'right', color: t.amount >= 0 ? 'green' : 'red' }}>
-                      {t.amount.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
-                    </td>
-                    <td style={{ ...tdStyle, fontSize: '12px' }}>{splitsDisplay(t.splits)}</td>
-                    <td style={{ ...tdStyle, textAlign: 'center' }}>
-                      <button onClick={() => startEdit(t)} style={editBtnStyle}>Edit</button>
-                      <button onClick={() => del(t.id, t.payee)} style={delBtnStyle}>Delete</button>
-                    </td>
+                    <Td>{t.date}</Td>
+                    <Td>{t.payee}</Td>
+                    <Td>{t.category_name}</Td>
+                    <Td>{t.account_name}</Td>
+                    {hasMemo && <Td>{t.memo ?? ''}</Td>}
+                    <Td className={`text-right ${t.amount >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                      {formatMoney(t.amount, t.currency)}
+                    </Td>
+                    <Td className="text-xs">{splitsDisplay(t.splits, t.currency)}</Td>
+                    <Td className="text-center">
+                      <Button size="sm" variant="secondary" onClick={() => startEdit(t)} className="mr-1">Edit</Button>
+                      <Button size="sm" variant="danger" onClick={() => setDeletingTransaction(t)}>Delete</Button>
+                    </Td>
                   </>
                 )}
-              </tr>
+              </Tr>
             ))}
-          </tbody>
-        </table>
+          </Tbody>
+        </Table>
       )}
+
+      <ConfirmDialog
+        isOpen={deletingTransaction !== null}
+        title="Delete transaction"
+        message={`Delete transaction "${deletingTransaction?.payee}"?`}
+        onConfirm={confirmDelete}
+        onCancel={() => setDeletingTransaction(null)}
+      />
     </div>
   )
-}
-
-const inputStyle: React.CSSProperties = {
-  padding: '6px 8px', border: '1px solid #ccc', borderRadius: '4px', fontSize: '13px',
-}
-
-const selectStyle: React.CSSProperties = {
-  ...inputStyle, minWidth: '140px',
-}
-
-const btnBase: React.CSSProperties = {
-  border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px',
-}
-
-const newBtnStyle: React.CSSProperties = {
-  ...btnBase, background: '#0066cc', color: '#fff',
-}
-
-const saveBtnStyle: React.CSSProperties = {
-  ...btnBase, background: '#28a745', color: '#fff', marginRight: '4px',
-}
-
-const cancelBtnStyle: React.CSSProperties = {
-  ...btnBase, background: '#6c757d', color: '#fff',
-}
-
-const editBtnStyle: React.CSSProperties = {
-  ...btnBase, background: '#ffc107', color: '#333', marginRight: '4px',
-}
-
-const delBtnStyle: React.CSSProperties = {
-  ...btnBase, background: '#dc3545', color: '#fff',
-}
-
-const backBtnStyle: React.CSSProperties = {
-  background: 'none', border: 'none', color: '#0066cc', cursor: 'pointer', fontSize: '14px', marginBottom: '16px', padding: 0,
-}
-
-const thStyle: React.CSSProperties = {
-  padding: '10px 12px', borderBottom: '2px solid #ccc',
-}
-
-const tdStyle: React.CSSProperties = {
-  padding: '8px 12px',
 }

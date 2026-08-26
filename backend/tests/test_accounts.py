@@ -14,7 +14,34 @@ def test_create_account(client):
     assert data["name"] == "Test"
     assert data["type"] == "Checking"
     assert data["balance"] == 100.0
+    assert data["currency"] == "EUR"
     assert "id" in data
+
+
+def test_create_account_with_currency(client):
+    response = client.post(
+        "/api/accounts",
+        json={"name": "Test", "type": "Checking", "balance": 100.0, "currency": "usd"},
+    )
+    assert response.status_code == 201
+    assert response.json()["currency"] == "USD"
+
+
+def test_create_account_invalid_currency_422(client):
+    response = client.post(
+        "/api/accounts",
+        json={"name": "Test", "type": "Checking", "currency": "US"},
+    )
+    assert response.status_code == 422
+
+
+def test_update_account_currency(client, sample_account):
+    response = client.put(
+        f"/api/accounts/{sample_account.id}",
+        json={"currency": "GBP"},
+    )
+    assert response.status_code == 200
+    assert response.json()["currency"] == "GBP"
 
 
 def test_get_accounts(client, sample_account):

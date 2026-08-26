@@ -27,6 +27,26 @@ def test_get_transaction_has_names(client, sample_transaction):
     assert data[0]["category_name"] is not None
 
 
+def test_transaction_currency_reflects_account(client, db, sample_category):
+    from models import Account
+    account = Account(name="USD Checking", type="Checking", balance=0.0, currency="USD")
+    db.add(account)
+    db.commit()
+
+    response = client.post(
+        "/api/transactions",
+        json={
+            "account_id": account.id,
+            "category_id": sample_category.id,
+            "date": "2026-01-15",
+            "payee": "Test",
+            "amount": 100.0,
+        },
+    )
+    assert response.status_code == 201
+    assert response.json()["currency"] == "USD"
+
+
 def test_update_transaction(client, sample_transaction):
     response = client.put(
         f"/api/transactions/{sample_transaction.id}",

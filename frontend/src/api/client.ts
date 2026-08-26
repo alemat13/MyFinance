@@ -9,6 +9,7 @@ export interface Account {
   name: string
   type: string
   balance: number
+  currency: string
   created_at: string
   users: AccountUser[]
 }
@@ -22,6 +23,7 @@ export interface AccountCreate {
   name: string
   type: string
   balance?: number
+  currency?: string
   users?: AccountUserCreate[]
 }
 
@@ -29,6 +31,7 @@ export interface AccountUpdate {
   name?: string
   type?: string
   balance?: number
+  currency?: string
   users?: AccountUserCreate[]
 }
 
@@ -83,6 +86,7 @@ export interface TransactionSplit {
 export interface UserBalance {
   user_id: number
   user_name: string
+  currency: string
   net_position: number
 }
 
@@ -94,6 +98,7 @@ export interface Transaction {
   amount: number
   account_id: number
   account_name: string
+  currency: string
   category_id: number
   category_name: string
   splits: TransactionSplit[]

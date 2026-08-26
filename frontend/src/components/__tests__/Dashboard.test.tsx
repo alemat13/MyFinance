@@ -38,8 +38,8 @@ test('shows error state when fetch fails', async () => {
 
 test('renders accounts and recent transactions on success', async () => {
   mockFetchDashboard.mockResolvedValue({
-    accounts: [{ id: 1, name: 'Checking', type: 'Checking', balance: 100, created_at: '2026-01-01', users: [] }],
-    recent_transactions: [{ id: 1, date: '2026-01-15', payee: 'Test', memo: null, amount: 50, account_id: 1, account_name: 'Checking', category_id: 1, category_name: 'Salary', splits: [] }],
+    accounts: [{ id: 1, name: 'Checking', type: 'Checking', balance: 100, currency: 'EUR', created_at: '2026-01-01', users: [] }],
+    recent_transactions: [{ id: 1, date: '2026-01-15', payee: 'Test', memo: null, amount: 50, account_id: 1, account_name: 'Checking', currency: 'EUR', category_id: 1, category_name: 'Salary', splits: [] }],
     balances: [],
   })
 
@@ -56,8 +56,8 @@ test('renders the balance widget when balances are present', async () => {
     accounts: [],
     recent_transactions: [],
     balances: [
-      { user_id: 1, user_name: 'Alex', net_position: -50 },
-      { user_id: 2, user_name: 'Olivia', net_position: 50 },
+      { user_id: 1, user_name: 'Alex', currency: 'EUR', net_position: -50 },
+      { user_id: 2, user_name: 'Olivia', currency: 'EUR', net_position: 50 },
     ],
   })
 

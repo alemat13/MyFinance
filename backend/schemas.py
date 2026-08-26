@@ -34,6 +34,13 @@ class AccountUserCreate(BaseModel):
     ownership_percentage: float
 
 
+def _validate_currency_code(value: str) -> str:
+    value = value.strip().upper()
+    if len(value) != 3 or not value.isalpha():
+        raise ValueError(f"Currency must be a 3-letter code, got '{value}'")
+    return value
+
+
 class AccountOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -41,6 +48,7 @@ class AccountOut(BaseModel):
     name: str
     type: str
     balance: float
+    currency: str
     created_at: datetime
     users: list[AccountUserOut] = []
 
@@ -49,14 +57,26 @@ class AccountCreate(BaseModel):
     name: str
     type: str
     balance: float = 0.0
+    currency: str = "EUR"
     users: list[AccountUserCreate] = []
+
+    @field_validator("currency")
+    @classmethod
+    def _validate_currency(cls, value: str) -> str:
+        return _validate_currency_code(value)
 
 
 class AccountUpdate(BaseModel):
     name: Optional[str] = None
     type: Optional[str] = None
     balance: Optional[float] = None
+    currency: Optional[str] = None
     users: list[AccountUserCreate] | None = None
+
+    @field_validator("currency")
+    @classmethod
+    def _validate_currency(cls, value: str | None) -> str | None:
+        return _validate_currency_code(value) if value is not None else None
 
 
 class CategorySplitOut(BaseModel):
@@ -125,6 +145,7 @@ class SplitPreviewRequest(BaseModel):
 class UserBalanceOut(BaseModel):
     user_id: int
     user_name: str
+    currency: str
     net_position: float
 
 
@@ -138,6 +159,7 @@ class TransactionOut(BaseModel):
     amount: float
     account_id: int
     account_name: str
+    currency: str
     category_id: int
     category_name: str
     splits: list[TransactionSplitOut] = []

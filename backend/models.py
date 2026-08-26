@@ -13,6 +13,7 @@ class Account(Base):
     name = Column(String(100), nullable=False)
     type = Column(String(50), nullable=False)
     balance = Column(Float, default=0.0)
+    currency = Column(String(3), nullable=False, default="EUR")
     created_at = Column(DateTime, default=datetime.utcnow)
 
     transactions = relationship("Transaction", back_populates="account")

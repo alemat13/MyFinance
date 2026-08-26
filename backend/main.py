@@ -43,6 +43,7 @@ def _account_out(account: Account) -> AccountOut:
         name=account.name,
         type=account.type,
         balance=account.balance,
+        currency=account.currency,
         created_at=account.created_at,
         users=[
             AccountUserOut(
@@ -68,8 +69,8 @@ def _splits_out(t: Transaction) -> list[TransactionSplitOut]:
 
 
 def _transaction_out(db: Session, transaction_id: int) -> TransactionOut:
-    t, account_name, category_name = (
-        db.query(Transaction, Account.name, Category.name)
+    t, account_name, currency, category_name = (
+        db.query(Transaction, Account.name, Account.currency, Category.name)
         .join(Account, Transaction.account_id == Account.id)
         .join(Category, Transaction.category_id == Category.id)
         .filter(Transaction.id == transaction_id)
@@ -83,6 +84,7 @@ def _transaction_out(db: Session, transaction_id: int) -> TransactionOut:
         amount=t.amount,
         account_id=t.account_id,
         account_name=account_name,
+        currency=currency,
         category_id=t.category_id,
         category_name=category_name,
         splits=_splits_out(t),
@@ -195,7 +197,7 @@ def get_accounts(user_id: int | None = Query(None), db: Session = Depends(get_db
 @app.post("/api/accounts", response_model=AccountOut, status_code=201)
 def create_account(data: AccountCreate, db: Session = Depends(get_db)):
     _validate_ownership(data.users)
-    account = Account(name=data.name, type=data.type, balance=data.balance)
+    account = Account(name=data.name, type=data.type, balance=data.balance, currency=data.currency)
     db.add(account)
     db.flush()
     for u in data.users:
@@ -289,7 +291,7 @@ def delete_category(category_id: int, db: Session = Depends(get_db)):
 @app.get("/api/transactions", response_model=list[TransactionOut])
 def get_transactions(user_id: int | None = Query(None), db: Session = Depends(get_db)):
     query = (
-        db.query(Transaction, Account.name, Category.name)
+        db.query(Transaction, Account.name, Account.currency, Category.name)
         .join(Account, Transaction.account_id == Account.id)
         .join(Category, Transaction.category_id == Category.id)
     )
@@ -303,10 +305,10 @@ def get_transactions(user_id: int | None = Query(None), db: Session = Depends(ge
         TransactionOut(
             id=t.id, date=t.date, payee=t.payee, memo=t.memo,
             amount=t.amount, account_id=t.account_id,
-            account_name=account_name, category_id=t.category_id,
+            account_name=account_name, currency=currency, category_id=t.category_id,
             category_name=category_name, splits=_splits_out(t),
         )
-        for t, account_name, category_name in results
+        for t, account_name, currency, category_name in results
     ]
 
 
@@ -392,8 +394,8 @@ def preview_split(data: SplitPreviewRequest, db: Session = Depends(get_db)):
 @app.get("/api/balances", response_model=list[UserBalanceOut])
 def get_balances(db: Session = Depends(get_db)):
     return [
-        UserBalanceOut(user_id=user_id, user_name=user_name, net_position=net_position)
-        for user_id, user_name, net_position in split_engine.compute_balances(db)
+        UserBalanceOut(user_id=user_id, user_name=user_name, currency=currency, net_position=net_position)
+        for user_id, user_name, currency, net_position in split_engine.compute_balances(db)
     ]
 
 
@@ -444,7 +446,7 @@ def get_dashboard(user_id: int | None = Query(None), db: Session = Depends(get_d
     accounts = accounts_query.all()
 
     tx_query = (
-        db.query(Transaction, Account.name, Category.name)
+        db.query(Transaction, Account.name, Account.currency, Category.name)
         .join(Account, Transaction.account_id == Account.id)
         .join(Category, Transaction.category_id == Category.id)
     )
@@ -459,15 +461,15 @@ def get_dashboard(user_id: int | None = Query(None), db: Session = Depends(get_d
         TransactionOut(
             id=t.id, date=t.date, payee=t.payee, memo=t.memo,
             amount=t.amount, account_id=t.account_id,
-            account_name=account_name, category_id=t.category_id,
+            account_name=account_name, currency=currency, category_id=t.category_id,
             category_name=category_name, splits=_splits_out(t),
         )
-        for t, account_name, category_name in recent_results
+        for t, account_name, currency, category_name in recent_results
     ]
 
     balances = [
-        UserBalanceOut(user_id=user_id, user_name=user_name, net_position=net_position)
-        for user_id, user_name, net_position in split_engine.compute_balances(db)
+        UserBalanceOut(user_id=user_id, user_name=user_name, currency=currency, net_position=net_position)
+        for user_id, user_name, currency, net_position in split_engine.compute_balances(db)
     ]
 
     return DashboardResponse(
