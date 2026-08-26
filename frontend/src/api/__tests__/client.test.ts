@@ -2,7 +2,7 @@ import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
   fetchAccounts, createAccount, updateAccount, deleteAccount,
   fetchCategories, createCategory, updateCategory, deleteCategory,
-  fetchTransactions, createTransaction, updateTransaction, deleteTransaction,
+  fetchTransactions, createTransaction, updateTransaction, deleteTransaction, searchTransactions,
   fetchDashboard,
   fetchSplitWeights, updateSplitWeights, fetchSplitPreview, fetchBalances,
   previewImport, commitImport,
@@ -182,6 +182,28 @@ test('fetchTransactions makes GET request', async () => {
     }),
   )
   expect(result).toHaveLength(1)
+})
+
+test('searchTransactions makes POST request with the filter body', async () => {
+  const mockData = { items: [], total: 0, page: 1, page_size: 50, total_pages: 1 }
+  vi.mocked(global.fetch).mockResolvedValue({
+    ok: true,
+    status: 200,
+    json: () => Promise.resolve(mockData),
+    text: () => Promise.resolve(''),
+  } as Response)
+
+  const req = { search: 'amazon', page: 1, page_size: 50 }
+  const result = await searchTransactions(req)
+
+  expect(global.fetch).toHaveBeenCalledWith(
+    'http://localhost:8000/api/transactions/search',
+    expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify(req),
+    }),
+  )
+  expect(result).toEqual(mockData)
 })
 
 test('createTransaction makes POST request', async () => {

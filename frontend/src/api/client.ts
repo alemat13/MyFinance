@@ -124,6 +124,40 @@ export interface TransactionUpdate {
   split_overrides?: SplitShareCreate[] | null
 }
 
+export type FilterField = 'payee' | 'memo' | 'amount' | 'date' | 'account_id' | 'category_id'
+
+export interface FilterCondition {
+  field: FilterField
+  operator: string
+  value?: string | number | null
+  value2?: string | number | null
+}
+
+export interface TransactionSearchRequest {
+  user_id?: number
+  search?: string
+  date_from?: string
+  date_to?: string
+  account_id?: number
+  category_id?: number
+  amount_min?: number
+  amount_max?: number
+  conditions?: FilterCondition[]
+  match_mode?: 'all' | 'any'
+  page?: number
+  page_size?: number
+  sort_by?: 'date' | 'amount' | 'payee' | 'created_at'
+  sort_dir?: 'asc' | 'desc'
+}
+
+export interface TransactionSearchResponse {
+  items: Transaction[]
+  total: number
+  page: number
+  page_size: number
+  total_pages: number
+}
+
 export interface User {
   id: number
   name: string
@@ -178,7 +212,7 @@ export interface ImportCommitResponse {
   transaction_ids: number[]
 }
 
-const API_BASE = "http://localhost:8000/api"
+const API_BASE = `http://${window.location.hostname}:8000/api`
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
@@ -229,6 +263,10 @@ export function deleteCategory(id: number): Promise<void> {
 export function fetchTransactions(userId?: number): Promise<Transaction[]> {
   const params = userId ? `?user_id=${userId}` : ''
   return request<Transaction[]>(`/transactions${params}`)
+}
+
+export function searchTransactions(req: TransactionSearchRequest): Promise<TransactionSearchResponse> {
+  return request<TransactionSearchResponse>('/transactions/search', { method: 'POST', body: JSON.stringify(req) })
 }
 
 export function createTransaction(data: TransactionCreate): Promise<Transaction> {

@@ -246,3 +246,264 @@ def test_split_preview_no_config_returns_422(client, sample_category):
         json={"amount": 50.0, "category_id": sample_category.id},
     )
     assert response.status_code == 422
+
+
+# ── Transaction search ────────────────────────────────────────────
+
+def _make_transaction(db, account, category, **overrides):
+    from datetime import date
+    from models import Transaction
+    defaults = dict(date=date(2026, 1, 15), payee="Payee", amount=100.0,
+                     account_id=account.id, category_id=category.id)
+    defaults.update(overrides)
+    t = Transaction(**defaults)
+    db.add(t)
+    db.commit()
+    db.refresh(t)
+    return t
+
+
+def test_search_simple_payee_contains(client, db, sample_account, sample_category):
+    _make_transaction(db, sample_account, sample_category, payee="Amazon Prime")
+    _make_transaction(db, sample_account, sample_category, payee="Grocery Store")
+
+    response = client.post("/api/transactions/search", json={"search": "amazon"})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] == 1
+    assert data["items"][0]["payee"] == "Amazon Prime"
+
+
+def test_search_simple_memo_contains(client, db, sample_account, sample_category):
+    _make_transaction(db, sample_account, sample_category, payee="A", memo="refund for order")
+    _make_transaction(db, sample_account, sample_category, payee="B", memo="monthly bill")
+
+    response = client.post("/api/transactions/search", json={"search": "refund"})
+    data = response.json()
+    assert data["total"] == 1
+    assert data["items"][0]["payee"] == "A"
+
+
+def test_search_simple_date_range(client, db, sample_account, sample_category):
+    from datetime import date
+    _make_transaction(db, sample_account, sample_category, date=date(2026, 1, 1))
+    _make_transaction(db, sample_account, sample_category, date=date(2026, 6, 1))
+    _make_transaction(db, sample_account, sample_category, date=date(2026, 12, 1))
+
+    response = client.post("/api/transactions/search", json={
+        "date_from": "2026-02-01", "date_to": "2026-07-01",
+    })
+    data = response.json()
+    assert data["total"] == 1
+    assert data["items"][0]["date"] == "2026-06-01"
+
+
+def test_search_simple_account_and_category(client, db, sample_account, sample_category):
+    from models import Account, Category
+    other_account = Account(name="Other", type="Checking")
+    other_category = Category(name="Other Cat", type="Expense")
+    db.add_all([other_account, other_category])
+    db.commit()
+
+    _make_transaction(db, sample_account, sample_category)
+    _make_transaction(db, other_account, other_category)
+
+    response = client.post("/api/transactions/search", json={"account_id": sample_account.id})
+    assert response.json()["total"] == 1
+
+    response = client.post("/api/transactions/search", json={"category_id": other_category.id})
+    assert response.json()["total"] == 1
+
+
+def test_search_simple_amount_range(client, db, sample_account, sample_category):
+    _make_transaction(db, sample_account, sample_category, amount=10.0)
+    _make_transaction(db, sample_account, sample_category, amount=50.0)
+    _make_transaction(db, sample_account, sample_category, amount=100.0)
+
+    response = client.post("/api/transactions/search", json={"amount_min": 20.0, "amount_max": 80.0})
+    data = response.json()
+    assert data["total"] == 1
+    assert data["items"][0]["amount"] == 50.0
+
+
+def test_search_simple_filters_combine_with_and(client, db, sample_account, sample_category):
+    _make_transaction(db, sample_account, sample_category, payee="Amazon", amount=10.0)
+    _make_transaction(db, sample_account, sample_category, payee="Amazon", amount=100.0)
+
+    response = client.post("/api/transactions/search", json={"search": "amazon", "amount_min": 50.0})
+    assert response.json()["total"] == 1
+
+
+def test_search_advanced_text_operators(client, db, sample_account, sample_category):
+    _make_transaction(db, sample_account, sample_category, payee="Amazon Prime")
+
+    cases = [
+        ("contains", "mazon", True),
+        ("contains", "xyz", False),
+        ("equals", "amazon prime", True),
+        ("equals", "amazon", False),
+        ("not_equals", "amazon", True),
+        ("starts_with", "amazon", True),
+        ("starts_with", "prime", False),
+        ("ends_with", "prime", True),
+        ("ends_with", "amazon", False),
+    ]
+    for operator, value, should_match in cases:
+        response = client.post("/api/transactions/search", json={
+            "conditions": [{"field": "payee", "operator": operator, "value": value}],
+        })
+        assert response.status_code == 200
+        total = response.json()["total"]
+        assert (total == 1) == should_match, f"{operator} {value!r} expected match={should_match}"
+
+
+def test_search_advanced_numeric_operators(client, db, sample_account, sample_category):
+    _make_transaction(db, sample_account, sample_category, amount=50.0)
+
+    cases = [
+        ("eq", 50.0, None, True),
+        ("eq", 40.0, None, False),
+        ("ne", 40.0, None, True),
+        ("gt", 40.0, None, True),
+        ("gt", 50.0, None, False),
+        ("gte", 50.0, None, True),
+        ("lt", 60.0, None, True),
+        ("lte", 50.0, None, True),
+        ("between", 40.0, 60.0, True),
+        ("between", 60.0, 70.0, False),
+    ]
+    for operator, value, value2, should_match in cases:
+        body = {"conditions": [{"field": "amount", "operator": operator, "value": value}]}
+        if value2 is not None:
+            body["conditions"][0]["value2"] = value2
+        response = client.post("/api/transactions/search", json=body)
+        assert response.status_code == 200
+        total = response.json()["total"]
+        assert (total == 1) == should_match, f"{operator} {value} expected match={should_match}"
+
+
+def test_search_advanced_date_operators(client, db, sample_account, sample_category):
+    from datetime import date
+    _make_transaction(db, sample_account, sample_category, date=date(2026, 6, 15))
+
+    cases = [
+        ("on", "2026-06-15", None, True),
+        ("on", "2026-06-16", None, False),
+        ("before", "2026-06-16", None, True),
+        ("before", "2026-06-15", None, False),
+        ("after", "2026-06-14", None, True),
+        ("between", "2026-06-01", "2026-06-30", True),
+        ("between", "2026-07-01", "2026-07-31", False),
+    ]
+    for operator, value, value2, should_match in cases:
+        body = {"conditions": [{"field": "date", "operator": operator, "value": value}]}
+        if value2 is not None:
+            body["conditions"][0]["value2"] = value2
+        response = client.post("/api/transactions/search", json=body)
+        assert response.status_code == 200
+        total = response.json()["total"]
+        assert (total == 1) == should_match, f"{operator} {value} expected match={should_match}"
+
+
+def test_search_match_mode_all_vs_any(client, db, sample_account, sample_category):
+    t1 = _make_transaction(db, sample_account, sample_category, payee="Alpha", amount=10.0)
+    t2 = _make_transaction(db, sample_account, sample_category, payee="Beta", amount=999.0)
+    _make_transaction(db, sample_account, sample_category, payee="Gamma", amount=500.0)
+
+    conditions = [
+        {"field": "payee", "operator": "equals", "value": "alpha"},
+        {"field": "amount", "operator": "eq", "value": 999.0},
+    ]
+
+    response = client.post("/api/transactions/search", json={"conditions": conditions, "match_mode": "all"})
+    assert response.json()["total"] == 0
+
+    response = client.post("/api/transactions/search", json={"conditions": conditions, "match_mode": "any"})
+    data = response.json()
+    assert data["total"] == 2
+    payees = {item["payee"] for item in data["items"]}
+    assert payees == {"Alpha", "Beta"}
+
+
+def test_search_invalid_operator_for_field_422(client):
+    response = client.post("/api/transactions/search", json={
+        "conditions": [{"field": "payee", "operator": "gt", "value": "x"}],
+    })
+    assert response.status_code == 422
+
+
+def test_search_malformed_amount_value_422(client, db, sample_account, sample_category):
+    _make_transaction(db, sample_account, sample_category)
+    response = client.post("/api/transactions/search", json={
+        "conditions": [{"field": "amount", "operator": "eq", "value": "not-a-number"}],
+    })
+    assert response.status_code == 422
+
+
+def test_search_malformed_date_value_422(client, db, sample_account, sample_category):
+    _make_transaction(db, sample_account, sample_category)
+    response = client.post("/api/transactions/search", json={
+        "conditions": [{"field": "date", "operator": "on", "value": "not-a-date"}],
+    })
+    assert response.status_code == 422
+
+
+def test_search_pagination(client, db, sample_account, sample_category):
+    for i in range(5):
+        _make_transaction(db, sample_account, sample_category, payee=f"Payee {i}", amount=float(i))
+
+    response = client.post("/api/transactions/search", json={"page": 1, "page_size": 2, "sort_by": "amount", "sort_dir": "asc"})
+    data = response.json()
+    assert data["total"] == 5
+    assert data["total_pages"] == 3
+    assert [item["amount"] for item in data["items"]] == [0.0, 1.0]
+
+    response = client.post("/api/transactions/search", json={"page": 2, "page_size": 2, "sort_by": "amount", "sort_dir": "asc"})
+    data = response.json()
+    assert [item["amount"] for item in data["items"]] == [2.0, 3.0]
+
+    response = client.post("/api/transactions/search", json={"page": 10, "page_size": 2})
+    data = response.json()
+    assert data["items"] == []
+    assert data["total"] == 5
+
+
+def test_search_page_size_clamped_to_max(client, db, sample_account, sample_category):
+    _make_transaction(db, sample_account, sample_category)
+    response = client.post("/api/transactions/search", json={"page_size": 500})
+    assert response.json()["page_size"] == 200
+
+
+def test_search_default_sort_matches_get_transactions(client, db, sample_account, sample_category):
+    from datetime import date
+    _make_transaction(db, sample_account, sample_category, payee="Old", date=date(2026, 1, 1))
+    _make_transaction(db, sample_account, sample_category, payee="New", date=date(2026, 6, 1))
+
+    get_response = client.get("/api/transactions")
+    search_response = client.post("/api/transactions/search", json={})
+    assert [t["id"] for t in get_response.json()] == [t["id"] for t in search_response.json()["items"]]
+
+
+def test_search_sort_by_amount_asc(client, db, sample_account, sample_category):
+    _make_transaction(db, sample_account, sample_category, payee="High", amount=100.0)
+    _make_transaction(db, sample_account, sample_category, payee="Low", amount=1.0)
+
+    response = client.post("/api/transactions/search", json={"sort_by": "amount", "sort_dir": "asc"})
+    data = response.json()
+    assert [item["payee"] for item in data["items"]] == ["Low", "High"]
+
+
+def test_search_filtered_by_user(client, sample_account_with_user, sample_user, sample_category, db):
+    _make_transaction(db, sample_account_with_user, sample_category, payee="User Specific")
+
+    response = client.post("/api/transactions/search", json={"user_id": sample_user.id})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] == 1
+    assert data["items"][0]["payee"] == "User Specific"
+
+
+def test_search_filtered_by_user_no_match(client, sample_user):
+    response = client.post("/api/transactions/search", json={"user_id": sample_user.id})
+    assert response.status_code == 200
+    assert response.json()["total"] == 0

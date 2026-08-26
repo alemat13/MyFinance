@@ -3,8 +3,8 @@ import { screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { renderWithProviders } from '../../test-utils'
 import TransactionsPage from '../TransactionsPage'
 
-const { mockFetchTransactions, mockFetchAccounts, mockFetchCategories, mockCreateTransaction, mockUpdateTransaction, mockDeleteTransaction, mockFetchUsers, mockFetchSplitPreview } = vi.hoisted(() => ({
-  mockFetchTransactions: vi.fn(),
+const { mockSearchTransactions, mockFetchAccounts, mockFetchCategories, mockCreateTransaction, mockUpdateTransaction, mockDeleteTransaction, mockFetchUsers, mockFetchSplitPreview } = vi.hoisted(() => ({
+  mockSearchTransactions: vi.fn(),
   mockFetchAccounts: vi.fn(),
   mockFetchCategories: vi.fn(),
   mockCreateTransaction: vi.fn(),
@@ -15,7 +15,7 @@ const { mockFetchTransactions, mockFetchAccounts, mockFetchCategories, mockCreat
 }))
 
 vi.mock('../../api/client', () => ({
-  fetchTransactions: mockFetchTransactions,
+  searchTransactions: mockSearchTransactions,
   fetchAccounts: mockFetchAccounts,
   fetchCategories: mockFetchCategories,
   createTransaction: mockCreateTransaction,
@@ -28,6 +28,8 @@ vi.mock('../../api/client', () => ({
 const baseAccount = { id: 1, name: 'Checking', type: 'Checking', balance: 100, currency: 'USD', created_at: '2026-01-01', users: [] }
 const baseCategory = { id: 1, name: 'Salary', type: 'Income', splits: [] }
 
+const searchResult = (items: any[]) => ({ items, total: items.length, page: 1, page_size: 50, total_pages: 1 })
+
 beforeEach(() => {
   vi.clearAllMocks()
   mockFetchUsers.mockResolvedValue([])
@@ -35,7 +37,7 @@ beforeEach(() => {
 })
 
 test('shows loading state', () => {
-  mockFetchTransactions.mockReturnValue(new Promise(() => {}))
+  mockSearchTransactions.mockReturnValue(new Promise(() => {}))
   mockFetchAccounts.mockReturnValue(new Promise(() => {}))
   mockFetchCategories.mockReturnValue(new Promise(() => {}))
 
@@ -45,7 +47,7 @@ test('shows loading state', () => {
 })
 
 test('renders transactions with account/category dropdowns', async () => {
-  mockFetchTransactions.mockResolvedValue([{ id: 1, date: '2026-01-15', payee: 'Test', memo: null, amount: 50, account_id: 1, account_name: 'Checking', category_id: 1, category_name: 'Salary', splits: [] }])
+  mockSearchTransactions.mockResolvedValue(searchResult([{ id: 1, date: '2026-01-15', payee: 'Test', memo: null, amount: 50, account_id: 1, account_name: 'Checking', category_id: 1, category_name: 'Salary', splits: [] }]))
   mockFetchAccounts.mockResolvedValue([baseAccount])
   mockFetchCategories.mockResolvedValue([baseCategory])
 
@@ -57,7 +59,7 @@ test('renders transactions with account/category dropdowns', async () => {
 })
 
 test('shows error state on fetch failure', async () => {
-  mockFetchTransactions.mockRejectedValue(new Error('Failed to load'))
+  mockSearchTransactions.mockRejectedValue(new Error('Failed to load'))
   mockFetchAccounts.mockResolvedValue([])
   mockFetchCategories.mockResolvedValue([])
 
@@ -69,14 +71,14 @@ test('shows error state on fetch failure', async () => {
 })
 
 test('can open new transaction form', async () => {
-  mockFetchTransactions.mockResolvedValue([])
+  mockSearchTransactions.mockResolvedValue(searchResult([]))
   mockFetchAccounts.mockResolvedValue([])
   mockFetchCategories.mockResolvedValue([])
 
   renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
 
   await waitFor(() => {
-    expect(screen.getByText('No transactions yet')).toBeInTheDocument()
+    expect(screen.getByText('No transactions match your filters')).toBeInTheDocument()
   })
 
   fireEvent.click(screen.getByText('+ New Transaction'))
@@ -86,7 +88,7 @@ test('can open new transaction form', async () => {
 })
 
 test('create new transaction', async () => {
-  mockFetchTransactions.mockResolvedValue([])
+  mockSearchTransactions.mockResolvedValue(searchResult([]))
   mockFetchAccounts.mockResolvedValue([baseAccount])
   mockFetchCategories.mockResolvedValue([baseCategory])
   mockCreateTransaction.mockResolvedValue({ id: 1, date: '2026-01-15', payee: 'New Payee', memo: '', amount: 100, account_id: 1, account_name: 'Checking', category_id: 1, category_name: 'Salary', splits: [] })
@@ -94,7 +96,7 @@ test('create new transaction', async () => {
   renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
 
   await waitFor(() => {
-    expect(screen.getByText('No transactions yet')).toBeInTheDocument()
+    expect(screen.getByText('No transactions match your filters')).toBeInTheDocument()
   })
 
   fireEvent.click(screen.getByText('+ New Transaction'))
@@ -102,9 +104,11 @@ test('create new transaction', async () => {
   fireEvent.change(screen.getByPlaceholderText('Payee'), { target: { value: 'New Payee' } })
   fireEvent.change(screen.getByPlaceholderText('Amount'), { target: { value: '100' } })
 
+  // Filter bar contributes the first two comboboxes (Account, Category); the
+  // new-transaction form's Account/Category selects come next.
   const selects = screen.getAllByRole('combobox')
-  fireEvent.change(selects[0], { target: { value: '1' } })
-  fireEvent.change(selects[1], { target: { value: '1' } })
+  fireEvent.change(selects[2], { target: { value: '1' } })
+  fireEvent.change(selects[3], { target: { value: '1' } })
 
   fireEvent.click(screen.getByText('Save'))
 
@@ -115,7 +119,7 @@ test('create new transaction', async () => {
 
 test('can edit inline', async () => {
   const txn = { id: 1, date: '2026-01-15', payee: 'Test', memo: null, amount: 50, account_id: 1, account_name: 'Checking', category_id: 1, category_name: 'Salary', splits: [] }
-  mockFetchTransactions.mockResolvedValue([txn])
+  mockSearchTransactions.mockResolvedValue(searchResult([txn]))
   mockFetchAccounts.mockResolvedValue([baseAccount])
   mockFetchCategories.mockResolvedValue([baseCategory])
   mockUpdateTransaction.mockResolvedValue({ ...txn, payee: 'Updated' })
@@ -139,7 +143,7 @@ test('can edit inline', async () => {
 })
 
 test('shows default split preview and can submit a custom override', async () => {
-  mockFetchTransactions.mockResolvedValue([])
+  mockSearchTransactions.mockResolvedValue(searchResult([]))
   mockFetchAccounts.mockResolvedValue([baseAccount])
   mockFetchCategories.mockResolvedValue([baseCategory])
   mockFetchUsers.mockResolvedValue([{ id: 1, name: 'Alex', email: null, created_at: '' }, { id: 2, name: 'Olivia', email: null, created_at: '' }])
@@ -152,14 +156,14 @@ test('shows default split preview and can submit a custom override', async () =>
   renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
 
   await waitFor(() => {
-    expect(screen.getByText('No transactions yet')).toBeInTheDocument()
+    expect(screen.getByText('No transactions match your filters')).toBeInTheDocument()
   })
 
   fireEvent.click(screen.getByText('+ New Transaction'))
   fireEvent.change(screen.getByPlaceholderText('Amount'), { target: { value: '100' } })
   const selects = screen.getAllByRole('combobox')
-  fireEvent.change(selects[0], { target: { value: '1' } })
-  fireEvent.change(selects[1], { target: { value: '1' } })
+  fireEvent.change(selects[2], { target: { value: '1' } })
+  fireEvent.change(selects[3], { target: { value: '1' } })
 
   await waitFor(() => {
     expect(screen.getByText(/Default split: Alex \$60.00 \/ Olivia \$40.00/)).toBeInTheDocument()
@@ -185,7 +189,7 @@ test('shows default split preview and can submit a custom override', async () =>
 })
 
 test('rejects a custom split that does not sum to the amount', async () => {
-  mockFetchTransactions.mockResolvedValue([])
+  mockSearchTransactions.mockResolvedValue(searchResult([]))
   mockFetchAccounts.mockResolvedValue([baseAccount])
   mockFetchCategories.mockResolvedValue([baseCategory])
   mockFetchUsers.mockResolvedValue([{ id: 1, name: 'Alex', email: null, created_at: '' }])
@@ -194,15 +198,15 @@ test('rejects a custom split that does not sum to the amount', async () => {
   renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
 
   await waitFor(() => {
-    expect(screen.getByText('No transactions yet')).toBeInTheDocument()
+    expect(screen.getByText('No transactions match your filters')).toBeInTheDocument()
   })
 
   fireEvent.click(screen.getByText('+ New Transaction'))
   fireEvent.change(screen.getByPlaceholderText('Payee'), { target: { value: 'New Payee' } })
   fireEvent.change(screen.getByPlaceholderText('Amount'), { target: { value: '100' } })
   const selects = screen.getAllByRole('combobox')
-  fireEvent.change(selects[0], { target: { value: '1' } })
-  fireEvent.change(selects[1], { target: { value: '1' } })
+  fireEvent.change(selects[2], { target: { value: '1' } })
+  fireEvent.change(selects[3], { target: { value: '1' } })
 
   await waitFor(() => {
     expect(screen.getByText(/Default split:/)).toBeInTheDocument()
@@ -219,7 +223,7 @@ test('rejects a custom split that does not sum to the amount', async () => {
 
 test('can delete', async () => {
   const txn = { id: 1, date: '2026-01-15', payee: 'Test', memo: null, amount: 50, account_id: 1, account_name: 'Checking', category_id: 1, category_name: 'Salary', splits: [] }
-  mockFetchTransactions.mockResolvedValue([txn])
+  mockSearchTransactions.mockResolvedValue(searchResult([txn]))
   mockFetchAccounts.mockResolvedValue([baseAccount])
   mockFetchCategories.mockResolvedValue([baseCategory])
   mockDeleteTransaction.mockResolvedValue(undefined)
@@ -237,5 +241,61 @@ test('can delete', async () => {
 
   await waitFor(() => {
     expect(mockDeleteTransaction).toHaveBeenCalledWith(1)
+  })
+})
+
+test('simple mode text search triggers a debounced search request', async () => {
+  mockSearchTransactions.mockResolvedValue(searchResult([]))
+  mockFetchAccounts.mockResolvedValue([baseAccount])
+  mockFetchCategories.mockResolvedValue([baseCategory])
+
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+
+  await waitFor(() => expect(mockSearchTransactions).toHaveBeenCalled())
+  mockSearchTransactions.mockClear()
+
+  fireEvent.change(screen.getByPlaceholderText('Search payee/memo'), { target: { value: 'amazon' } })
+
+  await waitFor(() => {
+    expect(mockSearchTransactions).toHaveBeenCalledWith(expect.objectContaining({ search: 'amazon' }))
+  }, { timeout: 1000 })
+})
+
+test('advanced mode builds a conditions request', async () => {
+  mockSearchTransactions.mockResolvedValue(searchResult([]))
+  mockFetchAccounts.mockResolvedValue([baseAccount])
+  mockFetchCategories.mockResolvedValue([baseCategory])
+
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+
+  await waitFor(() => expect(mockSearchTransactions).toHaveBeenCalled())
+
+  fireEvent.click(screen.getByText('Advanced'))
+  fireEvent.click(screen.getByText('+ Add condition'))
+
+  const valueInput = screen.getByRole('textbox') // payee value input, default field
+  fireEvent.change(valueInput, { target: { value: 'amazon' } })
+
+  await waitFor(() => {
+    expect(mockSearchTransactions).toHaveBeenCalledWith(expect.objectContaining({
+      match_mode: 'all',
+      conditions: [{ field: 'payee', operator: 'contains', value: 'amazon', value2: undefined }],
+    }))
+  }, { timeout: 1000 })
+})
+
+test('pagination controls change page', async () => {
+  mockSearchTransactions.mockResolvedValue({ items: [], total: 60, page: 1, page_size: 50, total_pages: 2 })
+  mockFetchAccounts.mockResolvedValue([baseAccount])
+  mockFetchCategories.mockResolvedValue([baseCategory])
+
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+
+  await waitFor(() => expect(screen.getByText('Page 1 / 2')).toBeInTheDocument())
+
+  fireEvent.click(screen.getByText('Next'))
+
+  await waitFor(() => {
+    expect(mockSearchTransactions).toHaveBeenCalledWith(expect.objectContaining({ page: 2 }))
   })
 })

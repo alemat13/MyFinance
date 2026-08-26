@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from sqlalchemy import join
+from sqlalchemy import join, func, or_
 
 from database import get_db
 from models import (
@@ -14,6 +14,7 @@ from schemas import (
     CategorySplitOut, CategorySplitCreate,
     TransactionOut, TransactionCreate, TransactionUpdate,
     TransactionSplitOut,
+    TransactionSearchRequest, TransactionSearchResponse,
     DashboardResponse,
     UserOut, UserCreate, UserUpdate,
     AccountUserOut, AccountUserCreate,
@@ -22,13 +23,18 @@ from schemas import (
     ImportPreviewRequest, ImportPreviewRow, ImportCommitRequest, ImportCommitResponse,
 )
 import split_engine
+from filtering import build_where_clause
 from import_csv import preview_import
 
 app = FastAPI(title="Personal Finance Manager API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://100.127.164.124:5173",
+        "http://surfacealex.tail047989.ts.net:5173",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -310,6 +316,81 @@ def get_transactions(user_id: int | None = Query(None), db: Session = Depends(ge
         )
         for t, account_name, currency, category_name in results
     ]
+
+
+@app.post("/api/transactions/search", response_model=TransactionSearchResponse)
+def search_transactions(req: TransactionSearchRequest, db: Session = Depends(get_db)):
+    query = (
+        db.query(Transaction, Account.name, Account.currency, Category.name)
+        .join(Account, Transaction.account_id == Account.id)
+        .join(Category, Transaction.category_id == Category.id)
+    )
+    if req.user_id is not None:
+        query = query.join(AccountUser, Account.id == AccountUser.account_id).filter(
+            AccountUser.user_id == req.user_id,
+            AccountUser.ownership_percentage > 0,
+        ).distinct()
+
+    if req.search:
+        like = f"%{req.search.lower()}%"
+        query = query.filter(or_(
+            func.lower(Transaction.payee).like(like),
+            func.lower(Transaction.memo).like(like),
+        ))
+    if req.date_from is not None:
+        query = query.filter(Transaction.date >= req.date_from)
+    if req.date_to is not None:
+        query = query.filter(Transaction.date <= req.date_to)
+    if req.account_id is not None:
+        query = query.filter(Transaction.account_id == req.account_id)
+    if req.category_id is not None:
+        query = query.filter(Transaction.category_id == req.category_id)
+    if req.amount_min is not None:
+        query = query.filter(Transaction.amount >= req.amount_min)
+    if req.amount_max is not None:
+        query = query.filter(Transaction.amount <= req.amount_max)
+
+    if req.conditions:
+        try:
+            where = build_where_clause(req.conditions, req.match_mode)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+        if where is not None:
+            query = query.filter(where)
+
+    total = query.count()
+
+    page = max(req.page, 1)
+    page_size = min(max(req.page_size, 1), 200)
+
+    sort_columns = {
+        "date": Transaction.date,
+        "amount": Transaction.amount,
+        "payee": Transaction.payee,
+        "created_at": Transaction.created_at,
+    }
+    sort_col = sort_columns[req.sort_by]
+    sort_col = sort_col.asc() if req.sort_dir == "asc" else sort_col.desc()
+
+    results = (
+        query.order_by(sort_col)
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+    items = [
+        TransactionOut(
+            id=t.id, date=t.date, payee=t.payee, memo=t.memo,
+            amount=t.amount, account_id=t.account_id,
+            account_name=account_name, currency=currency, category_id=t.category_id,
+            category_name=category_name, splits=_splits_out(t),
+        )
+        for t, account_name, currency, category_name in results
+    ]
+    total_pages = max(1, (total + page_size - 1) // page_size)
+    return TransactionSearchResponse(
+        items=items, total=total, page=page, page_size=page_size, total_pages=total_pages,
+    )
 
 
 @app.post("/api/transactions", response_model=TransactionOut, status_code=201)

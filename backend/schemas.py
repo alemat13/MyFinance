@@ -1,7 +1,7 @@
 from datetime import date, datetime
-from typing import List, Optional
+from typing import List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 
 class UserOut(BaseModel):
@@ -183,6 +183,67 @@ class TransactionUpdate(BaseModel):
     account_id: Optional[int] = None
     category_id: Optional[int] = None
     split_overrides: list[SplitShareCreate] | None = None
+
+
+TEXT_OPERATORS = {"contains", "equals", "not_equals", "starts_with", "ends_with"}
+NUMERIC_OPERATORS = {"eq", "ne", "gt", "gte", "lt", "lte", "between"}
+DATE_OPERATORS = {"on", "before", "after", "between"}
+TEXT_FIELDS = {"payee", "memo"}
+DATE_FIELDS = {"date"}
+NUMERIC_FIELDS = {"amount", "account_id", "category_id"}
+
+OPERATORS_BY_FIELD = {
+    **{f: TEXT_OPERATORS for f in TEXT_FIELDS},
+    **{f: DATE_OPERATORS for f in DATE_FIELDS},
+    **{f: NUMERIC_OPERATORS for f in NUMERIC_FIELDS},
+}
+
+
+class FilterCondition(BaseModel):
+    field: Literal["payee", "memo", "amount", "date", "account_id", "category_id"]
+    operator: str
+    value: str | float | int | None = None
+    value2: str | float | int | None = None
+
+    @model_validator(mode="after")
+    def _validate_operator(self):
+        allowed = OPERATORS_BY_FIELD[self.field]
+        if self.operator not in allowed:
+            raise ValueError(f'operator "{self.operator}" not valid for field "{self.field}" (allowed: {sorted(allowed)})')
+        return self
+
+
+class TransactionSearchRequest(BaseModel):
+    user_id: int | None = None
+
+    # simple mode
+    search: str | None = None
+    date_from: date | None = None
+    date_to: date | None = None
+    account_id: int | None = None
+    category_id: int | None = None
+    amount_min: float | None = None
+    amount_max: float | None = None
+
+    # advanced mode
+    conditions: list[FilterCondition] = []
+    match_mode: Literal["all", "any"] = "all"
+
+    # pagination
+    page: int = 1
+    page_size: int = 50
+
+    # sorting
+    sort_by: Literal["date", "amount", "payee", "created_at"] = "date"
+    sort_dir: Literal["asc", "desc"] = "desc"
+
+
+class TransactionSearchResponse(BaseModel):
+    items: list[TransactionOut]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
 
 
 class DashboardResponse(BaseModel):
