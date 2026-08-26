@@ -9,7 +9,7 @@ import {
 } from '../client'
 
 beforeEach(() => {
-  global.fetch = vi.fn()
+  globalThis.fetch = vi.fn()
 })
 
 afterEach(() => {
@@ -18,7 +18,7 @@ afterEach(() => {
 
 test('fetchAccounts makes GET request', async () => {
   const mockData = [{ id: 1, name: 'A', type: 'Checking', balance: 100, created_at: '2026-01-01' }]
-  vi.mocked(global.fetch).mockResolvedValue({
+  vi.mocked(globalThis.fetch).mockResolvedValue({
     ok: true,
     status: 200,
     json: () => Promise.resolve(mockData),
@@ -27,7 +27,7 @@ test('fetchAccounts makes GET request', async () => {
 
   const result = await fetchAccounts()
 
-  expect(global.fetch).toHaveBeenCalledWith(
+  expect(globalThis.fetch).toHaveBeenCalledWith(
     'http://localhost:8000/api/accounts',
     expect.objectContaining({
       headers: { 'Content-Type': 'application/json' },
@@ -37,7 +37,7 @@ test('fetchAccounts makes GET request', async () => {
 })
 
 test('createAccount makes POST request', async () => {
-  vi.mocked(global.fetch).mockResolvedValue({
+  vi.mocked(globalThis.fetch).mockResolvedValue({
     ok: true,
     status: 200,
     json: () => Promise.resolve({ id: 1, name: 'A', type: 'Checking', balance: 0, created_at: '2026-01-01' }),
@@ -46,7 +46,7 @@ test('createAccount makes POST request', async () => {
 
   await createAccount({ name: 'A', type: 'Checking' })
 
-  expect(global.fetch).toHaveBeenCalledWith(
+  expect(globalThis.fetch).toHaveBeenCalledWith(
     'http://localhost:8000/api/accounts',
     expect.objectContaining({
       method: 'POST',
@@ -56,7 +56,7 @@ test('createAccount makes POST request', async () => {
 })
 
 test('updateAccount makes PUT request', async () => {
-  vi.mocked(global.fetch).mockResolvedValue({
+  vi.mocked(globalThis.fetch).mockResolvedValue({
     ok: true,
     status: 200,
     json: () => Promise.resolve({ id: 1, name: 'B', type: 'Checking', balance: 0, created_at: '2026-01-01' }),
@@ -65,7 +65,7 @@ test('updateAccount makes PUT request', async () => {
 
   await updateAccount(1, { name: 'B' })
 
-  expect(global.fetch).toHaveBeenCalledWith(
+  expect(globalThis.fetch).toHaveBeenCalledWith(
     'http://localhost:8000/api/accounts/1',
     expect.objectContaining({
       method: 'PUT',
@@ -74,7 +74,7 @@ test('updateAccount makes PUT request', async () => {
 })
 
 test('deleteAccount makes DELETE request', async () => {
-  vi.mocked(global.fetch).mockResolvedValue({
+  vi.mocked(globalThis.fetch).mockResolvedValue({
     ok: true,
     status: 204,
     text: () => Promise.resolve(''),
@@ -82,7 +82,7 @@ test('deleteAccount makes DELETE request', async () => {
 
   await deleteAccount(1)
 
-  expect(global.fetch).toHaveBeenCalledWith(
+  expect(globalThis.fetch).toHaveBeenCalledWith(
     'http://localhost:8000/api/accounts/1',
     expect.objectContaining({
       method: 'DELETE',
@@ -92,7 +92,7 @@ test('deleteAccount makes DELETE request', async () => {
 
 test('fetchCategories makes GET request', async () => {
   const mockData = [{ id: 1, name: 'Salary', type: 'Income' }]
-  vi.mocked(global.fetch).mockResolvedValue({
+  vi.mocked(globalThis.fetch).mockResolvedValue({
     ok: true,
     status: 200,
     json: () => Promise.resolve(mockData),
@@ -101,7 +101,7 @@ test('fetchCategories makes GET request', async () => {
 
   const result = await fetchCategories()
 
-  expect(global.fetch).toHaveBeenCalledWith(
+  expect(globalThis.fetch).toHaveBeenCalledWith(
     'http://localhost:8000/api/categories',
     expect.objectContaining({
       headers: { 'Content-Type': 'application/json' },
@@ -111,7 +111,7 @@ test('fetchCategories makes GET request', async () => {
 })
 
 test('createCategory makes POST request', async () => {
-  vi.mocked(global.fetch).mockResolvedValue({
+  vi.mocked(globalThis.fetch).mockResolvedValue({
     ok: true,
     status: 200,
     json: () => Promise.resolve({ id: 1, name: 'Food', type: 'Expense' }),
@@ -120,7 +120,7 @@ test('createCategory makes POST request', async () => {
 
   await createCategory({ name: 'Food', type: 'Expense' })
 
-  expect(global.fetch).toHaveBeenCalledWith(
+  expect(globalThis.fetch).toHaveBeenCalledWith(
     'http://localhost:8000/api/categories',
     expect.objectContaining({
       method: 'POST',
@@ -130,7 +130,7 @@ test('createCategory makes POST request', async () => {
 })
 
 test('updateCategory makes PUT request', async () => {
-  vi.mocked(global.fetch).mockResolvedValue({
+  vi.mocked(globalThis.fetch).mockResolvedValue({
     ok: true,
     status: 200,
     json: () => Promise.resolve({}),
@@ -139,7 +139,7 @@ test('updateCategory makes PUT request', async () => {
 
   await updateCategory(1, { name: 'Food' })
 
-  expect(global.fetch).toHaveBeenCalledWith(
+  expect(globalThis.fetch).toHaveBeenCalledWith(
     'http://localhost:8000/api/categories/1',
     expect.objectContaining({
       method: 'PUT',
@@ -148,7 +148,7 @@ test('updateCategory makes PUT request', async () => {
 })
 
 test('deleteCategory makes DELETE request', async () => {
-  vi.mocked(global.fetch).mockResolvedValue({
+  vi.mocked(globalThis.fetch).mockResolvedValue({
     ok: true,
     status: 204,
     text: () => Promise.resolve(''),
@@ -156,7 +156,7 @@ test('deleteCategory makes DELETE request', async () => {
 
   await deleteCategory(1)
 
-  expect(global.fetch).toHaveBeenCalledWith(
+  expect(globalThis.fetch).toHaveBeenCalledWith(
     'http://localhost:8000/api/categories/1',
     expect.objectContaining({
       method: 'DELETE',
@@ -166,7 +166,7 @@ test('deleteCategory makes DELETE request', async () => {
 
 test('fetchTransactions makes GET request', async () => {
   const mockData = [{ id: 1, date: '2026-01-15', payee: 'Test', memo: null, amount: 50, account_id: 1, account_name: 'A', category_id: 1, category_name: 'C' }]
-  vi.mocked(global.fetch).mockResolvedValue({
+  vi.mocked(globalThis.fetch).mockResolvedValue({
     ok: true,
     status: 200,
     json: () => Promise.resolve(mockData),
@@ -175,7 +175,7 @@ test('fetchTransactions makes GET request', async () => {
 
   const result = await fetchTransactions()
 
-  expect(global.fetch).toHaveBeenCalledWith(
+  expect(globalThis.fetch).toHaveBeenCalledWith(
     'http://localhost:8000/api/transactions',
     expect.objectContaining({
       headers: { 'Content-Type': 'application/json' },
@@ -186,7 +186,7 @@ test('fetchTransactions makes GET request', async () => {
 
 test('searchTransactions makes POST request with the filter body', async () => {
   const mockData = { items: [], total: 0, page: 1, page_size: 50, total_pages: 1 }
-  vi.mocked(global.fetch).mockResolvedValue({
+  vi.mocked(globalThis.fetch).mockResolvedValue({
     ok: true,
     status: 200,
     json: () => Promise.resolve(mockData),
@@ -196,7 +196,7 @@ test('searchTransactions makes POST request with the filter body', async () => {
   const req = { search: 'amazon', page: 1, page_size: 50 }
   const result = await searchTransactions(req)
 
-  expect(global.fetch).toHaveBeenCalledWith(
+  expect(globalThis.fetch).toHaveBeenCalledWith(
     'http://localhost:8000/api/transactions/search',
     expect.objectContaining({
       method: 'POST',
@@ -207,7 +207,7 @@ test('searchTransactions makes POST request with the filter body', async () => {
 })
 
 test('createTransaction makes POST request', async () => {
-  vi.mocked(global.fetch).mockResolvedValue({
+  vi.mocked(globalThis.fetch).mockResolvedValue({
     ok: true,
     status: 200,
     json: () => Promise.resolve({}),
@@ -216,7 +216,7 @@ test('createTransaction makes POST request', async () => {
 
   await createTransaction({ date: '2026-01-15', payee: 'Test', amount: 50, account_id: 1, category_id: 1 })
 
-  expect(global.fetch).toHaveBeenCalledWith(
+  expect(globalThis.fetch).toHaveBeenCalledWith(
     'http://localhost:8000/api/transactions',
     expect.objectContaining({
       method: 'POST',
@@ -226,7 +226,7 @@ test('createTransaction makes POST request', async () => {
 })
 
 test('updateTransaction makes PUT request', async () => {
-  vi.mocked(global.fetch).mockResolvedValue({
+  vi.mocked(globalThis.fetch).mockResolvedValue({
     ok: true,
     status: 200,
     json: () => Promise.resolve({}),
@@ -235,7 +235,7 @@ test('updateTransaction makes PUT request', async () => {
 
   await updateTransaction(1, { payee: 'Updated' })
 
-  expect(global.fetch).toHaveBeenCalledWith(
+  expect(globalThis.fetch).toHaveBeenCalledWith(
     'http://localhost:8000/api/transactions/1',
     expect.objectContaining({
       method: 'PUT',
@@ -244,7 +244,7 @@ test('updateTransaction makes PUT request', async () => {
 })
 
 test('deleteTransaction makes DELETE request', async () => {
-  vi.mocked(global.fetch).mockResolvedValue({
+  vi.mocked(globalThis.fetch).mockResolvedValue({
     ok: true,
     status: 204,
     text: () => Promise.resolve(''),
@@ -252,7 +252,7 @@ test('deleteTransaction makes DELETE request', async () => {
 
   await deleteTransaction(1)
 
-  expect(global.fetch).toHaveBeenCalledWith(
+  expect(globalThis.fetch).toHaveBeenCalledWith(
     'http://localhost:8000/api/transactions/1',
     expect.objectContaining({
       method: 'DELETE',
@@ -262,7 +262,7 @@ test('deleteTransaction makes DELETE request', async () => {
 
 test('fetchDashboard makes GET request', async () => {
   const mockData = { accounts: [], recent_transactions: [], balances: [] }
-  vi.mocked(global.fetch).mockResolvedValue({
+  vi.mocked(globalThis.fetch).mockResolvedValue({
     ok: true,
     status: 200,
     json: () => Promise.resolve(mockData),
@@ -271,7 +271,7 @@ test('fetchDashboard makes GET request', async () => {
 
   const result = await fetchDashboard()
 
-  expect(global.fetch).toHaveBeenCalledWith(
+  expect(globalThis.fetch).toHaveBeenCalledWith(
     'http://localhost:8000/api/dashboard',
     expect.objectContaining({
       headers: { 'Content-Type': 'application/json' },
@@ -282,7 +282,7 @@ test('fetchDashboard makes GET request', async () => {
 
 test('fetchSplitWeights makes GET request', async () => {
   const mockData = [{ user_id: 1, user_name: 'Alex', weight: 100 }]
-  vi.mocked(global.fetch).mockResolvedValue({
+  vi.mocked(globalThis.fetch).mockResolvedValue({
     ok: true,
     status: 200,
     json: () => Promise.resolve(mockData),
@@ -291,7 +291,7 @@ test('fetchSplitWeights makes GET request', async () => {
 
   const result = await fetchSplitWeights()
 
-  expect(global.fetch).toHaveBeenCalledWith(
+  expect(globalThis.fetch).toHaveBeenCalledWith(
     'http://localhost:8000/api/split-weights',
     expect.objectContaining({ headers: { 'Content-Type': 'application/json' } }),
   )
@@ -299,7 +299,7 @@ test('fetchSplitWeights makes GET request', async () => {
 })
 
 test('updateSplitWeights makes PUT request', async () => {
-  vi.mocked(global.fetch).mockResolvedValue({
+  vi.mocked(globalThis.fetch).mockResolvedValue({
     ok: true,
     status: 200,
     json: () => Promise.resolve([]),
@@ -308,7 +308,7 @@ test('updateSplitWeights makes PUT request', async () => {
 
   await updateSplitWeights([{ user_id: 1, weight: 100 }])
 
-  expect(global.fetch).toHaveBeenCalledWith(
+  expect(globalThis.fetch).toHaveBeenCalledWith(
     'http://localhost:8000/api/split-weights',
     expect.objectContaining({
       method: 'PUT',
@@ -318,7 +318,7 @@ test('updateSplitWeights makes PUT request', async () => {
 })
 
 test('fetchSplitPreview makes POST request', async () => {
-  vi.mocked(global.fetch).mockResolvedValue({
+  vi.mocked(globalThis.fetch).mockResolvedValue({
     ok: true,
     status: 200,
     json: () => Promise.resolve([]),
@@ -327,7 +327,7 @@ test('fetchSplitPreview makes POST request', async () => {
 
   await fetchSplitPreview(100, 5)
 
-  expect(global.fetch).toHaveBeenCalledWith(
+  expect(globalThis.fetch).toHaveBeenCalledWith(
     'http://localhost:8000/api/split-preview',
     expect.objectContaining({
       method: 'POST',
@@ -338,7 +338,7 @@ test('fetchSplitPreview makes POST request', async () => {
 
 test('fetchBalances makes GET request', async () => {
   const mockData = [{ user_id: 1, user_name: 'Alex', net_position: -50 }]
-  vi.mocked(global.fetch).mockResolvedValue({
+  vi.mocked(globalThis.fetch).mockResolvedValue({
     ok: true,
     status: 200,
     json: () => Promise.resolve(mockData),
@@ -347,7 +347,7 @@ test('fetchBalances makes GET request', async () => {
 
   const result = await fetchBalances()
 
-  expect(global.fetch).toHaveBeenCalledWith(
+  expect(globalThis.fetch).toHaveBeenCalledWith(
     'http://localhost:8000/api/balances',
     expect.objectContaining({ headers: { 'Content-Type': 'application/json' } }),
   )
@@ -355,7 +355,7 @@ test('fetchBalances makes GET request', async () => {
 })
 
 test('previewImport makes POST request', async () => {
-  vi.mocked(global.fetch).mockResolvedValue({
+  vi.mocked(globalThis.fetch).mockResolvedValue({
     ok: true,
     status: 200,
     json: () => Promise.resolve([]),
@@ -365,7 +365,7 @@ test('previewImport makes POST request', async () => {
   const req = { csv_text: 'a,b\n1,2', account_id: 1, date_col: 'a', payee_col: 'b', amount_col: 'a' }
   await previewImport(req)
 
-  expect(global.fetch).toHaveBeenCalledWith(
+  expect(globalThis.fetch).toHaveBeenCalledWith(
     'http://localhost:8000/api/import/preview',
     expect.objectContaining({
       method: 'POST',
@@ -375,7 +375,7 @@ test('previewImport makes POST request', async () => {
 })
 
 test('commitImport makes POST request', async () => {
-  vi.mocked(global.fetch).mockResolvedValue({
+  vi.mocked(globalThis.fetch).mockResolvedValue({
     ok: true,
     status: 200,
     json: () => Promise.resolve({ created_count: 1, transaction_ids: [1] }),
@@ -385,7 +385,7 @@ test('commitImport makes POST request', async () => {
   const rows = [{ date: '2026-01-15', payee: 'Test', amount: 50, account_id: 1, category_id: 1 }]
   const result = await commitImport(rows)
 
-  expect(global.fetch).toHaveBeenCalledWith(
+  expect(globalThis.fetch).toHaveBeenCalledWith(
     'http://localhost:8000/api/import/commit',
     expect.objectContaining({
       method: 'POST',
@@ -396,7 +396,7 @@ test('commitImport makes POST request', async () => {
 })
 
 test('request handles 204 No Content', async () => {
-  vi.mocked(global.fetch).mockResolvedValue({
+  vi.mocked(globalThis.fetch).mockResolvedValue({
     ok: true,
     status: 204,
     text: () => Promise.resolve(''),
@@ -408,7 +408,7 @@ test('request handles 204 No Content', async () => {
 })
 
 test('request throws on non-ok response', async () => {
-  vi.mocked(global.fetch).mockResolvedValue({
+  vi.mocked(globalThis.fetch).mockResolvedValue({
     ok: false,
     status: 404,
     text: () => Promise.resolve('Not Found'),
@@ -418,7 +418,7 @@ test('request throws on non-ok response', async () => {
 })
 
 test('request throws on non-ok without body', async () => {
-  vi.mocked(global.fetch).mockResolvedValue({
+  vi.mocked(globalThis.fetch).mockResolvedValue({
     ok: false,
     status: 500,
     text: () => Promise.resolve(''),
