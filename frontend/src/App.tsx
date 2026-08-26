@@ -1,5 +1,11 @@
 import { useEffect, useState } from 'react'
+import {
+  LayoutDashboard, Wallet, Tags, ArrowLeftRight, Users as UsersIcon,
+  Scale, Upload, Settings, Sun, Moon,
+} from 'lucide-react'
 import { fetchUsers, User } from './api/client'
+import { useTheme } from './context/ThemeContext'
+import { IconButton, Select } from './components/ui'
 import Dashboard from './components/Dashboard'
 import AccountsList from './components/AccountsList'
 import CategoriesList from './components/CategoriesList'
@@ -18,6 +24,16 @@ const viewLabels: Record<View, string> = {
   users: 'Users',
   'split-settings': 'Split Weights',
   import: 'Import CSV',
+}
+
+const viewIcons: Record<View, typeof LayoutDashboard> = {
+  dashboard: LayoutDashboard,
+  accounts: Wallet,
+  categories: Tags,
+  transactions: ArrowLeftRight,
+  users: UsersIcon,
+  'split-settings': Scale,
+  import: Upload,
 }
 
 function loadSelectedUserId(): number | null {
@@ -41,6 +57,7 @@ export default function App() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [selectedUserId, setSelectedUserId] = useState<number | null>(() => loadSelectedUserId())
   const [users, setUsers] = useState<User[]>([])
+  const { theme, toggleTheme } = useTheme()
 
   useEffect(() => {
     fetchUsers().then(setUsers).catch(() => {})
@@ -54,78 +71,46 @@ export default function App() {
   const selectedUser = users.find(u => u.id === selectedUserId)
 
   return (
-    <div>
-      <div style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: '20px',
-      }}>
-        <h1 style={{ margin: 0 }}>MyFinance</h1>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <select
+    <div className="min-h-screen p-5 max-w-5xl mx-auto">
+      <div className="flex justify-between items-center mb-5">
+        <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100">MyFinance</h1>
+        <div className="flex items-center gap-2">
+          <Select
             value={selectedUserId ?? ''}
             onChange={e => handleSelectUser(e.target.value ? parseInt(e.target.value, 10) : null)}
-            style={{
-              padding: '6px 8px',
-              border: '1px solid #ccc',
-              borderRadius: '4px',
-              fontSize: '14px',
-              background: '#fff',
-              minWidth: '120px',
-            }}
+            className="min-w-[120px]"
           >
             <option value="">All Users</option>
             {users.map(u => (
               <option key={u.id} value={u.id}>{u.name}</option>
             ))}
-          </select>
-          <div style={{ position: 'relative', zIndex: 1001 }}>
-            <button
-              onClick={() => setMenuOpen(o => !o)}
-              style={{
-                background: 'none',
-                border: 'none',
-                fontSize: '24px',
-                cursor: 'pointer',
-                padding: '4px 8px',
-                borderRadius: '4px',
-              }}
-              aria-label="Settings"
-            >
-              ⚙️
-            </button>
+          </Select>
+          <IconButton aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'} onClick={toggleTheme}>
+            {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+          </IconButton>
+          <div className="relative z-[1001]">
+            <IconButton aria-label="Settings" onClick={() => setMenuOpen(o => !o)}>
+              <Settings size={18} />
+            </IconButton>
             {menuOpen && (
-              <div style={{
-                position: 'absolute',
-                top: '100%',
-                right: 0,
-                background: '#fff',
-                border: '1px solid #ccc',
-                borderRadius: '6px',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-                minWidth: '160px',
-                overflow: 'hidden',
-              }}>
-                {(Object.keys(viewLabels) as View[]).map(v => (
-                  <button
-                    key={v}
-                    onClick={() => { setView(v); setMenuOpen(false) }}
-                    style={{
-                      display: 'block',
-                      width: '100%',
-                      padding: '10px 16px',
-                      background: view === v ? '#eee' : 'none',
-                      border: 'none',
-                      textAlign: 'left',
-                      cursor: 'pointer',
-                      fontSize: '14px',
-                      textTransform: 'capitalize' as const,
-                    }}
-                  >
-                    {viewLabels[v]}
-                  </button>
-                ))}
+              <div className="absolute top-full right-0 mt-1 min-w-[180px] overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-lg">
+                {(Object.keys(viewLabels) as View[]).map(v => {
+                  const Icon = viewIcons[v]
+                  return (
+                    <button
+                      key={v}
+                      onClick={() => { setView(v); setMenuOpen(false) }}
+                      className={`flex items-center gap-2 w-full px-4 py-2.5 text-left text-sm cursor-pointer ${
+                        view === v
+                          ? 'bg-slate-100 dark:bg-slate-700 text-slate-900 dark:text-slate-100'
+                          : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/60'
+                      }`}
+                    >
+                      <Icon size={16} />
+                      {viewLabels[v]}
+                    </button>
+                  )
+                })}
               </div>
             )}
           </div>
@@ -133,11 +118,11 @@ export default function App() {
       </div>
 
       {selectedUserId && selectedUser && (
-        <div style={{ marginBottom: '12px', fontSize: '13px', color: '#555' }}>
-          Filtering by: <strong>{selectedUser.name}</strong>{' '}
+        <div className="mb-3 text-[13px] text-slate-500 dark:text-slate-400">
+          Filtering by: <strong className="text-slate-700 dark:text-slate-200">{selectedUser.name}</strong>{' '}
           <button
             onClick={() => handleSelectUser(null)}
-            style={{ background: 'none', border: 'none', color: '#0066cc', cursor: 'pointer', fontSize: '13px', padding: 0, textDecoration: 'underline' }}
+            className="text-accent hover:underline cursor-pointer"
           >
             Clear
           </button>
@@ -153,12 +138,7 @@ export default function App() {
       {view === 'import' && <CsvImportPage onBack={() => setView('dashboard')} />}
 
       {menuOpen && (
-        <div
-          style={{
-            position: 'fixed', inset: 0, zIndex: 1000,
-          }}
-          onClick={() => setMenuOpen(false)}
-        />
+        <div className="fixed inset-0 z-[1000]" onClick={() => setMenuOpen(false)} />
       )}
     </div>
   )

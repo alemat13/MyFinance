@@ -1,5 +1,6 @@
-import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { describe, test, expect, vi, beforeEach } from 'vitest'
+import { screen, fireEvent, waitFor } from '@testing-library/react'
+import { renderWithProviders } from '../../test-utils'
 import SplitWeightsSettings from '../SplitWeightsSettings'
 
 const { mockFetchSplitWeights, mockUpdateSplitWeights } = vi.hoisted(() => ({
@@ -14,17 +15,12 @@ vi.mock('../../api/client', () => ({
 
 beforeEach(() => {
   vi.clearAllMocks()
-  vi.spyOn(window, 'alert').mockImplementation(() => {})
-})
-
-afterEach(() => {
-  vi.restoreAllMocks()
 })
 
 test('shows loading initially', () => {
   mockFetchSplitWeights.mockReturnValue(new Promise(() => {}))
 
-  render(<SplitWeightsSettings onBack={() => {}} />)
+  renderWithProviders(<SplitWeightsSettings onBack={() => {}} />)
 
   expect(screen.getByText('Loading...')).toBeInTheDocument()
 })
@@ -35,7 +31,7 @@ test('renders weights from API', async () => {
     { user_id: 2, user_name: 'Olivia', weight: 48000 },
   ])
 
-  render(<SplitWeightsSettings onBack={() => {}} />)
+  renderWithProviders(<SplitWeightsSettings onBack={() => {}} />)
 
   await waitFor(() => {
     expect(screen.getByText('Alex')).toBeInTheDocument()
@@ -47,7 +43,7 @@ test('can edit and save weights', async () => {
   mockFetchSplitWeights.mockResolvedValue([{ user_id: 1, user_name: 'Alex', weight: 100 }])
   mockUpdateSplitWeights.mockResolvedValue([{ user_id: 1, user_name: 'Alex', weight: 200 }])
 
-  render(<SplitWeightsSettings onBack={() => {}} />)
+  renderWithProviders(<SplitWeightsSettings onBack={() => {}} />)
 
   await waitFor(() => {
     expect(screen.getByDisplayValue('100')).toBeInTheDocument()
@@ -64,7 +60,7 @@ test('can edit and save weights', async () => {
 test('shows empty message when no users', async () => {
   mockFetchSplitWeights.mockResolvedValue([])
 
-  render(<SplitWeightsSettings onBack={() => {}} />)
+  renderWithProviders(<SplitWeightsSettings onBack={() => {}} />)
 
   await waitFor(() => {
     expect(screen.getByText('No users yet')).toBeInTheDocument()
@@ -74,7 +70,7 @@ test('shows empty message when no users', async () => {
 test('shows error state on fetch failure', async () => {
   mockFetchSplitWeights.mockRejectedValue(new Error('Failed to load'))
 
-  render(<SplitWeightsSettings onBack={() => {}} />)
+  renderWithProviders(<SplitWeightsSettings onBack={() => {}} />)
 
   await waitFor(() => {
     expect(screen.getByText('Error: Failed to load')).toBeInTheDocument()

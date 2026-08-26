@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react'
+import { ArrowLeft } from 'lucide-react'
 import {
   User, UserCreate, UserUpdate,
   fetchUsers, createUser, updateUser, deleteUser,
 } from '../api/client'
+import { useToast } from '../context/ToastContext'
+import { Button, Input, Card, Table, Thead, Tbody, Tr, Th, Td, StatusMessage, ConfirmDialog } from './ui'
 
 interface Props {
   onBack: () => void
@@ -19,6 +22,8 @@ export default function UsersList({ onBack, onSelectUser }: Props) {
   const [editData, setEditData] = useState<UserUpdate>({})
   const [showNew, setShowNew] = useState(false)
   const [newData, setNewData] = useState<UserCreate>(emptyForm)
+  const [deletingUser, setDeletingUser] = useState<User | null>(null)
+  const { showToast } = useToast()
 
   const load = () => {
     setLoading(true)
@@ -43,21 +48,22 @@ export default function UsersList({ onBack, onSelectUser }: Props) {
   const saveEdit = (id: number) => {
     updateUser(id, editData)
       .then(() => { cancelEdit(); load() })
-      .catch(err => alert(err.message))
+      .catch(err => showToast(err.message))
   }
 
-  const del = (id: number, name: string) => {
-    if (!confirm(`Delete user "${name}"?`)) return
-    deleteUser(id)
+  const confirmDelete = () => {
+    if (!deletingUser) return
+    deleteUser(deletingUser.id)
       .then(() => load())
-      .catch(err => alert(err.message))
+      .catch(err => showToast(err.message))
+      .finally(() => setDeletingUser(null))
   }
 
   const saveNew = () => {
-    if (!newData.name) { alert('Name is required'); return }
+    if (!newData.name) { showToast('Name is required'); return }
     createUser(newData)
       .then(() => { setShowNew(false); setNewData(emptyForm); load() })
-      .catch(err => alert(err.message))
+      .catch(err => showToast(err.message))
   }
 
   const cancelNew = () => {
@@ -66,121 +72,87 @@ export default function UsersList({ onBack, onSelectUser }: Props) {
   }
 
   if (error) {
-    return <div style={{ color: 'red', padding: '20px' }}>Error: {error}</div>
+    return <StatusMessage error={error} />
   }
 
   return (
     <div>
-      <button onClick={onBack} style={backBtnStyle}>
-        ← Back to Dashboard
+      <button onClick={onBack} className="flex items-center gap-1 text-accent hover:underline text-sm mb-4 cursor-pointer">
+        <ArrowLeft size={14} /> Back
       </button>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-        <h2 style={{ margin: 0 }}>Users</h2>
-        <button onClick={() => setShowNew(true)} style={newBtnStyle}>
-          + New User
-        </button>
+      <div className="flex justify-between items-center mb-3">
+        <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Users</h2>
+        <Button onClick={() => setShowNew(true)}>+ New User</Button>
       </div>
 
       {showNew && (
-        <div style={{ padding: '12px', marginBottom: '12px', border: '1px solid #ccc', borderRadius: '6px', background: '#f9f9f9' }}>
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-            <input placeholder="Name" value={newData.name} onChange={e => setNewData({ ...newData, name: e.target.value })} style={inputStyle} />
-            <input placeholder="Email" type="email" value={newData.email ?? ''} onChange={e => setNewData({ ...newData, email: e.target.value || null })} style={inputStyle} />
-            <button onClick={saveNew} style={saveBtnStyle}>Save</button>
-            <button onClick={cancelNew} style={cancelBtnStyle}>Cancel</button>
+        <Card className="p-3 mb-3">
+          <div className="flex gap-2 flex-wrap items-end">
+            <Input placeholder="Name" value={newData.name} onChange={e => setNewData({ ...newData, name: e.target.value })} />
+            <Input placeholder="Email" type="email" value={newData.email ?? ''} onChange={e => setNewData({ ...newData, email: e.target.value || null })} />
+            <Button variant="primary" onClick={saveNew}>Save</Button>
+            <Button variant="secondary" onClick={cancelNew}>Cancel</Button>
           </div>
-        </div>
+        </Card>
       )}
 
-      {loading && <div style={{ padding: '20px' }}>Loading...</div>}
+      <StatusMessage loading={loading} />
 
       {!loading && (
-        <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff' }}>
-          <thead>
-            <tr style={{ background: '#eee', textAlign: 'left' }}>
-              <th style={thStyle}>Name</th>
-              <th style={thStyle}>Email</th>
-              <th style={{ ...thStyle, textAlign: 'center' }}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
+        <Table>
+          <Thead>
+            <Tr>
+              <Th>Name</Th>
+              <Th>Email</Th>
+              <Th className="text-center">Actions</Th>
+            </Tr>
+          </Thead>
+          <Tbody>
             {users.length === 0 && (
-              <tr><td colSpan={3} style={{ textAlign: 'center', padding: '20px', color: '#888' }}>No users yet</td></tr>
+              <Tr><Td colSpan={3} className="text-center py-5 text-slate-400">No users yet</Td></Tr>
             )}
             {users.map(u => (
-              <tr key={u.id} style={{ borderBottom: '1px solid #ddd' }}>
+              <Tr key={u.id}>
                 {editingId === u.id ? (
                   <>
-                    <td style={tdStyle}><input value={editData.name ?? ''} onChange={e => setEditData({ ...editData, name: e.target.value })} style={inputStyle} /></td>
-                    <td style={tdStyle}><input value={editData.email ?? ''} onChange={e => setEditData({ ...editData, email: e.target.value || null })} style={inputStyle} /></td>
-                    <td style={{ ...tdStyle, textAlign: 'center' }}>
-                      <button onClick={() => saveEdit(u.id)} style={saveBtnStyle}>Save</button>
-                      <button onClick={cancelEdit} style={cancelBtnStyle}>Cancel</button>
-                    </td>
+                    <Td><Input value={editData.name ?? ''} onChange={e => setEditData({ ...editData, name: e.target.value })} /></Td>
+                    <Td><Input value={editData.email ?? ''} onChange={e => setEditData({ ...editData, email: e.target.value || null })} /></Td>
+                    <Td className="text-center">
+                      <Button size="sm" onClick={() => saveEdit(u.id)} className="mr-1">Save</Button>
+                      <Button size="sm" variant="secondary" onClick={cancelEdit}>Cancel</Button>
+                    </Td>
                   </>
                 ) : (
                   <>
-                    <td style={tdStyle}>
+                    <Td>
                       <button
                         onClick={() => onSelectUser(u.id)}
-                        style={{ background: 'none', border: 'none', color: '#0066cc', cursor: 'pointer', padding: 0, fontSize: 'inherit' }}
+                        className="text-accent hover:underline cursor-pointer"
                         title="Filter by this user"
                       >
                         {u.name}
                       </button>
-                    </td>
-                    <td style={tdStyle}>{u.email ?? ''}</td>
-                    <td style={{ ...tdStyle, textAlign: 'center' }}>
-                      <button onClick={() => startEdit(u)} style={editBtnStyle}>Edit</button>
-                      <button onClick={() => del(u.id, u.name)} style={delBtnStyle}>Delete</button>
-                    </td>
+                    </Td>
+                    <Td>{u.email ?? ''}</Td>
+                    <Td className="text-center">
+                      <Button size="sm" variant="secondary" onClick={() => startEdit(u)} className="mr-1">Edit</Button>
+                      <Button size="sm" variant="danger" onClick={() => setDeletingUser(u)}>Delete</Button>
+                    </Td>
                   </>
                 )}
-              </tr>
+              </Tr>
             ))}
-          </tbody>
-        </table>
+          </Tbody>
+        </Table>
       )}
+
+      <ConfirmDialog
+        isOpen={deletingUser !== null}
+        title="Delete user"
+        message={`Delete user "${deletingUser?.name}"?`}
+        onConfirm={confirmDelete}
+        onCancel={() => setDeletingUser(null)}
+      />
     </div>
   )
-}
-
-const inputStyle: React.CSSProperties = {
-  padding: '6px 8px', border: '1px solid #ccc', borderRadius: '4px', fontSize: '13px',
-}
-
-const btnBase: React.CSSProperties = {
-  border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px',
-}
-
-const newBtnStyle: React.CSSProperties = {
-  ...btnBase, background: '#0066cc', color: '#fff',
-}
-
-const saveBtnStyle: React.CSSProperties = {
-  ...btnBase, background: '#28a745', color: '#fff', marginRight: '4px',
-}
-
-const cancelBtnStyle: React.CSSProperties = {
-  ...btnBase, background: '#6c757d', color: '#fff',
-}
-
-const editBtnStyle: React.CSSProperties = {
-  ...btnBase, background: '#ffc107', color: '#333', marginRight: '4px',
-}
-
-const delBtnStyle: React.CSSProperties = {
-  ...btnBase, background: '#dc3545', color: '#fff',
-}
-
-const backBtnStyle: React.CSSProperties = {
-  background: 'none', border: 'none', color: '#0066cc', cursor: 'pointer', fontSize: '14px', marginBottom: '16px', padding: 0,
-}
-
-const thStyle: React.CSSProperties = {
-  padding: '10px 12px', borderBottom: '2px solid #ccc',
-}
-
-const tdStyle: React.CSSProperties = {
-  padding: '8px 12px',
 }

@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react'
+import { ArrowLeft } from 'lucide-react'
 import {
   Category, CategoryCreate, CategoryUpdate, CategorySplitCreate,
   User, fetchCategories, createCategory, updateCategory, deleteCategory,
   fetchUsers,
 } from '../api/client'
 import SplitEditor, { SplitRow } from './SplitEditor'
+import { useToast } from '../context/ToastContext'
+import { Button, Input, Table, Thead, Tbody, Tr, Th, Td, StatusMessage, ConfirmDialog } from './ui'
 
 interface Props {
   onBack: () => void
@@ -27,6 +30,8 @@ export default function CategoriesList({ onBack }: Props) {
   const [editData, setEditData] = useState<CategoryUpdate>({})
   const [showNew, setShowNew] = useState(false)
   const [newData, setNewData] = useState<CategoryCreate>(emptyForm)
+  const [deletingCategory, setDeletingCategory] = useState<Category | null>(null)
+  const { showToast } = useToast()
 
   const load = () => {
     setLoading(true)
@@ -56,29 +61,30 @@ export default function CategoriesList({ onBack }: Props) {
     const splits = editData.splits ?? []
     const total = splits.reduce((s, x) => s + x.split_percentage, 0)
     if (splits.length > 0 && Math.abs(total - 100) > 0.01) {
-      alert('Split percentages must sum to 100'); return
+      showToast('Split percentages must sum to 100'); return
     }
     updateCategory(id, editData)
       .then(() => { cancelEdit(); load() })
-      .catch(err => alert(err.message))
+      .catch(err => showToast(err.message))
   }
 
-  const del = (id: number, name: string) => {
-    if (!confirm(`Delete category "${name}"?`)) return
-    deleteCategory(id)
+  const confirmDelete = () => {
+    if (!deletingCategory) return
+    deleteCategory(deletingCategory.id)
       .then(() => load())
-      .catch(err => alert(err.message))
+      .catch(err => showToast(err.message))
+      .finally(() => setDeletingCategory(null))
   }
 
   const saveNew = () => {
-    if (!newData.name || !newData.type) { alert('Name and type are required'); return }
+    if (!newData.name || !newData.type) { showToast('Name and type are required'); return }
     const total = (newData.splits ?? []).reduce((s, x) => s + x.split_percentage, 0)
     if ((newData.splits ?? []).length > 0 && Math.abs(total - 100) > 0.01) {
-      alert('Split percentages must sum to 100'); return
+      showToast('Split percentages must sum to 100'); return
     }
     createCategory(newData)
       .then(() => { setShowNew(false); setNewData(emptyForm); load() })
-      .catch(err => alert(err.message))
+      .catch(err => showToast(err.message))
   }
 
   const cancelNew = () => {
@@ -87,28 +93,26 @@ export default function CategoriesList({ onBack }: Props) {
   }
 
   if (error) {
-    return <div style={{ color: 'red', padding: '20px' }}>Error: {error}</div>
+    return <StatusMessage error={error} />
   }
 
   return (
     <div>
-      <button onClick={onBack} style={backBtnStyle}>
-        ← Back to Dashboard
+      <button onClick={onBack} className="flex items-center gap-1 text-accent hover:underline text-sm mb-4 cursor-pointer">
+        <ArrowLeft size={14} /> Back
       </button>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-        <h2 style={{ margin: 0 }}>Categories</h2>
-        <button onClick={() => setShowNew(true)} style={newBtnStyle}>
-          + New Category
-        </button>
+      <div className="flex justify-between items-center mb-3">
+        <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Categories</h2>
+        <Button onClick={() => setShowNew(true)}>+ New Category</Button>
       </div>
 
       {showNew && (
-        <div style={{ padding: '12px', marginBottom: '12px', border: '1px solid #ccc', borderRadius: '6px', background: '#f9f9f9' }}>
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-            <input placeholder="Name" value={newData.name} onChange={e => setNewData({ ...newData, name: e.target.value })} style={inputStyle} />
-            <input placeholder="Type (Income / Expense / Transfer)" value={newData.type} onChange={e => setNewData({ ...newData, type: e.target.value })} style={inputStyle} />
-            <button onClick={saveNew} style={saveBtnStyle}>Save</button>
-            <button onClick={cancelNew} style={cancelBtnStyle}>Cancel</button>
+        <div className="p-3 mb-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60">
+          <div className="flex gap-2 flex-wrap items-end">
+            <Input placeholder="Name" value={newData.name} onChange={e => setNewData({ ...newData, name: e.target.value })} />
+            <Input placeholder="Type (Income / Expense / Transfer)" value={newData.type} onChange={e => setNewData({ ...newData, type: e.target.value })} />
+            <Button onClick={saveNew}>Save</Button>
+            <Button variant="secondary" onClick={cancelNew}>Cancel</Button>
           </div>
           <SplitEditor
             rows={toRows(newData.splits ?? [])}
@@ -121,29 +125,29 @@ export default function CategoriesList({ onBack }: Props) {
         </div>
       )}
 
-      {loading && <div style={{ padding: '20px' }}>Loading...</div>}
+      <StatusMessage loading={loading} />
 
       {!loading && (
-        <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff' }}>
-          <thead>
-            <tr style={{ background: '#eee', textAlign: 'left' }}>
-              <th style={thStyle}>Name</th>
-              <th style={thStyle}>Type</th>
-              <th style={thStyle}>Default Split</th>
-              <th style={{ ...thStyle, textAlign: 'center' }}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
+        <Table>
+          <Thead>
+            <Tr>
+              <Th>Name</Th>
+              <Th>Type</Th>
+              <Th>Default Split</Th>
+              <Th className="text-center">Actions</Th>
+            </Tr>
+          </Thead>
+          <Tbody>
             {categories.length === 0 && (
-              <tr><td colSpan={4} style={{ textAlign: 'center', padding: '20px', color: '#888' }}>No categories yet</td></tr>
+              <Tr><Td colSpan={4} className="text-center py-5 text-slate-400">No categories yet</Td></Tr>
             )}
             {categories.map(c => (
-              <tr key={c.id} style={{ borderBottom: '1px solid #ddd' }}>
+              <Tr key={c.id}>
                 {editingId === c.id ? (
                   <>
-                    <td style={tdStyle}><input value={editData.name ?? ''} onChange={e => setEditData({ ...editData, name: e.target.value })} style={inputStyle} /></td>
-                    <td style={tdStyle}><input value={editData.type ?? ''} onChange={e => setEditData({ ...editData, type: e.target.value })} style={inputStyle} /></td>
-                    <td style={tdStyle} colSpan={2}>
+                    <Td><Input value={editData.name ?? ''} onChange={e => setEditData({ ...editData, name: e.target.value })} /></Td>
+                    <Td><Input value={editData.type ?? ''} onChange={e => setEditData({ ...editData, type: e.target.value })} /></Td>
+                    <Td colSpan={2}>
                       <SplitEditor
                         rows={toRows(editData.splits ?? [])}
                         allUsers={allUsers}
@@ -152,72 +156,40 @@ export default function CategoriesList({ onBack }: Props) {
                         label="Default Split"
                         onChange={rows => setEditData({ ...editData, splits: fromRows(rows) })}
                       />
-                      <div style={{ marginTop: '6px', display: 'flex', gap: '4px' }}>
-                        <button onClick={() => saveEdit(c.id)} style={saveBtnStyle}>Save</button>
-                        <button onClick={cancelEdit} style={cancelBtnStyle}>Cancel</button>
+                      <div className="mt-1.5 flex gap-1">
+                        <Button size="sm" onClick={() => saveEdit(c.id)}>Save</Button>
+                        <Button size="sm" variant="secondary" onClick={cancelEdit}>Cancel</Button>
                       </div>
-                    </td>
+                    </Td>
                   </>
                 ) : (
                   <>
-                    <td style={tdStyle}>{c.name}</td>
-                    <td style={tdStyle}>{c.type}</td>
-                    <td style={{ ...tdStyle, fontSize: '12px' }}>
+                    <Td>{c.name}</Td>
+                    <Td>{c.type}</Td>
+                    <Td className="text-xs">
                       {c.splits.length === 0
-                        ? <span style={{ color: '#999' }}>— (global default)</span>
+                        ? <span className="text-slate-400">— (global default)</span>
                         : c.splits.map(s => `${s.user_name} (${s.split_percentage}%)`).join(', ')}
-                    </td>
-                    <td style={{ ...tdStyle, textAlign: 'center' }}>
-                      <button onClick={() => startEdit(c)} style={editBtnStyle}>Edit</button>
-                      <button onClick={() => del(c.id, c.name)} style={delBtnStyle}>Delete</button>
-                    </td>
+                    </Td>
+                    <Td className="text-center">
+                      <Button size="sm" variant="secondary" onClick={() => startEdit(c)} className="mr-1">Edit</Button>
+                      <Button size="sm" variant="danger" onClick={() => setDeletingCategory(c)}>Delete</Button>
+                    </Td>
                   </>
                 )}
-              </tr>
+              </Tr>
             ))}
-          </tbody>
-        </table>
+          </Tbody>
+        </Table>
       )}
+
+      <ConfirmDialog
+        isOpen={deletingCategory !== null}
+        title="Delete category"
+        message={`Delete category "${deletingCategory?.name}"?`}
+        onConfirm={confirmDelete}
+        onCancel={() => setDeletingCategory(null)}
+      />
     </div>
   )
-}
-
-const inputStyle: React.CSSProperties = {
-  padding: '6px 8px', border: '1px solid #ccc', borderRadius: '4px', fontSize: '13px',
-}
-
-const btnBase: React.CSSProperties = {
-  border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px',
-}
-
-const newBtnStyle: React.CSSProperties = {
-  ...btnBase, background: '#0066cc', color: '#fff',
-}
-
-const saveBtnStyle: React.CSSProperties = {
-  ...btnBase, background: '#28a745', color: '#fff', marginRight: '4px',
-}
-
-const cancelBtnStyle: React.CSSProperties = {
-  ...btnBase, background: '#6c757d', color: '#fff',
-}
-
-const editBtnStyle: React.CSSProperties = {
-  ...btnBase, background: '#ffc107', color: '#333', marginRight: '4px',
-}
-
-const delBtnStyle: React.CSSProperties = {
-  ...btnBase, background: '#dc3545', color: '#fff',
-}
-
-const backBtnStyle: React.CSSProperties = {
-  background: 'none', border: 'none', color: '#0066cc', cursor: 'pointer', fontSize: '14px', marginBottom: '16px', padding: 0,
-}
-
-const thStyle: React.CSSProperties = {
-  padding: '10px 12px', borderBottom: '2px solid #ccc',
-}
-
-const tdStyle: React.CSSProperties = {
-  padding: '8px 12px',
 }

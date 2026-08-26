@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
+import { ArrowLeft } from 'lucide-react'
 import {
   Account, Category, ImportPreviewRow, TransactionCreate,
   fetchAccounts, fetchCategories, previewImport, commitImport,
 } from '../api/client'
+import { Button, Input, Select, Card, Table, Thead, Tbody, Tr, Th, Td, Badge, StatusMessage } from './ui'
 
 interface Props {
   onBack: () => void
@@ -91,152 +93,125 @@ export default function CsvImportPage({ onBack }: Props) {
   }
 
   if (error) {
-    return <div style={{ color: 'red', padding: '20px' }}>Error: {error}</div>
+    return <StatusMessage error={error} />
   }
 
   return (
     <div>
-      <button onClick={onBack} style={backBtnStyle}>
-        ← Back to Dashboard
+      <button onClick={onBack} className="flex items-center gap-1 text-accent hover:underline text-sm mb-4 cursor-pointer">
+        <ArrowLeft size={14} /> Back
       </button>
-      <h2 style={{ margin: '0 0 12px 0' }}>Import CSV</h2>
+      <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-3">Import CSV</h2>
 
       {formError && (
-        <div style={{ padding: '8px 12px', marginBottom: '12px', border: '1px solid #f5c2c7', borderRadius: '4px', background: '#f8d7da', color: '#842029', fontSize: '13px' }}>
+        <div className="px-3 py-2 mb-3 rounded-md border border-red-200 dark:border-red-900/60 bg-red-50 dark:bg-red-900/20 text-negative text-[13px]">
           {formError}
         </div>
       )}
 
       {step === 'done' && (
-        <div style={{ padding: '12px', border: '1px solid #badbcc', borderRadius: '6px', background: '#d1e7dd', color: '#0f5132', maxWidth: '400px' }}>
-          Imported {createdCount} transaction(s).
-          <div style={{ marginTop: '8px' }}>
-            <button onClick={onBack} style={saveBtnStyle}>Back to Dashboard</button>
+        <Card className="p-3 max-w-md border-green-200 dark:border-green-900/60 bg-green-50 dark:bg-green-900/20">
+          <span className="text-positive">Imported {createdCount} transaction(s).</span>
+          <div className="mt-2">
+            <Button onClick={onBack}>Back to Dashboard</Button>
           </div>
-        </div>
+        </Card>
       )}
 
       {step === 'setup' && (
-        <div style={{ padding: '12px', border: '1px solid #ccc', borderRadius: '6px', background: '#f9f9f9', maxWidth: '600px' }}>
-          <div style={{ marginBottom: '8px' }}>
+        <Card className="p-3 max-w-2xl">
+          <div className="mb-2">
             <textarea
               placeholder="Paste CSV text here (with a header row)"
               value={csvText}
               onChange={e => setCsvText(e.target.value)}
               rows={8}
-              style={{ width: '100%', fontFamily: 'monospace', fontSize: '12px', padding: '8px' }}
+              className="w-full font-mono text-xs p-2 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent"
             />
           </div>
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '8px' }}>
-            <select value={accountId} onChange={e => setAccountId(parseInt(e.target.value) || 0)} style={inputStyle}>
+          <div className="flex gap-2 flex-wrap mb-2">
+            <Select value={accountId} onChange={e => setAccountId(parseInt(e.target.value) || 0)}>
               <option value={0}>Account</option>
               {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-            </select>
-            <input placeholder="Date column name" value={dateCol} onChange={e => setDateCol(e.target.value)} style={inputStyle} />
-            <input placeholder="Payee column name" value={payeeCol} onChange={e => setPayeeCol(e.target.value)} style={inputStyle} />
-            <input placeholder="Amount column name" value={amountCol} onChange={e => setAmountCol(e.target.value)} style={inputStyle} />
-            <input placeholder="Memo column name (optional)" value={memoCol} onChange={e => setMemoCol(e.target.value)} style={inputStyle} />
-            <input placeholder="Category column name (optional)" value={categoryCol} onChange={e => setCategoryCol(e.target.value)} style={inputStyle} />
+            </Select>
+            <Input placeholder="Date column name" value={dateCol} onChange={e => setDateCol(e.target.value)} />
+            <Input placeholder="Payee column name" value={payeeCol} onChange={e => setPayeeCol(e.target.value)} />
+            <Input placeholder="Amount column name" value={amountCol} onChange={e => setAmountCol(e.target.value)} />
+            <Input placeholder="Memo column name (optional)" value={memoCol} onChange={e => setMemoCol(e.target.value)} />
+            <Input placeholder="Category column name (optional)" value={categoryCol} onChange={e => setCategoryCol(e.target.value)} />
           </div>
-          <button onClick={runPreview} style={saveBtnStyle}>Preview</button>
-        </div>
+          <Button onClick={runPreview}>Preview</Button>
+        </Card>
       )}
 
       {step === 'review' && (
         <div>
-          <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff', marginBottom: '12px' }}>
-            <thead>
-              <tr style={{ background: '#eee', textAlign: 'left' }}>
-                <th style={thStyle}></th>
-                <th style={thStyle}>Date</th>
-                <th style={thStyle}>Payee</th>
-                <th style={{ ...thStyle, textAlign: 'right' }}>Amount</th>
-                <th style={thStyle}>Category</th>
-                <th style={thStyle}>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map(r => {
-                const status = effectiveStatus(r)
-                const isSkipped = skipped.has(r.row_number)
-                return (
-                  <tr key={r.row_number} style={{ borderBottom: '1px solid #ddd', opacity: isSkipped ? 0.5 : 1 }}>
-                    <td style={tdStyle}>
-                      <input
-                        type="checkbox"
-                        checked={!isSkipped}
-                        onChange={e => {
-                          const next = new Set(skipped)
-                          if (e.target.checked) next.delete(r.row_number)
-                          else next.add(r.row_number)
-                          setSkipped(next)
-                        }}
-                      />
-                    </td>
-                    <td style={tdStyle}>{r.transaction_date ?? '—'}</td>
-                    <td style={tdStyle}>{r.payee ?? '—'}</td>
-                    <td style={{ ...tdStyle, textAlign: 'right' }}>{r.amount ?? '—'}</td>
-                    <td style={tdStyle}>
-                      {status === 'error' ? (
-                        <span style={{ color: '#999' }}>—</span>
-                      ) : (
-                        <select
-                          value={resolvedCategoryId(r) ?? 0}
-                          onChange={e => setRowCategoryOverride({ ...rowCategoryOverride, [r.row_number]: parseInt(e.target.value) || 0 })}
-                          style={inputStyle}
-                        >
-                          <option value={0}>Select category</option>
-                          {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                        </select>
-                      )}
-                    </td>
-                    <td style={{ ...tdStyle, fontSize: '12px' }}>
-                      {status === 'error' && <span style={{ color: '#dc3545' }}>Error: {r.error_message}</span>}
-                      {status === 'needs_category' && <span style={{ color: '#dc3545' }}>Needs category</span>}
-                      {status === 'possible_duplicate' && <span style={{ color: '#ffc107' }}>Possible duplicate</span>}
-                      {status === 'ok' && <span style={{ color: '#28a745' }}>OK</span>}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button onClick={commit} disabled={!canCommit || committing} style={saveBtnStyle}>
+          <div className="mb-3">
+            <Table>
+              <Thead>
+                <Tr>
+                  <Th></Th>
+                  <Th>Date</Th>
+                  <Th>Payee</Th>
+                  <Th className="text-right">Amount</Th>
+                  <Th>Category</Th>
+                  <Th>Status</Th>
+                </Tr>
+              </Thead>
+              <Tbody>
+                {rows.map(r => {
+                  const status = effectiveStatus(r)
+                  const isSkipped = skipped.has(r.row_number)
+                  return (
+                    <Tr key={r.row_number} className={isSkipped ? 'opacity-50' : ''}>
+                      <Td>
+                        <input
+                          type="checkbox"
+                          checked={!isSkipped}
+                          onChange={e => {
+                            const next = new Set(skipped)
+                            if (e.target.checked) next.delete(r.row_number)
+                            else next.add(r.row_number)
+                            setSkipped(next)
+                          }}
+                        />
+                      </Td>
+                      <Td>{r.transaction_date ?? '—'}</Td>
+                      <Td>{r.payee ?? '—'}</Td>
+                      <Td className="text-right">{r.amount ?? '—'}</Td>
+                      <Td>
+                        {status === 'error' ? (
+                          <span className="text-slate-400">—</span>
+                        ) : (
+                          <Select
+                            value={resolvedCategoryId(r) ?? 0}
+                            onChange={e => setRowCategoryOverride({ ...rowCategoryOverride, [r.row_number]: parseInt(e.target.value) || 0 })}
+                          >
+                            <option value={0}>Select category</option>
+                            {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                          </Select>
+                        )}
+                      </Td>
+                      <Td>
+                        {status === 'error' && <Badge variant="negative">Error: {r.error_message}</Badge>}
+                        {status === 'needs_category' && <Badge variant="negative">Needs category</Badge>}
+                        {status === 'possible_duplicate' && <Badge variant="warning">Possible duplicate</Badge>}
+                        {status === 'ok' && <Badge variant="positive">OK</Badge>}
+                      </Td>
+                    </Tr>
+                  )
+                })}
+              </Tbody>
+            </Table>
+          </div>
+          <div className="flex gap-2">
+            <Button onClick={commit} disabled={!canCommit || committing}>
               {committing ? 'Importing...' : `Commit ${activeRows.length} transaction(s)`}
-            </button>
-            <button onClick={() => setStep('setup')} style={cancelBtnStyle}>Back</button>
+            </Button>
+            <Button variant="secondary" onClick={() => setStep('setup')}>Back</Button>
           </div>
         </div>
       )}
     </div>
   )
-}
-
-const inputStyle: React.CSSProperties = {
-  padding: '6px 8px', border: '1px solid #ccc', borderRadius: '4px', fontSize: '13px',
-}
-
-const btnBase: React.CSSProperties = {
-  border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px',
-}
-
-const saveBtnStyle: React.CSSProperties = {
-  ...btnBase, background: '#28a745', color: '#fff',
-}
-
-const cancelBtnStyle: React.CSSProperties = {
-  ...btnBase, background: '#6c757d', color: '#fff',
-}
-
-const backBtnStyle: React.CSSProperties = {
-  background: 'none', border: 'none', color: '#0066cc', cursor: 'pointer', fontSize: '14px', marginBottom: '16px', padding: 0,
-}
-
-const thStyle: React.CSSProperties = {
-  padding: '10px 12px', borderBottom: '2px solid #ccc',
-}
-
-const tdStyle: React.CSSProperties = {
-  padding: '8px 12px',
 }

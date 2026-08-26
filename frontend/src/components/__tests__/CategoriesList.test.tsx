@@ -1,5 +1,6 @@
-import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { describe, test, expect, vi, beforeEach } from 'vitest'
+import { screen, fireEvent, waitFor, within } from '@testing-library/react'
+import { renderWithProviders } from '../../test-utils'
 import CategoriesList from '../CategoriesList'
 
 const { mockFetchCategories, mockCreateCategory, mockUpdateCategory, mockDeleteCategory, mockFetchUsers } = vi.hoisted(() => ({
@@ -20,18 +21,12 @@ vi.mock('../../api/client', () => ({
 
 beforeEach(() => {
   vi.clearAllMocks()
-  vi.spyOn(window, 'confirm').mockReturnValue(true)
-  vi.spyOn(window, 'alert').mockImplementation(() => {})
-})
-
-afterEach(() => {
-  vi.restoreAllMocks()
 })
 
 test('shows loading initially', () => {
   mockFetchCategories.mockReturnValue(new Promise(() => {}))
 
-  render(<CategoriesList onBack={() => {}} />)
+  renderWithProviders(<CategoriesList onBack={() => {}} />)
 
   expect(screen.getByText('Loading...')).toBeInTheDocument()
 })
@@ -39,7 +34,7 @@ test('shows loading initially', () => {
 test('renders categories from API', async () => {
   mockFetchCategories.mockResolvedValue([{ id: 1, name: 'Salary', type: 'Income', splits: [] }])
 
-  render(<CategoriesList onBack={() => {}} />)
+  renderWithProviders(<CategoriesList onBack={() => {}} />)
 
   await waitFor(() => {
     expect(screen.getByText('Salary')).toBeInTheDocument()
@@ -49,7 +44,7 @@ test('renders categories from API', async () => {
 test('shows empty message when no categories', async () => {
   mockFetchCategories.mockResolvedValue([])
 
-  render(<CategoriesList onBack={() => {}} />)
+  renderWithProviders(<CategoriesList onBack={() => {}} />)
 
   await waitFor(() => {
     expect(screen.getByText('No categories yet')).toBeInTheDocument()
@@ -60,7 +55,7 @@ test('can open and submit new category form', async () => {
   mockFetchCategories.mockResolvedValue([])
   mockCreateCategory.mockResolvedValue({ id: 1, name: 'Food', type: 'Expense', splits: [] })
 
-  render(<CategoriesList onBack={() => {}} />)
+  renderWithProviders(<CategoriesList onBack={() => {}} />)
 
   await waitFor(() => {
     expect(screen.getByText('No categories yet')).toBeInTheDocument()
@@ -82,7 +77,7 @@ test('can edit a category inline', async () => {
   mockFetchCategories.mockResolvedValue([{ id: 1, name: 'Salary', type: 'Income', splits: [] }])
   mockUpdateCategory.mockResolvedValue({ id: 1, name: 'Food', type: 'Expense', splits: [] })
 
-  render(<CategoriesList onBack={() => {}} />)
+  renderWithProviders(<CategoriesList onBack={() => {}} />)
 
   await waitFor(() => {
     expect(screen.getByText('Salary')).toBeInTheDocument()
@@ -104,32 +99,36 @@ test('can delete a category', async () => {
   mockFetchCategories.mockResolvedValue([{ id: 1, name: 'Salary', type: 'Income', splits: [] }])
   mockDeleteCategory.mockResolvedValue(undefined)
 
-  render(<CategoriesList onBack={() => {}} />)
+  renderWithProviders(<CategoriesList onBack={() => {}} />)
 
   await waitFor(() => {
     expect(screen.getByText('Salary')).toBeInTheDocument()
   })
 
   fireEvent.click(screen.getByText('Delete'))
+
+  const dialog = await screen.findByRole('dialog')
+  fireEvent.click(within(dialog).getByText('Delete'))
 
   await waitFor(() => {
     expect(mockDeleteCategory).toHaveBeenCalledWith(1)
   })
 })
 
-test('cancels delete when confirm is false', async () => {
-  vi.mocked(window.confirm).mockReturnValue(false)
-
+test('cancels delete when cancel is clicked', async () => {
   mockFetchCategories.mockResolvedValue([{ id: 1, name: 'Salary', type: 'Income', splits: [] }])
   mockDeleteCategory.mockResolvedValue(undefined)
 
-  render(<CategoriesList onBack={() => {}} />)
+  renderWithProviders(<CategoriesList onBack={() => {}} />)
 
   await waitFor(() => {
     expect(screen.getByText('Salary')).toBeInTheDocument()
   })
 
   fireEvent.click(screen.getByText('Delete'))
+
+  const dialog = await screen.findByRole('dialog')
+  fireEvent.click(within(dialog).getByText('Cancel'))
 
   expect(mockDeleteCategory).not.toHaveBeenCalled()
 })
@@ -139,7 +138,7 @@ test('can add a default split row and submit', async () => {
   mockFetchCategories.mockResolvedValue([])
   mockCreateCategory.mockResolvedValue({ id: 1, name: 'Mortgage', type: 'Expense', splits: [] })
 
-  render(<CategoriesList onBack={() => {}} />)
+  renderWithProviders(<CategoriesList onBack={() => {}} />)
 
   await waitFor(() => {
     expect(screen.getByText('No categories yet')).toBeInTheDocument()
@@ -149,7 +148,7 @@ test('can add a default split row and submit', async () => {
   fireEvent.change(screen.getByPlaceholderText('Name'), { target: { value: 'Mortgage' } })
   fireEvent.change(screen.getByPlaceholderText('Type (Income / Expense / Transfer)'), { target: { value: 'Expense' } })
 
-  fireEvent.click(screen.getByText('+ Add User'))
+  fireEvent.click(screen.getByRole('button', { name: 'Add user' }))
   const percentInput = screen.getByDisplayValue('0')
   fireEvent.change(percentInput, { target: { value: '100' } })
 
@@ -167,7 +166,7 @@ test('rejects a default split that does not sum to 100', async () => {
   mockFetchUsers.mockResolvedValueOnce([{ id: 1, name: 'Alex', email: null, created_at: '' }])
   mockFetchCategories.mockResolvedValue([])
 
-  render(<CategoriesList onBack={() => {}} />)
+  renderWithProviders(<CategoriesList onBack={() => {}} />)
 
   await waitFor(() => {
     expect(screen.getByText('No categories yet')).toBeInTheDocument()
@@ -177,7 +176,7 @@ test('rejects a default split that does not sum to 100', async () => {
   fireEvent.change(screen.getByPlaceholderText('Name'), { target: { value: 'Mortgage' } })
   fireEvent.change(screen.getByPlaceholderText('Type (Income / Expense / Transfer)'), { target: { value: 'Expense' } })
 
-  fireEvent.click(screen.getByText('+ Add User'))
+  fireEvent.click(screen.getByRole('button', { name: 'Add user' }))
   fireEvent.change(screen.getByDisplayValue('0'), { target: { value: '50' } })
 
   fireEvent.click(screen.getByText('Save'))
@@ -188,7 +187,7 @@ test('rejects a default split that does not sum to 100', async () => {
 test('shows error state on fetch failure', async () => {
   mockFetchCategories.mockRejectedValue(new Error('Failed to load'))
 
-  render(<CategoriesList onBack={() => {}} />)
+  renderWithProviders(<CategoriesList onBack={() => {}} />)
 
   await waitFor(() => {
     expect(screen.getByText('Error: Failed to load')).toBeInTheDocument()

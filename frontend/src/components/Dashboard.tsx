@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { DashboardData, fetchDashboard } from '../api/client'
+import { StatusMessage } from './ui'
 import AccountCard from './AccountCard'
 import TransactionList from './TransactionList'
 import BalanceWidget from './BalanceWidget'
@@ -21,23 +22,19 @@ export default function Dashboard({ selectedUserId }: Props) {
       })
   }, [selectedUserId])
 
-  if (error) {
-    return <div style={{ color: 'red', padding: '20px' }}>Error: {error}</div>
-  }
-
-  if (!data) {
-    return <div style={{ padding: '20px' }}>Loading...</div>
+  if (error || !data) {
+    return <StatusMessage loading={!data} error={error} />
   }
 
   return (
     <div>
       <BalanceWidget balances={data.balances} />
-      <div style={{ display: 'flex', flexWrap: 'wrap', marginBottom: '32px' }}>
+      <div className="flex flex-wrap mb-8">
         {data.accounts.map(acc => (
           <AccountCard key={acc.id} account={acc} />
         ))}
       </div>
-      <h2 style={{ marginBottom: '12px' }}>Recent Transactions</h2>
+      <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-3">Recent Transactions</h2>
       <TransactionList transactions={data.recent_transactions} />
     </div>
   )
