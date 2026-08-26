@@ -1,17 +1,26 @@
 import { useEffect, useState } from 'react'
 import {
-  Category, CategoryCreate, CategoryUpdate,
-  fetchCategories, createCategory, updateCategory, deleteCategory,
+  Category, CategoryCreate, CategoryUpdate, CategorySplitCreate,
+  User, fetchCategories, createCategory, updateCategory, deleteCategory,
+  fetchUsers,
 } from '../api/client'
+import SplitEditor, { SplitRow } from './SplitEditor'
 
 interface Props {
   onBack: () => void
 }
 
-const emptyForm: CategoryCreate = { name: '', type: '' }
+const emptyForm: CategoryCreate = { name: '', type: '', splits: [] }
+
+const toRows = (splits: CategorySplitCreate[]): SplitRow[] =>
+  splits.map(s => ({ user_id: s.user_id, value: s.split_percentage }))
+
+const fromRows = (rows: SplitRow[]): CategorySplitCreate[] =>
+  rows.map(r => ({ user_id: r.user_id, split_percentage: r.value }))
 
 export default function CategoriesList({ onBack }: Props) {
   const [categories, setCategories] = useState<Category[]>([])
+  const [allUsers, setAllUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<number | null>(null)
@@ -21,8 +30,8 @@ export default function CategoriesList({ onBack }: Props) {
 
   const load = () => {
     setLoading(true)
-    fetchCategories()
-      .then(setCategories)
+    Promise.all([fetchCategories(), fetchUsers()])
+      .then(([cats, users]) => { setCategories(cats); setAllUsers(users) })
       .catch(err => { console.error(err); setError(err.message) })
       .finally(() => setLoading(false))
   }
@@ -31,7 +40,11 @@ export default function CategoriesList({ onBack }: Props) {
 
   const startEdit = (c: Category) => {
     setEditingId(c.id)
-    setEditData({ name: c.name, type: c.type })
+    setEditData({
+      name: c.name,
+      type: c.type,
+      splits: c.splits.map(s => ({ user_id: s.user_id, split_percentage: s.split_percentage })),
+    })
   }
 
   const cancelEdit = () => {
@@ -40,6 +53,11 @@ export default function CategoriesList({ onBack }: Props) {
   }
 
   const saveEdit = (id: number) => {
+    const splits = editData.splits ?? []
+    const total = splits.reduce((s, x) => s + x.split_percentage, 0)
+    if (splits.length > 0 && Math.abs(total - 100) > 0.01) {
+      alert('Split percentages must sum to 100'); return
+    }
     updateCategory(id, editData)
       .then(() => { cancelEdit(); load() })
       .catch(err => alert(err.message))
@@ -54,6 +72,10 @@ export default function CategoriesList({ onBack }: Props) {
 
   const saveNew = () => {
     if (!newData.name || !newData.type) { alert('Name and type are required'); return }
+    const total = (newData.splits ?? []).reduce((s, x) => s + x.split_percentage, 0)
+    if ((newData.splits ?? []).length > 0 && Math.abs(total - 100) > 0.01) {
+      alert('Split percentages must sum to 100'); return
+    }
     createCategory(newData)
       .then(() => { setShowNew(false); setNewData(emptyForm); load() })
       .catch(err => alert(err.message))
@@ -88,6 +110,14 @@ export default function CategoriesList({ onBack }: Props) {
             <button onClick={saveNew} style={saveBtnStyle}>Save</button>
             <button onClick={cancelNew} style={cancelBtnStyle}>Cancel</button>
           </div>
+          <SplitEditor
+            rows={toRows(newData.splits ?? [])}
+            allUsers={allUsers}
+            total={100}
+            unit="%"
+            label="Default Split (leave empty to use the global default weighting)"
+            onChange={rows => setNewData({ ...newData, splits: fromRows(rows) })}
+          />
         </div>
       )}
 
@@ -99,12 +129,13 @@ export default function CategoriesList({ onBack }: Props) {
             <tr style={{ background: '#eee', textAlign: 'left' }}>
               <th style={thStyle}>Name</th>
               <th style={thStyle}>Type</th>
+              <th style={thStyle}>Default Split</th>
               <th style={{ ...thStyle, textAlign: 'center' }}>Actions</th>
             </tr>
           </thead>
           <tbody>
             {categories.length === 0 && (
-              <tr><td colSpan={3} style={{ textAlign: 'center', padding: '20px', color: '#888' }}>No categories yet</td></tr>
+              <tr><td colSpan={4} style={{ textAlign: 'center', padding: '20px', color: '#888' }}>No categories yet</td></tr>
             )}
             {categories.map(c => (
               <tr key={c.id} style={{ borderBottom: '1px solid #ddd' }}>
@@ -112,15 +143,30 @@ export default function CategoriesList({ onBack }: Props) {
                   <>
                     <td style={tdStyle}><input value={editData.name ?? ''} onChange={e => setEditData({ ...editData, name: e.target.value })} style={inputStyle} /></td>
                     <td style={tdStyle}><input value={editData.type ?? ''} onChange={e => setEditData({ ...editData, type: e.target.value })} style={inputStyle} /></td>
-                    <td style={{ ...tdStyle, textAlign: 'center' }}>
-                      <button onClick={() => saveEdit(c.id)} style={saveBtnStyle}>Save</button>
-                      <button onClick={cancelEdit} style={cancelBtnStyle}>Cancel</button>
+                    <td style={tdStyle} colSpan={2}>
+                      <SplitEditor
+                        rows={toRows(editData.splits ?? [])}
+                        allUsers={allUsers}
+                        total={100}
+                        unit="%"
+                        label="Default Split"
+                        onChange={rows => setEditData({ ...editData, splits: fromRows(rows) })}
+                      />
+                      <div style={{ marginTop: '6px', display: 'flex', gap: '4px' }}>
+                        <button onClick={() => saveEdit(c.id)} style={saveBtnStyle}>Save</button>
+                        <button onClick={cancelEdit} style={cancelBtnStyle}>Cancel</button>
+                      </div>
                     </td>
                   </>
                 ) : (
                   <>
                     <td style={tdStyle}>{c.name}</td>
                     <td style={tdStyle}>{c.type}</td>
+                    <td style={{ ...tdStyle, fontSize: '12px' }}>
+                      {c.splits.length === 0
+                        ? <span style={{ color: '#999' }}>— (global default)</span>
+                        : c.splits.map(s => `${s.user_name} (${s.split_percentage}%)`).join(', ')}
+                    </td>
                     <td style={{ ...tdStyle, textAlign: 'center' }}>
                       <button onClick={() => startEdit(c)} style={editBtnStyle}>Edit</button>
                       <button onClick={() => del(c.id, c.name)} style={delBtnStyle}>Delete</button>

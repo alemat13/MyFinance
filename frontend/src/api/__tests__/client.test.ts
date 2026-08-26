@@ -4,6 +4,8 @@ import {
   fetchCategories, createCategory, updateCategory, deleteCategory,
   fetchTransactions, createTransaction, updateTransaction, deleteTransaction,
   fetchDashboard,
+  fetchSplitWeights, updateSplitWeights, fetchSplitPreview, fetchBalances,
+  previewImport, commitImport,
 } from '../client'
 
 beforeEach(() => {
@@ -237,7 +239,7 @@ test('deleteTransaction makes DELETE request', async () => {
 })
 
 test('fetchDashboard makes GET request', async () => {
-  const mockData = { accounts: [], recent_transactions: [] }
+  const mockData = { accounts: [], recent_transactions: [], balances: [] }
   vi.mocked(global.fetch).mockResolvedValue({
     ok: true,
     status: 200,
@@ -254,6 +256,121 @@ test('fetchDashboard makes GET request', async () => {
     }),
   )
   expect(result).toEqual(mockData)
+})
+
+test('fetchSplitWeights makes GET request', async () => {
+  const mockData = [{ user_id: 1, user_name: 'Alex', weight: 100 }]
+  vi.mocked(global.fetch).mockResolvedValue({
+    ok: true,
+    status: 200,
+    json: () => Promise.resolve(mockData),
+    text: () => Promise.resolve(''),
+  } as Response)
+
+  const result = await fetchSplitWeights()
+
+  expect(global.fetch).toHaveBeenCalledWith(
+    'http://localhost:8000/api/split-weights',
+    expect.objectContaining({ headers: { 'Content-Type': 'application/json' } }),
+  )
+  expect(result).toEqual(mockData)
+})
+
+test('updateSplitWeights makes PUT request', async () => {
+  vi.mocked(global.fetch).mockResolvedValue({
+    ok: true,
+    status: 200,
+    json: () => Promise.resolve([]),
+    text: () => Promise.resolve(''),
+  } as Response)
+
+  await updateSplitWeights([{ user_id: 1, weight: 100 }])
+
+  expect(global.fetch).toHaveBeenCalledWith(
+    'http://localhost:8000/api/split-weights',
+    expect.objectContaining({
+      method: 'PUT',
+      body: JSON.stringify([{ user_id: 1, weight: 100 }]),
+    }),
+  )
+})
+
+test('fetchSplitPreview makes POST request', async () => {
+  vi.mocked(global.fetch).mockResolvedValue({
+    ok: true,
+    status: 200,
+    json: () => Promise.resolve([]),
+    text: () => Promise.resolve(''),
+  } as Response)
+
+  await fetchSplitPreview(100, 5)
+
+  expect(global.fetch).toHaveBeenCalledWith(
+    'http://localhost:8000/api/split-preview',
+    expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ amount: 100, category_id: 5 }),
+    }),
+  )
+})
+
+test('fetchBalances makes GET request', async () => {
+  const mockData = [{ user_id: 1, user_name: 'Alex', net_position: -50 }]
+  vi.mocked(global.fetch).mockResolvedValue({
+    ok: true,
+    status: 200,
+    json: () => Promise.resolve(mockData),
+    text: () => Promise.resolve(''),
+  } as Response)
+
+  const result = await fetchBalances()
+
+  expect(global.fetch).toHaveBeenCalledWith(
+    'http://localhost:8000/api/balances',
+    expect.objectContaining({ headers: { 'Content-Type': 'application/json' } }),
+  )
+  expect(result).toEqual(mockData)
+})
+
+test('previewImport makes POST request', async () => {
+  vi.mocked(global.fetch).mockResolvedValue({
+    ok: true,
+    status: 200,
+    json: () => Promise.resolve([]),
+    text: () => Promise.resolve(''),
+  } as Response)
+
+  const req = { csv_text: 'a,b\n1,2', account_id: 1, date_col: 'a', payee_col: 'b', amount_col: 'a' }
+  await previewImport(req)
+
+  expect(global.fetch).toHaveBeenCalledWith(
+    'http://localhost:8000/api/import/preview',
+    expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify(req),
+    }),
+  )
+})
+
+test('commitImport makes POST request', async () => {
+  vi.mocked(global.fetch).mockResolvedValue({
+    ok: true,
+    status: 200,
+    json: () => Promise.resolve({ created_count: 1, transaction_ids: [1] }),
+    text: () => Promise.resolve(''),
+  } as Response)
+
+  const rows = [{ date: '2026-01-15', payee: 'Test', amount: 50, account_id: 1, category_id: 1 }]
+  const result = await commitImport(rows)
+
+  expect(global.fetch).toHaveBeenCalledWith(
+    'http://localhost:8000/api/import/commit',
+    expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ rows }),
+    }),
+  )
+  expect(result).toEqual({ created_count: 1, transaction_ids: [1] })
 })
 
 test('request handles 204 No Content', async () => {

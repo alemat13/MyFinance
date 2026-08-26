@@ -1,14 +1,20 @@
 import { useEffect, useState } from 'react'
 import {
-  Transaction, TransactionCreate, TransactionUpdate,
-  Account, Category,
+  Transaction, TransactionCreate, TransactionUpdate, TransactionSplit,
+  Account, Category, User,
   fetchTransactions, createTransaction, updateTransaction, deleteTransaction,
-  fetchAccounts, fetchCategories,
+  fetchAccounts, fetchCategories, fetchUsers, fetchSplitPreview,
 } from '../api/client'
+import SplitEditor, { SplitRow } from './SplitEditor'
 
 interface Props {
   onBack: () => void
   selectedUserId: number | null
+}
+
+const splitsDisplay = (splits: TransactionSplit[]) => {
+  if (splits.length === 0) return <span style={{ color: '#999' }}>—</span>
+  return splits.map(s => `${s.user_name} ${s.share_amount.toFixed(2)}`).join(' / ')
 }
 
 const emptyForm: TransactionCreate = {
@@ -24,12 +30,17 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
   const [categories, setCategories] = useState<Category[]>([])
+  const [allUsers, setAllUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editData, setEditData] = useState<TransactionUpdate>({})
+  const [editSplit, setEditSplit] = useState<SplitRow[] | null>(null)
+  const [editPreview, setEditPreview] = useState<TransactionSplit[]>([])
   const [showNew, setShowNew] = useState(false)
   const [newData, setNewData] = useState<TransactionCreate>(emptyForm)
+  const [newSplit, setNewSplit] = useState<SplitRow[] | null>(null)
+  const [newPreview, setNewPreview] = useState<TransactionSplit[]>([])
 
   const loadAll = () => {
     setLoading(true)
@@ -37,17 +48,41 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
       fetchTransactions(selectedUserId ?? undefined),
       fetchAccounts(selectedUserId ?? undefined),
       fetchCategories(),
+      fetchUsers(),
     ])
-      .then(([txns, accts, cats]) => {
+      .then(([txns, accts, cats, users]) => {
         setTransactions(txns)
         setAccounts(accts)
         setCategories(cats)
+        setAllUsers(users)
       })
       .catch(err => { console.error(err); setError(err.message) })
       .finally(() => setLoading(false))
   }
 
   useEffect(loadAll, [selectedUserId])
+
+  // Live default-split preview for the "new transaction" form, while no manual override is active.
+  useEffect(() => {
+    if (!showNew || newSplit !== null || !newData.category_id || !newData.amount) {
+      setNewPreview([])
+      return
+    }
+    fetchSplitPreview(newData.amount, newData.category_id)
+      .then(setNewPreview)
+      .catch(() => setNewPreview([]))
+  }, [showNew, newSplit, newData.amount, newData.category_id])
+
+  // Live default-split preview for the "edit transaction" form, while no manual override is active.
+  useEffect(() => {
+    if (editingId === null || editSplit !== null || !editData.category_id || !editData.amount) {
+      setEditPreview([])
+      return
+    }
+    fetchSplitPreview(editData.amount, editData.category_id)
+      .then(setEditPreview)
+      .catch(() => setEditPreview([]))
+  }, [editingId, editSplit, editData.amount, editData.category_id])
 
   const startEdit = (t: Transaction) => {
     setEditingId(t.id)
@@ -59,15 +94,28 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
       account_id: t.account_id,
       category_id: t.category_id,
     })
+    const isManual = t.splits.length > 0 && t.splits.every(s => s.source === 'manual')
+    setEditSplit(isManual ? t.splits.map(s => ({ user_id: s.user_id, value: s.share_amount })) : null)
   }
 
   const cancelEdit = () => {
     setEditingId(null)
     setEditData({})
+    setEditSplit(null)
   }
 
   const saveEdit = (id: number) => {
-    updateTransaction(id, editData)
+    const amount = editData.amount ?? 0
+    if (editSplit !== null) {
+      const total = editSplit.reduce((s, r) => s + r.value, 0)
+      if (Math.abs(total - amount) > 0.01) {
+        alert(`Custom split must sum to the transaction amount (${amount})`); return
+      }
+    }
+    updateTransaction(id, {
+      ...editData,
+      split_overrides: editSplit ? editSplit.map(r => ({ user_id: r.user_id, share_amount: r.value })) : null,
+    })
       .then(() => { cancelEdit(); loadAll() })
       .catch(err => alert(err.message))
   }
@@ -83,15 +131,64 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
     if (!newData.payee || !newData.account_id || !newData.category_id) {
       alert('Payee, account, and category are required'); return
     }
-    createTransaction(newData)
-      .then(() => { setShowNew(false); setNewData(emptyForm); loadAll() })
+    if (newSplit !== null) {
+      const total = newSplit.reduce((s, r) => s + r.value, 0)
+      if (Math.abs(total - newData.amount) > 0.01) {
+        alert(`Custom split must sum to the transaction amount (${newData.amount})`); return
+      }
+    }
+    createTransaction({
+      ...newData,
+      split_overrides: newSplit ? newSplit.map(r => ({ user_id: r.user_id, share_amount: r.value })) : undefined,
+    })
+      .then(() => { setShowNew(false); setNewData(emptyForm); setNewSplit(null); loadAll() })
       .catch(err => alert(err.message))
   }
 
   const cancelNew = () => {
     setShowNew(false)
     setNewData(emptyForm)
+    setNewSplit(null)
   }
+
+  const toggleCustomSplit = (
+    active: boolean,
+    preview: TransactionSplit[],
+    setSplit: (s: SplitRow[] | null) => void,
+  ) => {
+    if (active) {
+      setSplit(preview.map(p => ({ user_id: p.user_id, value: p.share_amount })))
+    } else {
+      setSplit(null)
+    }
+  }
+
+  const renderSplitSection = (
+    amount: number,
+    split: SplitRow[] | null,
+    preview: TransactionSplit[],
+    setSplit: (s: SplitRow[] | null) => void,
+  ) => (
+    <div style={{ marginTop: '8px' }}>
+      <label style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+        <input
+          type="checkbox"
+          checked={split !== null}
+          onChange={e => toggleCustomSplit(e.target.checked, preview, setSplit)}
+        />
+        Customize split
+      </label>
+      {split !== null ? (
+        <SplitEditor rows={split} allUsers={allUsers} total={amount} unit="currency" label="Split" onChange={setSplit} />
+      ) : (
+        preview.length > 0 && (
+          <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>
+            Default split: {preview.map(p => `${p.user_name} ${p.share_amount.toFixed(2)}`).join(' / ')}
+          </div>
+        )
+      )}
+    </div>
+  )
 
   const sorted = [...transactions].sort(
     (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
@@ -135,6 +232,7 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
             <button onClick={saveNew} style={saveBtnStyle}>Save</button>
             <button onClick={cancelNew} style={cancelBtnStyle}>Cancel</button>
           </div>
+          {renderSplitSection(newData.amount, newSplit, newPreview, setNewSplit)}
         </div>
       )}
 
@@ -150,12 +248,13 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
               <th style={thStyle}>Account</th>
               {hasMemo && <th style={thStyle}>Memo</th>}
               <th style={{ ...thStyle, textAlign: 'right' }}>Amount</th>
+              <th style={thStyle}>Split</th>
               <th style={{ ...thStyle, textAlign: 'center' }}>Actions</th>
             </tr>
           </thead>
           <tbody>
             {sorted.length === 0 && (
-              <tr><td colSpan={hasMemo ? 7 : 6} style={{ textAlign: 'center', padding: '20px', color: '#888' }}>No transactions yet</td></tr>
+              <tr><td colSpan={hasMemo ? 8 : 7} style={{ textAlign: 'center', padding: '20px', color: '#888' }}>No transactions yet</td></tr>
             )}
             {sorted.map(t => (
               <tr key={t.id} style={{ borderBottom: '1px solid #ddd' }}>
@@ -181,9 +280,12 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
                     <td style={{ ...tdStyle, textAlign: 'right' }}>
                       <input type="number" step="0.01" value={editData.amount ?? 0} onChange={e => setEditData({ ...editData, amount: parseFloat(e.target.value) || 0 })} style={{ ...inputStyle, width: '110px', textAlign: 'right' }} />
                     </td>
-                    <td style={{ ...tdStyle, textAlign: 'center' }}>
-                      <button onClick={() => saveEdit(t.id)} style={saveBtnStyle}>Save</button>
-                      <button onClick={cancelEdit} style={cancelBtnStyle}>Cancel</button>
+                    <td style={tdStyle} colSpan={2}>
+                      {renderSplitSection(editData.amount ?? 0, editSplit, editPreview, setEditSplit)}
+                      <div style={{ marginTop: '6px', display: 'flex', gap: '4px' }}>
+                        <button onClick={() => saveEdit(t.id)} style={saveBtnStyle}>Save</button>
+                        <button onClick={cancelEdit} style={cancelBtnStyle}>Cancel</button>
+                      </div>
                     </td>
                   </>
                 ) : (
@@ -196,6 +298,7 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
                     <td style={{ ...tdStyle, textAlign: 'right', color: t.amount >= 0 ? 'green' : 'red' }}>
                       {t.amount.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
                     </td>
+                    <td style={{ ...tdStyle, fontSize: '12px' }}>{splitsDisplay(t.splits)}</td>
                     <td style={{ ...tdStyle, textAlign: 'center' }}>
                       <button onClick={() => startEdit(t)} style={editBtnStyle}>Edit</button>
                       <button onClick={() => del(t.id, t.payee)} style={delBtnStyle}>Delete</button>

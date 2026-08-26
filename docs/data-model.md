@@ -6,6 +6,11 @@ erDiagram
     accounts ||--o{ account_users : "has"
     accounts ||--o{ transactions : contains
     categories ||--o{ transactions : categorizes
+    categories ||--o{ category_splits : "defaults to"
+    users ||--o{ category_splits : "shares"
+    users ||--o{ global_split_weights : "weighted as"
+    transactions ||--o{ transaction_splits : "split into"
+    users ||--o{ transaction_splits : "owes"
 
     users {
         int id PK
@@ -34,6 +39,17 @@ erDiagram
         string type
     }
 
+    category_splits {
+        int category_id PK,FK
+        int user_id PK,FK
+        float split_percentage "0-100, sum=100 per category"
+    }
+
+    global_split_weights {
+        int user_id PK,FK
+        float weight ">= 0, relative weight"
+    }
+
     transactions {
         int id PK
         date date
@@ -43,6 +59,13 @@ erDiagram
         int account_id FK
         int category_id FK
         datetime created_at
+    }
+
+    transaction_splits {
+        int transaction_id PK,FK
+        int user_id PK,FK
+        float share_amount "frozen at write time"
+        string source "manual | category_default | global_default"
     }
 ```
 
@@ -101,6 +124,33 @@ Individual financial transactions.
 | `category_id` | Integer | Foreign key → `categories.id` |
 | `created_at` | DateTime | Default: current UTC time |
 
+### `category_splits`
+Optional default split (tier 2) for a category — e.g. "Mortgage" always splits 50/50 regardless of the global default weighting.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `category_id` | Integer | Foreign key → `categories.id`, part of composite PK |
+| `user_id` | Integer | Foreign key → `users.id`, part of composite PK |
+| `split_percentage` | Float | Percentage of this category's amount attributed to this user. Sum must equal 100 per category |
+
+### `global_split_weights`
+The fallback (tier 3) split: a relative weight per user (e.g. proportional to income), used whenever a transaction's category has no `category_splits` override and no manual override was given.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `user_id` | Integer | Primary key, foreign key → `users.id` |
+| `weight` | Float | Relative weight (not a percentage) — normalized against the sum of all weights at split time |
+
+### `transaction_splits`
+The resolved split for one transaction, computed once and stored — never silently recomputed if `global_split_weights` or `category_splits` change later.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `transaction_id` | Integer | Foreign key → `transactions.id`, part of composite PK |
+| `user_id` | Integer | Foreign key → `users.id`, part of composite PK |
+| `share_amount` | Float | What this user is liable for, frozen at the time the transaction was created/updated |
+| `source` | String(20) | How this share was determined: `manual`, `category_default`, or `global_default` |
+
 ## Key Relationships
 
 - **Users ↔ Accounts**: Many-to-many via `account_users`. Each user can own multiple accounts; each account can have multiple owners (joint account).
@@ -108,3 +158,5 @@ Individual financial transactions.
 - **Categories ↔ Transactions**: One-to-many. A category can classify many transactions.
 - **Ownership validation**: The backend enforces that ownership percentages sum to exactly 100% per account (within 0.01 tolerance).
 - **User filtering**: API endpoints `/api/transactions`, `/api/dashboard`, `/api/accounts` accept an optional `?user_id=X` query parameter to filter by account ownership (where `ownership_percentage > 0`).
+- **Split resolution** (`backend/split_engine.py`): for each transaction, the split is resolved in priority order — an explicit override (`manual`) > `category_splits` for its category (`category_default`) > `global_split_weights` (`global_default`). If nothing is configured at any tier, no `transaction_splits` rows are created (the feature is opt-in).
+- **Splits are frozen, ownership is live**: `transaction_splits.share_amount` (what a user is *liable* for) is computed once at write time and persisted. What a user *paid* is instead derived live from the account's *current* `account_users.ownership_percentage` — so historical liability stays stable even if account ownership changes later, but the settlement report always reflects today's ownership. The household balance report (`GET /api/balances`, also embedded in `GET /api/dashboard`) is `sum(paid) − sum(share_amount)` per user — positive means the household owes them, negative means they owe the household.

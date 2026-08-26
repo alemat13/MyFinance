@@ -1,7 +1,11 @@
 from datetime import date
 
+import split_engine
 from database import engine, SessionLocal, Base
-from models import Account, Category, Transaction, User, AccountUser
+from models import (
+    Account, Category, Transaction, User, AccountUser,
+    CategorySplit, GlobalSplitWeight,
+)
 
 
 def seed():
@@ -189,6 +193,35 @@ def seed():
         ),
     ]
     session.add_all(transactions)
+    session.flush()
+
+    # Global default split weights (tier 3) — income-proportional fallback.
+    session.add_all([
+        GlobalSplitWeight(user_id=users[0].id, weight=52000.0),
+        GlobalSplitWeight(user_id=users[1].id, weight=48000.0),
+    ])
+
+    # Category default split (tier 2) — Transfer is always split 50/50.
+    transfer_category = categories[6]
+    session.add_all([
+        CategorySplit(category_id=transfer_category.id, user_id=users[0].id, split_percentage=50.0),
+        CategorySplit(category_id=transfer_category.id, user_id=users[1].id, split_percentage=50.0),
+    ])
+    session.flush()
+
+    # Resolve a split for every seeded transaction, exactly as the API does
+    # on create — a manual override (tier 1) on the rent payment, everything
+    # else auto-resolved (tier 2 category default or tier 3 global default).
+    rent_transaction = transactions[1]
+    for transaction in transactions:
+        if transaction is rent_transaction:
+            split_engine.apply_split(session, transaction, override=[
+                (users[0].id, -900.0),
+                (users[1].id, -900.0),
+            ])
+        else:
+            split_engine.apply_split(session, transaction)
+
     session.commit()
     session.close()
 

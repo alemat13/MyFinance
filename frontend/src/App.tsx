@@ -5,8 +5,10 @@ import AccountsList from './components/AccountsList'
 import CategoriesList from './components/CategoriesList'
 import TransactionsPage from './components/TransactionsPage'
 import UsersList from './components/UsersList'
+import SplitWeightsSettings from './components/SplitWeightsSettings'
+import CsvImportPage from './components/CsvImportPage'
 
-type View = 'dashboard' | 'accounts' | 'categories' | 'transactions' | 'users'
+type View = 'dashboard' | 'accounts' | 'categories' | 'transactions' | 'users' | 'split-settings' | 'import'
 
 const viewLabels: Record<View, string> = {
   dashboard: 'Dashboard',
@@ -14,6 +16,8 @@ const viewLabels: Record<View, string> = {
   categories: 'Categories',
   transactions: 'Transactions',
   users: 'Users',
+  'split-settings': 'Split Weights',
+  import: 'Import CSV',
 }
 
 function loadSelectedUserId(): number | null {
@@ -145,6 +149,8 @@ export default function App() {
       {view === 'categories' && <CategoriesList onBack={() => setView('dashboard')} />}
       {view === 'transactions' && <TransactionsPage onBack={() => setView('dashboard')} selectedUserId={selectedUserId} />}
       {view === 'users' && <UsersList onBack={() => setView('dashboard')} onSelectUser={handleSelectUser} />}
+      {view === 'split-settings' && <SplitWeightsSettings onBack={() => setView('dashboard')} />}
+      {view === 'import' && <CsvImportPage onBack={() => setView('dashboard')} />}
 
       {menuOpen && (
         <div

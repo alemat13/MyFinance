@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { DashboardData, fetchDashboard } from '../api/client'
 import AccountCard from './AccountCard'
 import TransactionList from './TransactionList'
+import BalanceWidget from './BalanceWidget'
 
 interface Props {
   selectedUserId: number | null
@@ -30,6 +31,7 @@ export default function Dashboard({ selectedUserId }: Props) {
 
   return (
     <div>
+      <BalanceWidget balances={data.balances} />
       <div style={{ display: 'flex', flexWrap: 'wrap', marginBottom: '32px' }}>
         {data.accounts.map(acc => (
           <AccountCard key={acc.id} account={acc} />

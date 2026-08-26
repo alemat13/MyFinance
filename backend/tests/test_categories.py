@@ -55,3 +55,42 @@ def test_delete_category_with_transactions_409(client, sample_transaction):
         f"/api/categories/{sample_transaction.category_id}"
     )
     assert response.status_code == 409
+
+
+def test_create_category_with_splits(client, sample_user):
+    response = client.post(
+        "/api/categories",
+        json={
+            "name": "Mortgage",
+            "type": "Expense",
+            "splits": [{"user_id": sample_user.id, "split_percentage": 100.0}],
+        },
+    )
+    assert response.status_code == 201
+    data = response.json()
+    assert len(data["splits"]) == 1
+    assert data["splits"][0]["user_name"] == sample_user.name
+    assert data["splits"][0]["split_percentage"] == 100.0
+
+
+def test_create_category_splits_sum_not_100_returns_422(client, sample_user):
+    response = client.post(
+        "/api/categories",
+        json={
+            "name": "Bad",
+            "type": "Expense",
+            "splits": [{"user_id": sample_user.id, "split_percentage": 50.0}],
+        },
+    )
+    assert response.status_code == 422
+
+
+def test_update_category_splits_replaces_existing(client, sample_category, sample_user):
+    response = client.put(
+        f"/api/categories/{sample_category.id}",
+        json={"splits": [{"user_id": sample_user.id, "split_percentage": 100.0}]},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["splits"]) == 1
+    assert data["splits"][0]["split_percentage"] == 100.0

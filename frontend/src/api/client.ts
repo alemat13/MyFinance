@@ -32,20 +32,58 @@ export interface AccountUpdate {
   users?: AccountUserCreate[]
 }
 
+export interface CategorySplit {
+  user_id: number
+  user_name: string
+  split_percentage: number
+}
+
+export interface CategorySplitCreate {
+  user_id: number
+  split_percentage: number
+}
+
 export interface Category {
   id: number
   name: string
   type: string
+  splits: CategorySplit[]
 }
 
 export interface CategoryCreate {
   name: string
   type: string
+  splits?: CategorySplitCreate[]
 }
 
 export interface CategoryUpdate {
   name?: string
   type?: string
+  splits?: CategorySplitCreate[]
+}
+
+export interface GlobalSplitWeight {
+  user_id: number
+  user_name: string
+  weight: number
+}
+
+export interface SplitShareCreate {
+  user_id: number
+  share_amount: number
+}
+
+export interface TransactionSplit {
+  user_id: number
+  user_name: string
+  share_amount: number
+  source: 'manual' | 'category_default' | 'global_default'
+}
+
+export interface UserBalance {
+  user_id: number
+  user_name: string
+  net_position: number
 }
 
 export interface Transaction {
@@ -58,6 +96,7 @@ export interface Transaction {
   account_name: string
   category_id: number
   category_name: string
+  splits: TransactionSplit[]
 }
 
 export interface TransactionCreate {
@@ -67,6 +106,7 @@ export interface TransactionCreate {
   amount: number
   account_id: number
   category_id: number
+  split_overrides?: SplitShareCreate[] | null
 }
 
 export interface TransactionUpdate {
@@ -76,6 +116,7 @@ export interface TransactionUpdate {
   amount?: number
   account_id?: number
   category_id?: number
+  split_overrides?: SplitShareCreate[] | null
 }
 
 export interface User {
@@ -98,6 +139,38 @@ export interface UserUpdate {
 export interface DashboardData {
   accounts: Account[]
   recent_transactions: Transaction[]
+  balances: UserBalance[]
+}
+
+export interface ImportPreviewRequest {
+  csv_text: string
+  account_id: number
+  date_col: string
+  payee_col: string
+  amount_col: string
+  memo_col?: string | null
+  category_col?: string | null
+  has_header?: boolean
+  date_format?: string | null
+}
+
+export interface ImportPreviewRow {
+  row_number: number
+  transaction_date: string | null
+  payee: string | null
+  memo: string | null
+  amount: number | null
+  account_id: number
+  category_id: number | null
+  category_name: string | null
+  status: 'ok' | 'needs_category' | 'possible_duplicate' | 'error'
+  error_message: string | null
+  preview_split: { user_id: number; share_amount: number; source: string }[]
+}
+
+export interface ImportCommitResponse {
+  created_count: number
+  transaction_ids: number[]
 }
 
 const API_BASE = "http://localhost:8000/api"
@@ -184,4 +257,31 @@ export function deleteUser(id: number): Promise<void> {
 export function fetchDashboard(userId?: number): Promise<DashboardData> {
   const params = userId ? `?user_id=${userId}` : ''
   return request<DashboardData>(`/dashboard${params}`)
+}
+
+export function fetchSplitWeights(): Promise<GlobalSplitWeight[]> {
+  return request<GlobalSplitWeight[]>("/split-weights")
+}
+
+export function updateSplitWeights(weights: { user_id: number; weight: number }[]): Promise<GlobalSplitWeight[]> {
+  return request<GlobalSplitWeight[]>("/split-weights", { method: 'PUT', body: JSON.stringify(weights) })
+}
+
+export function fetchSplitPreview(amount: number, categoryId: number | null): Promise<TransactionSplit[]> {
+  return request<TransactionSplit[]>("/split-preview", {
+    method: 'POST',
+    body: JSON.stringify({ amount, category_id: categoryId }),
+  })
+}
+
+export function fetchBalances(): Promise<UserBalance[]> {
+  return request<UserBalance[]>("/balances")
+}
+
+export function previewImport(data: ImportPreviewRequest): Promise<ImportPreviewRow[]> {
+  return request<ImportPreviewRow[]>("/import/preview", { method: 'POST', body: JSON.stringify(data) })
+}
+
+export function commitImport(rows: TransactionCreate[]): Promise<ImportCommitResponse> {
+  return request<ImportCommitResponse>("/import/commit", { method: 'POST', body: JSON.stringify({ rows }) })
 }

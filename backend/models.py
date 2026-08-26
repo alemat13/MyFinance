@@ -27,6 +27,7 @@ class Category(Base):
     type = Column(String(50), nullable=False)
 
     transactions = relationship("Transaction", back_populates="category")
+    splits = relationship("CategorySplit", back_populates="category", cascade="all, delete-orphan")
 
 
 class Transaction(Base):
@@ -43,6 +44,7 @@ class Transaction(Base):
 
     account = relationship("Account", back_populates="transactions")
     category = relationship("Category", back_populates="transactions")
+    splits = relationship("TransactionSplit", back_populates="transaction", cascade="all, delete-orphan")
 
 
 class User(Base):
@@ -65,3 +67,35 @@ class AccountUser(Base):
 
     account = relationship("Account", back_populates="user_associations")
     user = relationship("User", back_populates="account_associations")
+
+
+class CategorySplit(Base):
+    __tablename__ = "category_splits"
+
+    category_id = Column(Integer, ForeignKey("categories.id"), primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
+    split_percentage = Column(Float, nullable=False, default=0.0)
+
+    category = relationship("Category", back_populates="splits")
+    user = relationship("User")
+
+
+class GlobalSplitWeight(Base):
+    __tablename__ = "global_split_weights"
+
+    user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
+    weight = Column(Float, nullable=False, default=0.0)
+
+    user = relationship("User")
+
+
+class TransactionSplit(Base):
+    __tablename__ = "transaction_splits"
+
+    transaction_id = Column(Integer, ForeignKey("transactions.id"), primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
+    share_amount = Column(Float, nullable=False)
+    source = Column(String(20), nullable=False)  # 'manual' | 'category_default' | 'global_default'
+
+    transaction = relationship("Transaction", back_populates="splits")
+    user = relationship("User")
