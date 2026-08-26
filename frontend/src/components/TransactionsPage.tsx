@@ -10,6 +10,7 @@ import SplitEditor, { SplitRow } from './SplitEditor'
 import { useToast } from '../context/ToastContext'
 import { Button, Input, Select, Table, Thead, Tbody, Tr, Th, Td, StatusMessage, ConfirmDialog } from './ui'
 import { formatMoney } from '../utils/currency'
+import { getParam, patchQueryParams } from '../utils/urlState'
 
 interface Props {
   onBack: () => void
@@ -72,6 +73,47 @@ const FIELD_LABELS: Record<FilterField, string> = {
 
 const emptyCondition: ConditionRow = { field: 'payee', operator: 'contains', value: '', value2: '' }
 
+const SORT_BY_VALUES = ['date', 'amount', 'payee', 'created_at'] as const
+const SORT_DIR_VALUES = ['asc', 'desc'] as const
+const PAGE_SIZE_VALUES = [25, 50, 100] as const
+
+function loadInitialMode(): FilterMode {
+  return getParam('mode') === 'advanced' ? 'advanced' : 'simple'
+}
+
+function loadInitialConditions(): ConditionRow[] {
+  const raw = getParam('conditions')
+  if (!raw) return []
+  try {
+    const parsed = JSON.parse(decodeURIComponent(raw))
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((c): c is ConditionRow =>
+      c && typeof c === 'object' && typeof c.field === 'string' && typeof c.operator === 'string')
+  } catch {
+    return []
+  }
+}
+
+function loadInitialInt(name: string, fallback: number): number {
+  const parsed = parseInt(getParam(name) ?? '', 10)
+  return Number.isFinite(parsed) ? parsed : fallback
+}
+
+function loadInitialPageSize(): number {
+  const parsed = parseInt(getParam('page_size') ?? '', 10)
+  return (PAGE_SIZE_VALUES as readonly number[]).includes(parsed) ? parsed : 50
+}
+
+function loadInitialSortBy(): typeof SORT_BY_VALUES[number] {
+  const val = getParam('sort_by')
+  return (SORT_BY_VALUES as readonly string[]).includes(val ?? '') ? (val as typeof SORT_BY_VALUES[number]) : 'date'
+}
+
+function loadInitialSortDir(): typeof SORT_DIR_VALUES[number] {
+  const val = getParam('sort_dir')
+  return (SORT_DIR_VALUES as readonly string[]).includes(val ?? '') ? (val as typeof SORT_DIR_VALUES[number]) : 'desc'
+}
+
 const splitsDisplay = (splits: TransactionSplit[], currency: string) => {
   if (splits.length === 0) return <span className="text-slate-400">—</span>
   return splits.map(s => `${s.user_name} ${formatMoney(s.share_amount, currency)}`).join(' / ')
@@ -104,22 +146,22 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
   const [deletingTransaction, setDeletingTransaction] = useState<Transaction | null>(null)
   const { showToast } = useToast()
 
-  const [mode, setMode] = useState<FilterMode>('simple')
-  const [searchText, setSearchText] = useState('')
-  const [debouncedSearch, setDebouncedSearch] = useState('')
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
-  const [filterAccountId, setFilterAccountId] = useState(0)
-  const [filterCategoryId, setFilterCategoryId] = useState(0)
-  const [amountMin, setAmountMin] = useState('')
-  const [amountMax, setAmountMax] = useState('')
-  const [conditions, setConditions] = useState<ConditionRow[]>([])
-  const [debouncedConditions, setDebouncedConditions] = useState<ConditionRow[]>([])
-  const [matchMode, setMatchMode] = useState<'all' | 'any'>('all')
-  const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(50)
-  const [sortBy, setSortBy] = useState<'date' | 'amount' | 'payee' | 'created_at'>('date')
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+  const [mode, setMode] = useState<FilterMode>(loadInitialMode)
+  const [searchText, setSearchText] = useState(() => getParam('q') ?? '')
+  const [debouncedSearch, setDebouncedSearch] = useState(() => getParam('q') ?? '')
+  const [dateFrom, setDateFrom] = useState(() => getParam('date_from') ?? '')
+  const [dateTo, setDateTo] = useState(() => getParam('date_to') ?? '')
+  const [filterAccountId, setFilterAccountId] = useState(() => loadInitialInt('account_id', 0))
+  const [filterCategoryId, setFilterCategoryId] = useState(() => loadInitialInt('category_id', 0))
+  const [amountMin, setAmountMin] = useState(() => getParam('amount_min') ?? '')
+  const [amountMax, setAmountMax] = useState(() => getParam('amount_max') ?? '')
+  const [conditions, setConditions] = useState<ConditionRow[]>(loadInitialConditions)
+  const [debouncedConditions, setDebouncedConditions] = useState<ConditionRow[]>(loadInitialConditions)
+  const [matchMode, setMatchMode] = useState<'all' | 'any'>(() => (getParam('match') === 'any' ? 'any' : 'all'))
+  const [page, setPage] = useState(() => loadInitialInt('page', 1))
+  const [pageSize, setPageSize] = useState(loadInitialPageSize)
+  const [sortBy, setSortBy] = useState<'date' | 'amount' | 'payee' | 'created_at'>(loadInitialSortBy)
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>(loadInitialSortDir)
   const [total, setTotal] = useState(0)
   const [totalPages, setTotalPages] = useState(1)
 
@@ -189,6 +231,40 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
 
   useEffect(loadTransactions, [
     selectedUserId, mode, debouncedSearch, dateFrom, dateTo, filterAccountId, filterCategoryId,
+    amountMin, amountMax, JSON.stringify(debouncedConditions), matchMode, page, pageSize, sortBy, sortDir,
+  ])
+
+  useEffect(() => {
+    const common: Record<string, string | undefined> = {
+      mode: mode === 'simple' ? undefined : mode,
+      page: page === 1 ? undefined : String(page),
+      page_size: pageSize === 50 ? undefined : String(pageSize),
+      sort_by: sortBy === 'date' ? undefined : sortBy,
+      sort_dir: sortDir === 'desc' ? undefined : sortDir,
+    }
+    if (mode === 'advanced') {
+      patchQueryParams({
+        ...common,
+        q: undefined, date_from: undefined, date_to: undefined,
+        account_id: undefined, category_id: undefined, amount_min: undefined, amount_max: undefined,
+        match: matchMode === 'all' ? undefined : matchMode,
+        conditions: debouncedConditions.length === 0 ? undefined : encodeURIComponent(JSON.stringify(debouncedConditions)),
+      })
+    } else {
+      patchQueryParams({
+        ...common,
+        match: undefined, conditions: undefined,
+        q: debouncedSearch || undefined,
+        date_from: dateFrom || undefined,
+        date_to: dateTo || undefined,
+        account_id: filterAccountId ? String(filterAccountId) : undefined,
+        category_id: filterCategoryId ? String(filterCategoryId) : undefined,
+        amount_min: amountMin || undefined,
+        amount_max: amountMax || undefined,
+      })
+    }
+  }, [
+    mode, debouncedSearch, dateFrom, dateTo, filterAccountId, filterCategoryId,
     amountMin, amountMax, JSON.stringify(debouncedConditions), matchMode, page, pageSize, sortBy, sortDir,
   ])
 

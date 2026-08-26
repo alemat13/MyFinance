@@ -1,4 +1,4 @@
-import { describe, test, expect, vi, beforeEach } from 'vitest'
+import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { renderWithProviders } from '../../test-utils'
 import TransactionsPage from '../TransactionsPage'
@@ -34,6 +34,11 @@ beforeEach(() => {
   vi.clearAllMocks()
   mockFetchUsers.mockResolvedValue([])
   mockFetchSplitPreview.mockResolvedValue([])
+  window.history.replaceState(null, '', '/')
+})
+
+afterEach(() => {
+  window.history.replaceState(null, '', '/')
 })
 
 test('shows loading state', () => {
@@ -298,4 +303,58 @@ test('pagination controls change page', async () => {
   await waitFor(() => {
     expect(mockSearchTransactions).toHaveBeenCalledWith(expect.objectContaining({ page: 2 }))
   })
+})
+
+test('hydrates simple-mode filters from the URL on mount', async () => {
+  window.history.replaceState(null, '', '/?q=amazon&page=2')
+  mockSearchTransactions.mockResolvedValue(searchResult([]))
+  mockFetchAccounts.mockResolvedValue([baseAccount])
+  mockFetchCategories.mockResolvedValue([baseCategory])
+
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+
+  await waitFor(() => {
+    expect(mockSearchTransactions).toHaveBeenCalledWith(expect.objectContaining({ search: 'amazon', page: 2 }))
+  })
+  expect(screen.getByPlaceholderText('Search payee/memo')).toHaveValue('amazon')
+})
+
+test('changing a simple-mode filter updates the URL', async () => {
+  mockSearchTransactions.mockResolvedValue(searchResult([]))
+  mockFetchAccounts.mockResolvedValue([baseAccount])
+  mockFetchCategories.mockResolvedValue([baseCategory])
+
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+
+  await waitFor(() => expect(mockSearchTransactions).toHaveBeenCalled())
+
+  fireEvent.change(screen.getByPlaceholderText('Search payee/memo'), { target: { value: 'amazon' } })
+
+  await waitFor(() => {
+    expect(window.location.search).toContain('q=amazon')
+  }, { timeout: 1000 })
+})
+
+test('advanced mode conditions round-trip through the conditions URL param', async () => {
+  mockSearchTransactions.mockResolvedValue(searchResult([]))
+  mockFetchAccounts.mockResolvedValue([baseAccount])
+  mockFetchCategories.mockResolvedValue([baseCategory])
+
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+
+  await waitFor(() => expect(mockSearchTransactions).toHaveBeenCalled())
+
+  fireEvent.click(screen.getByText('Advanced'))
+  fireEvent.click(screen.getByText('+ Add condition'))
+  fireEvent.change(screen.getByRole('textbox'), { target: { value: 'amazon' } })
+
+  await waitFor(() => {
+    expect(window.location.search).toContain('mode=advanced')
+    expect(window.location.search).toContain('conditions=')
+  }, { timeout: 1000 })
+
+  const conditionsParam = new URLSearchParams(window.location.search).get('conditions')!
+  expect(JSON.parse(decodeURIComponent(conditionsParam))).toEqual([
+    { field: 'payee', operator: 'contains', value: 'amazon', value2: '' },
+  ])
 })

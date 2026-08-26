@@ -5,6 +5,7 @@ import {
 } from 'lucide-react'
 import { fetchUsers, User } from './api/client'
 import { useTheme } from './context/ThemeContext'
+import { getParam, patchQueryParams } from './utils/urlState'
 import { IconButton, Select } from './components/ui'
 import Dashboard from './components/Dashboard'
 import AccountsList from './components/AccountsList'
@@ -52,8 +53,13 @@ function saveSelectedUserId(id: number | null) {
   } catch { /* ignore */ }
 }
 
+function loadInitialView(): View {
+  const v = getParam('view')
+  return v && v in viewLabels ? (v as View) : 'dashboard'
+}
+
 export default function App() {
-  const [view, setView] = useState<View>('dashboard')
+  const [view, setView] = useState<View>(loadInitialView)
   const [menuOpen, setMenuOpen] = useState(false)
   const [selectedUserId, setSelectedUserId] = useState<number | null>(() => loadSelectedUserId())
   const [users, setUsers] = useState<User[]>([])
@@ -62,6 +68,11 @@ export default function App() {
   useEffect(() => {
     fetchUsers().then(setUsers).catch(() => {})
   }, [])
+
+  const navigateToView = (v: View) => {
+    setView(v)
+    patchQueryParams({ view: v === 'dashboard' ? undefined : v })
+  }
 
   const handleSelectUser = (userId: number | null) => {
     setSelectedUserId(userId)
@@ -99,7 +110,7 @@ export default function App() {
                   return (
                     <button
                       key={v}
-                      onClick={() => { setView(v); setMenuOpen(false) }}
+                      onClick={() => { navigateToView(v); setMenuOpen(false) }}
                       className={`flex items-center gap-2 w-full px-4 py-2.5 text-left text-sm cursor-pointer ${
                         view === v
                           ? 'bg-slate-100 dark:bg-slate-700 text-slate-900 dark:text-slate-100'
@@ -130,12 +141,12 @@ export default function App() {
       )}
 
       {view === 'dashboard' && <Dashboard selectedUserId={selectedUserId} />}
-      {view === 'accounts' && <AccountsList onBack={() => setView('dashboard')} selectedUserId={selectedUserId} />}
-      {view === 'categories' && <CategoriesList onBack={() => setView('dashboard')} />}
-      {view === 'transactions' && <TransactionsPage onBack={() => setView('dashboard')} selectedUserId={selectedUserId} />}
-      {view === 'users' && <UsersList onBack={() => setView('dashboard')} onSelectUser={handleSelectUser} />}
-      {view === 'split-settings' && <SplitWeightsSettings onBack={() => setView('dashboard')} />}
-      {view === 'import' && <CsvImportPage onBack={() => setView('dashboard')} />}
+      {view === 'accounts' && <AccountsList onBack={() => navigateToView('dashboard')} selectedUserId={selectedUserId} />}
+      {view === 'categories' && <CategoriesList onBack={() => navigateToView('dashboard')} />}
+      {view === 'transactions' && <TransactionsPage onBack={() => navigateToView('dashboard')} selectedUserId={selectedUserId} />}
+      {view === 'users' && <UsersList onBack={() => navigateToView('dashboard')} onSelectUser={handleSelectUser} />}
+      {view === 'split-settings' && <SplitWeightsSettings onBack={() => navigateToView('dashboard')} />}
+      {view === 'import' && <CsvImportPage onBack={() => navigateToView('dashboard')} />}
 
       {menuOpen && (
         <div className="fixed inset-0 z-[1000]" onClick={() => setMenuOpen(false)} />
