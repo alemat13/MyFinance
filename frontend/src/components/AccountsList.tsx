@@ -16,6 +16,14 @@ const toRows = (users: AccountUserCreate[]): SplitRow[] =>
 const fromRows = (rows: SplitRow[]): AccountUserCreate[] =>
   rows.map(r => ({ user_id: r.user_id, ownership_percentage: r.value }))
 
+const validateOwners = (users: AccountUserCreate[]): string | null => {
+  if (users.length === 0) return null
+  if (users.some(u => !u.user_id)) return 'Select a user for every owner row'
+  const total = users.reduce((s, u) => s + u.ownership_percentage, 0)
+  if (Math.abs(total - 100) > 0.01) return 'Ownership percentages must sum to 100'
+  return null
+}
+
 interface Props {
   onBack: () => void
   selectedUserId: number | null
@@ -98,6 +106,8 @@ export default function AccountsList({ onBack, selectedUserId }: Props) {
   }
 
   const saveEdit = (id: number) => {
+    const err = validateOwners(editData.users ?? [])
+    if (err) { showToast(err); return }
     updateAccount(id, editData)
       .then(() => { cancelEdit(); load() })
       .catch(err => showToast(err.message))
@@ -113,10 +123,8 @@ export default function AccountsList({ onBack, selectedUserId }: Props) {
 
   const saveNew = () => {
     if (!newData.name || !newData.type) { showToast('Name and type are required'); return }
-    const total = (newData.users ?? []).reduce((s, u) => s + u.ownership_percentage, 0)
-    if ((newData.users ?? []).length > 0 && Math.abs(total - 100) > 0.01) {
-      showToast('Ownership percentages must sum to 100'); return
-    }
+    const err = validateOwners(newData.users ?? [])
+    if (err) { showToast(err); return }
     createAccount(newData)
       .then(() => { setShowNew(false); setNewData(emptyForm); load() })
       .catch(err => showToast(err.message))

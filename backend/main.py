@@ -3,8 +3,10 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import join, func, or_
+from sqlalchemy.exc import IntegrityError
 
 from database import get_db, engine, Base
 from models import (
@@ -51,6 +53,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(IntegrityError)
+def _handle_integrity_error(request, exc):
+    return JSONResponse(status_code=409, content={"detail": "Data integrity error: referenced record may not exist"})
 
 
 # ── Helpers ────────────────────────────────────────────────────────
@@ -142,6 +149,16 @@ def _validate_ownership(users: list[AccountUserCreate]):
             raise HTTPException(422, f"Ownership percentages must sum to 100, got {total}")
 
 
+def _validate_users_exist(db: Session, users: list[AccountUserCreate]):
+    if not users:
+        return
+    requested_ids = {u.user_id for u in users}
+    existing_ids = {uid for (uid,) in db.query(User.id).filter(User.id.in_(requested_ids)).all()}
+    missing = sorted(requested_ids - existing_ids)
+    if missing:
+        raise HTTPException(422, f"Unknown user_id(s): {missing}")
+
+
 def _sync_category_splits(db: Session, category: Category, splits: list[CategorySplitCreate]):
     db.query(CategorySplit).filter(CategorySplit.category_id == category.id).delete()
     for s in splits:
@@ -215,6 +232,7 @@ def get_accounts(user_id: int | None = Query(None), db: Session = Depends(get_db
 @app.post("/api/accounts", response_model=AccountOut, status_code=201)
 def create_account(data: AccountCreate, db: Session = Depends(get_db)):
     _validate_ownership(data.users)
+    _validate_users_exist(db, data.users)
     account = Account(name=data.name, type=data.type, balance=data.balance, currency=data.currency)
     db.add(account)
     db.flush()
@@ -235,10 +253,11 @@ def update_account(account_id: int, data: AccountUpdate, db: Session = Depends(g
     if not account:
         raise HTTPException(404, "Account not found")
     update_data = data.model_dump(exclude_unset=True)
-    users_data = update_data.pop("users", None)
-    if users_data is not None:
-        _validate_ownership(users_data)
-        _sync_account_users(db, account, users_data)
+    update_data.pop("users", None)
+    if data.users is not None:
+        _validate_ownership(data.users)
+        _validate_users_exist(db, data.users)
+        _sync_account_users(db, account, data.users)
     for field, value in update_data.items():
         setattr(account, field, value)
     db.commit()

@@ -113,6 +113,66 @@ def test_create_account_users_sum_not_100_returns_422(client, sample_user):
     assert response.status_code == 422
 
 
+def test_create_account_with_two_users(client, sample_user, sample_user2):
+    response = client.post(
+        "/api/accounts",
+        json={
+            "name": "CCF Joint",
+            "type": "Checking account",
+            "balance": 0.0,
+            "currency": "EUR",
+            "users": [
+                {"user_id": sample_user.id, "ownership_percentage": 50.0},
+                {"user_id": sample_user2.id, "ownership_percentage": 50.0},
+            ],
+        },
+    )
+    assert response.status_code == 201
+    data = response.json()
+    owners = {u["user_name"]: u["ownership_percentage"] for u in data["users"]}
+    assert owners == {sample_user.name: 50.0, sample_user2.name: 50.0}
+
+
+def test_create_account_invalid_user_id_422(client):
+    response = client.post(
+        "/api/accounts",
+        json={
+            "name": "Bad",
+            "type": "Checking",
+            "users": [{"user_id": 999999, "ownership_percentage": 100.0}],
+        },
+    )
+    assert response.status_code == 422
+    assert client.get("/api/accounts").json() == []
+
+
+def test_update_account_with_users(client, sample_account, sample_user, sample_user2):
+    response = client.put(
+        f"/api/accounts/{sample_account.id}",
+        json={
+            "users": [
+                {"user_id": sample_user.id, "ownership_percentage": 50.0},
+                {"user_id": sample_user2.id, "ownership_percentage": 50.0},
+            ],
+        },
+    )
+    assert response.status_code == 200
+    data = response.json()
+    owners = {u["user_name"]: u["ownership_percentage"] for u in data["users"]}
+    assert owners == {sample_user.name: 50.0, sample_user2.name: 50.0}
+
+
+def test_update_account_invalid_user_id_422(client, sample_account_with_user, sample_user):
+    response = client.put(
+        f"/api/accounts/{sample_account_with_user.id}",
+        json={"users": [{"user_id": 999999, "ownership_percentage": 100.0}]},
+    )
+    assert response.status_code == 422
+    data = client.get("/api/accounts").json()[0]
+    assert len(data["users"]) == 1
+    assert data["users"][0]["user_name"] == sample_user.name
+
+
 def test_get_accounts_filtered_by_user(client, sample_account_with_user, sample_user):
     response = client.get(f"/api/accounts?user_id={sample_user.id}")
     assert response.status_code == 200
