@@ -310,10 +310,10 @@ export function updateSplitWeights(weights: { user_id: number; weight: number }[
   return request<GlobalSplitWeight[]>("/split-weights", { method: 'PUT', body: JSON.stringify(weights) })
 }
 
-export function fetchSplitPreview(amount: number, categoryId: number | null): Promise<TransactionSplit[]> {
+export function fetchSplitPreview(amount: number, categoryId: number | null, accountId: number | null = null): Promise<TransactionSplit[]> {
   return request<TransactionSplit[]>("/split-preview", {
     method: 'POST',
-    body: JSON.stringify({ amount, category_id: categoryId }),
+    body: JSON.stringify({ amount, category_id: categoryId, account_id: accountId }),
   })
 }
 

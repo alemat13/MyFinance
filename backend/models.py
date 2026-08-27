@@ -17,7 +17,7 @@ class Account(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     transactions = relationship("Transaction", back_populates="account")
-    user_associations = relationship("AccountUser", back_populates="account")
+    user_associations = relationship("AccountUser", back_populates="account", cascade="all, delete-orphan")
 
 
 class Category(Base):

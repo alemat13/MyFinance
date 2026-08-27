@@ -8,7 +8,7 @@ import {
 } from '../api/client'
 import SplitEditor, { SplitRow } from './SplitEditor'
 import { useToast } from '../context/ToastContext'
-import { Button, Input, Select, Table, Thead, Tbody, Tr, Th, Td, StatusMessage, ConfirmDialog } from './ui'
+import { Button, Input, Select, Table, Thead, Tbody, Tr, Th, Td, StatusMessage, ConfirmDialog, Badge } from './ui'
 import { formatMoney } from '../utils/currency'
 import { getParam, patchQueryParams } from '../utils/urlState'
 
@@ -310,10 +310,10 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
       setNewPreview([])
       return
     }
-    fetchSplitPreview(newData.amount, newData.category_id)
+    fetchSplitPreview(newData.amount, newData.category_id, newData.account_id || null)
       .then(setNewPreview)
       .catch(() => setNewPreview([]))
-  }, [showNew, newSplit, newData.amount, newData.category_id])
+  }, [showNew, newSplit, newData.amount, newData.category_id, newData.account_id])
 
   // Live default-split preview for the "edit transaction" form, while no manual override is active.
   useEffect(() => {
@@ -321,10 +321,10 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
       setEditPreview([])
       return
     }
-    fetchSplitPreview(editData.amount, editData.category_id)
+    fetchSplitPreview(editData.amount, editData.category_id, editData.account_id || null)
       .then(setEditPreview)
       .catch(() => setEditPreview([]))
-  }, [editingId, editSplit, editData.amount, editData.category_id])
+  }, [editingId, editSplit, editData.amount, editData.category_id, editData.account_id])
 
   const startEdit = (t: Transaction) => {
     setEditingId(t.id)
@@ -436,6 +436,14 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
 
   const currencyFor = (accountId: number | undefined) =>
     accounts.find(a => a.id === accountId)?.currency ?? 'EUR'
+
+  // Not owned by the selected user, but visible because it has a split share for them.
+  const sharedShareFor = (t: Transaction): number | null => {
+    if (!selectedUserId) return null
+    if (accounts.some(a => a.id === t.account_id)) return null
+    const mine = t.splits.find(s => s.user_id === selectedUserId)
+    return mine ? mine.share_amount : null
+  }
 
   const hasMemo = transactions.some(t => t.memo !== null)
 
@@ -618,6 +626,11 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
                     {hasMemo && <Td>{t.memo ?? ''}</Td>}
                     <Td className={`text-right ${t.amount >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                       {formatMoney(t.amount, t.currency)}
+                      {sharedShareFor(t) !== null && (
+                        <div className="mt-0.5">
+                          <Badge variant="info">Shared · your share: {formatMoney(sharedShareFor(t)!, t.currency)}</Badge>
+                        </div>
+                      )}
                     </Td>
                     <Td className="text-xs">{splitsDisplay(t.splits, t.currency)}</Td>
                     <Td className="text-center">

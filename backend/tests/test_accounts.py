@@ -83,6 +83,13 @@ def test_delete_account_with_transactions_409(client, sample_transaction):
     assert response.status_code == 409
 
 
+def test_delete_account_with_owners(client, sample_account_with_user):
+    response = client.delete(f"/api/accounts/{sample_account_with_user.id}")
+    assert response.status_code == 204
+    response = client.get("/api/accounts")
+    assert response.json() == []
+
+
 def test_create_account_with_users(client, sample_user):
     response = client.post(
         "/api/accounts",
