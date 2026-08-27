@@ -73,6 +73,15 @@ def sample_user(db):
 
 
 @pytest.fixture()
+def sample_user2(db):
+    user = User(name="Second User", email="second@example.com")
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@pytest.fixture()
 def sample_account_with_user(db, sample_account, sample_user):
     au = AccountUser(account_id=sample_account.id, user_id=sample_user.id, ownership_percentage=100.0)
     db.add(au)
