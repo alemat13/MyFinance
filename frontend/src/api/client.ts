@@ -212,6 +212,23 @@ export interface ImportCommitResponse {
   transaction_ids: number[]
 }
 
+export interface TransactionHistoryEntry {
+  id: number
+  transaction_id: number
+  action: 'created' | 'updated' | 'deleted'
+  source: 'manual' | 'csv_import' | null
+  changed_at: string
+  changed_by_user_id: number | null
+  changed_by_user_name: string | null
+  date: string | null
+  payee: string | null
+  memo: string | null
+  amount: number | null
+  account_id: number | null
+  category_id: number | null
+  changes: Record<string, { old: unknown; new: unknown }> | null
+}
+
 const API_BASE = import.meta.env.VITE_API_URL ?? `http://${window.location.hostname}:8000/api`
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
@@ -269,16 +286,23 @@ export function searchTransactions(req: TransactionSearchRequest): Promise<Trans
   return request<TransactionSearchResponse>('/transactions/search', { method: 'POST', body: JSON.stringify(req) })
 }
 
-export function createTransaction(data: TransactionCreate): Promise<Transaction> {
-  return request<Transaction>("/transactions", { method: 'POST', body: JSON.stringify(data) })
+export function createTransaction(data: TransactionCreate, actorUserId?: number | null): Promise<Transaction> {
+  const params = actorUserId ? `?actor_user_id=${actorUserId}` : ''
+  return request<Transaction>(`/transactions${params}`, { method: 'POST', body: JSON.stringify(data) })
 }
 
-export function updateTransaction(id: number, data: TransactionUpdate): Promise<Transaction> {
-  return request<Transaction>(`/transactions/${id}`, { method: 'PUT', body: JSON.stringify(data) })
+export function updateTransaction(id: number, data: TransactionUpdate, actorUserId?: number | null): Promise<Transaction> {
+  const params = actorUserId ? `?actor_user_id=${actorUserId}` : ''
+  return request<Transaction>(`/transactions/${id}${params}`, { method: 'PUT', body: JSON.stringify(data) })
 }
 
-export function deleteTransaction(id: number): Promise<void> {
-  return request<void>(`/transactions/${id}`, { method: 'DELETE' })
+export function deleteTransaction(id: number, actorUserId?: number | null): Promise<void> {
+  const params = actorUserId ? `?actor_user_id=${actorUserId}` : ''
+  return request<void>(`/transactions/${id}${params}`, { method: 'DELETE' })
+}
+
+export function fetchTransactionHistory(transactionId: number): Promise<TransactionHistoryEntry[]> {
+  return request<TransactionHistoryEntry[]>(`/transactions/${transactionId}/history`)
 }
 
 export function fetchUsers(): Promise<User[]> {
@@ -325,6 +349,7 @@ export function previewImport(data: ImportPreviewRequest): Promise<ImportPreview
   return request<ImportPreviewRow[]>("/import/preview", { method: 'POST', body: JSON.stringify(data) })
 }
 
-export function commitImport(rows: TransactionCreate[]): Promise<ImportCommitResponse> {
-  return request<ImportCommitResponse>("/import/commit", { method: 'POST', body: JSON.stringify({ rows }) })
+export function commitImport(rows: TransactionCreate[], actorUserId?: number | null): Promise<ImportCommitResponse> {
+  const params = actorUserId ? `?actor_user_id=${actorUserId}` : ''
+  return request<ImportCommitResponse>(`/import/commit${params}`, { method: 'POST', body: JSON.stringify({ rows }) })
 }

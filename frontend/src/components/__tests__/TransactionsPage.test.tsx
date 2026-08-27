@@ -3,7 +3,7 @@ import { screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { renderWithProviders } from '../../test-utils'
 import TransactionsPage from '../TransactionsPage'
 
-const { mockSearchTransactions, mockFetchAccounts, mockFetchCategories, mockCreateTransaction, mockUpdateTransaction, mockDeleteTransaction, mockFetchUsers, mockFetchSplitPreview } = vi.hoisted(() => ({
+const { mockSearchTransactions, mockFetchAccounts, mockFetchCategories, mockCreateTransaction, mockUpdateTransaction, mockDeleteTransaction, mockFetchUsers, mockFetchSplitPreview, mockFetchTransactionHistory } = vi.hoisted(() => ({
   mockSearchTransactions: vi.fn(),
   mockFetchAccounts: vi.fn(),
   mockFetchCategories: vi.fn(),
@@ -12,6 +12,7 @@ const { mockSearchTransactions, mockFetchAccounts, mockFetchCategories, mockCrea
   mockDeleteTransaction: vi.fn(),
   mockFetchUsers: vi.fn().mockResolvedValue([]),
   mockFetchSplitPreview: vi.fn().mockResolvedValue([]),
+  mockFetchTransactionHistory: vi.fn(),
 }))
 
 vi.mock('../../api/client', () => ({
@@ -23,6 +24,7 @@ vi.mock('../../api/client', () => ({
   deleteTransaction: mockDeleteTransaction,
   fetchUsers: mockFetchUsers,
   fetchSplitPreview: mockFetchSplitPreview,
+  fetchTransactionHistory: mockFetchTransactionHistory,
 }))
 
 const baseAccount = { id: 1, name: 'Checking', type: 'Checking', balance: 100, currency: 'USD', created_at: '2026-01-01', users: [] }
@@ -143,7 +145,7 @@ test('can edit inline', async () => {
   fireEvent.click(screen.getByText('Save'))
 
   await waitFor(() => {
-    expect(mockUpdateTransaction).toHaveBeenCalledWith(1, expect.objectContaining({ payee: 'Updated' }))
+    expect(mockUpdateTransaction).toHaveBeenCalledWith(1, expect.objectContaining({ payee: 'Updated' }), null)
   })
 })
 
@@ -189,7 +191,7 @@ test('shows default split preview and can submit a custom override', async () =>
         { user_id: 1, share_amount: 70 },
         { user_id: 2, share_amount: 30 },
       ],
-    }))
+    }), null)
   })
 })
 
@@ -245,7 +247,65 @@ test('can delete', async () => {
   fireEvent.click(within(dialog).getByText('Delete'))
 
   await waitFor(() => {
-    expect(mockDeleteTransaction).toHaveBeenCalledWith(1)
+    expect(mockDeleteTransaction).toHaveBeenCalledWith(1, null)
+  })
+})
+
+test('shows transaction history inline and can collapse it', async () => {
+  const txn = { id: 1, date: '2026-01-15', payee: 'Test', memo: null, amount: 50, account_id: 1, account_name: 'Checking', category_id: 1, category_name: 'Salary', splits: [] }
+  mockSearchTransactions.mockResolvedValue(searchResult([txn]))
+  mockFetchAccounts.mockResolvedValue([baseAccount])
+  mockFetchCategories.mockResolvedValue([baseCategory])
+  mockFetchTransactionHistory.mockResolvedValue([
+    {
+      id: 1, transaction_id: 1, action: 'created', source: 'manual', changed_at: '2026-01-15T10:00:00',
+      changed_by_user_id: 1, changed_by_user_name: 'Alex',
+      date: '2026-01-15', payee: 'Test', memo: null, amount: 50, account_id: 1, category_id: 1, changes: null,
+    },
+    {
+      id: 2, transaction_id: 1, action: 'updated', source: null, changed_at: '2026-01-16T10:00:00',
+      changed_by_user_id: 1, changed_by_user_name: 'Alex',
+      date: '2026-01-15', payee: 'Test Updated', memo: null, amount: 50, account_id: 1, category_id: 1,
+      changes: { payee: { old: 'Test', new: 'Test Updated' } },
+    },
+  ])
+
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+
+  await waitFor(() => {
+    expect(screen.getByText('Test')).toBeInTheDocument()
+  })
+
+  fireEvent.click(screen.getByText('History'))
+
+  await waitFor(() => {
+    expect(mockFetchTransactionHistory).toHaveBeenCalledWith(1)
+    expect(screen.getByText('created')).toBeInTheDocument()
+    expect(screen.getByText(/updated/)).toBeInTheDocument()
+    expect(screen.getByText(/payee: Test → Test Updated/)).toBeInTheDocument()
+  })
+
+  fireEvent.click(screen.getByText('History'))
+  expect(screen.queryByText('created')).not.toBeInTheDocument()
+})
+
+test('shows empty state when a transaction has no recorded history', async () => {
+  const txn = { id: 1, date: '2026-01-15', payee: 'Test', memo: null, amount: 50, account_id: 1, account_name: 'Checking', category_id: 1, category_name: 'Salary', splits: [] }
+  mockSearchTransactions.mockResolvedValue(searchResult([txn]))
+  mockFetchAccounts.mockResolvedValue([baseAccount])
+  mockFetchCategories.mockResolvedValue([baseCategory])
+  mockFetchTransactionHistory.mockResolvedValue([])
+
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+
+  await waitFor(() => {
+    expect(screen.getByText('Test')).toBeInTheDocument()
+  })
+
+  fireEvent.click(screen.getByText('History'))
+
+  await waitFor(() => {
+    expect(screen.getByText('No history recorded for this transaction')).toBeInTheDocument()
   })
 })
 

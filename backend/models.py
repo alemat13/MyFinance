@@ -1,6 +1,6 @@
 from datetime import datetime, date
 
-from sqlalchemy import Column, Integer, String, Float, DateTime, Date, Text, ForeignKey
+from sqlalchemy import Column, Integer, String, Float, DateTime, Date, Text, ForeignKey, JSON
 from sqlalchemy.orm import relationship
 
 from database import Base
@@ -100,3 +100,32 @@ class TransactionSplit(Base):
 
     transaction = relationship("Transaction", back_populates="splits")
     user = relationship("User")
+
+
+class TransactionHistory(Base):
+    __tablename__ = "transaction_history"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    # Deliberately a plain Integer, NOT a ForeignKey: database.py enables
+    # PRAGMA foreign_keys=ON, and delete_transaction() hard-deletes the
+    # Transaction row. A real FK would either raise IntegrityError on delete
+    # (default NO ACTION) or, with ondelete="SET NULL", erase the very
+    # linkage this table exists to preserve. Same reasoning applies to
+    # changed_by_user_id (DELETE /api/users/{id} is a real hard delete too).
+    transaction_id = Column(Integer, nullable=False, index=True)
+    action = Column(String(20), nullable=False)  # 'created' | 'updated' | 'deleted'
+    source = Column(String(20), nullable=True)  # 'manual' | 'csv_import' (created only)
+    changed_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    changed_by_user_id = Column(Integer, nullable=True)
+
+    # Snapshot of the transaction's core fields as of this event
+    # (for 'deleted', the state immediately before removal).
+    date = Column(Date, nullable=True)
+    payee = Column(String(200), nullable=True)
+    memo = Column(Text, nullable=True)
+    amount = Column(Float, nullable=True)
+    account_id = Column(Integer, nullable=True)
+    category_id = Column(Integer, nullable=True)
+
+    # For 'updated' rows only: {field: {"old": ..., "new": ...}} for fields that actually changed.
+    changes = Column(JSON, nullable=True)
