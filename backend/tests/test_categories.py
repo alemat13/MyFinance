@@ -16,6 +16,16 @@ def test_create_category(client):
     assert "id" in data
 
 
+def test_create_category_duplicate_name_409(client, sample_category):
+    response = client.post(
+        "/api/categories",
+        json={"name": sample_category.name, "type": "Income"},
+    )
+    assert response.status_code == 409
+    assert "already exists" in response.json()["detail"]
+    assert "referenced record" not in response.json()["detail"]
+
+
 def test_get_categories(client, sample_category):
     response = client.get("/api/categories")
     assert response.status_code == 200

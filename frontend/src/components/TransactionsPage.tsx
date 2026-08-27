@@ -11,6 +11,7 @@ import { useToast } from '../context/ToastContext'
 import { Button, Input, Select, Table, Thead, Tbody, Tr, Th, Td, StatusMessage, ConfirmDialog, Badge } from './ui'
 import { formatMoney } from '../utils/currency'
 import { getParam, patchQueryParams } from '../utils/urlState'
+import { sharedShareFor } from '../utils/transactions'
 
 interface Props {
   onBack: () => void
@@ -437,14 +438,6 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
   const currencyFor = (accountId: number | undefined) =>
     accounts.find(a => a.id === accountId)?.currency ?? 'EUR'
 
-  // Not owned by the selected user, but visible because it has a split share for them.
-  const sharedShareFor = (t: Transaction): number | null => {
-    if (!selectedUserId) return null
-    if (accounts.some(a => a.id === t.account_id)) return null
-    const mine = t.splits.find(s => s.user_id === selectedUserId)
-    return mine ? mine.share_amount : null
-  }
-
   const hasMemo = transactions.some(t => t.memo !== null)
 
   const acctOptions = accounts.map(a => ({ value: a.id, label: a.name }))
@@ -626,9 +619,9 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
                     {hasMemo && <Td>{t.memo ?? ''}</Td>}
                     <Td className={`text-right ${t.amount >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                       {formatMoney(t.amount, t.currency)}
-                      {sharedShareFor(t) !== null && (
+                      {sharedShareFor(t, selectedUserId, accounts) !== null && (
                         <div className="mt-0.5">
-                          <Badge variant="info">Shared · your share: {formatMoney(sharedShareFor(t)!, t.currency)}</Badge>
+                          <Badge variant="info">Shared · your share: {formatMoney(sharedShareFor(t, selectedUserId, accounts)!, t.currency)}</Badge>
                         </div>
                       )}
                     </Td>

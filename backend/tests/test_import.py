@@ -50,6 +50,47 @@ def test_import_preview_flags_possible_duplicate(client, sample_account, sample_
     assert rows[0]["status"] == "possible_duplicate"
 
 
+def test_import_preview_matches_commit_for_single_owner_account(client, sample_account, sample_category, sample_user):
+    # sample_account has no AccountUser owners at all (a degenerate single/no-owner
+    # account), so global split weights must never be auto-applied to it - same rule
+    # apply_split enforces on commit.
+    response = client.put(
+        "/api/split-weights",
+        json=[{"user_id": sample_user.id, "weight": 100.0}],
+    )
+    assert response.status_code == 200
+
+    response = client.post(
+        "/api/import/preview",
+        json={
+            "csv_text": CSV_TEXT,
+            "account_id": sample_account.id,
+            "date_col": "Date",
+            "payee_col": "Label",
+            "amount_col": "Amount",
+            "category_col": "Category",
+        },
+    )
+    assert response.status_code == 200
+    rows = response.json()
+    assert rows[0]["status"] == "ok"
+    assert rows[0]["preview_split"] == []
+
+    response = client.post(
+        "/api/import/commit",
+        json={"rows": [{
+            "date": "2026-01-15", "payee": "Whole Foods", "amount": -42.50,
+            "account_id": sample_account.id, "category_id": sample_category.id,
+        }]},
+    )
+    assert response.status_code == 200
+    transaction_id = response.json()["transaction_ids"][0]
+
+    response = client.get("/api/transactions")
+    committed = next(t for t in response.json() if t["id"] == transaction_id)
+    assert committed["splits"] == []
+
+
 def test_import_commit_rejects_rows_without_category(client, sample_account, sample_category):
     response = client.post(
         "/api/import/commit",

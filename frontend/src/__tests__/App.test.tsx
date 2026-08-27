@@ -74,6 +74,7 @@ test('mounting with ?view=transactions renders TransactionsPage directly', async
 })
 
 test('clicking a menu item switches view and updates the URL', async () => {
+  localStorage.setItem('userChoiceMade', '1')
   renderApp()
   await waitFor(() => expect(mockFetchUsers).toHaveBeenCalled())
   fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
@@ -129,4 +130,37 @@ test('first-launch prompt cannot be dismissed via Escape', async () => {
   await waitFor(() => expect(screen.getByText("Who's using MyFinance?")).toBeInTheDocument())
   fireEvent.keyDown(document, { key: 'Escape' })
   expect(screen.getByText("Who's using MyFinance?")).toBeInTheDocument()
+})
+
+test('the Settings button is disabled while the first-launch prompt is active, so it cannot be used to bypass it', async () => {
+  mockFetchUsers.mockResolvedValue([
+    { id: 1, name: 'Alice', email: null, created_at: '2026-01-01' },
+  ])
+  renderApp()
+
+  await waitFor(() => expect(screen.getByText("Who's using MyFinance?")).toBeInTheDocument())
+  const settingsButton = screen.getByRole('button', { name: 'Settings' })
+  expect(settingsButton).toBeDisabled()
+
+  fireEvent.click(settingsButton)
+  expect(screen.queryByText('Transactions')).not.toBeInTheDocument()
+})
+
+test('does not show "no users yet" while the user list is still loading', async () => {
+  let resolveFetch: (users: unknown[]) => void = () => {}
+  mockFetchUsers.mockReturnValue(new Promise(resolve => { resolveFetch = resolve }))
+  renderApp()
+
+  expect(screen.queryByText(/No users yet/)).not.toBeInTheDocument()
+
+  resolveFetch([])
+  await waitFor(() => expect(screen.getByText(/No users yet/)).toBeInTheDocument())
+})
+
+test('shows a load-failure message instead of "no users yet" when fetching users fails', async () => {
+  mockFetchUsers.mockRejectedValue(new Error('network error'))
+  renderApp()
+
+  await waitFor(() => expect(screen.getByText(/Couldn't load users/)).toBeInTheDocument())
+  expect(screen.queryByText(/No users yet/)).not.toBeInTheDocument()
 })
