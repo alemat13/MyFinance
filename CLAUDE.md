@@ -13,6 +13,13 @@ frontend/  React 19, TypeScript 5.6, Vite 6
 
 No monorepo tool, no workspaces. No linters/formatters/type-checking configured on the Python side. No routing or state-management libs on the frontend. No Alembic — schema changes go through `drop_all`/`create_all` via `seed.py`.
 
+## Git workflow
+
+- `main` is the production/deploy branch — pushing to it (via merged PR) triggers `.github/workflows/ci-cd.yml`'s `deploy` job, which redeploys both Cloud Run services. **`main` is branch-protected: direct pushes are rejected, merges require an open PR with passing `test-backend`/`test-frontend` checks.**
+- `develop` is the default branch and where all feature work happens. Branch off `develop` for new work, open PRs back into `develop`. Pushes/PRs to `develop` run the test jobs but never deploy.
+- To ship, open a PR from `develop` into `main`. Once merged, CI deploys automatically.
+- Always create a feature branch off `develop` — never commit directly to `main`, and avoid committing directly to `develop` for anything non-trivial.
+
 ## Commands
 
 ### Backend
