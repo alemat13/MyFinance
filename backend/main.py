@@ -1,4 +1,5 @@
 import os
+import sys
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Depends, HTTPException, Query
@@ -33,7 +34,8 @@ from import_csv import preview_import
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    Base.metadata.create_all(bind=engine)
+    if "pytest" not in sys.modules:
+        Base.metadata.create_all(bind=engine)
     yield
 
 
@@ -57,10 +59,31 @@ app.add_middleware(
 
 @app.exception_handler(IntegrityError)
 def _handle_integrity_error(request, exc):
-    return JSONResponse(status_code=409, content={"detail": "Data integrity error: referenced record may not exist"})
+    message = str(exc.orig).upper()
+    if "UNIQUE" in message:
+        detail = "A record with this value already exists"
+    elif "FOREIGN KEY" in message:
+        detail = "Data integrity error: referenced record may not exist"
+    else:
+        detail = "Data integrity error"
+    return JSONResponse(status_code=409, content={"detail": detail})
 
 
 # ── Helpers ────────────────────────────────────────────────────────
+
+def _visible_transaction_filter(db: Session, user_id: int):
+    """Transactions visible to user_id: in an account they own, or bearing a split share for them."""
+    owned_account_ids = db.query(AccountUser.account_id).filter(
+        AccountUser.user_id == user_id, AccountUser.ownership_percentage > 0
+    )
+    split_txn_ids = db.query(TransactionSplit.transaction_id).filter(
+        TransactionSplit.user_id == user_id
+    )
+    return or_(
+        Transaction.account_id.in_(owned_account_ids),
+        Transaction.id.in_(split_txn_ids),
+    )
+
 
 def _account_out(account: Account) -> AccountOut:
     return AccountOut(
@@ -211,6 +234,9 @@ def delete_user(user_id: int, db: Session = Depends(get_db)):
         raise HTTPException(404, "User not found")
     if user.account_associations:
         raise HTTPException(409, "Cannot delete user who owns accounts")
+    db.query(CategorySplit).filter(CategorySplit.user_id == user_id).delete()
+    db.query(GlobalSplitWeight).filter(GlobalSplitWeight.user_id == user_id).delete()
+    db.query(TransactionSplit).filter(TransactionSplit.user_id == user_id).delete()
     db.delete(user)
     db.commit()
 
@@ -333,16 +359,7 @@ def get_transactions(user_id: int | None = Query(None), db: Session = Depends(ge
         .join(Category, Transaction.category_id == Category.id)
     )
     if user_id is not None:
-        owned_account_ids = db.query(AccountUser.account_id).filter(
-            AccountUser.user_id == user_id, AccountUser.ownership_percentage > 0
-        )
-        split_txn_ids = db.query(TransactionSplit.transaction_id).filter(
-            TransactionSplit.user_id == user_id
-        )
-        query = query.filter(or_(
-            Transaction.account_id.in_(owned_account_ids),
-            Transaction.id.in_(split_txn_ids),
-        ))
+        query = query.filter(_visible_transaction_filter(db, user_id))
     results = query.order_by(Transaction.date.desc()).all()
     return [
         TransactionOut(
@@ -363,16 +380,7 @@ def search_transactions(req: TransactionSearchRequest, db: Session = Depends(get
         .join(Category, Transaction.category_id == Category.id)
     )
     if req.user_id is not None:
-        owned_account_ids = db.query(AccountUser.account_id).filter(
-            AccountUser.user_id == req.user_id, AccountUser.ownership_percentage > 0
-        )
-        split_txn_ids = db.query(TransactionSplit.transaction_id).filter(
-            TransactionSplit.user_id == req.user_id
-        )
-        query = query.filter(or_(
-            Transaction.account_id.in_(owned_account_ids),
-            Transaction.id.in_(split_txn_ids),
-        ))
+        query = query.filter(_visible_transaction_filter(db, req.user_id))
 
     if req.search:
         like = f"%{req.search.lower()}%"
@@ -577,16 +585,7 @@ def get_dashboard(user_id: int | None = Query(None), db: Session = Depends(get_d
         .join(Category, Transaction.category_id == Category.id)
     )
     if user_id is not None:
-        owned_account_ids = db.query(AccountUser.account_id).filter(
-            AccountUser.user_id == user_id, AccountUser.ownership_percentage > 0
-        )
-        split_txn_ids = db.query(TransactionSplit.transaction_id).filter(
-            TransactionSplit.user_id == user_id
-        )
-        tx_query = tx_query.filter(or_(
-            Transaction.account_id.in_(owned_account_ids),
-            Transaction.id.in_(split_txn_ids),
-        ))
+        tx_query = tx_query.filter(_visible_transaction_filter(db, user_id))
     recent_results = tx_query.order_by(Transaction.date.desc()).limit(10).all()
 
     recent_transactions = [
@@ -601,8 +600,7 @@ def get_dashboard(user_id: int | None = Query(None), db: Session = Depends(get_d
 
     balances = [
         UserBalanceOut(user_id=uid, user_name=user_name, currency=currency, net_position=net_position)
-        for uid, user_name, currency, net_position in split_engine.compute_balances(db)
-        if user_id is None or uid == user_id
+        for uid, user_name, currency, net_position in split_engine.compute_balances(db, user_id=user_id)
     ]
 
     return DashboardResponse(

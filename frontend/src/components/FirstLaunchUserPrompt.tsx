@@ -3,16 +3,21 @@ import { User } from '../api/client'
 
 interface FirstLaunchUserPromptProps {
   users: User[]
+  loadError?: boolean
   onChoose: (userId: number) => void
 }
 
-export default function FirstLaunchUserPrompt({ users, onChoose }: FirstLaunchUserPromptProps) {
+export default function FirstLaunchUserPrompt({ users, loadError, onChoose }: FirstLaunchUserPromptProps) {
   return (
     <Modal isOpen onClose={() => { /* mandatory: not dismissable until a user is picked */ }}>
       <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-3">
         Who's using MyFinance?
       </h3>
-      {users.length === 0 ? (
+      {loadError ? (
+        <p className="text-sm text-slate-500 dark:text-slate-400">
+          Couldn't load users — check that the backend is running, then reload.
+        </p>
+      ) : users.length === 0 ? (
         <p className="text-sm text-slate-500 dark:text-slate-400">
           No users yet — add one from the Users view, then reload.
         </p>

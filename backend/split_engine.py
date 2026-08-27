@@ -104,7 +104,7 @@ def apply_split(db: Session, transaction: Transaction, override: list[tuple[int,
         ))
 
 
-def compute_balances(db: Session) -> list[tuple[int, str, str, float]]:
+def compute_balances(db: Session, user_id: int | None = None) -> list[tuple[int, str, str, float]]:
     """Net position per user per currency: sum(share_amount) - sum(live paid_amount).
 
     Positive = this user paid more than they were liable for (a creditor: the
@@ -113,40 +113,54 @@ def compute_balances(db: Session) -> list[tuple[int, str, str, float]]:
     share_amount sum to the transaction's amount. Balances are never summed
     across currencies — each (user, currency) pair is tracked independently,
     since accounts (and therefore transactions) can be in different currencies.
+
+    Pass user_id to compute only that user's balance: the "received" and
+    "paid" queries are filtered to them, though the underlying set of
+    split transactions still spans the whole household (an owner's paid-side
+    liability applies whenever their account's transaction was split, even
+    with a zero share for them).
     """
     from models import Account, User
 
     net: dict[tuple[int, str], float] = {}
 
-    splits = (
+    splits_query = (
         db.query(TransactionSplit, Account.currency)
         .join(Transaction, Transaction.id == TransactionSplit.transaction_id)
         .join(Account, Account.id == Transaction.account_id)
-        .all()
     )
-    for s, currency in splits:
+    if user_id is not None:
+        splits_query = splits_query.filter(TransactionSplit.user_id == user_id)
+    for s, currency in splits_query.all():
         key = (s.user_id, currency)
         net[key] = net.get(key, 0.0) + s.share_amount
 
     # Only transactions that actually have a resolved split contribute a
     # "paid" side — an unsplit transaction carries no liability claim, so it
-    # must not skew anyone's balance.
-    split_transaction_ids = {s.transaction_id for s, _ in splits}
+    # must not skew anyone's balance. This must consider every split
+    # transaction in the household, not just user_id's own splits above.
+    split_transaction_ids = {
+        row[0] for row in db.query(TransactionSplit.transaction_id).distinct().all()
+    }
     if split_transaction_ids:
-        ownerships = (
+        ownerships_query = (
             db.query(Transaction.id, Transaction.amount, Account.currency, AccountUser.user_id, AccountUser.ownership_percentage)
             .join(Account, Account.id == Transaction.account_id)
             .join(AccountUser, AccountUser.account_id == Transaction.account_id)
             .filter(Transaction.id.in_(split_transaction_ids))
-            .all()
         )
-        for _, amount, currency, user_id, ownership_percentage in ownerships:
+        if user_id is not None:
+            ownerships_query = ownerships_query.filter(AccountUser.user_id == user_id)
+        for _, amount, currency, uid, ownership_percentage in ownerships_query.all():
             paid = amount * ownership_percentage / 100.0
-            key = (user_id, currency)
+            key = (uid, currency)
             net[key] = net.get(key, 0.0) - paid
 
-    users = {u.id: u.name for u in db.query(User).all()}
+    users_query = db.query(User)
+    if user_id is not None:
+        users_query = users_query.filter(User.id == user_id)
+    users = {u.id: u.name for u in users_query.all()}
     return [
-        (user_id, users.get(user_id, "Unknown"), currency, round(net_position, 2))
-        for (user_id, currency), net_position in net.items()
+        (uid, users.get(uid, "Unknown"), currency, round(net_position, 2))
+        for (uid, currency), net_position in net.items()
     ]
