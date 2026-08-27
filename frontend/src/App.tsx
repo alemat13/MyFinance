@@ -8,6 +8,7 @@ import { useTheme } from './context/ThemeContext'
 import { getParam, patchQueryParams } from './utils/urlState'
 import { IconButton, Select } from './components/ui'
 import Dashboard from './components/Dashboard'
+import FirstLaunchUserPrompt from './components/FirstLaunchUserPrompt'
 import AccountsList from './components/AccountsList'
 import CategoriesList from './components/CategoriesList'
 import TransactionsPage from './components/TransactionsPage'
@@ -48,9 +49,21 @@ function loadSelectedUserId(): number | null {
 
 function saveSelectedUserId(id: number | null) {
   try {
-    if (id) localStorage.setItem('selectedUserId', String(id))
-    else localStorage.removeItem('selectedUserId')
+    if (id) {
+      localStorage.setItem('selectedUserId', String(id))
+      localStorage.setItem('userChoiceMade', '1')
+    } else {
+      localStorage.removeItem('selectedUserId')
+    }
   } catch { /* ignore */ }
+}
+
+function hasMadeUserChoice(): boolean {
+  try {
+    return localStorage.getItem('userChoiceMade') === '1'
+  } catch {
+    return false
+  }
 }
 
 function loadInitialView(): View {
@@ -63,6 +76,7 @@ export default function App() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [selectedUserId, setSelectedUserId] = useState<number | null>(() => loadSelectedUserId())
   const [users, setUsers] = useState<User[]>([])
+  const [needsFirstLaunchChoice, setNeedsFirstLaunchChoice] = useState(() => !hasMadeUserChoice())
   const { theme, toggleTheme } = useTheme()
 
   useEffect(() => {
@@ -79,10 +93,18 @@ export default function App() {
     saveSelectedUserId(userId)
   }
 
+  const handleFirstLaunchChoice = (userId: number) => {
+    handleSelectUser(userId)
+    setNeedsFirstLaunchChoice(false)
+  }
+
   const selectedUser = users.find(u => u.id === selectedUserId)
 
   return (
     <div className="min-h-screen p-5 max-w-5xl mx-auto">
+      {needsFirstLaunchChoice && (
+        <FirstLaunchUserPrompt users={users} onChoose={handleFirstLaunchChoice} />
+      )}
       <div className="flex justify-between items-center mb-5">
         <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100">MyFinance</h1>
         <div className="flex items-center gap-2">

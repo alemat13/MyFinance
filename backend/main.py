@@ -333,10 +333,16 @@ def get_transactions(user_id: int | None = Query(None), db: Session = Depends(ge
         .join(Category, Transaction.category_id == Category.id)
     )
     if user_id is not None:
-        query = query.join(AccountUser, Account.id == AccountUser.account_id).filter(
-            AccountUser.user_id == user_id,
-            AccountUser.ownership_percentage > 0,
-        ).distinct()
+        owned_account_ids = db.query(AccountUser.account_id).filter(
+            AccountUser.user_id == user_id, AccountUser.ownership_percentage > 0
+        )
+        split_txn_ids = db.query(TransactionSplit.transaction_id).filter(
+            TransactionSplit.user_id == user_id
+        )
+        query = query.filter(or_(
+            Transaction.account_id.in_(owned_account_ids),
+            Transaction.id.in_(split_txn_ids),
+        ))
     results = query.order_by(Transaction.date.desc()).all()
     return [
         TransactionOut(
@@ -357,10 +363,16 @@ def search_transactions(req: TransactionSearchRequest, db: Session = Depends(get
         .join(Category, Transaction.category_id == Category.id)
     )
     if req.user_id is not None:
-        query = query.join(AccountUser, Account.id == AccountUser.account_id).filter(
-            AccountUser.user_id == req.user_id,
-            AccountUser.ownership_percentage > 0,
-        ).distinct()
+        owned_account_ids = db.query(AccountUser.account_id).filter(
+            AccountUser.user_id == req.user_id, AccountUser.ownership_percentage > 0
+        )
+        split_txn_ids = db.query(TransactionSplit.transaction_id).filter(
+            TransactionSplit.user_id == req.user_id
+        )
+        query = query.filter(or_(
+            Transaction.account_id.in_(owned_account_ids),
+            Transaction.id.in_(split_txn_ids),
+        ))
 
     if req.search:
         like = f"%{req.search.lower()}%"
@@ -495,7 +507,9 @@ def update_split_weights(data: list[GlobalSplitWeightUpdateItem], db: Session = 
 
 @app.post("/api/split-preview", response_model=list[TransactionSplitOut])
 def preview_split(data: SplitPreviewRequest, db: Session = Depends(get_db)):
-    shares = split_engine.resolve_split(db, data.amount, data.category_id, override=None, required=True)
+    shares = split_engine.resolve_split(
+        db, data.amount, data.category_id, override=None, required=True, account_id=data.account_id,
+    )
     users_by_id = {u.id: u.name for u in db.query(User).all()}
     return [
         TransactionSplitOut(user_id=s.user_id, user_name=users_by_id.get(s.user_id, "Unknown"), share_amount=s.share_amount, source=s.source)
@@ -563,10 +577,16 @@ def get_dashboard(user_id: int | None = Query(None), db: Session = Depends(get_d
         .join(Category, Transaction.category_id == Category.id)
     )
     if user_id is not None:
-        tx_query = tx_query.join(AccountUser, Account.id == AccountUser.account_id).filter(
-            AccountUser.user_id == user_id,
-            AccountUser.ownership_percentage > 0,
-        ).distinct()
+        owned_account_ids = db.query(AccountUser.account_id).filter(
+            AccountUser.user_id == user_id, AccountUser.ownership_percentage > 0
+        )
+        split_txn_ids = db.query(TransactionSplit.transaction_id).filter(
+            TransactionSplit.user_id == user_id
+        )
+        tx_query = tx_query.filter(or_(
+            Transaction.account_id.in_(owned_account_ids),
+            Transaction.id.in_(split_txn_ids),
+        ))
     recent_results = tx_query.order_by(Transaction.date.desc()).limit(10).all()
 
     recent_transactions = [
@@ -580,8 +600,9 @@ def get_dashboard(user_id: int | None = Query(None), db: Session = Depends(get_d
     ]
 
     balances = [
-        UserBalanceOut(user_id=user_id, user_name=user_name, currency=currency, net_position=net_position)
-        for user_id, user_name, currency, net_position in split_engine.compute_balances(db)
+        UserBalanceOut(user_id=uid, user_name=user_name, currency=currency, net_position=net_position)
+        for uid, user_name, currency, net_position in split_engine.compute_balances(db)
+        if user_id is None or uid == user_id
     ]
 
     return DashboardResponse(

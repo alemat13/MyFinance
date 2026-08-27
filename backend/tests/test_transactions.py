@@ -99,6 +99,28 @@ def test_get_transactions_filtered_by_user_no_match(client, sample_user):
     assert response.json() == []
 
 
+def test_get_transactions_visible_via_split_without_ownership(client, sample_account, sample_category, sample_user, sample_user2, db):
+    from datetime import date
+    from models import AccountUser, Transaction, TransactionSplit
+    # sample_account is solely owned by sample_user; sample_user2 owns nothing on it,
+    # but has a split share, so it must still show up for them.
+    db.add(AccountUser(account_id=sample_account.id, user_id=sample_user.id, ownership_percentage=100.0))
+    t = Transaction(
+        date=date(2026, 1, 15), payee="Shared Bill", amount=100.0,
+        account_id=sample_account.id, category_id=sample_category.id,
+    )
+    db.add(t)
+    db.flush()
+    db.add(TransactionSplit(transaction_id=t.id, user_id=sample_user2.id, share_amount=40.0, source="manual"))
+    db.commit()
+
+    response = client.get(f"/api/transactions?user_id={sample_user2.id}")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 1
+    assert data[0]["payee"] == "Shared Bill"
+
+
 def test_create_transaction_no_split_config_has_no_splits(client, sample_account, sample_category):
     response = client.post(
         "/api/transactions",
@@ -115,12 +137,15 @@ def test_create_transaction_no_split_config_has_no_splits(client, sample_account
 
 
 def test_create_transaction_uses_global_default_weight(client, sample_account, sample_category, sample_user, db):
-    from models import GlobalSplitWeight, User
+    from models import AccountUser, GlobalSplitWeight, User
     other_user = User(name="Other User")
     db.add(other_user)
     db.flush()
     other_user_id = other_user.id
     db.add_all([
+        # Joint account (more than one owner) — required for default splitting to apply.
+        AccountUser(account_id=sample_account.id, user_id=sample_user.id, ownership_percentage=60.0),
+        AccountUser(account_id=sample_account.id, user_id=other_user_id, ownership_percentage=40.0),
         GlobalSplitWeight(user_id=sample_user.id, weight=60.0),
         GlobalSplitWeight(user_id=other_user_id, weight=40.0),
     ])
@@ -141,6 +166,49 @@ def test_create_transaction_uses_global_default_weight(client, sample_account, s
     assert splits[sample_user.id]["share_amount"] == 60.0
     assert splits[sample_user.id]["source"] == "global_default"
     assert splits[other_user_id]["share_amount"] == 40.0
+
+
+def test_create_transaction_single_owner_account_skips_global_default(client, sample_account_with_user, sample_category, sample_user, db):
+    from models import GlobalSplitWeight, User
+    other_user = User(name="Other User")
+    db.add(other_user)
+    db.flush()
+    db.add_all([
+        GlobalSplitWeight(user_id=sample_user.id, weight=50.0),
+        GlobalSplitWeight(user_id=other_user.id, weight=50.0),
+    ])
+    db.commit()
+
+    response = client.post(
+        "/api/transactions",
+        json={
+            "account_id": sample_account_with_user.id,
+            "category_id": sample_category.id,
+            "date": "2026-01-15",
+            "payee": "Test",
+            "amount": 100.0,
+        },
+    )
+    assert response.status_code == 201
+    assert response.json()["splits"] == []
+
+
+def test_create_transaction_single_owner_account_manual_override_still_applies(client, sample_account_with_user, sample_category, sample_user):
+    response = client.post(
+        "/api/transactions",
+        json={
+            "account_id": sample_account_with_user.id,
+            "category_id": sample_category.id,
+            "date": "2026-01-15",
+            "payee": "Test",
+            "amount": 100.0,
+            "split_overrides": [{"user_id": sample_user.id, "share_amount": 100.0}],
+        },
+    )
+    assert response.status_code == 201
+    splits = response.json()["splits"]
+    assert len(splits) == 1
+    assert splits[0]["source"] == "manual"
 
 
 def test_create_transaction_with_manual_split_override(client, sample_account, sample_category, sample_user):
@@ -204,9 +272,14 @@ def test_update_transaction_amount_on_manual_split_requires_new_override(client,
     assert response.json()["splits"][0]["share_amount"] == 200.0
 
 
-def test_update_transaction_amount_on_auto_split_recomputes(client, sample_account, sample_category, sample_user, db):
-    from models import GlobalSplitWeight
-    db.add(GlobalSplitWeight(user_id=sample_user.id, weight=100.0))
+def test_update_transaction_amount_on_auto_split_recomputes(client, sample_account, sample_category, sample_user, sample_user2, db):
+    from models import AccountUser, GlobalSplitWeight
+    db.add_all([
+        # Joint account (more than one owner) — required for default splitting to apply.
+        AccountUser(account_id=sample_account.id, user_id=sample_user.id, ownership_percentage=50.0),
+        AccountUser(account_id=sample_account.id, user_id=sample_user2.id, ownership_percentage=50.0),
+        GlobalSplitWeight(user_id=sample_user.id, weight=100.0),
+    ])
     db.commit()
 
     create_response = client.post(
@@ -244,6 +317,16 @@ def test_split_preview_no_config_returns_422(client, sample_category):
     response = client.post(
         "/api/split-preview",
         json={"amount": 50.0, "category_id": sample_category.id},
+    )
+    assert response.status_code == 422
+
+
+def test_split_preview_single_owner_account_returns_422(client, sample_account_with_user, sample_category, sample_user):
+    client.put("/api/split-weights", json=[{"user_id": sample_user.id, "weight": 100.0}])
+
+    response = client.post(
+        "/api/split-preview",
+        json={"amount": 50.0, "category_id": sample_category.id, "account_id": sample_account_with_user.id},
     )
     assert response.status_code == 422
 

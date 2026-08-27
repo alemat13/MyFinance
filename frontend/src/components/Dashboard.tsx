@@ -35,7 +35,7 @@ export default function Dashboard({ selectedUserId }: Props) {
         ))}
       </div>
       <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-3">Recent Transactions</h2>
-      <TransactionList transactions={data.recent_transactions} />
+      <TransactionList transactions={data.recent_transactions} selectedUserId={selectedUserId} accounts={data.accounts} />
     </div>
   )
 }

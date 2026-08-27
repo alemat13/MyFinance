@@ -33,6 +33,7 @@ def resolve_split(
     category_id: int | None,
     override: list[tuple[int, float]] | None = None,
     required: bool = False,
+    account_id: int | None = None,
 ) -> list[Share]:
     """Resolve the per-user split for a transaction amount.
 
@@ -40,12 +41,24 @@ def resolve_split(
     If `required` is False and nothing is configured for tiers 2/3, returns []
     rather than raising — automatic split computation is opt-in until a
     household configures category splits or global weights.
+
+    Accounts with a single owner are never auto-split by category/global
+    defaults — only joint accounts (more than one owner) get a default split.
     """
     if override is not None:
         total = sum(amount for _, amount in override)
         if abs(total - amount) > 0.01:
             raise HTTPException(422, f"Split amounts must sum to {amount}, got {total}")
         return [Share(user_id, share_amount, "manual") for user_id, share_amount in override]
+
+    if account_id is not None:
+        owners = db.query(AccountUser.user_id).filter(
+            AccountUser.account_id == account_id, AccountUser.ownership_percentage > 0
+        ).all()
+        if len(owners) <= 1:
+            if required:
+                raise HTTPException(422, "Account has a single owner; no default split applies")
+            return []
 
     if category_id is not None:
         cat_splits = db.query(CategorySplit).filter(CategorySplit.category_id == category_id).all()
@@ -76,7 +89,10 @@ def apply_split(db: Session, transaction: Transaction, override: list[tuple[int,
             )
         return  # no-op: leave the existing manual split untouched
 
-    shares = resolve_split(db, transaction.amount, transaction.category_id, override=override, required=False)
+    shares = resolve_split(
+        db, transaction.amount, transaction.category_id,
+        override=override, required=False, account_id=transaction.account_id,
+    )
 
     db.query(TransactionSplit).filter(TransactionSplit.transaction_id == transaction.id).delete()
     for share in shares:

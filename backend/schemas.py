@@ -140,6 +140,7 @@ class TransactionSplitOut(BaseModel):
 class SplitPreviewRequest(BaseModel):
     amount: float
     category_id: int | None = None
+    account_id: int | None = None
 
 
 class UserBalanceOut(BaseModel):

@@ -44,3 +44,38 @@ test('formats amount as currency', () => {
 
   expect(screen.getByText(/\$?1,234/)).toBeInTheDocument()
 })
+
+test('shows a Shared badge with the user\'s share for a transaction on an account they do not own', () => {
+  const transactions = [
+    {
+      id: 1, date: '2026-01-15', payee: 'Shared Bill', memo: null, amount: 100, account_id: 1,
+      account_name: 'Joint Checking', currency: 'USD', category_id: 1, category_name: 'Groceries',
+      splits: [{ user_id: 2, user_name: 'Bob', share_amount: 40, source: 'manual' as const }],
+    },
+  ]
+
+  render(<TransactionList transactions={transactions} selectedUserId={2} accounts={[]} />)
+
+  expect(screen.getByText(/your share/)).toBeInTheDocument()
+  expect(screen.getByText(/40/)).toBeInTheDocument()
+})
+
+test('does not show a Shared badge for a transaction on an account the selected user owns', () => {
+  const transactions = [
+    {
+      id: 1, date: '2026-01-15', payee: 'Own Bill', memo: null, amount: 100, account_id: 1,
+      account_name: 'My Checking', currency: 'USD', category_id: 1, category_name: 'Groceries',
+      splits: [],
+    },
+  ]
+
+  render(
+    <TransactionList
+      transactions={transactions}
+      selectedUserId={2}
+      accounts={[{ id: 1, name: 'My Checking', type: 'Checking', balance: 0, currency: 'USD', created_at: '2026-01-01', users: [] }]}
+    />
+  )
+
+  expect(screen.queryByText(/Shared/)).not.toBeInTheDocument()
+})
