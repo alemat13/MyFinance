@@ -76,11 +76,15 @@ export default function App() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [selectedUserId, setSelectedUserId] = useState<number | null>(() => loadSelectedUserId())
   const [users, setUsers] = useState<User[]>([])
+  const [usersLoaded, setUsersLoaded] = useState(false)
+  const [usersLoadError, setUsersLoadError] = useState(false)
   const [needsFirstLaunchChoice, setNeedsFirstLaunchChoice] = useState(() => !hasMadeUserChoice())
   const { theme, toggleTheme } = useTheme()
 
   useEffect(() => {
-    fetchUsers().then(setUsers).catch(() => {})
+    fetchUsers()
+      .then(u => { setUsers(u); setUsersLoaded(true) })
+      .catch(() => { setUsersLoadError(true); setUsersLoaded(true) })
   }, [])
 
   const navigateToView = (v: View) => {
@@ -102,8 +106,8 @@ export default function App() {
 
   return (
     <div className="min-h-screen p-5 max-w-5xl mx-auto">
-      {needsFirstLaunchChoice && (
-        <FirstLaunchUserPrompt users={users} onChoose={handleFirstLaunchChoice} />
+      {needsFirstLaunchChoice && usersLoaded && (
+        <FirstLaunchUserPrompt users={users} loadError={usersLoadError} onChoose={handleFirstLaunchChoice} />
       )}
       <div className="flex justify-between items-center mb-5">
         <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100">MyFinance</h1>
@@ -122,7 +126,11 @@ export default function App() {
             {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
           </IconButton>
           <div className="relative z-[1001]">
-            <IconButton aria-label="Settings" onClick={() => setMenuOpen(o => !o)}>
+            <IconButton
+              aria-label="Settings"
+              onClick={() => setMenuOpen(o => !o)}
+              disabled={needsFirstLaunchChoice}
+            >
               <Settings size={18} />
             </IconButton>
             {menuOpen && (

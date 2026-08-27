@@ -61,7 +61,7 @@ def preview_import(db: Session, data: ImportPreviewRequest) -> list[ImportPrevie
 
         preview_split = []
         if category is not None:
-            shares = resolve_split(db, amount, category.id, override=None, required=False)
+            shares = resolve_split(db, amount, category.id, override=None, required=False, account_id=data.account_id)
             preview_split = [SplitPreviewShare(user_id=s.user_id, share_amount=s.share_amount, source=s.source) for s in shares]
 
         rows.append(ImportPreviewRow(

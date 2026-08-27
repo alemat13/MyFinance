@@ -53,3 +53,38 @@ def test_delete_user_404(client):
 def test_delete_user_with_ownership_409(client, sample_account_with_user, sample_user):
     response = client.delete(f"/api/users/{sample_user.id}")
     assert response.status_code == 409
+
+
+def test_delete_user_with_global_split_weight_succeeds(client, sample_user):
+    response = client.put(
+        "/api/split-weights",
+        json=[{"user_id": sample_user.id, "weight": 100.0}],
+    )
+    assert response.status_code == 200
+
+    response = client.delete(f"/api/users/{sample_user.id}")
+    assert response.status_code == 204
+
+    response = client.get("/api/users")
+    assert response.json() == []
+
+
+def test_delete_user_with_transaction_split_succeeds(client, sample_account, sample_category, sample_user):
+    response = client.post(
+        "/api/transactions",
+        json={
+            "account_id": sample_account.id,
+            "category_id": sample_category.id,
+            "date": "2026-01-15",
+            "payee": "Test",
+            "amount": 100.0,
+            "split_overrides": [{"user_id": sample_user.id, "share_amount": 100.0}],
+        },
+    )
+    assert response.status_code == 201
+
+    response = client.delete(f"/api/users/{sample_user.id}")
+    assert response.status_code == 204
+
+    response = client.get("/api/users")
+    assert response.json() == []
