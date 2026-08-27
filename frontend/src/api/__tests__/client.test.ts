@@ -331,7 +331,7 @@ test('fetchSplitPreview makes POST request', async () => {
     'http://localhost:8000/api/split-preview',
     expect.objectContaining({
       method: 'POST',
-      body: JSON.stringify({ amount: 100, category_id: 5 }),
+      body: JSON.stringify({ amount: 100, category_id: 5, account_id: null }),
     }),
   )
 })
