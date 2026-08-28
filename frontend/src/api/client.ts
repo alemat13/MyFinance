@@ -212,6 +212,21 @@ export interface ImportCommitResponse {
   transaction_ids: number[]
 }
 
+export type BackupImportMode = 'overwrite' | 'append'
+
+export interface ImportSummary {
+  mode: BackupImportMode
+  users: number
+  accounts: number
+  categories: number
+  account_users: number
+  category_splits: number
+  global_split_weights: number
+  transactions: number
+  transaction_splits: number
+  transaction_history: number
+}
+
 export interface TransactionHistoryEntry {
   id: number
   transaction_id: number
@@ -352,4 +367,18 @@ export function previewImport(data: ImportPreviewRequest): Promise<ImportPreview
 export function commitImport(rows: TransactionCreate[], actorUserId?: number | null): Promise<ImportCommitResponse> {
   const params = actorUserId ? `?actor_user_id=${actorUserId}` : ''
   return request<ImportCommitResponse>(`/import/commit${params}`, { method: 'POST', body: JSON.stringify({ rows }) })
+}
+
+export async function exportDatabase(): Promise<Blob> {
+  const res = await fetch(`${API_BASE}/backup/export`)
+  if (!res.ok) throw new Error(await res.text() || `API error: ${res.status}`)
+  return res.blob()
+}
+
+export async function importDatabase(file: File, mode: BackupImportMode): Promise<ImportSummary> {
+  const formData = new FormData()
+  formData.append('file', file)
+  const res = await fetch(`${API_BASE}/backup/import?mode=${mode}`, { method: 'POST', body: formData })
+  if (!res.ok) throw new Error(await res.text() || `API error: ${res.status}`)
+  return res.json()
 }

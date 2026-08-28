@@ -1,8 +1,10 @@
 import os
 import sys
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
+from typing import Literal
 
-from fastapi import FastAPI, Depends, HTTPException, Query
+from fastapi import FastAPI, Depends, HTTPException, Query, UploadFile, File, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
@@ -27,8 +29,10 @@ from schemas import (
     GlobalSplitWeightOut, GlobalSplitWeightUpdateItem,
     SplitPreviewRequest, UserBalanceOut,
     ImportPreviewRequest, ImportPreviewRow, ImportCommitRequest, ImportCommitResponse,
+    ImportSummary,
 )
 import split_engine
+import backup
 from filtering import build_where_clause
 from import_csv import preview_import
 from audit import record_transaction_history, TRACKED_FIELDS, _jsonify
@@ -599,6 +603,33 @@ def import_commit(data: ImportCommitRequest, actor_user_id: int | None = Query(N
 
     db.commit()
     return ImportCommitResponse(created_count=len(transaction_ids), transaction_ids=transaction_ids)
+
+
+# ── Full database backup (export/import) ─────────────────────────
+
+@app.get("/api/backup/export")
+def export_backup(db: Session = Depends(get_db)):
+    zip_bytes = backup.export_to_zip_bytes(db)
+    filename = f"myfinance-backup-{datetime.now(timezone.utc):%Y%m%d-%H%M%S}.zip"
+    return Response(
+        content=zip_bytes,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.post("/api/backup/import", response_model=ImportSummary)
+async def import_backup(
+    mode: Literal["overwrite", "append"] = Query("overwrite"),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    contents = await file.read()
+    try:
+        data = backup.parse_zip_bytes(contents)
+        return backup.import_database(db, data, mode)
+    except backup.BackupFormatError as exc:
+        raise HTTPException(422, str(exc))
 
 
 # ── Dashboard ─────────────────────────────────────────────────────

@@ -38,6 +38,9 @@ vi.mock('../components/SplitWeightsSettings', () => ({
 vi.mock('../components/CsvImportPage', () => ({
   default: () => <div>CsvImportPageStub</div>,
 }))
+vi.mock('../components/BackupPage', () => ({
+  default: () => <div>BackupPageStub</div>,
+}))
 
 function renderApp() {
   return render(

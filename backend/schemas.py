@@ -317,3 +317,126 @@ class ImportCommitRequest(BaseModel):
 class ImportCommitResponse(BaseModel):
     created_count: int
     transaction_ids: list[int]
+
+
+# ── Full database backup (export/import) ─────────────────────────
+# Raw-column schemas: unlike the *Out schemas above, these mirror each
+# model's own columns exactly (ids and FK ids included, no joins), so a
+# round-trip preserves the database precisely.
+
+class UserExport(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    email: str | None = None
+    created_at: datetime
+
+
+class AccountExport(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    type: str
+    balance: float
+    currency: str
+    created_at: datetime
+
+
+class CategoryExport(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    type: str
+
+
+class AccountUserExport(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    account_id: int
+    user_id: int
+    ownership_percentage: float
+
+
+class CategorySplitExport(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    category_id: int
+    user_id: int
+    split_percentage: float
+
+
+class GlobalSplitWeightExport(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    user_id: int
+    weight: float
+
+
+class TransactionExport(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    date: _DateType
+    payee: str
+    memo: str | None = None
+    amount: float
+    account_id: int
+    category_id: int
+    created_at: datetime
+
+
+class TransactionSplitExport(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    transaction_id: int
+    user_id: int
+    share_amount: float
+    source: str
+
+
+class TransactionHistoryExport(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    transaction_id: int
+    action: str
+    source: str | None = None
+    changed_at: datetime
+    changed_by_user_id: int | None = None
+    date: _DateType | None = None
+    payee: str | None = None
+    memo: str | None = None
+    amount: float | None = None
+    account_id: int | None = None
+    category_id: int | None = None
+    changes: dict | None = None
+
+
+class DatabaseExport(BaseModel):
+    schema_version: int
+    exported_at: datetime
+    users: list[UserExport] = []
+    accounts: list[AccountExport] = []
+    categories: list[CategoryExport] = []
+    account_users: list[AccountUserExport] = []
+    category_splits: list[CategorySplitExport] = []
+    global_split_weights: list[GlobalSplitWeightExport] = []
+    transactions: list[TransactionExport] = []
+    transaction_splits: list[TransactionSplitExport] = []
+    transaction_history: list[TransactionHistoryExport] = []
+
+
+class ImportSummary(BaseModel):
+    mode: Literal["overwrite", "append"]
+    users: int
+    accounts: int
+    categories: int
+    account_users: int
+    category_splits: int
+    global_split_weights: int
+    transactions: int
+    transaction_splits: int
+    transaction_history: int
