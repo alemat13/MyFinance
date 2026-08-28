@@ -12,14 +12,14 @@ from sqlalchemy.exc import IntegrityError
 from database import get_db, engine, Base
 from models import (
     Account, Category, Transaction, User, AccountUser,
-    CategorySplit, GlobalSplitWeight, TransactionSplit,
+    CategorySplit, GlobalSplitWeight, TransactionSplit, TransactionHistory,
 )
 from schemas import (
     AccountOut, AccountCreate, AccountUpdate,
     CategoryOut, CategoryCreate, CategoryUpdate,
     CategorySplitOut, CategorySplitCreate,
     TransactionOut, TransactionCreate, TransactionUpdate,
-    TransactionSplitOut,
+    TransactionSplitOut, TransactionHistoryOut,
     TransactionSearchRequest, TransactionSearchResponse,
     DashboardResponse,
     UserOut, UserCreate, UserUpdate,
@@ -31,6 +31,7 @@ from schemas import (
 import split_engine
 from filtering import build_where_clause
 from import_csv import preview_import
+from audit import record_transaction_history, TRACKED_FIELDS, _jsonify
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -445,7 +446,7 @@ def search_transactions(req: TransactionSearchRequest, db: Session = Depends(get
 
 
 @app.post("/api/transactions", response_model=TransactionOut, status_code=201)
-def create_transaction(data: TransactionCreate, db: Session = Depends(get_db)):
+def create_transaction(data: TransactionCreate, actor_user_id: int | None = Query(None), db: Session = Depends(get_db)):
     override = (
         [(s.user_id, s.share_amount) for s in data.split_overrides]
         if data.split_overrides is not None else None
@@ -457,36 +458,68 @@ def create_transaction(data: TransactionCreate, db: Session = Depends(get_db)):
     db.add(transaction)
     db.flush()
     split_engine.apply_split(db, transaction, override=override)
+    record_transaction_history(db, transaction, "created", actor_user_id, source="manual")
     db.commit()
     return _transaction_out(db, transaction.id)
 
 
 @app.put("/api/transactions/{transaction_id}", response_model=TransactionOut)
-def update_transaction(transaction_id: int, data: TransactionUpdate, db: Session = Depends(get_db)):
+def update_transaction(transaction_id: int, data: TransactionUpdate, actor_user_id: int | None = Query(None), db: Session = Depends(get_db)):
     transaction = db.query(Transaction).filter(Transaction.id == transaction_id).first()
     if not transaction:
         raise HTTPException(404, "Transaction not found")
     update_data = data.model_dump(exclude_unset=True)
     update_data.pop("split_overrides", None)
     amount_changed = "amount" in update_data and update_data["amount"] != transaction.amount
+
+    old_values = {f: getattr(transaction, f) for f in update_data if f in TRACKED_FIELDS}
     for field, value in update_data.items():
         setattr(transaction, field, value)
+    changes = {
+        f: {"old": _jsonify(old), "new": _jsonify(getattr(transaction, f))}
+        for f, old in old_values.items() if old != getattr(transaction, f)
+    }
+
     override = (
         [(s.user_id, s.share_amount) for s in data.split_overrides]
         if data.split_overrides is not None else None
     )
     split_engine.apply_split(db, transaction, override=override, amount_changed=amount_changed)
+    if changes:
+        record_transaction_history(db, transaction, "updated", actor_user_id, changes=changes)
     db.commit()
     return _transaction_out(db, transaction.id)
 
 
 @app.delete("/api/transactions/{transaction_id}", status_code=204)
-def delete_transaction(transaction_id: int, db: Session = Depends(get_db)):
+def delete_transaction(transaction_id: int, actor_user_id: int | None = Query(None), db: Session = Depends(get_db)):
     transaction = db.query(Transaction).filter(Transaction.id == transaction_id).first()
     if not transaction:
         raise HTTPException(404, "Transaction not found")
+    record_transaction_history(db, transaction, "deleted", actor_user_id)
     db.delete(transaction)
     db.commit()
+
+
+@app.get("/api/transactions/{transaction_id}/history", response_model=list[TransactionHistoryOut])
+def get_transaction_history(transaction_id: int, db: Session = Depends(get_db)):
+    rows = (
+        db.query(TransactionHistory)
+        .filter(TransactionHistory.transaction_id == transaction_id)
+        .order_by(TransactionHistory.changed_at.asc())
+        .all()
+    )
+    users_by_id = {u.id: u.name for u in db.query(User).all()}
+    return [
+        TransactionHistoryOut(
+            id=r.id, transaction_id=r.transaction_id, action=r.action, source=r.source,
+            changed_at=r.changed_at, changed_by_user_id=r.changed_by_user_id,
+            changed_by_user_name=users_by_id.get(r.changed_by_user_id),
+            date=r.date, payee=r.payee, memo=r.memo, amount=r.amount,
+            account_id=r.account_id, category_id=r.category_id, changes=r.changes,
+        )
+        for r in rows
+    ]
 
 
 # ── Split weights, preview, balances ─────────────────────────────
@@ -544,7 +577,7 @@ def import_preview(data: ImportPreviewRequest, db: Session = Depends(get_db)):
 
 
 @app.post("/api/import/commit", response_model=ImportCommitResponse)
-def import_commit(data: ImportCommitRequest, db: Session = Depends(get_db)):
+def import_commit(data: ImportCommitRequest, actor_user_id: int | None = Query(None), db: Session = Depends(get_db)):
     if any(row.category_id is None for row in data.rows):
         raise HTTPException(422, "All rows must have a category_id before committing")
 
@@ -561,6 +594,7 @@ def import_commit(data: ImportCommitRequest, db: Session = Depends(get_db)):
         db.add(transaction)
         db.flush()
         split_engine.apply_split(db, transaction, override=override)
+        record_transaction_history(db, transaction, "created", actor_user_id, source="csv_import")
         transaction_ids.append(transaction.id)
 
     db.commit()

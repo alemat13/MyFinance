@@ -30,8 +30,8 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-async function goToSetup() {
-  render(<CsvImportPage onBack={() => {}} />)
+async function goToSetup(selectedUserId: number | null = null) {
+  render(<CsvImportPage onBack={() => {}} selectedUserId={selectedUserId} />)
   await waitFor(() => {
     expect(screen.getByPlaceholderText(/Paste CSV text/)).toBeInTheDocument()
   })
@@ -96,7 +96,7 @@ test('commits active rows and shows a success message with a way back', async ()
   mockCommitImport.mockResolvedValue({ created_count: 1, transaction_ids: [5] })
   const onBack = vi.fn()
 
-  render(<CsvImportPage onBack={onBack} />)
+  render(<CsvImportPage onBack={onBack} selectedUserId={42} />)
   await waitFor(() => {
     expect(screen.getByPlaceholderText(/Paste CSV text/)).toBeInTheDocument()
   })
@@ -117,7 +117,7 @@ test('commits active rows and shows a success message with a way back', async ()
   await waitFor(() => {
     expect(mockCommitImport).toHaveBeenCalledWith([
       { date: '2026-01-15', payee: 'Whole Foods', memo: null, amount: -42.5, account_id: 1, category_id: 1 },
-    ])
+    ], 42)
     expect(screen.getByText(/Imported 1 transaction/)).toBeInTheDocument()
   })
   expect(onBack).not.toHaveBeenCalled()
