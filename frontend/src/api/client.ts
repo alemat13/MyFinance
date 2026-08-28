@@ -289,14 +289,36 @@ export interface TransactionHistoryEntry {
 
 const API_BASE = import.meta.env.VITE_API_URL ?? `http://${window.location.hostname}:8000/api`
 
+async function parseErrorMessage(res: Response): Promise<string> {
+  const text = await res.text()
+  if (!text) return `API error: ${res.status}`
+  try {
+    const body = JSON.parse(text)
+    const detail = body?.detail
+    if (typeof detail === 'string') return detail
+    if (Array.isArray(detail)) {
+      return detail
+        .map((e: any) => {
+          const loc = Array.isArray(e?.loc)
+            ? e.loc.filter((p: unknown) => p !== 'body' && p !== 'query' && p !== 'path').join('.')
+            : 'value'
+          return `${loc}: ${e?.msg ?? 'Invalid value'}`
+        })
+        .join('; ')
+    }
+  } catch {
+    // not JSON — fall through to raw text
+  }
+  return text
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     headers: { 'Content-Type': 'application/json' },
     ...options,
   })
   if (!res.ok) {
-    const body = await res.text()
-    throw new Error(body || `API error: ${res.status}`)
+    throw new Error(await parseErrorMessage(res))
   }
   if (res.status === 204) return undefined as T
   return res.json()
@@ -413,7 +435,7 @@ export async function detectImport(file: File): Promise<ImportDetectResponse> {
   const formData = new FormData()
   formData.append('file', file)
   const res = await fetch(`${API_BASE}/import/detect`, { method: 'POST', body: formData })
-  if (!res.ok) throw new Error(await res.text() || `API error: ${res.status}`)
+  if (!res.ok) throw new Error(await parseErrorMessage(res))
   return res.json()
 }
 
@@ -424,7 +446,7 @@ export async function previewImport(file: File, data: ImportPreviewRequest): Pro
     if (value !== null && value !== undefined) formData.append(key, String(value))
   }
   const res = await fetch(`${API_BASE}/import/preview`, { method: 'POST', body: formData })
-  if (!res.ok) throw new Error(await res.text() || `API error: ${res.status}`)
+  if (!res.ok) throw new Error(await parseErrorMessage(res))
   return res.json()
 }
 
@@ -435,7 +457,7 @@ export function commitImport(rows: TransactionCreate[], actorUserId?: number | n
 
 export async function exportDatabase(): Promise<Blob> {
   const res = await fetch(`${API_BASE}/backup/export`)
-  if (!res.ok) throw new Error(await res.text() || `API error: ${res.status}`)
+  if (!res.ok) throw new Error(await parseErrorMessage(res))
   return res.blob()
 }
 
@@ -443,6 +465,6 @@ export async function importDatabase(file: File, mode: BackupImportMode): Promis
   const formData = new FormData()
   formData.append('file', file)
   const res = await fetch(`${API_BASE}/backup/import?mode=${mode}`, { method: 'POST', body: formData })
-  if (!res.ok) throw new Error(await res.text() || `API error: ${res.status}`)
+  if (!res.ok) throw new Error(await parseErrorMessage(res))
   return res.json()
 }

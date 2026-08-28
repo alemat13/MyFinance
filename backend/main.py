@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from typing import Literal
 
 from fastapi import FastAPI, Depends, HTTPException, Query, UploadFile, File, Form, Response
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
@@ -75,6 +76,21 @@ def _handle_integrity_error(request, exc):
     else:
         detail = "Data integrity error"
     return JSONResponse(status_code=409, content={"detail": detail})
+
+
+@app.exception_handler(RequestValidationError)
+def _handle_validation_error(request, exc):
+    parts = []
+    for err in exc.errors():
+        loc = err.get("loc", ())
+        field_loc = loc[1:] if loc and loc[0] in ("body", "query", "path") else loc
+        field = ".".join(str(p) for p in field_loc) if field_loc else "value"
+        msg = err.get("msg", "Invalid value")
+        if msg.startswith("Value error, "):
+            msg = msg[len("Value error, "):]
+        parts.append(f"{field}: {msg}")
+    detail = "; ".join(parts) if parts else "Invalid request"
+    return JSONResponse(status_code=422, content={"detail": detail})
 
 
 # ── Helpers ────────────────────────────────────────────────────────
