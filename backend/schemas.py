@@ -263,6 +263,34 @@ class DashboardResponse(BaseModel):
     balances: List[UserBalanceOut] = []
 
 
+class CategoryChartItem(BaseModel):
+    category_id: int
+    category_name: str
+    category_type: Literal["Income", "Expense"]
+    amount: float
+    currency: str
+
+
+class MonthChartItem(BaseModel):
+    month: str
+    income: float
+    expense: float
+    currency: str
+
+
+class NetMonthChartItem(BaseModel):
+    month: str
+    net: float
+    currency: str
+
+
+class ChartsResponse(BaseModel):
+    currencies: List[str]
+    by_category: List[CategoryChartItem]
+    by_month: List[MonthChartItem]
+    net_by_month: List[NetMonthChartItem]
+
+
 class TransactionHistoryOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
