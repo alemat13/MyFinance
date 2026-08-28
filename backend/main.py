@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Literal
 
-from fastapi import FastAPI, Depends, HTTPException, Query, UploadFile, File, Response
+from fastapi import FastAPI, Depends, HTTPException, Query, UploadFile, File, Form, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
@@ -24,18 +24,21 @@ from schemas import (
     TransactionSplitOut, TransactionHistoryOut,
     TransactionSearchRequest, TransactionSearchResponse,
     DashboardResponse,
+    CategoryChartItem, MonthChartItem, NetMonthChartItem, ChartsResponse,
     UserOut, UserCreate, UserUpdate,
     AccountUserOut, AccountUserCreate,
     GlobalSplitWeightOut, GlobalSplitWeightUpdateItem,
     SplitPreviewRequest, UserBalanceOut,
-    ImportPreviewRequest, ImportPreviewRow, ImportCommitRequest, ImportCommitResponse,
+    ImportDetectResponse, ImportPreviewRequest, ImportPreviewRow, ImportCommitRequest, ImportCommitResponse,
     ImportSummary,
 )
 import split_engine
+import charts
 import backup
 from filtering import build_where_clause
-from import_csv import preview_import
+from import_csv import detect_import_settings, preview_import
 from audit import record_transaction_history, TRACKED_FIELDS, _jsonify
+from accounting_month import compute_accounting_month
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -140,6 +143,8 @@ def _transaction_out(db: Session, transaction_id: int) -> TransactionOut:
         currency=currency,
         category_id=t.category_id,
         category_name=category_name,
+        accounting_month_offset=t.accounting_month_offset,
+        accounting_month=compute_accounting_month(t.date, t.accounting_month_offset),
         splits=_splits_out(t),
     )
 
@@ -371,7 +376,10 @@ def get_transactions(user_id: int | None = Query(None), db: Session = Depends(ge
             id=t.id, date=t.date, payee=t.payee, memo=t.memo,
             amount=t.amount, account_id=t.account_id,
             account_name=account_name, currency=currency, category_id=t.category_id,
-            category_name=category_name, splits=_splits_out(t),
+            category_name=category_name,
+            accounting_month_offset=t.accounting_month_offset,
+            accounting_month=compute_accounting_month(t.date, t.accounting_month_offset),
+            splits=_splits_out(t),
         )
         for t, account_name, currency, category_name in results
     ]
@@ -439,7 +447,10 @@ def search_transactions(req: TransactionSearchRequest, db: Session = Depends(get
             id=t.id, date=t.date, payee=t.payee, memo=t.memo,
             amount=t.amount, account_id=t.account_id,
             account_name=account_name, currency=currency, category_id=t.category_id,
-            category_name=category_name, splits=_splits_out(t),
+            category_name=category_name,
+            accounting_month_offset=t.accounting_month_offset,
+            accounting_month=compute_accounting_month(t.date, t.accounting_month_offset),
+            splits=_splits_out(t),
         )
         for t, account_name, currency, category_name in results
     ]
@@ -458,6 +469,7 @@ def create_transaction(data: TransactionCreate, actor_user_id: int | None = Quer
     transaction = Transaction(
         date=data.date, payee=data.payee, memo=data.memo, amount=data.amount,
         account_id=data.account_id, category_id=data.category_id,
+        accounting_month_offset=data.accounting_month_offset,
     )
     db.add(transaction)
     db.flush()
@@ -572,10 +584,36 @@ def get_balances(db: Session = Depends(get_db)):
 
 # ── CSV import ────────────────────────────────────────────────────
 
+@app.post("/api/import/detect", response_model=ImportDetectResponse)
+async def import_detect(file: UploadFile = File(...)):
+    contents = await file.read()
+    return detect_import_settings(contents)
+
+
 @app.post("/api/import/preview", response_model=list[ImportPreviewRow])
-def import_preview(data: ImportPreviewRequest, db: Session = Depends(get_db)):
+async def import_preview(
+    file: UploadFile = File(...),
+    account_id: int = Form(...),
+    encoding: str = Form(...),
+    delimiter: str = Form(...),
+    date_format: str = Form(...),
+    decimal_separator: str = Form(...),
+    date_col: str = Form(...),
+    payee_col: str = Form(...),
+    amount_col: str = Form(...),
+    memo_col: str | None = Form(None),
+    category_col: str | None = Form(None),
+    db: Session = Depends(get_db),
+):
+    contents = await file.read()
+    data = ImportPreviewRequest(
+        account_id=account_id, encoding=encoding, delimiter=delimiter,
+        date_format=date_format, decimal_separator=decimal_separator,
+        date_col=date_col, payee_col=payee_col, amount_col=amount_col,
+        memo_col=memo_col, category_col=category_col,
+    )
     try:
-        return preview_import(db, data)
+        return preview_import(db, contents, data)
     except ValueError as exc:
         raise HTTPException(422, str(exc))
 
@@ -594,6 +632,7 @@ def import_commit(data: ImportCommitRequest, actor_user_id: int | None = Query(N
         transaction = Transaction(
             date=row.date, payee=row.payee, memo=row.memo, amount=row.amount,
             account_id=row.account_id, category_id=row.category_id,
+            accounting_month_offset=row.accounting_month_offset,
         )
         db.add(transaction)
         db.flush()
@@ -658,7 +697,10 @@ def get_dashboard(user_id: int | None = Query(None), db: Session = Depends(get_d
             id=t.id, date=t.date, payee=t.payee, memo=t.memo,
             amount=t.amount, account_id=t.account_id,
             account_name=account_name, currency=currency, category_id=t.category_id,
-            category_name=category_name, splits=_splits_out(t),
+            category_name=category_name,
+            accounting_month_offset=t.accounting_month_offset,
+            accounting_month=compute_accounting_month(t.date, t.accounting_month_offset),
+            splits=_splits_out(t),
         )
         for t, account_name, currency, category_name in recent_results
     ]
@@ -672,4 +714,34 @@ def get_dashboard(user_id: int | None = Query(None), db: Session = Depends(get_d
         accounts=[_account_out(a) for a in accounts],
         recent_transactions=recent_transactions,
         balances=balances,
+    )
+
+
+# ── Charts ────────────────────────────────────────────────────────
+
+@app.get("/api/charts", response_model=ChartsResponse)
+def get_charts(
+    user_id: int = Query(...),
+    currency: str | None = Query(None),
+    db: Session = Depends(get_db),
+):
+    by_category, by_month, net_by_month = charts.compute_chart_data(db, user_id, currency)
+    currencies = sorted({c.currency for c in by_category} | {m.currency for m in by_month})
+    return ChartsResponse(
+        currencies=currencies,
+        by_category=[
+            CategoryChartItem(
+                category_id=c.category_id, category_name=c.category_name,
+                category_type=c.category_type, amount=c.amount, currency=c.currency,
+            )
+            for c in by_category
+        ],
+        by_month=[
+            MonthChartItem(month=m.month, income=m.income, expense=round(abs(m.expense), 2), currency=m.currency)
+            for m in by_month
+        ],
+        net_by_month=[
+            NetMonthChartItem(month=n.month, net=n.net, currency=n.currency)
+            for n in net_by_month
+        ],
     )

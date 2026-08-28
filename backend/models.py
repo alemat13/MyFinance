@@ -41,6 +41,9 @@ class Transaction(Base):
     amount = Column(Float, nullable=False)
     account_id = Column(Integer, ForeignKey("accounts.id"))
     category_id = Column(Integer, ForeignKey("categories.id"))
+    # Months relative to `date` this transaction should be accounted in, e.g.
+    # -1 = the month before date's month. 0 (default) = same month as date.
+    accounting_month_offset = Column(Integer, nullable=False, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     account = relationship("Account", back_populates="transactions")
@@ -126,6 +129,7 @@ class TransactionHistory(Base):
     amount = Column(Float, nullable=True)
     account_id = Column(Integer, nullable=True)
     category_id = Column(Integer, nullable=True)
+    accounting_month_offset = Column(Integer, nullable=True)
 
     # For 'updated' rows only: {field: {"old": ..., "new": ...}} for fields that actually changed.
     changes = Column(JSON, nullable=True)

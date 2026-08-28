@@ -12,7 +12,7 @@ import { useToast } from '../context/ToastContext'
 import { Button, Input, Select, Table, Thead, Tbody, Tr, Th, Td, StatusMessage, ConfirmDialog, Badge } from './ui'
 import { formatMoney } from '../utils/currency'
 import { getParam, patchQueryParams } from '../utils/urlState'
-import { sharedShareFor } from '../utils/transactions'
+import { sharedShareFor, formatDateGroupHeader } from '../utils/transactions'
 
 interface Props {
   onBack: () => void
@@ -128,6 +128,18 @@ const emptyForm: TransactionCreate = {
   amount: 0,
   account_id: 0,
   category_id: 0,
+  accounting_month_offset: 0,
+}
+
+const ACCOUNTING_MONTH_OFFSETS = [-3, -2, -1, 0, 1, 2, 3] as const
+
+// Human-readable label for an accounting-month offset relative to a form's date field,
+// e.g. "April" for 0, "May (+1)" for +1 — recomputed live as the date field changes.
+function accountingMonthLabel(dateStr: string, offset: number): string {
+  const base = dateStr ? new Date(`${dateStr}T00:00:00`) : new Date()
+  const target = new Date(base.getFullYear(), base.getMonth() + offset, 1)
+  const name = target.toLocaleString('default', { month: 'long' })
+  return offset === 0 ? name : `${name} (${offset > 0 ? '+' : ''}${offset})`
 }
 
 export default function TransactionsPage({ onBack, selectedUserId }: Props) {
@@ -341,6 +353,7 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
       amount: t.amount,
       account_id: t.account_id,
       category_id: t.category_id,
+      accounting_month_offset: t.accounting_month_offset,
     })
     const isManual = t.splits.length > 0 && t.splits.every(s => s.source === 'manual')
     setEditSplit(isManual ? t.splits.map(s => ({ user_id: s.user_id, value: s.share_amount })) : null)
@@ -467,6 +480,7 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
     accounts.find(a => a.id === accountId)?.currency ?? 'EUR'
 
   const hasMemo = transactions.some(t => t.memo !== null)
+  const groupByDate = sortBy === 'date'
 
   const acctOptions = accounts.map(a => ({ value: a.id, label: a.name }))
   const catOptions = categories.map(c => ({ value: c.id, label: `${c.name} (${c.type})` }))
@@ -568,6 +582,15 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
         <div className="p-3 mb-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60">
           <div className="flex gap-2 flex-wrap items-end">
             <Input type="date" value={newData.date} onChange={e => setNewData({ ...newData, date: e.target.value })} />
+            <Select
+              value={newData.accounting_month_offset ?? 0}
+              onChange={e => setNewData({ ...newData, accounting_month_offset: parseInt(e.target.value) })}
+              className="min-w-[160px]"
+            >
+              {ACCOUNTING_MONTH_OFFSETS.map(o => (
+                <option key={o} value={o}>{accountingMonthLabel(newData.date, o)}</option>
+              ))}
+            </Select>
             <Input placeholder="Payee" value={newData.payee} onChange={e => setNewData({ ...newData, payee: e.target.value })} />
             <Input placeholder="Memo" value={newData.memo ?? ''} onChange={e => setNewData({ ...newData, memo: e.target.value || null })} />
             <Input placeholder="Amount" type="number" step="0.01" value={newData.amount} onChange={e => setNewData({ ...newData, amount: parseFloat(e.target.value) || 0 })} className="w-[110px]" />
@@ -593,6 +616,7 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
           <Thead>
             <Tr>
               <Th>Date</Th>
+              <Th>Accounting Month</Th>
               <Th>Payee</Th>
               <Th>Category</Th>
               <Th>Account</Th>
@@ -604,14 +628,34 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
           </Thead>
           <Tbody>
             {transactions.length === 0 && (
-              <Tr><Td colSpan={hasMemo ? 8 : 7} className="text-center py-5 text-slate-400">No transactions match your filters</Td></Tr>
+              <Tr><Td colSpan={hasMemo ? 9 : 8} className="text-center py-5 text-slate-400">No transactions match your filters</Td></Tr>
             )}
-            {transactions.map(t => (
+            {transactions.map((t, idx) => {
+              const showDateHeader = groupByDate && (idx === 0 || transactions[idx - 1].date !== t.date)
+              return (
               <Fragment key={t.id}>
+              {showDateHeader && (
+                <Tr className="hover:bg-transparent bg-slate-100 dark:bg-slate-800/70">
+                  <Td colSpan={hasMemo ? 9 : 8} className="py-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                    {formatDateGroupHeader(t.date)}
+                  </Td>
+                </Tr>
+              )}
               <Tr>
                 {editingId === t.id ? (
                   <>
                     <Td><Input type="date" value={editData.date ?? ''} onChange={e => setEditData({ ...editData, date: e.target.value })} /></Td>
+                    <Td>
+                      <Select
+                        value={editData.accounting_month_offset ?? 0}
+                        onChange={e => setEditData({ ...editData, accounting_month_offset: parseInt(e.target.value) })}
+                        className="min-w-[160px]"
+                      >
+                        {ACCOUNTING_MONTH_OFFSETS.map(o => (
+                          <option key={o} value={o}>{accountingMonthLabel(editData.date ?? '', o)}</option>
+                        ))}
+                      </Select>
+                    </Td>
                     <Td><Input value={editData.payee ?? ''} onChange={e => setEditData({ ...editData, payee: e.target.value })} /></Td>
                     <Td>
                       <Select value={editData.category_id ?? 0} onChange={e => setEditData({ ...editData, category_id: parseInt(e.target.value) || 0 })} className="min-w-[140px]">
@@ -642,6 +686,7 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
                 ) : (
                   <>
                     <Td>{t.date}</Td>
+                    <Td>{t.accounting_month}</Td>
                     <Td>{t.payee}</Td>
                     <Td>{t.category_name}</Td>
                     <Td>{t.account_name}</Td>
@@ -665,7 +710,7 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
               </Tr>
               {expandedHistoryId === t.id && (
                 <Tr>
-                  <Td colSpan={hasMemo ? 8 : 7} className="bg-slate-50 dark:bg-slate-800/40">
+                  <Td colSpan={hasMemo ? 9 : 8} className="bg-slate-50 dark:bg-slate-800/40">
                     {historyLoading && <StatusMessage loading />}
                     {historyError && <StatusMessage error={historyError} />}
                     {!historyLoading && !historyError && historyEntries.length === 0 && (
@@ -691,7 +736,8 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
                 </Tr>
               )}
               </Fragment>
-            ))}
+              )
+            })}
           </Tbody>
         </Table>
       )}

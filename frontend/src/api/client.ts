@@ -101,6 +101,8 @@ export interface Transaction {
   currency: string
   category_id: number
   category_name: string
+  accounting_month_offset: number
+  accounting_month: string
   splits: TransactionSplit[]
 }
 
@@ -111,6 +113,7 @@ export interface TransactionCreate {
   amount: number
   account_id: number
   category_id: number
+  accounting_month_offset?: number
   split_overrides?: SplitShareCreate[] | null
 }
 
@@ -121,6 +124,7 @@ export interface TransactionUpdate {
   amount?: number
   account_id?: number
   category_id?: number
+  accounting_month_offset?: number
   split_overrides?: SplitShareCreate[] | null
 }
 
@@ -181,16 +185,55 @@ export interface DashboardData {
   balances: UserBalance[]
 }
 
+export interface ImportDetectResponse {
+  headers: string[]
+  encoding: string
+  delimiter: string
+  date_format: string | null
+  decimal_separator: string
+  column_mapping: Record<'date' | 'payee' | 'amount' | 'memo' | 'category', string | null>
+  sample_rows: Record<string, string>[]
+}
+
+export interface CategoryChartItem {
+  category_id: number
+  category_name: string
+  category_type: 'Income' | 'Expense'
+  amount: number
+  currency: string
+}
+
+export interface MonthChartItem {
+  month: string
+  income: number
+  expense: number
+  currency: string
+}
+
+export interface NetMonthChartItem {
+  month: string
+  net: number
+  currency: string
+}
+
+export interface ChartsData {
+  currencies: string[]
+  by_category: CategoryChartItem[]
+  by_month: MonthChartItem[]
+  net_by_month: NetMonthChartItem[]
+}
+
 export interface ImportPreviewRequest {
-  csv_text: string
   account_id: number
+  encoding: string
+  delimiter: string
+  date_format: string
+  decimal_separator: string
   date_col: string
   payee_col: string
   amount_col: string
   memo_col?: string | null
   category_col?: string | null
-  has_header?: boolean
-  date_format?: string | null
 }
 
 export interface ImportPreviewRow {
@@ -341,6 +384,12 @@ export function fetchDashboard(userId?: number): Promise<DashboardData> {
   return request<DashboardData>(`/dashboard${params}`)
 }
 
+export function fetchCharts(userId: number, currency?: string): Promise<ChartsData> {
+  const params = new URLSearchParams({ user_id: String(userId) })
+  if (currency) params.set('currency', currency)
+  return request<ChartsData>(`/charts?${params.toString()}`)
+}
+
 export function fetchSplitWeights(): Promise<GlobalSplitWeight[]> {
   return request<GlobalSplitWeight[]>("/split-weights")
 }
@@ -360,8 +409,23 @@ export function fetchBalances(): Promise<UserBalance[]> {
   return request<UserBalance[]>("/balances")
 }
 
-export function previewImport(data: ImportPreviewRequest): Promise<ImportPreviewRow[]> {
-  return request<ImportPreviewRow[]>("/import/preview", { method: 'POST', body: JSON.stringify(data) })
+export async function detectImport(file: File): Promise<ImportDetectResponse> {
+  const formData = new FormData()
+  formData.append('file', file)
+  const res = await fetch(`${API_BASE}/import/detect`, { method: 'POST', body: formData })
+  if (!res.ok) throw new Error(await res.text() || `API error: ${res.status}`)
+  return res.json()
+}
+
+export async function previewImport(file: File, data: ImportPreviewRequest): Promise<ImportPreviewRow[]> {
+  const formData = new FormData()
+  formData.append('file', file)
+  for (const [key, value] of Object.entries(data)) {
+    if (value !== null && value !== undefined) formData.append(key, String(value))
+  }
+  const res = await fetch(`${API_BASE}/import/preview`, { method: 'POST', body: formData })
+  if (!res.ok) throw new Error(await res.text() || `API error: ${res.status}`)
+  return res.json()
 }
 
 export function commitImport(rows: TransactionCreate[], actorUserId?: number | null): Promise<ImportCommitResponse> {

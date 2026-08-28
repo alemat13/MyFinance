@@ -2,7 +2,7 @@ from datetime import date as date_type
 
 from models import Transaction, TransactionHistory
 
-TRACKED_FIELDS = ("date", "payee", "memo", "amount", "account_id", "category_id")
+TRACKED_FIELDS = ("date", "payee", "memo", "amount", "account_id", "category_id", "accounting_month_offset")
 
 
 def _jsonify(value):
@@ -24,5 +24,6 @@ def record_transaction_history(db, transaction: Transaction, action: str,
         amount=transaction.amount,
         account_id=transaction.account_id,
         category_id=transaction.category_id,
+        accounting_month_offset=transaction.accounting_month_offset,
         changes=changes,
     ))
