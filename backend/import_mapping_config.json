@@ -1,0 +1,7 @@
+{
+  "date": ["date", "transaction date", "date operation", "date d'operation", "date valeur", "posting date", "trans date"],
+  "payee": ["payee", "libelle", "libelle operation", "description", "beneficiary", "tiers", "label", "wording"],
+  "amount": ["amount", "montant", "montant eur", "montant operation", "value"],
+  "memo": ["memo", "note", "notes", "commentaire", "details"],
+  "category": ["category", "categorie", "type operation"]
+}

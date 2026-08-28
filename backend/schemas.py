@@ -278,16 +278,27 @@ class TransactionHistoryOut(BaseModel):
     changes: Optional[dict] = None
 
 
+class ImportDetectResponse(BaseModel):
+    headers: list[str]
+    encoding: str
+    delimiter: str
+    date_format: str | None = None  # Python strptime format; None if not confidently detected
+    decimal_separator: str  # ',' or '.'
+    column_mapping: dict[str, str | None]  # canonical field -> detected raw header (or None)
+    sample_rows: list[dict[str, str]]
+
+
 class ImportPreviewRequest(BaseModel):
-    csv_text: str
     account_id: int
+    encoding: str
+    delimiter: str
+    date_format: str  # Python strptime format, confirmed by the user
+    decimal_separator: str  # ',' or '.'
     date_col: str
     payee_col: str
     amount_col: str
     memo_col: str | None = None
     category_col: str | None = None
-    has_header: bool = True
-    date_format: str | None = None  # Python strptime format; defaults to ISO (YYYY-MM-DD)
 
 
 class SplitPreviewShare(BaseModel):
