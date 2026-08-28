@@ -7,3 +7,9 @@ export function sharedShareFor(t: Transaction, selectedUserId: number | null | u
   const mine = t.splits.find(s => s.user_id === selectedUserId)
   return mine ? mine.share_amount : null
 }
+
+export function formatDateGroupHeader(isoDate: string): string {
+  return new Date(`${isoDate}T00:00:00`).toLocaleDateString('en-US', {
+    weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
+  })
+}
