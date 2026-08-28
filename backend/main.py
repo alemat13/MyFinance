@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Literal
 
-from fastapi import FastAPI, Depends, HTTPException, Query, UploadFile, File, Response
+from fastapi import FastAPI, Depends, HTTPException, Query, UploadFile, File, Form, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
@@ -29,14 +29,14 @@ from schemas import (
     AccountUserOut, AccountUserCreate,
     GlobalSplitWeightOut, GlobalSplitWeightUpdateItem,
     SplitPreviewRequest, UserBalanceOut,
-    ImportPreviewRequest, ImportPreviewRow, ImportCommitRequest, ImportCommitResponse,
+    ImportDetectResponse, ImportPreviewRequest, ImportPreviewRow, ImportCommitRequest, ImportCommitResponse,
     ImportSummary,
 )
 import split_engine
 import charts
 import backup
 from filtering import build_where_clause
-from import_csv import preview_import
+from import_csv import detect_import_settings, preview_import
 from audit import record_transaction_history, TRACKED_FIELDS, _jsonify
 from accounting_month import compute_accounting_month
 
@@ -584,10 +584,36 @@ def get_balances(db: Session = Depends(get_db)):
 
 # ── CSV import ────────────────────────────────────────────────────
 
+@app.post("/api/import/detect", response_model=ImportDetectResponse)
+async def import_detect(file: UploadFile = File(...)):
+    contents = await file.read()
+    return detect_import_settings(contents)
+
+
 @app.post("/api/import/preview", response_model=list[ImportPreviewRow])
-def import_preview(data: ImportPreviewRequest, db: Session = Depends(get_db)):
+async def import_preview(
+    file: UploadFile = File(...),
+    account_id: int = Form(...),
+    encoding: str = Form(...),
+    delimiter: str = Form(...),
+    date_format: str = Form(...),
+    decimal_separator: str = Form(...),
+    date_col: str = Form(...),
+    payee_col: str = Form(...),
+    amount_col: str = Form(...),
+    memo_col: str | None = Form(None),
+    category_col: str | None = Form(None),
+    db: Session = Depends(get_db),
+):
+    contents = await file.read()
+    data = ImportPreviewRequest(
+        account_id=account_id, encoding=encoding, delimiter=delimiter,
+        date_format=date_format, decimal_separator=decimal_separator,
+        date_col=date_col, payee_col=payee_col, amount_col=amount_col,
+        memo_col=memo_col, category_col=category_col,
+    )
     try:
-        return preview_import(db, data)
+        return preview_import(db, contents, data)
     except ValueError as exc:
         raise HTTPException(422, str(exc))
 

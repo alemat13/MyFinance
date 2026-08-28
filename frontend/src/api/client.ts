@@ -185,6 +185,16 @@ export interface DashboardData {
   balances: UserBalance[]
 }
 
+export interface ImportDetectResponse {
+  headers: string[]
+  encoding: string
+  delimiter: string
+  date_format: string | null
+  decimal_separator: string
+  column_mapping: Record<'date' | 'payee' | 'amount' | 'memo' | 'category', string | null>
+  sample_rows: Record<string, string>[]
+}
+
 export interface CategoryChartItem {
   category_id: number
   category_name: string
@@ -214,15 +224,16 @@ export interface ChartsData {
 }
 
 export interface ImportPreviewRequest {
-  csv_text: string
   account_id: number
+  encoding: string
+  delimiter: string
+  date_format: string
+  decimal_separator: string
   date_col: string
   payee_col: string
   amount_col: string
   memo_col?: string | null
   category_col?: string | null
-  has_header?: boolean
-  date_format?: string | null
 }
 
 export interface ImportPreviewRow {
@@ -398,8 +409,23 @@ export function fetchBalances(): Promise<UserBalance[]> {
   return request<UserBalance[]>("/balances")
 }
 
-export function previewImport(data: ImportPreviewRequest): Promise<ImportPreviewRow[]> {
-  return request<ImportPreviewRow[]>("/import/preview", { method: 'POST', body: JSON.stringify(data) })
+export async function detectImport(file: File): Promise<ImportDetectResponse> {
+  const formData = new FormData()
+  formData.append('file', file)
+  const res = await fetch(`${API_BASE}/import/detect`, { method: 'POST', body: formData })
+  if (!res.ok) throw new Error(await res.text() || `API error: ${res.status}`)
+  return res.json()
+}
+
+export async function previewImport(file: File, data: ImportPreviewRequest): Promise<ImportPreviewRow[]> {
+  const formData = new FormData()
+  formData.append('file', file)
+  for (const [key, value] of Object.entries(data)) {
+    if (value !== null && value !== undefined) formData.append(key, String(value))
+  }
+  const res = await fetch(`${API_BASE}/import/preview`, { method: 'POST', body: formData })
+  if (!res.ok) throw new Error(await res.text() || `API error: ${res.status}`)
+  return res.json()
 }
 
 export function commitImport(rows: TransactionCreate[], actorUserId?: number | null): Promise<ImportCommitResponse> {

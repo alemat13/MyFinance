@@ -1,10 +1,12 @@
-import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
+import { test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import CsvImportPage from '../CsvImportPage'
+import { ImportDetectResponse } from '../../api/client'
 
-const { mockFetchAccounts, mockFetchCategories, mockPreviewImport, mockCommitImport } = vi.hoisted(() => ({
+const { mockFetchAccounts, mockFetchCategories, mockDetectImport, mockPreviewImport, mockCommitImport } = vi.hoisted(() => ({
   mockFetchAccounts: vi.fn(),
   mockFetchCategories: vi.fn(),
+  mockDetectImport: vi.fn(),
   mockPreviewImport: vi.fn(),
   mockCommitImport: vi.fn(),
 }))
@@ -12,12 +14,23 @@ const { mockFetchAccounts, mockFetchCategories, mockPreviewImport, mockCommitImp
 vi.mock('../../api/client', () => ({
   fetchAccounts: mockFetchAccounts,
   fetchCategories: mockFetchCategories,
+  detectImport: mockDetectImport,
   previewImport: mockPreviewImport,
   commitImport: mockCommitImport,
 }))
 
 const account = { id: 1, name: 'Checking', type: 'Checking', balance: 100, created_at: '', users: [] }
 const category = { id: 1, name: 'Groceries', type: 'Expense', splits: [] }
+
+const fullyDetected: ImportDetectResponse = {
+  headers: ['Date', 'Label', 'Amount'],
+  encoding: 'utf-8-sig',
+  delimiter: ',',
+  date_format: '%Y-%m-%d',
+  decimal_separator: '.',
+  column_mapping: { date: 'Date', payee: 'Label', amount: 'Amount', memo: null, category: null },
+  sample_rows: [{ Date: '2026-01-15', Label: 'Whole Foods', Amount: '-42.50' }],
+}
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -30,12 +43,54 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-async function goToSetup(selectedUserId: number | null = null) {
-  render(<CsvImportPage onBack={() => {}} selectedUserId={selectedUserId} />)
+function selectFile(name = 'transactions.csv') {
+  const file = new File(['Date,Label,Amount\n2026-01-15,Whole Foods,-42.50\n'], name, { type: 'text/csv' })
+  fireEvent.change(screen.getByLabelText('CSV file'), { target: { files: [file] } })
+  return file
+}
+
+async function goToSetup() {
+  render(<CsvImportPage onBack={() => {}} selectedUserId={null} />)
   await waitFor(() => {
-    expect(screen.getByPlaceholderText(/Paste CSV text/)).toBeInTheDocument()
+    expect(screen.getByLabelText('CSV file')).toBeInTheDocument()
   })
 }
+
+async function goToConfirm(detected = fullyDetected) {
+  mockDetectImport.mockResolvedValue(detected)
+  await goToSetup()
+  selectFile()
+  fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: '1' } })
+  fireEvent.click(screen.getByText('Analyze file'))
+  await waitFor(() => {
+    expect(screen.getByText('Preview')).toBeInTheDocument()
+  })
+}
+
+test('analyzing a file pre-fills the confirmation form from detected settings', async () => {
+  await goToConfirm()
+
+  expect(screen.getByDisplayValue('Date')).toBeInTheDocument()
+  expect(screen.getByDisplayValue('Label')).toBeInTheDocument()
+  expect(screen.getByDisplayValue('Amount')).toBeInTheDocument()
+  expect(screen.getByText('Preview')).not.toBeDisabled()
+})
+
+test('preview stays disabled until required columns are chosen when detection fails to map them', async () => {
+  await goToConfirm({
+    ...fullyDetected,
+    column_mapping: { date: 'Date', payee: 'Label', amount: null, memo: null, category: null },
+  })
+
+  expect(screen.getByText('Preview')).toBeDisabled()
+
+  const amountSelect = screen.getAllByRole('combobox').find(el => (el as HTMLSelectElement).value === '')!
+  fireEvent.change(amountSelect, { target: { value: 'Amount' } })
+
+  await waitFor(() => {
+    expect(screen.getByText('Preview')).not.toBeDisabled()
+  })
+})
 
 test('previews a CSV and shows row statuses', async () => {
   mockPreviewImport.mockResolvedValue([
@@ -43,20 +98,26 @@ test('previews a CSV and shows row statuses', async () => {
     { row_number: 2, transaction_date: '2026-01-16', payee: 'Unknown', memo: null, amount: -10, account_id: 1, category_id: null, category_name: null, status: 'needs_category', error_message: null, preview_split: [] },
   ])
 
-  await goToSetup()
-
-  fireEvent.change(screen.getByPlaceholderText(/Paste CSV text/), { target: { value: 'Date,Label,Amount\n2026-01-15,Whole Foods,-42.50\n' } })
-  fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: '1' } })
-  fireEvent.change(screen.getByPlaceholderText('Date column name'), { target: { value: 'Date' } })
-  fireEvent.change(screen.getByPlaceholderText('Payee column name'), { target: { value: 'Label' } })
-  fireEvent.change(screen.getByPlaceholderText('Amount column name'), { target: { value: 'Amount' } })
-
+  await goToConfirm()
   fireEvent.click(screen.getByText('Preview'))
 
   await waitFor(() => {
     expect(screen.getByText('Whole Foods')).toBeInTheDocument()
     expect(screen.getByText('OK')).toBeInTheDocument()
     expect(screen.getByText('Needs category')).toBeInTheDocument()
+  })
+
+  expect(mockPreviewImport).toHaveBeenCalledWith(expect.any(File), {
+    account_id: 1,
+    encoding: 'utf-8-sig',
+    delimiter: ',',
+    date_format: '%Y-%m-%d',
+    decimal_separator: '.',
+    date_col: 'Date',
+    payee_col: 'Label',
+    amount_col: 'Amount',
+    memo_col: null,
+    category_col: null,
   })
 })
 
@@ -65,13 +126,7 @@ test('commit is disabled until all active rows have a category', async () => {
     { row_number: 1, transaction_date: '2026-01-16', payee: 'Unknown', memo: null, amount: -10, account_id: 1, category_id: null, category_name: null, status: 'needs_category', error_message: null, preview_split: [] },
   ])
 
-  await goToSetup()
-
-  fireEvent.change(screen.getByPlaceholderText(/Paste CSV text/), { target: { value: 'Date,Label,Amount\n2026-01-16,Unknown,-10\n' } })
-  fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: '1' } })
-  fireEvent.change(screen.getByPlaceholderText('Date column name'), { target: { value: 'Date' } })
-  fireEvent.change(screen.getByPlaceholderText('Payee column name'), { target: { value: 'Label' } })
-  fireEvent.change(screen.getByPlaceholderText('Amount column name'), { target: { value: 'Amount' } })
+  await goToConfirm()
   fireEvent.click(screen.getByText('Preview'))
 
   await waitFor(() => {
@@ -96,16 +151,17 @@ test('commits active rows and shows a success message with a way back', async ()
   mockCommitImport.mockResolvedValue({ created_count: 1, transaction_ids: [5] })
   const onBack = vi.fn()
 
+  mockDetectImport.mockResolvedValue(fullyDetected)
   render(<CsvImportPage onBack={onBack} selectedUserId={42} />)
   await waitFor(() => {
-    expect(screen.getByPlaceholderText(/Paste CSV text/)).toBeInTheDocument()
+    expect(screen.getByLabelText('CSV file')).toBeInTheDocument()
   })
-
-  fireEvent.change(screen.getByPlaceholderText(/Paste CSV text/), { target: { value: 'Date,Label,Amount\n2026-01-15,Whole Foods,-42.50\n' } })
+  selectFile()
   fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: '1' } })
-  fireEvent.change(screen.getByPlaceholderText('Date column name'), { target: { value: 'Date' } })
-  fireEvent.change(screen.getByPlaceholderText('Payee column name'), { target: { value: 'Label' } })
-  fireEvent.change(screen.getByPlaceholderText('Amount column name'), { target: { value: 'Amount' } })
+  fireEvent.click(screen.getByText('Analyze file'))
+  await waitFor(() => {
+    expect(screen.getByText('Preview')).toBeInTheDocument()
+  })
   fireEvent.click(screen.getByText('Preview'))
 
   await waitFor(() => {

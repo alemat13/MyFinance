@@ -6,7 +6,7 @@ import {
   fetchTransactionHistory,
   fetchDashboard,
   fetchSplitWeights, updateSplitWeights, fetchSplitPreview, fetchBalances,
-  previewImport, commitImport,
+  detectImport, previewImport, commitImport,
 } from '../client'
 
 beforeEach(() => {
@@ -420,7 +420,23 @@ test('fetchBalances makes GET request', async () => {
   expect(result).toEqual(mockData)
 })
 
-test('previewImport makes POST request', async () => {
+test('detectImport makes POST request with the file as form data', async () => {
+  vi.mocked(globalThis.fetch).mockResolvedValue({
+    ok: true,
+    status: 200,
+    json: () => Promise.resolve({ headers: [], encoding: 'utf-8', delimiter: ',', date_format: null, decimal_separator: '.', column_mapping: {}, sample_rows: [] }),
+    text: () => Promise.resolve(''),
+  } as Response)
+
+  const file = new File(['a,b\n1,2'], 'transactions.csv', { type: 'text/csv' })
+  await detectImport(file)
+
+  expect(globalThis.fetch).toHaveBeenCalledWith('http://localhost:8000/api/import/detect', expect.objectContaining({ method: 'POST' }))
+  const body = vi.mocked(globalThis.fetch).mock.calls[0][1]?.body as FormData
+  expect(body.get('file')).toBe(file)
+})
+
+test('previewImport makes POST request with the file and params as form data', async () => {
   vi.mocked(globalThis.fetch).mockResolvedValue({
     ok: true,
     status: 200,
@@ -428,16 +444,20 @@ test('previewImport makes POST request', async () => {
     text: () => Promise.resolve(''),
   } as Response)
 
-  const req = { csv_text: 'a,b\n1,2', account_id: 1, date_col: 'a', payee_col: 'b', amount_col: 'a' }
-  await previewImport(req)
+  const file = new File(['a,b\n1,2'], 'transactions.csv', { type: 'text/csv' })
+  const req = {
+    account_id: 1, encoding: 'utf-8', delimiter: ',', date_format: '%Y-%m-%d',
+    decimal_separator: '.', date_col: 'a', payee_col: 'b', amount_col: 'a',
+    memo_col: null, category_col: null,
+  }
+  await previewImport(file, req)
 
-  expect(globalThis.fetch).toHaveBeenCalledWith(
-    'http://localhost:8000/api/import/preview',
-    expect.objectContaining({
-      method: 'POST',
-      body: JSON.stringify(req),
-    }),
-  )
+  expect(globalThis.fetch).toHaveBeenCalledWith('http://localhost:8000/api/import/preview', expect.objectContaining({ method: 'POST' }))
+  const body = vi.mocked(globalThis.fetch).mock.calls[0][1]?.body as FormData
+  expect(body.get('file')).toBe(file)
+  expect(body.get('account_id')).toBe('1')
+  expect(body.get('date_col')).toBe('a')
+  expect(body.get('memo_col')).toBeNull()
 })
 
 test('commitImport makes POST request', async () => {
