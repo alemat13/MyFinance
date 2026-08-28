@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 # Alias used where a model field is itself named `date`: pydantic v2 resolves
 # annotations using the class's own namespace, and a field named the same as
@@ -169,6 +169,8 @@ class TransactionOut(BaseModel):
     currency: str
     category_id: int
     category_name: str
+    accounting_month_offset: int
+    accounting_month: str
     splits: list[TransactionSplitOut] = []
 
 
@@ -179,6 +181,7 @@ class TransactionCreate(BaseModel):
     amount: float
     account_id: int
     category_id: int
+    accounting_month_offset: int = Field(0, ge=-3, le=3)
     split_overrides: list[SplitShareCreate] | None = None
 
 
@@ -189,6 +192,7 @@ class TransactionUpdate(BaseModel):
     amount: Optional[float] = None
     account_id: Optional[int] = None
     category_id: Optional[int] = None
+    accounting_month_offset: Optional[int] = Field(None, ge=-3, le=3)
     split_overrides: list[SplitShareCreate] | None = None
 
 
@@ -259,6 +263,34 @@ class DashboardResponse(BaseModel):
     balances: List[UserBalanceOut] = []
 
 
+class CategoryChartItem(BaseModel):
+    category_id: int
+    category_name: str
+    category_type: Literal["Income", "Expense"]
+    amount: float
+    currency: str
+
+
+class MonthChartItem(BaseModel):
+    month: str
+    income: float
+    expense: float
+    currency: str
+
+
+class NetMonthChartItem(BaseModel):
+    month: str
+    net: float
+    currency: str
+
+
+class ChartsResponse(BaseModel):
+    currencies: List[str]
+    by_category: List[CategoryChartItem]
+    by_month: List[MonthChartItem]
+    net_by_month: List[NetMonthChartItem]
+
+
 class TransactionHistoryOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -275,6 +307,7 @@ class TransactionHistoryOut(BaseModel):
     amount: Optional[float] = None
     account_id: Optional[int] = None
     category_id: Optional[int] = None
+    accounting_month_offset: Optional[int] = None
     changes: Optional[dict] = None
 
 
@@ -396,6 +429,7 @@ class TransactionExport(BaseModel):
     amount: float
     account_id: int
     category_id: int
+    accounting_month_offset: int = 0
     created_at: datetime
 
 
@@ -423,6 +457,7 @@ class TransactionHistoryExport(BaseModel):
     amount: float | None = None
     account_id: int | None = None
     category_id: int | None = None
+    accounting_month_offset: int | None = None
     changes: dict | None = None
 
 

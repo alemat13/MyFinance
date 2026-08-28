@@ -73,6 +73,120 @@ def test_delete_transaction_404(client):
     assert response.status_code == 404
 
 
+def test_create_transaction_defaults_accounting_month_offset_to_zero(client, sample_account, sample_category):
+    response = client.post(
+        "/api/transactions",
+        json={
+            "account_id": sample_account.id,
+            "category_id": sample_category.id,
+            "date": "2026-03-15",
+            "payee": "Test",
+            "amount": 100.0,
+        },
+    )
+    assert response.status_code == 201
+    data = response.json()
+    assert data["accounting_month_offset"] == 0
+    assert data["accounting_month"] == "2026-03"
+
+
+def test_create_transaction_with_explicit_accounting_month_offset(client, sample_account, sample_category):
+    response = client.post(
+        "/api/transactions",
+        json={
+            "account_id": sample_account.id,
+            "category_id": sample_category.id,
+            "date": "2026-03-15",
+            "payee": "Test",
+            "amount": 100.0,
+            "accounting_month_offset": 1,
+        },
+    )
+    assert response.status_code == 201
+    data = response.json()
+    assert data["accounting_month_offset"] == 1
+    assert data["accounting_month"] == "2026-04"
+
+
+def test_create_transaction_accounting_month_offset_year_rollover(client, sample_account, sample_category):
+    response = client.post(
+        "/api/transactions",
+        json={
+            "account_id": sample_account.id,
+            "category_id": sample_category.id,
+            "date": "2026-12-15",
+            "payee": "Test",
+            "amount": 100.0,
+            "accounting_month_offset": 1,
+        },
+    )
+    assert response.status_code == 201
+    data = response.json()
+    assert data["accounting_month"] == "2027-01"
+
+    response = client.post(
+        "/api/transactions",
+        json={
+            "account_id": sample_account.id,
+            "category_id": sample_category.id,
+            "date": "2026-01-15",
+            "payee": "Test",
+            "amount": 100.0,
+            "accounting_month_offset": -1,
+        },
+    )
+    assert response.status_code == 201
+    assert response.json()["accounting_month"] == "2025-12"
+
+
+def test_create_transaction_accounting_month_offset_out_of_range_422(client, sample_account, sample_category):
+    for offset in (-4, 4):
+        response = client.post(
+            "/api/transactions",
+            json={
+                "account_id": sample_account.id,
+                "category_id": sample_category.id,
+                "date": "2026-03-15",
+                "payee": "Test",
+                "amount": 100.0,
+                "accounting_month_offset": offset,
+            },
+        )
+        assert response.status_code == 422
+
+
+def test_update_transaction_accounting_month_offset(client, sample_transaction):
+    response = client.put(
+        f"/api/transactions/{sample_transaction.id}",
+        json={"accounting_month_offset": 2},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["accounting_month_offset"] == 2
+    assert data["accounting_month"] == "2026-03"
+
+
+def test_update_transaction_accounting_month_offset_out_of_range_422(client, sample_transaction):
+    response = client.put(
+        f"/api/transactions/{sample_transaction.id}",
+        json={"accounting_month_offset": -4},
+    )
+    assert response.status_code == 422
+
+
+def test_update_transaction_accounting_month_offset_recorded_in_history(client, sample_transaction):
+    client.put(
+        f"/api/transactions/{sample_transaction.id}",
+        json={"accounting_month_offset": 1},
+    )
+    response = client.get(f"/api/transactions/{sample_transaction.id}/history")
+    assert response.status_code == 200
+    entries = response.json()
+    updated = [e for e in entries if e["action"] == "updated"]
+    assert len(updated) == 1
+    assert updated[0]["changes"]["accounting_month_offset"] == {"old": 0, "new": 1}
+
+
 def test_get_transactions_filtered_by_user(client, sample_account_with_user, sample_user, sample_category, db):
     from datetime import date
     from models import Transaction

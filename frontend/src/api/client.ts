@@ -101,6 +101,8 @@ export interface Transaction {
   currency: string
   category_id: number
   category_name: string
+  accounting_month_offset: number
+  accounting_month: string
   splits: TransactionSplit[]
 }
 
@@ -111,6 +113,7 @@ export interface TransactionCreate {
   amount: number
   account_id: number
   category_id: number
+  accounting_month_offset?: number
   split_overrides?: SplitShareCreate[] | null
 }
 
@@ -121,6 +124,7 @@ export interface TransactionUpdate {
   amount?: number
   account_id?: number
   category_id?: number
+  accounting_month_offset?: number
   split_overrides?: SplitShareCreate[] | null
 }
 
@@ -189,6 +193,34 @@ export interface ImportDetectResponse {
   decimal_separator: string
   column_mapping: Record<'date' | 'payee' | 'amount' | 'memo' | 'category', string | null>
   sample_rows: Record<string, string>[]
+}
+
+export interface CategoryChartItem {
+  category_id: number
+  category_name: string
+  category_type: 'Income' | 'Expense'
+  amount: number
+  currency: string
+}
+
+export interface MonthChartItem {
+  month: string
+  income: number
+  expense: number
+  currency: string
+}
+
+export interface NetMonthChartItem {
+  month: string
+  net: number
+  currency: string
+}
+
+export interface ChartsData {
+  currencies: string[]
+  by_category: CategoryChartItem[]
+  by_month: MonthChartItem[]
+  net_by_month: NetMonthChartItem[]
 }
 
 export interface ImportPreviewRequest {
@@ -350,6 +382,12 @@ export function deleteUser(id: number): Promise<void> {
 export function fetchDashboard(userId?: number): Promise<DashboardData> {
   const params = userId ? `?user_id=${userId}` : ''
   return request<DashboardData>(`/dashboard${params}`)
+}
+
+export function fetchCharts(userId: number, currency?: string): Promise<ChartsData> {
+  const params = new URLSearchParams({ user_id: String(userId) })
+  if (currency) params.set('currency', currency)
+  return request<ChartsData>(`/charts?${params.toString()}`)
 }
 
 export function fetchSplitWeights(): Promise<GlobalSplitWeight[]> {
