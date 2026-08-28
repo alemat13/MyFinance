@@ -33,6 +33,7 @@ def test_create_account_invalid_currency_422(client):
         json={"name": "Test", "type": "Checking", "currency": "US"},
     )
     assert response.status_code == 422
+    assert response.json()["detail"] == "currency: Currency must be a 3-letter code, got 'US'"
 
 
 def test_update_account_currency(client, sample_account):

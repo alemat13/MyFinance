@@ -529,3 +529,25 @@ test('request throws on non-ok without body', async () => {
 
   await expect(fetchAccounts()).rejects.toThrow('500')
 })
+
+test('request parses JSON detail string from backend', async () => {
+  vi.mocked(globalThis.fetch).mockResolvedValue({
+    ok: false,
+    status: 409,
+    text: () => Promise.resolve(JSON.stringify({ detail: 'Cannot delete user who owns accounts' })),
+  } as Response)
+
+  await expect(fetchAccounts()).rejects.toThrow('Cannot delete user who owns accounts')
+})
+
+test('request parses JSON detail array (pydantic shape) into readable message', async () => {
+  vi.mocked(globalThis.fetch).mockResolvedValue({
+    ok: false,
+    status: 422,
+    text: () => Promise.resolve(JSON.stringify({
+      detail: [{ loc: ['body', 'currency'], msg: "Value error, Currency must be a 3-letter code, got 'US'", type: 'value_error' }],
+    })),
+  } as Response)
+
+  await expect(fetchAccounts()).rejects.toThrow("currency: Value error, Currency must be a 3-letter code, got 'US'")
+})
