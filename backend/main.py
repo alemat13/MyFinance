@@ -24,6 +24,7 @@ from schemas import (
     TransactionSplitOut, TransactionHistoryOut,
     TransactionSearchRequest, TransactionSearchResponse,
     DashboardResponse,
+    CategoryChartItem, MonthChartItem, NetMonthChartItem, ChartsResponse,
     UserOut, UserCreate, UserUpdate,
     AccountUserOut, AccountUserCreate,
     GlobalSplitWeightOut, GlobalSplitWeightUpdateItem,
@@ -32,6 +33,7 @@ from schemas import (
     ImportSummary,
 )
 import split_engine
+import charts
 import backup
 from filtering import build_where_clause
 from import_csv import preview_import
@@ -686,4 +688,34 @@ def get_dashboard(user_id: int | None = Query(None), db: Session = Depends(get_d
         accounts=[_account_out(a) for a in accounts],
         recent_transactions=recent_transactions,
         balances=balances,
+    )
+
+
+# ── Charts ────────────────────────────────────────────────────────
+
+@app.get("/api/charts", response_model=ChartsResponse)
+def get_charts(
+    user_id: int = Query(...),
+    currency: str | None = Query(None),
+    db: Session = Depends(get_db),
+):
+    by_category, by_month, net_by_month = charts.compute_chart_data(db, user_id, currency)
+    currencies = sorted({c.currency for c in by_category} | {m.currency for m in by_month})
+    return ChartsResponse(
+        currencies=currencies,
+        by_category=[
+            CategoryChartItem(
+                category_id=c.category_id, category_name=c.category_name,
+                category_type=c.category_type, amount=c.amount, currency=c.currency,
+            )
+            for c in by_category
+        ],
+        by_month=[
+            MonthChartItem(month=m.month, income=m.income, expense=round(abs(m.expense), 2), currency=m.currency)
+            for m in by_month
+        ],
+        net_by_month=[
+            NetMonthChartItem(month=n.month, net=n.net, currency=n.currency)
+            for n in net_by_month
+        ],
     )
