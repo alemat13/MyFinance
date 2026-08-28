@@ -1,3 +1,4 @@
+import logging
 import os
 import sys
 from contextlib import asynccontextmanager
@@ -12,7 +13,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import join, func, or_
 from sqlalchemy.exc import IntegrityError
 
-from database import get_db, engine, Base
+from database import get_db, engine, Base, sync_schema
 from models import (
     Account, Category, Transaction, User, AccountUser,
     CategorySplit, GlobalSplitWeight, TransactionSplit, TransactionHistory,
@@ -41,10 +42,14 @@ from import_csv import detect_import_settings, preview_import
 from audit import record_transaction_history, TRACKED_FIELDS, _jsonify
 from accounting_month import compute_accounting_month
 
+logger = logging.getLogger(__name__)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     if "pytest" not in sys.modules:
         Base.metadata.create_all(bind=engine)
+        sync_schema(engine)
     yield
 
 
@@ -91,6 +96,12 @@ def _handle_validation_error(request, exc):
         parts.append(f"{field}: {msg}")
     detail = "; ".join(parts) if parts else "Invalid request"
     return JSONResponse(status_code=422, content={"detail": detail})
+
+
+@app.exception_handler(Exception)
+def _handle_unexpected_error(request, exc):
+    logger.exception("Unhandled exception on %s %s", request.method, request.url.path)
+    return JSONResponse(status_code=500, content={"detail": "Internal Server Error"})
 
 
 # ── Helpers ────────────────────────────────────────────────────────
