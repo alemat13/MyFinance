@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import {
-  Transaction, TransactionCreate, TransactionUpdate, TransactionSplit,
+  Transaction, TransactionCreate, TransactionUpdate, TransactionSplit, TransactionHistoryEntry,
   Account, Category, User, FilterField, TransactionSearchRequest,
   createTransaction, updateTransaction, deleteTransaction,
   fetchAccounts, fetchCategories, fetchUsers, fetchSplitPreview, searchTransactions,
+  fetchTransactionHistory,
 } from '../api/client'
 import SplitEditor, { SplitRow } from './SplitEditor'
 import { useToast } from '../context/ToastContext'
@@ -145,6 +146,10 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
   const [newSplit, setNewSplit] = useState<SplitRow[] | null>(null)
   const [newPreview, setNewPreview] = useState<TransactionSplit[]>([])
   const [deletingTransaction, setDeletingTransaction] = useState<Transaction | null>(null)
+  const [expandedHistoryId, setExpandedHistoryId] = useState<number | null>(null)
+  const [historyEntries, setHistoryEntries] = useState<TransactionHistoryEntry[]>([])
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyError, setHistoryError] = useState<string | null>(null)
   const { showToast } = useToast()
 
   const [mode, setMode] = useState<FilterMode>(loadInitialMode)
@@ -358,18 +363,41 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
     updateTransaction(id, {
       ...editData,
       split_overrides: editSplit ? editSplit.map(r => ({ user_id: r.user_id, share_amount: r.value })) : null,
-    })
+    }, selectedUserId)
       .then(() => { cancelEdit(); loadTransactions(); loadMeta() })
       .catch(err => showToast(err.message))
   }
 
   const confirmDelete = () => {
     if (!deletingTransaction) return
-    deleteTransaction(deletingTransaction.id)
+    deleteTransaction(deletingTransaction.id, selectedUserId)
       .then(() => { loadTransactions(); loadMeta() })
       .catch(err => showToast(err.message))
       .finally(() => setDeletingTransaction(null))
   }
+
+  const toggleHistory = (id: number) => {
+    if (expandedHistoryId === id) {
+      setExpandedHistoryId(null)
+      return
+    }
+    setExpandedHistoryId(id)
+    setHistoryEntries([])
+    setHistoryError(null)
+    setHistoryLoading(true)
+    fetchTransactionHistory(id)
+      .then(setHistoryEntries)
+      .catch(err => setHistoryError(err.message))
+      .finally(() => setHistoryLoading(false))
+  }
+
+  const historyBadgeVariant = (action: TransactionHistoryEntry['action']) =>
+    action === 'created' ? 'positive' : action === 'deleted' ? 'negative' : 'info'
+
+  const describeHistoryChanges = (changes: TransactionHistoryEntry['changes']) =>
+    changes
+      ? Object.entries(changes).map(([field, { old, new: next }]) => `${field}: ${old ?? '—'} → ${next ?? '—'}`).join(', ')
+      : ''
 
   const saveNew = () => {
     if (!newData.payee || !newData.account_id || !newData.category_id) {
@@ -384,7 +412,7 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
     createTransaction({
       ...newData,
       split_overrides: newSplit ? newSplit.map(r => ({ user_id: r.user_id, share_amount: r.value })) : undefined,
-    })
+    }, selectedUserId)
       .then(() => { setShowNew(false); setNewData(emptyForm); setNewSplit(null); loadTransactions(); loadMeta() })
       .catch(err => showToast(err.message))
   }
@@ -579,7 +607,8 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
               <Tr><Td colSpan={hasMemo ? 8 : 7} className="text-center py-5 text-slate-400">No transactions match your filters</Td></Tr>
             )}
             {transactions.map(t => (
-              <Tr key={t.id}>
+              <Fragment key={t.id}>
+              <Tr>
                 {editingId === t.id ? (
                   <>
                     <Td><Input type="date" value={editData.date ?? ''} onChange={e => setEditData({ ...editData, date: e.target.value })} /></Td>
@@ -628,11 +657,40 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
                     <Td className="text-xs">{splitsDisplay(t.splits, t.currency)}</Td>
                     <Td className="text-center">
                       <Button size="sm" variant="secondary" onClick={() => startEdit(t)} className="mr-1">Edit</Button>
+                      <Button size="sm" variant="secondary" onClick={() => toggleHistory(t.id)} className="mr-1">History</Button>
                       <Button size="sm" variant="danger" onClick={() => setDeletingTransaction(t)}>Delete</Button>
                     </Td>
                   </>
                 )}
               </Tr>
+              {expandedHistoryId === t.id && (
+                <Tr>
+                  <Td colSpan={hasMemo ? 8 : 7} className="bg-slate-50 dark:bg-slate-800/40">
+                    {historyLoading && <StatusMessage loading />}
+                    {historyError && <StatusMessage error={historyError} />}
+                    {!historyLoading && !historyError && historyEntries.length === 0 && (
+                      <div className="text-xs text-slate-400 py-1">No history recorded for this transaction</div>
+                    )}
+                    {!historyLoading && !historyError && historyEntries.length > 0 && (
+                      <div className="flex flex-col gap-1.5 py-1">
+                        {historyEntries.map(h => (
+                          <div key={h.id} className="flex items-center gap-2 text-xs flex-wrap">
+                            <Badge variant={historyBadgeVariant(h.action)}>
+                              {h.action}{h.source === 'csv_import' ? ' · CSV' : ''}
+                            </Badge>
+                            <span className="text-slate-500 dark:text-slate-400">{new Date(h.changed_at).toLocaleString()}</span>
+                            <span className="text-slate-500 dark:text-slate-400">by {h.changed_by_user_name ?? 'Unknown user'}</span>
+                            {h.action === 'updated' && (
+                              <span className="text-slate-700 dark:text-slate-200">{describeHistoryChanges(h.changes)}</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </Td>
+                </Tr>
+              )}
+              </Fragment>
             ))}
           </Tbody>
         </Table>

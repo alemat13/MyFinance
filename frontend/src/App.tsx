@@ -176,7 +176,7 @@ export default function App() {
       {view === 'transactions' && <TransactionsPage onBack={() => navigateToView('dashboard')} selectedUserId={selectedUserId} />}
       {view === 'users' && <UsersList onBack={() => navigateToView('dashboard')} onSelectUser={handleSelectUser} />}
       {view === 'split-settings' && <SplitWeightsSettings onBack={() => navigateToView('dashboard')} />}
-      {view === 'import' && <CsvImportPage onBack={() => navigateToView('dashboard')} />}
+      {view === 'import' && <CsvImportPage onBack={() => navigateToView('dashboard')} selectedUserId={selectedUserId} />}
 
       {menuOpen && (
         <div className="fixed inset-0 z-[1000]" onClick={() => setMenuOpen(false)} />

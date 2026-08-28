@@ -8,9 +8,10 @@ import { Button, Input, Select, Card, Table, Thead, Tbody, Tr, Th, Td, Badge, St
 
 interface Props {
   onBack: () => void
+  selectedUserId: number | null
 }
 
-export default function CsvImportPage({ onBack }: Props) {
+export default function CsvImportPage({ onBack, selectedUserId }: Props) {
   const [step, setStep] = useState<'setup' | 'review' | 'done'>('setup')
   const [accounts, setAccounts] = useState<Account[]>([])
   const [categories, setCategories] = useState<Category[]>([])
@@ -83,7 +84,7 @@ export default function CsvImportPage({ onBack }: Props) {
       category_id: resolvedCategoryId(r) as number,
     }))
     setCommitting(true)
-    commitImport(toCreate)
+    commitImport(toCreate, selectedUserId)
       .then(res => {
         setCreatedCount(res.created_count)
         setStep('done')

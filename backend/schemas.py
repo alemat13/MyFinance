@@ -3,6 +3,12 @@ from typing import List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
+# Alias used where a model field is itself named `date`: pydantic v2 resolves
+# annotations using the class's own namespace, and a field named the same as
+# its type (with a default) gets shadowed by that default there, so the bare
+# `date` name can't be used as the annotation in that case.
+_DateType = date
+
 
 class UserOut(BaseModel):
     id: int
@@ -177,7 +183,7 @@ class TransactionCreate(BaseModel):
 
 
 class TransactionUpdate(BaseModel):
-    date: Optional[date] = None
+    date: Optional[_DateType] = None
     payee: Optional[str] = None
     memo: Optional[str] = None
     amount: Optional[float] = None
@@ -251,6 +257,25 @@ class DashboardResponse(BaseModel):
     accounts: List[AccountOut]
     recent_transactions: List[TransactionOut]
     balances: List[UserBalanceOut] = []
+
+
+class TransactionHistoryOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    transaction_id: int
+    action: str
+    source: Optional[str] = None
+    changed_at: datetime
+    changed_by_user_id: Optional[int] = None
+    changed_by_user_name: Optional[str] = None
+    date: Optional[_DateType] = None
+    payee: Optional[str] = None
+    memo: Optional[str] = None
+    amount: Optional[float] = None
+    account_id: Optional[int] = None
+    category_id: Optional[int] = None
+    changes: Optional[dict] = None
 
 
 class ImportPreviewRequest(BaseModel):
