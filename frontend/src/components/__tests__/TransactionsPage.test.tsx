@@ -2,6 +2,7 @@ import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { renderWithProviders } from '../../test-utils'
 import TransactionsPage from '../TransactionsPage'
+import { formatDateGroupHeader } from '../../utils/transactions'
 
 const { mockSearchTransactions, mockFetchAccounts, mockFetchCategories, mockCreateTransaction, mockUpdateTransaction, mockDeleteTransaction, mockFetchUsers, mockFetchSplitPreview, mockFetchTransactionHistory } = vi.hoisted(() => ({
   mockSearchTransactions: vi.fn(),
@@ -63,6 +64,25 @@ test('renders transactions with account/category dropdowns', async () => {
   await waitFor(() => {
     expect(screen.getByText('Test')).toBeInTheDocument()
   })
+})
+
+test('groups same-day transactions under one date header, sorted by date by default', async () => {
+  mockSearchTransactions.mockResolvedValue(searchResult([
+    { id: 1, date: '2026-01-15', payee: 'Coffee', memo: null, amount: -5, account_id: 1, account_name: 'Checking', category_id: 1, category_name: 'Salary', splits: [] },
+    { id: 2, date: '2026-01-15', payee: 'Lunch', memo: null, amount: -12, account_id: 1, account_name: 'Checking', category_id: 1, category_name: 'Salary', splits: [] },
+    { id: 3, date: '2026-01-14', payee: 'Groceries', memo: null, amount: -30, account_id: 1, account_name: 'Checking', category_id: 1, category_name: 'Salary', splits: [] },
+  ]))
+  mockFetchAccounts.mockResolvedValue([baseAccount])
+  mockFetchCategories.mockResolvedValue([baseCategory])
+
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+
+  await waitFor(() => {
+    expect(screen.getByText('Coffee')).toBeInTheDocument()
+  })
+
+  expect(screen.getAllByText(formatDateGroupHeader('2026-01-15'))).toHaveLength(1)
+  expect(screen.getAllByText(formatDateGroupHeader('2026-01-14'))).toHaveLength(1)
 })
 
 test('shows error state on fetch failure', async () => {

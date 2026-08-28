@@ -12,7 +12,7 @@ import { useToast } from '../context/ToastContext'
 import { Button, Input, Select, Table, Thead, Tbody, Tr, Th, Td, StatusMessage, ConfirmDialog, Badge } from './ui'
 import { formatMoney } from '../utils/currency'
 import { getParam, patchQueryParams } from '../utils/urlState'
-import { sharedShareFor } from '../utils/transactions'
+import { sharedShareFor, formatDateGroupHeader } from '../utils/transactions'
 
 interface Props {
   onBack: () => void
@@ -480,6 +480,7 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
     accounts.find(a => a.id === accountId)?.currency ?? 'EUR'
 
   const hasMemo = transactions.some(t => t.memo !== null)
+  const groupByDate = sortBy === 'date'
 
   const acctOptions = accounts.map(a => ({ value: a.id, label: a.name }))
   const catOptions = categories.map(c => ({ value: c.id, label: `${c.name} (${c.type})` }))
@@ -629,8 +630,17 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
             {transactions.length === 0 && (
               <Tr><Td colSpan={hasMemo ? 9 : 8} className="text-center py-5 text-slate-400">No transactions match your filters</Td></Tr>
             )}
-            {transactions.map(t => (
+            {transactions.map((t, idx) => {
+              const showDateHeader = groupByDate && (idx === 0 || transactions[idx - 1].date !== t.date)
+              return (
               <Fragment key={t.id}>
+              {showDateHeader && (
+                <Tr className="hover:bg-transparent bg-slate-100 dark:bg-slate-800/70">
+                  <Td colSpan={hasMemo ? 9 : 8} className="py-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                    {formatDateGroupHeader(t.date)}
+                  </Td>
+                </Tr>
+              )}
               <Tr>
                 {editingId === t.id ? (
                   <>
@@ -726,7 +736,8 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
                 </Tr>
               )}
               </Fragment>
-            ))}
+              )
+            })}
           </Tbody>
         </Table>
       )}
