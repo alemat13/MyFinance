@@ -4,8 +4,8 @@ import TransactionList from '../TransactionList'
 
 test('renders transactions sorted by date desc', () => {
   const transactions = [
-    { id: 1, date: '2026-02-01', payee: 'B', memo: null, amount: 100, account_id: 1, account_name: 'Checking', currency: 'USD', category_id: 1, category_name: 'Salary', splits: [] },
-    { id: 2, date: '2026-01-01', payee: 'A', memo: null, amount: 50, account_id: 1, account_name: 'Checking', currency: 'USD', category_id: 1, category_name: 'Salary', splits: [] },
+    { id: 1, date: '2026-02-01', payee: 'B', memo: null, amount: 100, account_id: 1, account_name: 'Checking', currency: 'USD', category_id: 1, category_name: 'Salary', accounting_month_offset: 0, accounting_month: '2026-02', splits: [] },
+    { id: 2, date: '2026-01-01', payee: 'A', memo: null, amount: 50, account_id: 1, account_name: 'Checking', currency: 'USD', category_id: 1, category_name: 'Salary', accounting_month_offset: 0, accounting_month: '2026-01', splits: [] },
   ]
 
   const { container } = render(<TransactionList transactions={transactions} />)
@@ -17,7 +17,7 @@ test('renders transactions sorted by date desc', () => {
 
 test('shows memo column when transaction has memo', () => {
   const transactions = [
-    { id: 1, date: '2026-01-15', payee: 'Test', memo: 'notes', amount: 50, account_id: 1, account_name: 'Checking', currency: 'USD', category_id: 1, category_name: 'Salary', splits: [] },
+    { id: 1, date: '2026-01-15', payee: 'Test', memo: 'notes', amount: 50, account_id: 1, account_name: 'Checking', currency: 'USD', category_id: 1, category_name: 'Salary', accounting_month_offset: 0, accounting_month: '2026-01', splits: [] },
   ]
 
   render(<TransactionList transactions={transactions} />)
@@ -27,7 +27,7 @@ test('shows memo column when transaction has memo', () => {
 
 test('hides memo column when no memos', () => {
   const transactions = [
-    { id: 1, date: '2026-01-15', payee: 'Test', memo: null, amount: 50, account_id: 1, account_name: 'Checking', currency: 'USD', category_id: 1, category_name: 'Salary', splits: [] },
+    { id: 1, date: '2026-01-15', payee: 'Test', memo: null, amount: 50, account_id: 1, account_name: 'Checking', currency: 'USD', category_id: 1, category_name: 'Salary', accounting_month_offset: 0, accounting_month: '2026-01', splits: [] },
   ]
 
   render(<TransactionList transactions={transactions} />)
@@ -37,7 +37,7 @@ test('hides memo column when no memos', () => {
 
 test('formats amount as currency', () => {
   const transactions = [
-    { id: 1, date: '2026-01-15', payee: 'Test', memo: null, amount: 1234.5, account_id: 1, account_name: 'Checking', currency: 'USD', category_id: 1, category_name: 'Salary', splits: [] },
+    { id: 1, date: '2026-01-15', payee: 'Test', memo: null, amount: 1234.5, account_id: 1, account_name: 'Checking', currency: 'USD', category_id: 1, category_name: 'Salary', accounting_month_offset: 0, accounting_month: '2026-01', splits: [] },
   ]
 
   render(<TransactionList transactions={transactions} />)
@@ -50,6 +50,7 @@ test('shows a Shared badge with the user\'s share for a transaction on an accoun
     {
       id: 1, date: '2026-01-15', payee: 'Shared Bill', memo: null, amount: 100, account_id: 1,
       account_name: 'Joint Checking', currency: 'USD', category_id: 1, category_name: 'Groceries',
+      accounting_month_offset: 0, accounting_month: '2026-01',
       splits: [{ user_id: 2, user_name: 'Bob', share_amount: 40, source: 'manual' as const }],
     },
   ]
@@ -65,6 +66,7 @@ test('does not show a Shared badge for a transaction on an account the selected 
     {
       id: 1, date: '2026-01-15', payee: 'Own Bill', memo: null, amount: 100, account_id: 1,
       account_name: 'My Checking', currency: 'USD', category_id: 1, category_name: 'Groceries',
+      accounting_month_offset: 0, accounting_month: '2026-01',
       splits: [],
     },
   ]

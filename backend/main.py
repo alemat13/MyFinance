@@ -36,6 +36,7 @@ import backup
 from filtering import build_where_clause
 from import_csv import preview_import
 from audit import record_transaction_history, TRACKED_FIELDS, _jsonify
+from accounting_month import compute_accounting_month
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -140,6 +141,8 @@ def _transaction_out(db: Session, transaction_id: int) -> TransactionOut:
         currency=currency,
         category_id=t.category_id,
         category_name=category_name,
+        accounting_month_offset=t.accounting_month_offset,
+        accounting_month=compute_accounting_month(t.date, t.accounting_month_offset),
         splits=_splits_out(t),
     )
 
@@ -371,7 +374,10 @@ def get_transactions(user_id: int | None = Query(None), db: Session = Depends(ge
             id=t.id, date=t.date, payee=t.payee, memo=t.memo,
             amount=t.amount, account_id=t.account_id,
             account_name=account_name, currency=currency, category_id=t.category_id,
-            category_name=category_name, splits=_splits_out(t),
+            category_name=category_name,
+            accounting_month_offset=t.accounting_month_offset,
+            accounting_month=compute_accounting_month(t.date, t.accounting_month_offset),
+            splits=_splits_out(t),
         )
         for t, account_name, currency, category_name in results
     ]
@@ -439,7 +445,10 @@ def search_transactions(req: TransactionSearchRequest, db: Session = Depends(get
             id=t.id, date=t.date, payee=t.payee, memo=t.memo,
             amount=t.amount, account_id=t.account_id,
             account_name=account_name, currency=currency, category_id=t.category_id,
-            category_name=category_name, splits=_splits_out(t),
+            category_name=category_name,
+            accounting_month_offset=t.accounting_month_offset,
+            accounting_month=compute_accounting_month(t.date, t.accounting_month_offset),
+            splits=_splits_out(t),
         )
         for t, account_name, currency, category_name in results
     ]
@@ -458,6 +467,7 @@ def create_transaction(data: TransactionCreate, actor_user_id: int | None = Quer
     transaction = Transaction(
         date=data.date, payee=data.payee, memo=data.memo, amount=data.amount,
         account_id=data.account_id, category_id=data.category_id,
+        accounting_month_offset=data.accounting_month_offset,
     )
     db.add(transaction)
     db.flush()
@@ -594,6 +604,7 @@ def import_commit(data: ImportCommitRequest, actor_user_id: int | None = Query(N
         transaction = Transaction(
             date=row.date, payee=row.payee, memo=row.memo, amount=row.amount,
             account_id=row.account_id, category_id=row.category_id,
+            accounting_month_offset=row.accounting_month_offset,
         )
         db.add(transaction)
         db.flush()
@@ -658,7 +669,10 @@ def get_dashboard(user_id: int | None = Query(None), db: Session = Depends(get_d
             id=t.id, date=t.date, payee=t.payee, memo=t.memo,
             amount=t.amount, account_id=t.account_id,
             account_name=account_name, currency=currency, category_id=t.category_id,
-            category_name=category_name, splits=_splits_out(t),
+            category_name=category_name,
+            accounting_month_offset=t.accounting_month_offset,
+            accounting_month=compute_accounting_month(t.date, t.accounting_month_offset),
+            splits=_splits_out(t),
         )
         for t, account_name, currency, category_name in recent_results
     ]

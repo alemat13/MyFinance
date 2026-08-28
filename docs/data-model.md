@@ -59,6 +59,7 @@ erDiagram
         float amount "negative=expense, positive=income"
         int account_id FK
         int category_id FK
+        int accounting_month_offset "months from date's month, -3..+3, default 0"
         datetime created_at
     }
 
@@ -124,6 +125,7 @@ Individual financial transactions.
 | `amount` | Float | Negative = expense, positive = income. Denominated in the parent account's `currency` — a transaction has no currency of its own |
 | `account_id` | Integer | Foreign key → `accounts.id` |
 | `category_id` | Integer | Foreign key → `categories.id` |
+| `accounting_month_offset` | Integer | Months relative to `date`'s month this transaction should be accounted in. Range -3..+3, default 0 (same month as `date`) |
 | `created_at` | DateTime | Default: current UTC time |
 
 ### `category_splits`
@@ -160,6 +162,7 @@ The resolved split for one transaction, computed once and stored — never silen
 - **Categories ↔ Transactions**: One-to-many. A category can classify many transactions.
 - **Ownership validation**: The backend enforces that ownership percentages sum to exactly 100% per account (within 0.01 tolerance).
 - **User filtering**: API endpoints `/api/transactions`, `/api/dashboard`, `/api/accounts` accept an optional `?user_id=X` query parameter to filter by account ownership (where `ownership_percentage > 0`).
+- **Accounting month**: each transaction stores `accounting_month_offset` (months relative to its own `date`, -3..+3, default 0), letting a transaction be attributed to a different reporting month than the one it was dated in — e.g. a paycheck dated the last day of a month that should count toward the next. The API also returns a derived, not stored, `accounting_month` ("YYYY-MM") computed from `date + accounting_month_offset` (`backend/accounting_month.py`), for reports/dashboards to group by later.
 - **Split resolution** (`backend/split_engine.py`): for each transaction, the split is resolved in priority order — an explicit override (`manual`) > `category_splits` for its category (`category_default`) > `global_split_weights` (`global_default`). If nothing is configured at any tier, no `transaction_splits` rows are created (the feature is opt-in).
 - **Splits are frozen, ownership is live**: `transaction_splits.share_amount` (what a user is *liable* for) is computed once at write time and persisted. What a user *paid* is instead derived live from the account's *current* `account_users.ownership_percentage` — so historical liability stays stable even if account ownership changes later, but the settlement report always reflects today's ownership. The household balance report (`GET /api/balances`, also embedded in `GET /api/dashboard`) is `sum(paid) − sum(share_amount)` per user — positive means the household owes them, negative means they owe the household.
 - **Multi-currency accounts, no conversion**: each account has its own `currency`; transactions and splits inherit it from their account rather than storing it themselves. Amounts are never converted or summed across currencies — `compute_balances()` (`backend/split_engine.py`) partitions by `(user_id, currency)`, so `GET /api/balances` returns one net position per user *per currency*, and a household with mixed-currency accounts gets a separate settlement line for each currency instead of a single blended total.

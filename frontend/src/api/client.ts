@@ -101,6 +101,8 @@ export interface Transaction {
   currency: string
   category_id: number
   category_name: string
+  accounting_month_offset: number
+  accounting_month: string
   splits: TransactionSplit[]
 }
 
@@ -111,6 +113,7 @@ export interface TransactionCreate {
   amount: number
   account_id: number
   category_id: number
+  accounting_month_offset?: number
   split_overrides?: SplitShareCreate[] | null
 }
 
@@ -121,6 +124,7 @@ export interface TransactionUpdate {
   amount?: number
   account_id?: number
   category_id?: number
+  accounting_month_offset?: number
   split_overrides?: SplitShareCreate[] | null
 }
 
