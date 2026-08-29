@@ -1,15 +1,15 @@
 import { Fragment, useEffect, useState } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import {
-  Transaction, TransactionCreate, TransactionUpdate, TransactionSplit, TransactionHistoryEntry,
+  Transaction, TransactionCreate, TransactionSplit,
   Account, Category, User, FilterField, TransactionSearchRequest,
-  createTransaction, updateTransaction, deleteTransaction,
+  createTransaction,
   fetchAccounts, fetchCategories, fetchUsers, fetchSplitPreview, searchTransactions,
-  fetchTransactionHistory,
 } from '../api/client'
 import SplitEditor, { SplitRow } from './SplitEditor'
+import TransactionDetail from './TransactionDetail'
 import { useToast } from '../context/ToastContext'
-import { Button, Input, Select, Table, Thead, Tbody, Tr, Th, Td, StatusMessage, ConfirmDialog, Badge, CategoryBadge } from './ui'
+import { Button, Input, Select, Table, Thead, Tbody, Tr, Th, Td, StatusMessage, Badge, CategoryBadge } from './ui'
 import { formatMoney } from '../utils/currency'
 import { getParam, patchQueryParams } from '../utils/urlState'
 import { sharedShareFor, formatDateGroupHeader } from '../utils/transactions'
@@ -149,19 +149,11 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
   const [allUsers, setAllUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [editingId, setEditingId] = useState<number | null>(null)
-  const [editData, setEditData] = useState<TransactionUpdate>({})
-  const [editSplit, setEditSplit] = useState<SplitRow[] | null>(null)
-  const [editPreview, setEditPreview] = useState<TransactionSplit[]>([])
   const [showNew, setShowNew] = useState(false)
   const [newData, setNewData] = useState<TransactionCreate>(emptyForm)
   const [newSplit, setNewSplit] = useState<SplitRow[] | null>(null)
   const [newPreview, setNewPreview] = useState<TransactionSplit[]>([])
-  const [deletingTransaction, setDeletingTransaction] = useState<Transaction | null>(null)
-  const [expandedHistoryId, setExpandedHistoryId] = useState<number | null>(null)
-  const [historyEntries, setHistoryEntries] = useState<TransactionHistoryEntry[]>([])
-  const [historyLoading, setHistoryLoading] = useState(false)
-  const [historyError, setHistoryError] = useState<string | null>(null)
+  const [detailTransactionId, setDetailTransactionId] = useState<number | null>(() => loadInitialInt('transaction', 0) || null)
   const { showToast } = useToast()
 
   const [mode, setMode] = useState<FilterMode>(loadInitialMode)
@@ -333,85 +325,15 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
       .catch(() => setNewPreview([]))
   }, [showNew, newSplit, newData.amount, newData.category_id, newData.account_id])
 
-  // Live default-split preview for the "edit transaction" form, while no manual override is active.
-  useEffect(() => {
-    if (editingId === null || editSplit !== null || !editData.category_id || !editData.amount) {
-      setEditPreview([])
-      return
-    }
-    fetchSplitPreview(editData.amount, editData.category_id, editData.account_id || null)
-      .then(setEditPreview)
-      .catch(() => setEditPreview([]))
-  }, [editingId, editSplit, editData.amount, editData.category_id, editData.account_id])
-
-  const startEdit = (t: Transaction) => {
-    setEditingId(t.id)
-    setEditData({
-      date: t.date,
-      payee: t.payee,
-      memo: t.memo,
-      amount: t.amount,
-      account_id: t.account_id,
-      category_id: t.category_id,
-      accounting_month_offset: t.accounting_month_offset,
-    })
-    const isManual = t.splits.length > 0 && t.splits.every(s => s.source === 'manual')
-    setEditSplit(isManual ? t.splits.map(s => ({ user_id: s.user_id, value: s.share_amount })) : null)
+  const openDetail = (id: number) => {
+    setDetailTransactionId(id)
+    patchQueryParams({ transaction: String(id) })
   }
 
-  const cancelEdit = () => {
-    setEditingId(null)
-    setEditData({})
-    setEditSplit(null)
+  const closeDetail = () => {
+    setDetailTransactionId(null)
+    patchQueryParams({ transaction: undefined })
   }
-
-  const saveEdit = (id: number) => {
-    const amount = editData.amount ?? 0
-    if (editSplit !== null) {
-      const total = editSplit.reduce((s, r) => s + r.value, 0)
-      if (Math.abs(total - amount) > 0.01) {
-        showToast(`Custom split must sum to the transaction amount (${amount})`); return
-      }
-    }
-    updateTransaction(id, {
-      ...editData,
-      category_id: editData.category_id || null,
-      split_overrides: editSplit ? editSplit.map(r => ({ user_id: r.user_id, share_amount: r.value })) : null,
-    }, selectedUserId)
-      .then(() => { cancelEdit(); loadTransactions(); loadMeta() })
-      .catch(err => showToast(err.message))
-  }
-
-  const confirmDelete = () => {
-    if (!deletingTransaction) return
-    deleteTransaction(deletingTransaction.id, selectedUserId)
-      .then(() => { loadTransactions(); loadMeta() })
-      .catch(err => showToast(err.message))
-      .finally(() => setDeletingTransaction(null))
-  }
-
-  const toggleHistory = (id: number) => {
-    if (expandedHistoryId === id) {
-      setExpandedHistoryId(null)
-      return
-    }
-    setExpandedHistoryId(id)
-    setHistoryEntries([])
-    setHistoryError(null)
-    setHistoryLoading(true)
-    fetchTransactionHistory(id)
-      .then(setHistoryEntries)
-      .catch(err => setHistoryError(err.message))
-      .finally(() => setHistoryLoading(false))
-  }
-
-  const historyBadgeVariant = (action: TransactionHistoryEntry['action']) =>
-    action === 'created' ? 'positive' : action === 'deleted' ? 'negative' : 'info'
-
-  const describeHistoryChanges = (changes: TransactionHistoryEntry['changes']) =>
-    changes
-      ? Object.entries(changes).map(([field, { old, new: next }]) => `${field}: ${old ?? '—'} → ${next ?? '—'}`).join(', ')
-      : ''
 
   const saveNew = () => {
     if (!newData.payee || !newData.account_id) {
@@ -625,12 +547,11 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
               {hasMemo && <Th>Memo</Th>}
               <Th className="text-right">Amount</Th>
               <Th>Split</Th>
-              <Th className="text-center">Actions</Th>
             </Tr>
           </Thead>
           <Tbody>
             {transactions.length === 0 && (
-              <Tr><Td colSpan={hasMemo ? 9 : 8} className="text-center py-5 text-slate-400">No transactions match your filters</Td></Tr>
+              <Tr><Td colSpan={hasMemo ? 8 : 7} className="text-center py-5 text-slate-400">No transactions match your filters</Td></Tr>
             )}
             {transactions.map((t, idx) => {
               const showDateHeader = groupByDate && (idx === 0 || transactions[idx - 1].date !== t.date)
@@ -638,105 +559,28 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
               <Fragment key={t.id}>
               {showDateHeader && (
                 <Tr className="hover:bg-transparent bg-slate-100 dark:bg-slate-800/70">
-                  <Td colSpan={hasMemo ? 9 : 8} className="py-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  <Td colSpan={hasMemo ? 8 : 7} className="py-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400">
                     {formatDateGroupHeader(t.date)}
                   </Td>
                 </Tr>
               )}
-              <Tr>
-                {editingId === t.id ? (
-                  <>
-                    <Td><Input type="date" value={editData.date ?? ''} onChange={e => setEditData({ ...editData, date: e.target.value })} /></Td>
-                    <Td>
-                      <Select
-                        value={editData.accounting_month_offset ?? 0}
-                        onChange={e => setEditData({ ...editData, accounting_month_offset: parseInt(e.target.value) })}
-                        className="min-w-[160px]"
-                      >
-                        {ACCOUNTING_MONTH_OFFSETS.map(o => (
-                          <option key={o} value={o}>{accountingMonthLabel(editData.date ?? '', o)}</option>
-                        ))}
-                      </Select>
-                    </Td>
-                    <Td><Input value={editData.payee ?? ''} onChange={e => setEditData({ ...editData, payee: e.target.value })} /></Td>
-                    <Td>
-                      <Select value={editData.category_id ?? 0} onChange={e => setEditData({ ...editData, category_id: parseInt(e.target.value) || 0 })} className="min-w-[140px]">
-                        <option value={0}>Uncategorized</option>
-                        {catOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                      </Select>
-                    </Td>
-                    <Td>
-                      <Select value={editData.account_id ?? 0} onChange={e => setEditData({ ...editData, account_id: parseInt(e.target.value) || 0 })} className="min-w-[140px]">
-                        <option value={0}>Account</option>
-                        {acctOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                      </Select>
-                    </Td>
-                    {hasMemo && (
-                      <Td><Input value={editData.memo ?? ''} onChange={e => setEditData({ ...editData, memo: e.target.value || null })} /></Td>
-                    )}
-                    <Td className="text-right">
-                      <Input type="number" step="0.01" value={editData.amount ?? 0} onChange={e => setEditData({ ...editData, amount: parseFloat(e.target.value) || 0 })} className="w-[110px] text-right" />
-                    </Td>
-                    <Td colSpan={2}>
-                      {renderSplitSection(editData.amount ?? 0, currencyFor(editData.account_id), editSplit, editPreview, setEditSplit)}
-                      <div className="mt-1.5 flex gap-1">
-                        <Button size="sm" onClick={() => saveEdit(t.id)}>Save</Button>
-                        <Button size="sm" variant="secondary" onClick={cancelEdit}>Cancel</Button>
-                      </div>
-                    </Td>
-                  </>
-                ) : (
-                  <>
-                    <Td>{t.date}</Td>
-                    <Td>{t.accounting_month}</Td>
-                    <Td>{t.payee}</Td>
-                    <Td><CategoryBadge name={t.category_name} color={t.category_color} icon={t.category_icon} /></Td>
-                    <Td>{t.account_name}</Td>
-                    {hasMemo && <Td>{t.memo ?? ''}</Td>}
-                    <Td className={`text-right ${t.amount >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                      {formatMoney(t.amount, t.currency)}
-                      {sharedShareFor(t, selectedUserId, accounts) !== null && (
-                        <div className="mt-0.5">
-                          <Badge variant="info">Shared · your share: {formatMoney(sharedShareFor(t, selectedUserId, accounts)!, t.currency)}</Badge>
-                        </div>
-                      )}
-                    </Td>
-                    <Td className="text-xs">{splitsDisplay(t.splits, t.currency)}</Td>
-                    <Td className="text-center">
-                      <Button size="sm" variant="secondary" onClick={() => startEdit(t)} className="mr-1">Edit</Button>
-                      <Button size="sm" variant="secondary" onClick={() => toggleHistory(t.id)} className="mr-1">History</Button>
-                      <Button size="sm" variant="danger" onClick={() => setDeletingTransaction(t)}>Delete</Button>
-                    </Td>
-                  </>
-                )}
+              <Tr onClick={() => openDetail(t.id)} className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                <Td>{t.date}</Td>
+                <Td>{t.accounting_month}</Td>
+                <Td>{t.payee}</Td>
+                <Td><CategoryBadge name={t.category_name} color={t.category_color} icon={t.category_icon} /></Td>
+                <Td>{t.account_name}</Td>
+                {hasMemo && <Td>{t.memo ?? ''}</Td>}
+                <Td className={`text-right ${t.amount >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                  {formatMoney(t.amount, t.currency)}
+                  {sharedShareFor(t, selectedUserId, accounts) !== null && (
+                    <div className="mt-0.5">
+                      <Badge variant="info">Shared · your share: {formatMoney(sharedShareFor(t, selectedUserId, accounts)!, t.currency)}</Badge>
+                    </div>
+                  )}
+                </Td>
+                <Td className="text-xs">{splitsDisplay(t.splits, t.currency)}</Td>
               </Tr>
-              {expandedHistoryId === t.id && (
-                <Tr>
-                  <Td colSpan={hasMemo ? 9 : 8} className="bg-slate-50 dark:bg-slate-800/40">
-                    {historyLoading && <StatusMessage loading />}
-                    {historyError && <StatusMessage error={historyError} />}
-                    {!historyLoading && !historyError && historyEntries.length === 0 && (
-                      <div className="text-xs text-slate-400 py-1">No history recorded for this transaction</div>
-                    )}
-                    {!historyLoading && !historyError && historyEntries.length > 0 && (
-                      <div className="flex flex-col gap-1.5 py-1">
-                        {historyEntries.map(h => (
-                          <div key={h.id} className="flex items-center gap-2 text-xs flex-wrap">
-                            <Badge variant={historyBadgeVariant(h.action)}>
-                              {h.action}{h.source === 'csv_import' ? ' · CSV' : ''}
-                            </Badge>
-                            <span className="text-slate-500 dark:text-slate-400">{new Date(h.changed_at).toLocaleString()}</span>
-                            <span className="text-slate-500 dark:text-slate-400">by {h.changed_by_user_name ?? 'Unknown user'}</span>
-                            {h.action === 'updated' && (
-                              <span className="text-slate-700 dark:text-slate-200">{describeHistoryChanges(h.changes)}</span>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </Td>
-                </Tr>
-              )}
               </Fragment>
               )
             })}
@@ -760,13 +604,18 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
         </div>
       )}
 
-      <ConfirmDialog
-        isOpen={deletingTransaction !== null}
-        title="Delete transaction"
-        message={`Delete transaction "${deletingTransaction?.payee}"?`}
-        onConfirm={confirmDelete}
-        onCancel={() => setDeletingTransaction(null)}
-      />
+      {detailTransactionId !== null && (
+        <TransactionDetail
+          transactionId={detailTransactionId}
+          accounts={accounts}
+          categories={categories}
+          allUsers={allUsers}
+          selectedUserId={selectedUserId}
+          onClose={closeDetail}
+          onSaved={() => { closeDetail(); loadTransactions(); loadMeta() }}
+          onDeleted={() => { closeDetail(); loadTransactions(); loadMeta() }}
+        />
+      )}
     </div>
   )
 }

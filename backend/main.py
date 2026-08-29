@@ -510,6 +510,14 @@ def create_transaction(data: TransactionCreate, actor_user_id: int | None = Quer
     return _transaction_out(db, transaction.id)
 
 
+@app.get("/api/transactions/{transaction_id}", response_model=TransactionOut)
+def get_transaction(transaction_id: int, db: Session = Depends(get_db)):
+    transaction = db.query(Transaction).filter(Transaction.id == transaction_id).first()
+    if not transaction:
+        raise HTTPException(404, "Transaction not found")
+    return _transaction_out(db, transaction_id)
+
+
 @app.put("/api/transactions/{transaction_id}", response_model=TransactionOut)
 def update_transaction(transaction_id: int, data: TransactionUpdate, actor_user_id: int | None = Query(None), db: Session = Depends(get_db)):
     transaction = db.query(Transaction).filter(Transaction.id == transaction_id).first()
