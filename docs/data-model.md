@@ -163,7 +163,7 @@ The resolved split for one transaction, computed once and stored — never silen
 
 - **Users ↔ Accounts**: Many-to-many via `account_users`. Each user can own multiple accounts; each account can have multiple owners (joint account).
 - **Accounts ↔ Transactions**: One-to-many. An account can have many transactions.
-- **Categories ↔ Transactions**: One-to-many. A category can classify many transactions.
+- **Categories ↔ Transactions**: One-to-many, and optional — `category_id` is nullable, so a transaction can have no category ("Uncategorized").
 - **Ownership validation**: The backend enforces that ownership percentages sum to exactly 100% per account (within 0.01 tolerance).
 - **User filtering**: API endpoints `/api/transactions`, `/api/dashboard`, `/api/accounts` accept an optional `?user_id=X` query parameter to filter by account ownership (where `ownership_percentage > 0`).
 - **Accounting month**: each transaction stores `accounting_month_offset` (months relative to its own `date`, -3..+3, default 0), letting a transaction be attributed to a different reporting month than the one it was dated in — e.g. a paycheck dated the last day of a month that should count toward the next. The API also returns a derived, not stored, `accounting_month` ("YYYY-MM") computed from `date + accounting_month_offset` (`backend/accounting_month.py`), for reports/dashboards to group by later.
