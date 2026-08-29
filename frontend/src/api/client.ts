@@ -375,6 +375,10 @@ export function searchTransactions(req: TransactionSearchRequest): Promise<Trans
   return request<TransactionSearchResponse>('/transactions/search', { method: 'POST', body: JSON.stringify(req) })
 }
 
+export function fetchTransaction(id: number): Promise<Transaction> {
+  return request<Transaction>(`/transactions/${id}`)
+}
+
 export function createTransaction(data: TransactionCreate, actorUserId?: number | null): Promise<Transaction> {
   const params = actorUserId ? `?actor_user_id=${actorUserId}` : ''
   return request<Transaction>(`/transactions${params}`, { method: 'POST', body: JSON.stringify(data) })

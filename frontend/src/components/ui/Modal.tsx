@@ -7,9 +7,15 @@ interface ModalProps {
   onClose: () => void
   title?: string
   children: ReactNode
+  size?: 'sm' | 'lg'
 }
 
-export function Modal({ isOpen, onClose, title, children }: ModalProps) {
+const SIZE_CLASSES: Record<'sm' | 'lg', string> = {
+  sm: 'max-w-sm',
+  lg: 'max-w-2xl max-h-[85vh] overflow-y-auto',
+}
+
+export function Modal({ isOpen, onClose, title, children, size = 'sm' }: ModalProps) {
   useEffect(() => {
     if (!isOpen) return
     const onKeyDown = (e: KeyboardEvent) => {
@@ -30,7 +36,7 @@ export function Modal({ isOpen, onClose, title, children }: ModalProps) {
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="w-full max-w-sm rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl"
+        className={`w-full ${SIZE_CLASSES[size]} rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl`}
         onClick={e => e.stopPropagation()}
       >
         {title && (

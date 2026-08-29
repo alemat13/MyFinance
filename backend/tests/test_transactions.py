@@ -45,6 +45,22 @@ def test_get_transaction_has_names(client, sample_transaction):
     assert data[0]["category_name"] is not None
 
 
+def test_get_single_transaction(client, sample_transaction):
+    response = client.get(f"/api/transactions/{sample_transaction.id}")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["id"] == sample_transaction.id
+    assert data["payee"] == "Test Payee"
+    assert data["amount"] == 500.0
+    assert data["account_name"] is not None
+    assert data["category_name"] is not None
+
+
+def test_get_single_transaction_not_found(client):
+    response = client.get("/api/transactions/999999")
+    assert response.status_code == 404
+
+
 def test_transaction_currency_reflects_account(client, db, sample_category):
     from models import Account
     account = Account(name="USD Checking", type="Checking", balance=0.0, currency="USD")
