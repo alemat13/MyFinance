@@ -50,18 +50,24 @@ export interface Category {
   id: number
   name: string
   type: string
+  color?: string | null
+  icon?: string | null
   splits: CategorySplit[]
 }
 
 export interface CategoryCreate {
   name: string
   type: string
+  color?: string | null
+  icon?: string | null
   splits?: CategorySplitCreate[]
 }
 
 export interface CategoryUpdate {
   name?: string
   type?: string
+  color?: string | null
+  icon?: string | null
   splits?: CategorySplitCreate[]
 }
 
@@ -99,8 +105,10 @@ export interface Transaction {
   account_id: number
   account_name: string
   currency: string
-  category_id: number
-  category_name: string
+  category_id: number | null
+  category_name: string | null
+  category_color?: string | null
+  category_icon?: string | null
   accounting_month_offset: number
   accounting_month: string
   splits: TransactionSplit[]
@@ -112,7 +120,7 @@ export interface TransactionCreate {
   memo?: string | null
   amount: number
   account_id: number
-  category_id: number
+  category_id?: number | null
   accounting_month_offset?: number
   split_overrides?: SplitShareCreate[] | null
 }
@@ -123,7 +131,7 @@ export interface TransactionUpdate {
   memo?: string | null
   amount?: number
   account_id?: number
-  category_id?: number
+  category_id?: number | null
   accounting_month_offset?: number
   split_overrides?: SplitShareCreate[] | null
 }
@@ -196,9 +204,10 @@ export interface ImportDetectResponse {
 }
 
 export interface CategoryChartItem {
-  category_id: number
+  category_id: number | null
   category_name: string
-  category_type: 'Income' | 'Expense'
+  category_type: 'Income' | 'Expense' | 'Uncategorized'
+  color?: string | null
   amount: number
   currency: string
 }

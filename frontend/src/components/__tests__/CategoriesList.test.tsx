@@ -69,7 +69,7 @@ test('can open and submit new category form', async () => {
   fireEvent.click(screen.getByText('Save'))
 
   await waitFor(() => {
-    expect(mockCreateCategory).toHaveBeenCalledWith({ name: 'Food', type: 'Expense', splits: [] })
+    expect(mockCreateCategory).toHaveBeenCalledWith({ name: 'Food', type: 'Expense', color: null, icon: null, splits: [] })
   })
 })
 
@@ -156,7 +156,7 @@ test('can add a default split row and submit', async () => {
 
   await waitFor(() => {
     expect(mockCreateCategory).toHaveBeenCalledWith({
-      name: 'Mortgage', type: 'Expense',
+      name: 'Mortgage', type: 'Expense', color: null, icon: null,
       splits: [{ user_id: 1, split_percentage: 100 }],
     })
   })

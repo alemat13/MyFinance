@@ -67,10 +67,11 @@ The Dashboard is the home screen and gives an at-a-glance summary:
 - **Account cards** — one card per visible account, showing its name, type, and current
   balance (colored green for positive, red for negative).
 - **Recent transactions** — the last 10 transactions across your visible accounts,
-  showing date, payee, category, account, amount, and memo if present. A transaction
-  split between multiple people shows a "Shared · your share: $X" badge when a specific
-  user is selected, so you can tell at a glance what your actual liability is versus
-  the transaction's full amount.
+  showing date, payee, category, account, amount, and memo if present. Category is
+  shown as a colored icon badge (or a gray "Uncategorized" badge if none is set), not
+  just a plain label. A transaction split between multiple people shows a "Shared ·
+  your share: $X" badge when a specific user is selected, so you can tell at a glance
+  what your actual liability is versus the transaction's full amount.
 
 ## Accounts
 
@@ -99,11 +100,14 @@ Categories classify transactions (e.g. Groceries, Rent, Salary).
 The table lists **Name, Type, Default Split,** and row actions.
 
 - **+ New Category** (and Edit) lets you set a name, a type (free text — commonly
-  Income, Expense, or Transfer), and an optional **default split**: a set of per-user
+  Income, Expense, or Transfer), a **color** and an **icon** (pick from a curated set
+  of finance-themed icons), and an optional **default split**: a set of per-user
   percentages that will automatically be applied to every transaction in this category,
   unless a transaction manually overrides it. If you don't set a default split for a
   category, transactions in it fall back to the household's [global split
   weights](#split-weights) instead.
+- The color and icon show up as a small colored badge wherever the category appears —
+  in this table, on Transactions rows, and in the Dashboard's recent transactions.
 - If you do set a default split, its percentages must add up to 100%.
 - You can't delete a category that still has transactions assigned to it.
 
@@ -141,7 +145,10 @@ The transaction form captures:
   month).
 - **Payee**, an optional **memo**, and the **amount** (negative for an expense,
   positive for income).
-- The **account** and **category** it belongs to.
+- The **account** it belongs to, and its **category** — picking a category is
+  optional; leaving it as "Uncategorized" (the default) is a valid, final choice, and
+  such transactions display with a gray "Uncategorized" badge instead of a category
+  name.
 - A **"Customize split"** checkbox. Leave it unchecked to see a live preview of how
   the transaction will automatically be split (based on the category's default split,
   or the household's global split weights if the category has none). Check it to
@@ -212,7 +219,9 @@ selected (not "All Users") — it's opt into your own view of the household's fi
 
 Three charts are shown:
 
-- **Amounts by Category** — a bar chart color-coded by Income vs. Expense.
+- **Amounts by Category** — a bar chart color-coded by Income vs. Expense. Any
+  uncategorized transactions are grouped into their own gray "Uncategorized" bar so
+  they're never silently left out of the totals.
 - **Income vs. Expense by Month** — how the two compare over time.
 - **Net by Month** — the running net (income minus expense) per month.
 

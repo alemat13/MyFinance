@@ -9,7 +9,7 @@ import {
 } from '../api/client'
 import SplitEditor, { SplitRow } from './SplitEditor'
 import { useToast } from '../context/ToastContext'
-import { Button, Input, Select, Table, Thead, Tbody, Tr, Th, Td, StatusMessage, ConfirmDialog, Badge } from './ui'
+import { Button, Input, Select, Table, Thead, Tbody, Tr, Th, Td, StatusMessage, ConfirmDialog, Badge, CategoryBadge } from './ui'
 import { formatMoney } from '../utils/currency'
 import { getParam, patchQueryParams } from '../utils/urlState'
 import { sharedShareFor, formatDateGroupHeader } from '../utils/transactions'
@@ -375,6 +375,7 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
     }
     updateTransaction(id, {
       ...editData,
+      category_id: editData.category_id || null,
       split_overrides: editSplit ? editSplit.map(r => ({ user_id: r.user_id, share_amount: r.value })) : null,
     }, selectedUserId)
       .then(() => { cancelEdit(); loadTransactions(); loadMeta() })
@@ -413,8 +414,8 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
       : ''
 
   const saveNew = () => {
-    if (!newData.payee || !newData.account_id || !newData.category_id) {
-      showToast('Payee, account, and category are required'); return
+    if (!newData.payee || !newData.account_id) {
+      showToast('Payee and account are required'); return
     }
     if (newSplit !== null) {
       const total = newSplit.reduce((s, r) => s + r.value, 0)
@@ -424,6 +425,7 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
     }
     createTransaction({
       ...newData,
+      category_id: newData.category_id || null,
       split_overrides: newSplit ? newSplit.map(r => ({ user_id: r.user_id, share_amount: r.value })) : undefined,
     }, selectedUserId)
       .then(() => { setShowNew(false); setNewData(emptyForm); setNewSplit(null); loadTransactions(); loadMeta() })
@@ -598,8 +600,8 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
               <option value={0}>Account</option>
               {acctOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </Select>
-            <Select value={newData.category_id} onChange={e => setNewData({ ...newData, category_id: parseInt(e.target.value) || 0 })} className="min-w-[140px]">
-              <option value={0}>Category</option>
+            <Select value={newData.category_id ?? 0} onChange={e => setNewData({ ...newData, category_id: parseInt(e.target.value) || 0 })} className="min-w-[140px]">
+              <option value={0}>Uncategorized</option>
               {catOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </Select>
             <Button onClick={saveNew}>Save</Button>
@@ -659,7 +661,7 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
                     <Td><Input value={editData.payee ?? ''} onChange={e => setEditData({ ...editData, payee: e.target.value })} /></Td>
                     <Td>
                       <Select value={editData.category_id ?? 0} onChange={e => setEditData({ ...editData, category_id: parseInt(e.target.value) || 0 })} className="min-w-[140px]">
-                        <option value={0}>Category</option>
+                        <option value={0}>Uncategorized</option>
                         {catOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                       </Select>
                     </Td>
@@ -688,7 +690,7 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
                     <Td>{t.date}</Td>
                     <Td>{t.accounting_month}</Td>
                     <Td>{t.payee}</Td>
-                    <Td>{t.category_name}</Td>
+                    <Td><CategoryBadge name={t.category_name} color={t.category_color} icon={t.category_icon} /></Td>
                     <Td>{t.account_name}</Td>
                     {hasMemo && <Td>{t.memo ?? ''}</Td>}
                     <Td className={`text-right ${t.amount >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>

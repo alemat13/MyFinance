@@ -26,6 +26,8 @@ class Category(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(100), nullable=False, unique=True)
     type = Column(String(50), nullable=False)
+    color = Column(String(7), nullable=True)
+    icon = Column(String(50), nullable=True)
 
     transactions = relationship("Transaction", back_populates="category")
     splits = relationship("CategorySplit", back_populates="category", cascade="all, delete-orphan")

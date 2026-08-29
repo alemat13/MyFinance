@@ -5,7 +5,7 @@ erDiagram
     users ||--o{ account_users : "owns"
     accounts ||--o{ account_users : "has"
     accounts ||--o{ transactions : contains
-    categories ||--o{ transactions : categorizes
+    categories |o--o{ transactions : categorizes
     categories ||--o{ category_splits : "defaults to"
     users ||--o{ category_splits : "shares"
     users ||--o{ global_split_weights : "weighted as"
@@ -55,6 +55,8 @@ erDiagram
         int id PK
         string name "UNIQUE"
         string type
+        string color "nullable, e.g. #4f46e5"
+        string icon "nullable, lucide-react icon name"
     }
 
     category_splits {
@@ -75,7 +77,7 @@ erDiagram
         text memo "nullable"
         float amount "negative=expense, positive=income"
         int account_id FK
-        int category_id FK
+        int category_id FK "nullable"
         int accounting_month_offset "months from date's month, -3..+3, default 0"
         datetime created_at
     }
@@ -129,6 +131,8 @@ Transaction categories (income, expense, transfer).
 | `id` | Integer | Primary key, autoincrement |
 | `name` | String(100) | Required, unique |
 | `type` | String(50) | Required |
+| `color` | String(7) | Optional, hex color (e.g. `#4f46e5`) shown as the category's badge color |
+| `icon` | String(50) | Optional, `lucide-react` icon name shown as the category's badge icon |
 
 ### `transactions`
 Individual financial transactions.
@@ -141,7 +145,7 @@ Individual financial transactions.
 | `memo` | Text | Optional |
 | `amount` | Float | Negative = expense, positive = income. Denominated in the parent account's `currency` — a transaction has no currency of its own |
 | `account_id` | Integer | Foreign key → `accounts.id` |
-| `category_id` | Integer | Foreign key → `categories.id` |
+| `category_id` | Integer | Foreign key → `categories.id`, nullable — an uncategorized transaction is shown as "Uncategorized" |
 | `accounting_month_offset` | Integer | Months relative to `date`'s month this transaction should be accounted in. Range -3..+3, default 0 (same month as `date`) |
 | `created_at` | DateTime | Default: current UTC time |
 
@@ -190,7 +194,7 @@ Audit trail: one row per transaction create/update/delete, with a snapshot of th
 
 - **Users ↔ Accounts**: Many-to-many via `account_users`. Each user can own multiple accounts; each account can have multiple owners (joint account).
 - **Accounts ↔ Transactions**: One-to-many. An account can have many transactions.
-- **Categories ↔ Transactions**: One-to-many. A category can classify many transactions.
+- **Categories ↔ Transactions**: One-to-many, and optional — `category_id` is nullable, so a transaction can have no category ("Uncategorized").
 - **Ownership validation**: The backend enforces that ownership percentages sum to exactly 100% per account (within 0.01 tolerance).
 - **User filtering**: API endpoints `/api/transactions`, `/api/dashboard`, `/api/accounts` accept an optional `?user_id=X` query parameter to filter by account ownership (where `ownership_percentage > 0`).
 - **Accounting month**: each transaction stores `accounting_month_offset` (months relative to its own `date`, -3..+3, default 0), letting a transaction be attributed to a different reporting month than the one it was dated in — e.g. a paycheck dated the last day of a month that should count toward the next. The API also returns a derived, not stored, `accounting_month` ("YYYY-MM") computed from `date + accounting_month_offset` (`backend/accounting_month.py`), for reports/dashboards to group by later.

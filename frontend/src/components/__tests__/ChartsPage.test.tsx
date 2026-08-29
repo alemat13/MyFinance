@@ -111,6 +111,34 @@ test('shows a currency selector with multiple currencies', async () => {
   expect(select.value).toBe('USD')
 })
 
+test('shows an Uncategorized legend swatch when the data includes an uncategorized bucket', async () => {
+  mockFetchCharts.mockResolvedValue({
+    ...sampleData,
+    by_category: [
+      ...sampleData.by_category,
+      { category_id: null, category_name: 'Uncategorized', category_type: 'Uncategorized' as const, amount: -42, currency: 'EUR' },
+    ],
+  })
+
+  render(<ChartsPage selectedUserId={1} onBack={() => {}} />)
+
+  await waitFor(() => {
+    expect(screen.getByText('Amounts by Category')).toBeInTheDocument()
+  })
+  expect(screen.getByText('Uncategorized')).toBeInTheDocument()
+})
+
+test('does not show an Uncategorized legend swatch when there is no uncategorized data', async () => {
+  mockFetchCharts.mockResolvedValue(sampleData)
+
+  render(<ChartsPage selectedUserId={1} onBack={() => {}} />)
+
+  await waitFor(() => {
+    expect(screen.getByText('Amounts by Category')).toBeInTheDocument()
+  })
+  expect(screen.queryByText('Uncategorized')).not.toBeInTheDocument()
+})
+
 test('refetches when selectedUserId changes', async () => {
   mockFetchCharts.mockResolvedValue(sampleData)
 
