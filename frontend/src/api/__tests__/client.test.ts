@@ -130,6 +130,25 @@ test('createCategory makes POST request', async () => {
   )
 })
 
+test('createCategory includes color and icon when provided', async () => {
+  vi.mocked(globalThis.fetch).mockResolvedValue({
+    ok: true,
+    status: 200,
+    json: () => Promise.resolve({ id: 1, name: 'Groceries', type: 'Expense', color: '#d97706', icon: 'ShoppingCart' }),
+    text: () => Promise.resolve(''),
+  } as Response)
+
+  await createCategory({ name: 'Groceries', type: 'Expense', color: '#d97706', icon: 'ShoppingCart' })
+
+  expect(globalThis.fetch).toHaveBeenCalledWith(
+    'http://localhost:8000/api/categories',
+    expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ name: 'Groceries', type: 'Expense', color: '#d97706', icon: 'ShoppingCart' }),
+    }),
+  )
+})
+
 test('updateCategory makes PUT request', async () => {
   vi.mocked(globalThis.fetch).mockResolvedValue({
     ok: true,

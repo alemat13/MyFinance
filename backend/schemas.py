@@ -103,18 +103,24 @@ class CategoryOut(BaseModel):
     id: int
     name: str
     type: str
+    color: str | None = None
+    icon: str | None = None
     splits: list[CategorySplitOut] = []
 
 
 class CategoryCreate(BaseModel):
     name: str
     type: str
+    color: str | None = None
+    icon: str | None = None
     splits: list[CategorySplitCreate] = []
 
 
 class CategoryUpdate(BaseModel):
     name: Optional[str] = None
     type: Optional[str] = None
+    color: Optional[str] = None
+    icon: Optional[str] = None
     splits: list[CategorySplitCreate] | None = None
 
 
@@ -167,8 +173,10 @@ class TransactionOut(BaseModel):
     account_id: int
     account_name: str
     currency: str
-    category_id: int
-    category_name: str
+    category_id: Optional[int] = None
+    category_name: Optional[str] = None
+    category_color: Optional[str] = None
+    category_icon: Optional[str] = None
     accounting_month_offset: int
     accounting_month: str
     splits: list[TransactionSplitOut] = []
@@ -180,7 +188,7 @@ class TransactionCreate(BaseModel):
     memo: Optional[str] = None
     amount: float
     account_id: int
-    category_id: int
+    category_id: Optional[int] = None
     accounting_month_offset: int = Field(0, ge=-3, le=3)
     split_overrides: list[SplitShareCreate] | None = None
 
@@ -264,9 +272,10 @@ class DashboardResponse(BaseModel):
 
 
 class CategoryChartItem(BaseModel):
-    category_id: int
+    category_id: int | None
     category_name: str
-    category_type: Literal["Income", "Expense"]
+    category_type: Literal["Income", "Expense", "Uncategorized"]
+    color: str | None = None
     amount: float
     currency: str
 
@@ -394,6 +403,8 @@ class CategoryExport(BaseModel):
     id: int
     name: str
     type: str
+    color: str | None = None
+    icon: str | None = None
 
 
 class AccountUserExport(BaseModel):
@@ -428,7 +439,7 @@ class TransactionExport(BaseModel):
     memo: str | None = None
     amount: float
     account_id: int
-    category_id: int
+    category_id: int | None
     accounting_month_offset: int = 0
     created_at: datetime
 

@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from models import Account, Category, Transaction, TransactionSplit
@@ -8,9 +9,10 @@ from accounting_month import compute_accounting_month
 
 @dataclass
 class CategoryAmount:
-    category_id: int
+    category_id: int | None
     category_name: str
-    category_type: str  # "Income" | "Expense"
+    category_type: str  # "Income" | "Expense" | "Uncategorized"
+    color: str | None
     amount: float  # signed sum of the user's share_amount
     currency: str
 
@@ -52,36 +54,44 @@ def compute_chart_data(
             Category.id,
             Category.name,
             Category.type,
+            Category.color,
             Account.currency,
         )
         .join(Transaction, Transaction.id == TransactionSplit.transaction_id)
-        .join(Category, Category.id == Transaction.category_id)
+        .outerjoin(Category, Category.id == Transaction.category_id)
         .join(Account, Account.id == Transaction.account_id)
         .filter(TransactionSplit.user_id == user_id)
-        .filter(Category.type.in_(("Income", "Expense")))
+        .filter(or_(Category.type.is_(None), Category.type.in_(("Income", "Expense"))))
     )
     if currency is not None:
         query = query.filter(Account.currency == currency)
 
-    category_agg: dict[tuple[int, str], dict] = {}
+    category_agg: dict[tuple[int | None, str], dict] = {}
     month_agg: dict[tuple[str, str], dict] = {}
 
-    for share_amount, t_date, offset, cat_id, cat_name, cat_type, cur in query.all():
+    for share_amount, t_date, offset, cat_id, cat_name, cat_type, cat_color, cur in query.all():
+        is_income = cat_type == "Income" if cat_type is not None else share_amount >= 0
+
         ckey = (cat_id, cur)
-        centry = category_agg.setdefault(ckey, {"name": cat_name, "type": cat_type, "amount": 0.0})
+        centry = category_agg.setdefault(ckey, {
+            "name": cat_name if cat_id is not None else "Uncategorized",
+            "type": cat_type if cat_type is not None else "Uncategorized",
+            "color": cat_color,
+            "amount": 0.0,
+        })
         centry["amount"] += share_amount
 
         month = compute_accounting_month(t_date, offset)
         mkey = (month, cur)
         mentry = month_agg.setdefault(mkey, {"income": 0.0, "expense": 0.0})
-        if cat_type == "Income":
+        if is_income:
             mentry["income"] += share_amount
         else:
             mentry["expense"] += share_amount
 
     by_category = [
         CategoryAmount(
-            category_id=cid, category_name=v["name"], category_type=v["type"],
+            category_id=cid, category_name=v["name"], category_type=v["type"], color=v["color"],
             amount=round(v["amount"], 2), currency=cur,
         )
         for (cid, cur), v in category_agg.items()

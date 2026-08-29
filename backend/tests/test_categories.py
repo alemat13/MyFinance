@@ -13,7 +13,31 @@ def test_create_category(client):
     data = response.json()
     assert data["name"] == "Test"
     assert data["type"] == "Income"
+    assert data["color"] is None
+    assert data["icon"] is None
     assert "id" in data
+
+
+def test_create_category_with_color_and_icon(client):
+    response = client.post(
+        "/api/categories",
+        json={"name": "Groceries", "type": "Expense", "color": "#d97706", "icon": "ShoppingCart"},
+    )
+    assert response.status_code == 201
+    data = response.json()
+    assert data["color"] == "#d97706"
+    assert data["icon"] == "ShoppingCart"
+
+
+def test_update_category_color_and_icon(client, sample_category):
+    response = client.put(
+        f"/api/categories/{sample_category.id}",
+        json={"color": "#4f46e5", "icon": "Landmark"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["color"] == "#4f46e5"
+    assert data["icon"] == "Landmark"
 
 
 def test_create_category_duplicate_name_409(client, sample_category):

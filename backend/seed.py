@@ -35,13 +35,13 @@ def seed():
     ])
 
     categories = [
-        Category(name="Salary", type="Income"),
-        Category(name="Freelance", type="Income"),
-        Category(name="Rent", type="Expense"),
-        Category(name="Groceries", type="Expense"),
-        Category(name="Dining Out", type="Expense"),
-        Category(name="Utilities", type="Expense"),
-        Category(name="Transfer", type="Transfer"),
+        Category(name="Salary", type="Income", color="#16a34a", icon="Landmark"),
+        Category(name="Freelance", type="Income", color="#0891b2", icon="Briefcase"),
+        Category(name="Rent", type="Expense", color="#dc2626", icon="Home"),
+        Category(name="Groceries", type="Expense", color="#d97706", icon="ShoppingCart"),
+        Category(name="Dining Out", type="Expense", color="#ea580c", icon="Utensils"),
+        Category(name="Utilities", type="Expense", color="#4f46e5", icon="Tv"),
+        Category(name="Transfer", type="Transfer", color="#64748b", icon="ArrowLeftRight"),
     ]
     session.add_all(categories)
     session.flush()
@@ -189,7 +189,7 @@ def seed():
             memo="Anniversary dinner",
             amount=-120.00,
             account_id=1,
-            category_id=5,
+            category_id=None,
         ),
     ]
     session.add_all(transactions)

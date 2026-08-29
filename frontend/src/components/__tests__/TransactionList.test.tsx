@@ -45,6 +45,16 @@ test('formats amount as currency', () => {
   expect(screen.getByText(/\$?1,234/)).toBeInTheDocument()
 })
 
+test('shows "Uncategorized" for a transaction with no category', () => {
+  const transactions = [
+    { id: 1, date: '2026-01-15', payee: 'Mystery', memo: null, amount: 50, account_id: 1, account_name: 'Checking', currency: 'USD', category_id: null, category_name: null, accounting_month_offset: 0, accounting_month: '2026-01', splits: [] },
+  ]
+
+  render(<TransactionList transactions={transactions} />)
+
+  expect(screen.getByText('Uncategorized')).toBeInTheDocument()
+})
+
 test('shows a Shared badge with the user\'s share for a transaction on an account they do not own', () => {
   const transactions = [
     {

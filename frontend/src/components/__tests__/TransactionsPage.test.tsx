@@ -144,6 +144,37 @@ test('create new transaction', async () => {
   })
 })
 
+test('can save a new transaction without picking a category', async () => {
+  mockSearchTransactions.mockResolvedValue(searchResult([]))
+  mockFetchAccounts.mockResolvedValue([baseAccount])
+  mockFetchCategories.mockResolvedValue([baseCategory])
+  mockCreateTransaction.mockResolvedValue({ id: 1, date: '2026-01-15', payee: 'New Payee', memo: '', amount: 100, account_id: 1, account_name: 'Checking', category_id: null, category_name: null, splits: [] })
+
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+
+  await waitFor(() => {
+    expect(screen.getByText('No transactions match your filters')).toBeInTheDocument()
+  })
+
+  fireEvent.click(screen.getByText('+ New Transaction'))
+
+  fireEvent.change(screen.getByPlaceholderText('Payee'), { target: { value: 'New Payee' } })
+  fireEvent.change(screen.getByPlaceholderText('Amount'), { target: { value: '100' } })
+
+  // Only the account is picked; category is left as "Uncategorized" (the default).
+  const selects = screen.getAllByRole('combobox')
+  fireEvent.change(selects[3], { target: { value: '1' } })
+
+  fireEvent.click(screen.getByText('Save'))
+
+  await waitFor(() => {
+    expect(mockCreateTransaction).toHaveBeenCalledWith(
+      expect.objectContaining({ category_id: null }),
+      null,
+    )
+  })
+})
+
 test('can select a non-default accounting month offset when creating a transaction', async () => {
   mockSearchTransactions.mockResolvedValue(searchResult([]))
   mockFetchAccounts.mockResolvedValue([baseAccount])

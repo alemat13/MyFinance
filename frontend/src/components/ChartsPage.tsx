@@ -15,7 +15,14 @@ interface Props {
 
 const POSITIVE = 'var(--color-positive)'
 const NEGATIVE = 'var(--color-negative)'
+const UNCATEGORIZED = '#94a3b8'
 const GRID_STROKE = 'var(--color-accent)'
+
+function categoryBarColor(categoryType: 'Income' | 'Expense' | 'Uncategorized'): string {
+  if (categoryType === 'Income') return POSITIVE
+  if (categoryType === 'Expense') return NEGATIVE
+  return UNCATEGORIZED
+}
 const AXIS_PROPS = { tick: { fontSize: 12, fill: 'currentColor' }, axisLine: false, tickLine: false }
 
 function Swatch({ color, label }: { color: string; label: string }) {
@@ -110,6 +117,9 @@ export default function ChartsPage({ selectedUserId, onBack }: Props) {
             <div className="flex gap-3 mb-2">
               <Swatch color={POSITIVE} label="Income" />
               <Swatch color={NEGATIVE} label="Expense" />
+              {byCategory.some(c => c.category_type === 'Uncategorized') && (
+                <Swatch color={UNCATEGORIZED} label="Uncategorized" />
+              )}
             </div>
             <ResponsiveContainer width="100%" height={280}>
               <BarChart data={byCategory} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
@@ -119,7 +129,7 @@ export default function ChartsPage({ selectedUserId, onBack }: Props) {
                 <Tooltip formatter={tooltipFormatter} cursor={{ fill: 'currentColor', fillOpacity: 0.06 }} />
                 <Bar dataKey="amount" name="Amount" maxBarSize={24} radius={[4, 4, 0, 0]}>
                   {byCategory.map(c => (
-                    <Cell key={c.category_id} fill={c.category_type === 'Income' ? POSITIVE : NEGATIVE} />
+                    <Cell key={c.category_id ?? 'uncategorized'} fill={categoryBarColor(c.category_type)} />
                   ))}
                 </Bar>
               </BarChart>
