@@ -12,6 +12,23 @@ erDiagram
     transactions ||--o{ transaction_splits : "split into"
     users ||--o{ transaction_splits : "owes"
 
+    transaction_history {
+        int id PK
+        int transaction_id "indexed, NOT a FK"
+        string action "created | updated | deleted"
+        string source "nullable; manual | csv_import, set only for created"
+        datetime changed_at
+        int changed_by_user_id "nullable, NOT a FK"
+        date date "nullable snapshot"
+        string payee "nullable snapshot"
+        text memo "nullable snapshot"
+        float amount "nullable snapshot"
+        int account_id "nullable snapshot"
+        int category_id "nullable snapshot"
+        int accounting_month_offset "nullable snapshot"
+        json changes "nullable; old/new per field, updated rows only"
+    }
+
     users {
         int id PK
         string name "NOT NULL"
@@ -155,6 +172,20 @@ The resolved split for one transaction, computed once and stored — never silen
 | `share_amount` | Float | What this user is liable for, frozen at the time the transaction was created/updated |
 | `source` | String(20) | How this share was determined: `manual`, `category_default`, or `global_default` |
 
+### `transaction_history`
+Audit trail: one row per transaction create/update/delete, with a snapshot of the transaction's fields at that moment. Deliberately **not** linked by foreign key to `transactions` or `users` — see Key Relationships below.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | Integer | Primary key, autoincrement |
+| `transaction_id` | Integer | Indexed, but not a foreign key |
+| `action` | String(20) | `created`, `updated`, or `deleted` |
+| `source` | String(20) | Optional; `manual` or `csv_import`, set only on `created` rows |
+| `changed_at` | DateTime | Default: current UTC time |
+| `changed_by_user_id` | Integer | Optional, not a foreign key |
+| `date` / `payee` / `memo` / `amount` / `account_id` / `category_id` / `accounting_month_offset` | (matches `transactions`) | Nullable snapshot of the transaction's fields at the time of the change |
+| `changes` | JSON | Optional; for `updated` rows only, `{field: {"old": ..., "new": ...}}` |
+
 ## Key Relationships
 
 - **Users ↔ Accounts**: Many-to-many via `account_users`. Each user can own multiple accounts; each account can have multiple owners (joint account).
@@ -166,3 +197,4 @@ The resolved split for one transaction, computed once and stored — never silen
 - **Split resolution** (`backend/split_engine.py`): for each transaction, the split is resolved in priority order — an explicit override (`manual`) > `category_splits` for its category (`category_default`) > `global_split_weights` (`global_default`). If nothing is configured at any tier, no `transaction_splits` rows are created (the feature is opt-in).
 - **Splits are frozen, ownership is live**: `transaction_splits.share_amount` (what a user is *liable* for) is computed once at write time and persisted. What a user *paid* is instead derived live from the account's *current* `account_users.ownership_percentage` — so historical liability stays stable even if account ownership changes later, but the settlement report always reflects today's ownership. The household balance report (`GET /api/balances`, also embedded in `GET /api/dashboard`) is `sum(paid) − sum(share_amount)` per user — positive means the household owes them, negative means they owe the household.
 - **Multi-currency accounts, no conversion**: each account has its own `currency`; transactions and splits inherit it from their account rather than storing it themselves. Amounts are never converted or summed across currencies — `compute_balances()` (`backend/split_engine.py`) partitions by `(user_id, currency)`, so `GET /api/balances` returns one net position per user *per currency*, and a household with mixed-currency accounts gets a separate settlement line for each currency instead of a single blended total.
+- **Audit trail is intentionally unlinked**: `transaction_history.transaction_id` and `changed_by_user_id` are plain (indexed) integers, not foreign keys. SQLite runs with `PRAGMA foreign_keys=ON`, so a real FK to `transactions.id` would either block a hard delete or be cascaded away with it — defeating the point of an audit log that must outlive the row it describes. History rows are written by `backend/audit.py` on every transaction create/update/delete and read via `GET /api/transactions/{id}/history`.
