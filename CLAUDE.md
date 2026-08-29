@@ -11,7 +11,7 @@ backend/   FastAPI + SQLAlchemy 2.x + SQLite (single finance.db)
 frontend/  React 19, TypeScript 5.6, Vite 6
 ```
 
-No monorepo tool, no workspaces. No linters/formatters/type-checking configured on the Python side. No routing or state-management libs on the frontend. No Alembic — schema changes go through `drop_all`/`create_all` via `seed.py`.
+No monorepo tool, no workspaces. No linters/formatters/type-checking configured on the Python side. No routing or state-management libs on the frontend. No Alembic — for local/dev, schema changes go through `drop_all`/`create_all` via `seed.py`. Production (Cloud SQL Postgres, persistent real data, never reseeded on deploy) instead relies on `database.sync_schema()`, run at startup right after `create_all`: it adds any model column missing from an already-existing table. This is **additive only** — it backfills a sensible default for new NOT NULL columns but never drops, renames, or retypes a column, so renaming a column or changing its type still needs a manual, hand-written migration.
 
 ## Git workflow
 
@@ -57,7 +57,8 @@ npm test -- AccountsList        # run tests matching a name/file
 
 ## Key gotchas
 
-- `seed.py` **destroys existing data** — `drop_all` then re-inserts sample rows.
+- `seed.py` **destroys existing data** — `drop_all` then re-inserts sample rows. Never run it against production.
+- Adding a new nullable-with-scalar-default column to a model is safe to deploy straight to production — `sync_schema()` backfills it automatically on next startup. Anything else (rename, retype, drop, a NOT NULL column with no usable default) needs a hand-written migration before merging, or production will 500 on every query touching that table until one is applied.
 - CORS allows only `http://localhost:5173`, hardcoded in `backend/main.py`.
 - No `.env` is actually used, though `.env` is gitignored.
 - Backend tests use `sqlite:///:memory:` with `dependency_overrides[get_db]`; tables are created/dropped per test session (see `backend/tests/conftest.py`).
