@@ -1,5 +1,5 @@
 import { Transaction, Account } from '../api/client'
-import { Table, Thead, Tbody, Tr, Th, Td, Badge } from './ui'
+import { Table, Thead, Tbody, Tr, Th, Td, Badge, CategoryBadge } from './ui'
 import { formatMoney } from '../utils/currency'
 import { sharedShareFor } from '../utils/transactions'
 
@@ -30,7 +30,7 @@ export default function TransactionList({ transactions, selectedUserId, accounts
           <Tr key={t.id}>
             <Td>{t.date}</Td>
             <Td>{t.payee}</Td>
-            <Td>{t.category_name}</Td>
+            <Td><CategoryBadge name={t.category_name} color={t.category_color} icon={t.category_icon} /></Td>
             <Td>{t.account_name}</Td>
             {hasMemo && <Td>{t.memo ?? ''}</Td>}
             <Td className={`text-right ${t.amount >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>

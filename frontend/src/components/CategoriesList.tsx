@@ -7,13 +7,16 @@ import {
 } from '../api/client'
 import SplitEditor, { SplitRow } from './SplitEditor'
 import { useToast } from '../context/ToastContext'
-import { Button, Input, Table, Thead, Tbody, Tr, Th, Td, StatusMessage, ConfirmDialog } from './ui'
+import {
+  Button, Input, Table, Thead, Tbody, Tr, Th, Td, StatusMessage, ConfirmDialog,
+  CategoryBadge, IconPicker, ColorPicker,
+} from './ui'
 
 interface Props {
   onBack: () => void
 }
 
-const emptyForm: CategoryCreate = { name: '', type: '', splits: [] }
+const emptyForm: CategoryCreate = { name: '', type: '', color: null, icon: null, splits: [] }
 
 const toRows = (splits: CategorySplitCreate[]): SplitRow[] =>
   splits.map(s => ({ user_id: s.user_id, value: s.split_percentage }))
@@ -48,6 +51,8 @@ export default function CategoriesList({ onBack }: Props) {
     setEditData({
       name: c.name,
       type: c.type,
+      color: c.color,
+      icon: c.icon,
       splits: c.splits.map(s => ({ user_id: s.user_id, split_percentage: s.split_percentage })),
     })
   }
@@ -109,6 +114,8 @@ export default function CategoriesList({ onBack }: Props) {
       {showNew && (
         <div className="p-3 mb-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60">
           <div className="flex gap-2 flex-wrap items-end">
+            <IconPicker value={newData.icon ?? null} onChange={icon => setNewData({ ...newData, icon })} />
+            <ColorPicker value={newData.color ?? null} onChange={color => setNewData({ ...newData, color })} />
             <Input placeholder="Name" value={newData.name} onChange={e => setNewData({ ...newData, name: e.target.value })} />
             <Input placeholder="Type (Income / Expense / Transfer)" value={newData.type} onChange={e => setNewData({ ...newData, type: e.target.value })} />
             <Button onClick={saveNew}>Save</Button>
@@ -145,7 +152,13 @@ export default function CategoriesList({ onBack }: Props) {
               <Tr key={c.id}>
                 {editingId === c.id ? (
                   <>
-                    <Td><Input value={editData.name ?? ''} onChange={e => setEditData({ ...editData, name: e.target.value })} /></Td>
+                    <Td>
+                      <div className="flex gap-1.5 items-center">
+                        <IconPicker value={editData.icon ?? null} onChange={icon => setEditData({ ...editData, icon })} />
+                        <ColorPicker value={editData.color ?? null} onChange={color => setEditData({ ...editData, color })} />
+                        <Input value={editData.name ?? ''} onChange={e => setEditData({ ...editData, name: e.target.value })} />
+                      </div>
+                    </Td>
                     <Td><Input value={editData.type ?? ''} onChange={e => setEditData({ ...editData, type: e.target.value })} /></Td>
                     <Td colSpan={2}>
                       <SplitEditor
@@ -164,7 +177,7 @@ export default function CategoriesList({ onBack }: Props) {
                   </>
                 ) : (
                   <>
-                    <Td>{c.name}</Td>
+                    <Td><CategoryBadge name={c.name} color={c.color} icon={c.icon} /></Td>
                     <Td>{c.type}</Td>
                     <Td className="text-xs">
                       {c.splits.length === 0

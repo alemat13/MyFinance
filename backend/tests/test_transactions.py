@@ -12,6 +12,24 @@ def test_create_transaction(client, sample_account, sample_category):
     assert response.status_code == 201
 
 
+def test_create_transaction_without_category(client, sample_account):
+    response = client.post(
+        "/api/transactions",
+        json={
+            "account_id": sample_account.id,
+            "date": "2026-01-15",
+            "payee": "Test",
+            "amount": 100.0,
+        },
+    )
+    assert response.status_code == 201
+    data = response.json()
+    assert data["category_id"] is None
+    assert data["category_name"] is None
+    assert data["category_color"] is None
+    assert data["category_icon"] is None
+
+
 def test_get_transactions(client, sample_transaction):
     response = client.get("/api/transactions")
     assert response.status_code == 200

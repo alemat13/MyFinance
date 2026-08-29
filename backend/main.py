@@ -152,10 +152,10 @@ def _splits_out(t: Transaction) -> list[TransactionSplitOut]:
 
 
 def _transaction_out(db: Session, transaction_id: int) -> TransactionOut:
-    t, account_name, currency, category_name = (
-        db.query(Transaction, Account.name, Account.currency, Category.name)
+    t, account_name, currency, category_name, category_color, category_icon = (
+        db.query(Transaction, Account.name, Account.currency, Category.name, Category.color, Category.icon)
         .join(Account, Transaction.account_id == Account.id)
-        .join(Category, Transaction.category_id == Category.id)
+        .outerjoin(Category, Transaction.category_id == Category.id)
         .filter(Transaction.id == transaction_id)
         .first()
     )
@@ -170,6 +170,8 @@ def _transaction_out(db: Session, transaction_id: int) -> TransactionOut:
         currency=currency,
         category_id=t.category_id,
         category_name=category_name,
+        category_color=category_color,
+        category_icon=category_icon,
         accounting_month_offset=t.accounting_month_offset,
         accounting_month=compute_accounting_month(t.date, t.accounting_month_offset),
         splits=_splits_out(t),
@@ -181,6 +183,8 @@ def _category_out(category: Category) -> CategoryOut:
         id=category.id,
         name=category.name,
         type=category.type,
+        color=category.color,
+        icon=category.icon,
         splits=[
             CategorySplitOut(
                 user_id=cs.user_id,
@@ -349,7 +353,7 @@ def get_categories(db: Session = Depends(get_db)):
 @app.post("/api/categories", response_model=CategoryOut, status_code=201)
 def create_category(data: CategoryCreate, db: Session = Depends(get_db)):
     _validate_split_percentages(data.splits)
-    category = Category(name=data.name, type=data.type)
+    category = Category(name=data.name, type=data.type, color=data.color, icon=data.icon)
     db.add(category)
     db.flush()
     _sync_category_splits(db, category, data.splits)
@@ -391,9 +395,9 @@ def delete_category(category_id: int, db: Session = Depends(get_db)):
 @app.get("/api/transactions", response_model=list[TransactionOut])
 def get_transactions(user_id: int | None = Query(None), db: Session = Depends(get_db)):
     query = (
-        db.query(Transaction, Account.name, Account.currency, Category.name)
+        db.query(Transaction, Account.name, Account.currency, Category.name, Category.color, Category.icon)
         .join(Account, Transaction.account_id == Account.id)
-        .join(Category, Transaction.category_id == Category.id)
+        .outerjoin(Category, Transaction.category_id == Category.id)
     )
     if user_id is not None:
         query = query.filter(_visible_transaction_filter(db, user_id))
@@ -403,21 +407,21 @@ def get_transactions(user_id: int | None = Query(None), db: Session = Depends(ge
             id=t.id, date=t.date, payee=t.payee, memo=t.memo,
             amount=t.amount, account_id=t.account_id,
             account_name=account_name, currency=currency, category_id=t.category_id,
-            category_name=category_name,
+            category_name=category_name, category_color=category_color, category_icon=category_icon,
             accounting_month_offset=t.accounting_month_offset,
             accounting_month=compute_accounting_month(t.date, t.accounting_month_offset),
             splits=_splits_out(t),
         )
-        for t, account_name, currency, category_name in results
+        for t, account_name, currency, category_name, category_color, category_icon in results
     ]
 
 
 @app.post("/api/transactions/search", response_model=TransactionSearchResponse)
 def search_transactions(req: TransactionSearchRequest, db: Session = Depends(get_db)):
     query = (
-        db.query(Transaction, Account.name, Account.currency, Category.name)
+        db.query(Transaction, Account.name, Account.currency, Category.name, Category.color, Category.icon)
         .join(Account, Transaction.account_id == Account.id)
-        .join(Category, Transaction.category_id == Category.id)
+        .outerjoin(Category, Transaction.category_id == Category.id)
     )
     if req.user_id is not None:
         query = query.filter(_visible_transaction_filter(db, req.user_id))
@@ -474,12 +478,12 @@ def search_transactions(req: TransactionSearchRequest, db: Session = Depends(get
             id=t.id, date=t.date, payee=t.payee, memo=t.memo,
             amount=t.amount, account_id=t.account_id,
             account_name=account_name, currency=currency, category_id=t.category_id,
-            category_name=category_name,
+            category_name=category_name, category_color=category_color, category_icon=category_icon,
             accounting_month_offset=t.accounting_month_offset,
             accounting_month=compute_accounting_month(t.date, t.accounting_month_offset),
             splits=_splits_out(t),
         )
-        for t, account_name, currency, category_name in results
+        for t, account_name, currency, category_name, category_color, category_icon in results
     ]
     total_pages = max(1, (total + page_size - 1) // page_size)
     return TransactionSearchResponse(
@@ -711,9 +715,9 @@ def get_dashboard(user_id: int | None = Query(None), db: Session = Depends(get_d
     accounts = accounts_query.all()
 
     tx_query = (
-        db.query(Transaction, Account.name, Account.currency, Category.name)
+        db.query(Transaction, Account.name, Account.currency, Category.name, Category.color, Category.icon)
         .join(Account, Transaction.account_id == Account.id)
-        .join(Category, Transaction.category_id == Category.id)
+        .outerjoin(Category, Transaction.category_id == Category.id)
     )
     if user_id is not None:
         tx_query = tx_query.filter(_visible_transaction_filter(db, user_id))
@@ -724,12 +728,12 @@ def get_dashboard(user_id: int | None = Query(None), db: Session = Depends(get_d
             id=t.id, date=t.date, payee=t.payee, memo=t.memo,
             amount=t.amount, account_id=t.account_id,
             account_name=account_name, currency=currency, category_id=t.category_id,
-            category_name=category_name,
+            category_name=category_name, category_color=category_color, category_icon=category_icon,
             accounting_month_offset=t.accounting_month_offset,
             accounting_month=compute_accounting_month(t.date, t.accounting_month_offset),
             splits=_splits_out(t),
         )
-        for t, account_name, currency, category_name in recent_results
+        for t, account_name, currency, category_name, category_color, category_icon in recent_results
     ]
 
     balances = [
@@ -759,7 +763,7 @@ def get_charts(
         by_category=[
             CategoryChartItem(
                 category_id=c.category_id, category_name=c.category_name,
-                category_type=c.category_type, amount=c.amount, currency=c.currency,
+                category_type=c.category_type, color=c.color, amount=c.amount, currency=c.currency,
             )
             for c in by_category
         ],

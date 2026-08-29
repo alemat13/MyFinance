@@ -5,7 +5,7 @@ erDiagram
     users ||--o{ account_users : "owns"
     accounts ||--o{ account_users : "has"
     accounts ||--o{ transactions : contains
-    categories ||--o{ transactions : categorizes
+    categories |o--o{ transactions : categorizes
     categories ||--o{ category_splits : "defaults to"
     users ||--o{ category_splits : "shares"
     users ||--o{ global_split_weights : "weighted as"
@@ -38,6 +38,8 @@ erDiagram
         int id PK
         string name "UNIQUE"
         string type
+        string color "nullable, e.g. #4f46e5"
+        string icon "nullable, lucide-react icon name"
     }
 
     category_splits {
@@ -58,7 +60,7 @@ erDiagram
         text memo "nullable"
         float amount "negative=expense, positive=income"
         int account_id FK
-        int category_id FK
+        int category_id FK "nullable"
         int accounting_month_offset "months from date's month, -3..+3, default 0"
         datetime created_at
     }
@@ -112,6 +114,8 @@ Transaction categories (income, expense, transfer).
 | `id` | Integer | Primary key, autoincrement |
 | `name` | String(100) | Required, unique |
 | `type` | String(50) | Required |
+| `color` | String(7) | Optional, hex color (e.g. `#4f46e5`) shown as the category's badge color |
+| `icon` | String(50) | Optional, `lucide-react` icon name shown as the category's badge icon |
 
 ### `transactions`
 Individual financial transactions.
@@ -124,7 +128,7 @@ Individual financial transactions.
 | `memo` | Text | Optional |
 | `amount` | Float | Negative = expense, positive = income. Denominated in the parent account's `currency` — a transaction has no currency of its own |
 | `account_id` | Integer | Foreign key → `accounts.id` |
-| `category_id` | Integer | Foreign key → `categories.id` |
+| `category_id` | Integer | Foreign key → `categories.id`, nullable — an uncategorized transaction is shown as "Uncategorized" |
 | `accounting_month_offset` | Integer | Months relative to `date`'s month this transaction should be accounted in. Range -3..+3, default 0 (same month as `date`) |
 | `created_at` | DateTime | Default: current UTC time |
 

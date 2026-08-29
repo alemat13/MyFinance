@@ -195,6 +195,32 @@ def test_charts_ignores_other_users_splits_entirely(client, sample_account, samp
     assert data["by_month"] == []
 
 
+def test_charts_uncategorized_transaction_bucketed(client, sample_account, sample_user, db):
+    t = Transaction(
+        date=date(2026, 3, 10), payee="Mystery expense", amount=-42.0,
+        account_id=sample_account.id, category_id=None,
+    )
+    db.add(t)
+    db.flush()
+    db.add(TransactionSplit(transaction_id=t.id, user_id=sample_user.id, share_amount=-42.0, source="manual"))
+    db.commit()
+
+    response = client.get(f"/api/charts?user_id={sample_user.id}")
+    assert response.status_code == 200
+    data = response.json()
+
+    by_category = data["by_category"]
+    assert len(by_category) == 1
+    assert by_category[0]["category_id"] is None
+    assert by_category[0]["category_name"] == "Uncategorized"
+    assert by_category[0]["category_type"] == "Uncategorized"
+    assert by_category[0]["amount"] == -42.0
+
+    by_month = data["by_month"]
+    assert len(by_month) == 1
+    assert by_month[0]["expense"] == 42.0
+
+
 def test_compute_chart_data_signed_vs_magnitude(db, sample_account, sample_user):
     income_cat = Category(name="Freelance Cat", type="Income")
     expense_cat = Category(name="Groceries Cat", type="Expense")
