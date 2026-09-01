@@ -11,7 +11,7 @@ backend/   FastAPI + SQLAlchemy 2.x + SQLite (single finance.db) locally, Postgr
 frontend/  React 19, TypeScript 5.6, Vite 6, Tailwind CSS v4, recharts, lucide-react
 ```
 
-No monorepo tool, no workspaces. No linters/formatters/type-checking configured on the Python side. No routing or state-management libs on the frontend. No Alembic — for local/dev, schema changes go through `drop_all`/`create_all` via `seed.py`. Production (Cloud SQL Postgres, persistent real data, never reseeded on deploy) instead relies on `database.sync_schema()`, run at startup right after `create_all`: it adds any model column missing from an already-existing table. This is **additive only** — it backfills a sensible default for new NOT NULL columns but never drops, renames, or retypes a column, so renaming a column or changing its type still needs a manual, hand-written migration.
+No monorepo tool, no workspaces. No linters/formatters/type-checking configured on the Python side. No routing or state-management libs on the frontend. For local/dev, day-to-day schema changes go through `drop_all`/`create_all` via `seed.py` — fast and destructive, unrelated to Alembic below. Production (Cloud SQL Postgres, persistent real data, never reseeded on deploy) relies on two complementary mechanisms: `database.sync_schema()`, run at startup right after `create_all`, adds any model column missing from an already-existing table — **additive only** (backfills a sensible default for new NOT NULL columns, never drops/renames/retypes) — and **Alembic** (`backend/alembic/`), which handles everything `sync_schema()` can't: renames, retypes, drops, and any non-trivial backfill. `alembic upgrade head` runs automatically in CI/CD before every production deploy (see `.github/workflows/ci-cd.yml`'s `deploy` job) — see "Database migrations" below for the authoring workflow.
 
 ## Git workflow
 
@@ -32,6 +32,23 @@ pytest                                   # run all backend tests
 pytest tests/test_accounts.py            # run a single test file
 pytest tests/test_accounts.py::test_name # run a single test
 ```
+
+### Database migrations
+```sh
+cd backend
+alembic revision --autogenerate -m "describe the change"  # write a new migration
+alembic upgrade head                                      # apply pending migrations locally
+alembic downgrade -1                                      # revert the most recent one
+alembic history                                            # list all revisions
+```
+Write a migration **before** running `seed.py`/reseeding — with your local DB still at
+the *old* schema, `--autogenerate` diffs it against the *new* `models.py` and gets the
+right result. Always review the generated script: autogenerate sees a column rename as
+a drop+add, so rewrite those to `op.alter_column(...)` by hand (same reasoning as the
+old hand-written SQL migrations in `backend/migrations/`, now superseded — see that
+directory's README). Test with `alembic upgrade head` locally before committing. CI/CD
+runs `alembic upgrade head` automatically before every production deploy — no manual
+`psql` step needed for a change captured as a migration.
 
 ### Frontend
 ```sh
@@ -54,7 +71,7 @@ npm test -- AccountsList        # run tests matching a name/file
 - **CSV import** (`backend/import_csv.py`): `POST /api/import/detect`, `/preview`, `/commit` drive column auto-detection and a preview-before-commit flow for bulk transaction upload.
 - **Backup & restore** (`backend/backup.py`): `GET /api/backup/export` / `POST /api/backup/import` export/import the full database as a zipped JSON archive.
 - **Audit trail** (`backend/audit.py`): every transaction create/update/delete writes a snapshot row to `transaction_history`, readable via `GET /api/transactions/{id}/history`. Its FK-like columns (`transaction_id`, `changed_by_user_id`) are deliberately plain integers, not real foreign keys — see the comment in `models.py`.
-- **Backend layout**: `main.py` (routes), `models.py` (SQLAlchemy ORM), `schemas.py` (Pydantic I/O schemas), `database.py` (engine/session, `sync_schema()`), `seed.py` (destructive seeder), plus `accounting_month.py`, `audit.py`, `backup.py`, `charts.py`, `filtering.py`, `import_csv.py`, `split_engine.py`.
+- **Backend layout**: `main.py` (routes), `models.py` (SQLAlchemy ORM), `schemas.py` (Pydantic I/O schemas), `database.py` (engine/session, `sync_schema()`), `seed.py` (destructive seeder), `alembic/` (migration environment + `versions/`, see "Database migrations" above), plus `accounting_month.py`, `audit.py`, `backup.py`, `charts.py`, `filtering.py`, `import_csv.py`, `split_engine.py`.
 - **Frontend entrypoint chain**: `index.html → main.tsx → App.tsx → Dashboard.tsx`. `App.tsx` owns view-switching (no router, plain `useState`) across 9 views — `dashboard`, `accounts`, `categories`, `transactions`, `users`, `split-settings`, `import`, `backup`, `charts` — and the user-selector dropdown (persisted to `localStorage`, filters all views via `user_id`), plus a `FirstLaunchUserPrompt` overlay shown before a user is chosen.
 - **Frontend list views** (`AccountsList`, `CategoriesList`, `TransactionsPage`, `UsersList`) do full CRUD with inline New/Edit/Delete forms — no modals. The account form includes a multi-row sub-table for editing per-user ownership percentages. Other views: `SplitWeightsSettings` + `SplitEditor` (split configuration/override UI), `BalanceWidget` (net-position display), `ChartsPage` (recharts-based per-category/per-month/net charts), `CsvImportPage`, `BackupPage`.
 - **Shared frontend infra**: `components/ui/` holds the design-system primitives (`Button`, `Card`, `Modal`, `Table`, `Toast`, etc.), `context/` holds `ThemeContext` (dark mode) and `ToastContext`, `utils/` holds `currency.ts`, `download.ts`, `transactions.ts`, `urlState.ts`. Styling is Tailwind CSS v4 utility classes (`index.css`), not a hand-rolled stylesheet.
@@ -63,7 +80,7 @@ npm test -- AccountsList        # run tests matching a name/file
 ## Key gotchas
 
 - `seed.py` **destroys existing data** — `drop_all` then re-inserts sample rows. Never run it against production.
-- Adding a new nullable-with-scalar-default column to a model is safe to deploy straight to production — `sync_schema()` backfills it automatically on next startup. Anything else (rename, retype, drop, a NOT NULL column with no usable default) needs a hand-written migration before merging, or production will 500 on every query touching that table until one is applied.
+- Adding a new nullable-with-scalar-default column to a model is safe to deploy straight to production — `sync_schema()` backfills it automatically on next startup, no migration needed. Anything else (rename, retype, drop, a NOT NULL column with no usable default) needs an Alembic migration (`alembic revision --autogenerate`, reviewed and tested locally) committed alongside the model change — CI/CD applies it automatically before deploy, so a merged PR with the migration file just works.
 - CORS origins default to `http://localhost:5173` plus a couple of LAN/Tailscale dev origins (`backend/main.py`), but are fully overridable via the `CORS_ALLOWED_ORIGINS` env var (comma-separated) — production sets this explicitly in `ci-cd.yml`.
 - No `.env` is actually used, though `.env` is gitignored — runtime env vars (`DATABASE_URL`, `CORS_ALLOWED_ORIGINS`, `VITE_API_URL`) are instead set via Docker build args / Cloud Run env vars in CI.
 - Backend tests use `sqlite:///:memory:` with `dependency_overrides[get_db]`; tables are created/dropped per test session (see `backend/tests/conftest.py`).
