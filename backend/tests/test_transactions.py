@@ -284,53 +284,18 @@ def test_create_transaction_no_split_config_has_no_splits(client, sample_account
     assert response.json()["splits"] == []
 
 
-def test_create_transaction_uses_global_default_weight(client, sample_account, sample_category, sample_user, db):
-    from models import AccountUser, GlobalSplitWeight, User
-    other_user = User(name="Other User")
-    db.add(other_user)
-    db.flush()
-    other_user_id = other_user.id
-    db.add_all([
-        # Joint account (more than one owner) — required for default splitting to apply.
-        AccountUser(account_id=sample_account.id, user_id=sample_user.id, ownership_percentage=60.0),
-        AccountUser(account_id=sample_account.id, user_id=other_user_id, ownership_percentage=40.0),
-        GlobalSplitWeight(user_id=sample_user.id, weight=60.0),
-        GlobalSplitWeight(user_id=other_user_id, weight=40.0),
-    ])
+def test_create_transaction_omitted_split_weights_has_no_splits_even_with_tiers_configured(client, sample_account, sample_category, sample_user, db):
+    """Creating without split_weights never auto-resolves from tier config —
+    only the interactive client's own client-side prefill (or CSV import)
+    does that. The server-side create/update route is opt-in only."""
+    from models import GlobalSplitWeight
+    db.add(GlobalSplitWeight(user_id=sample_user.id, weight=100))
     db.commit()
 
     response = client.post(
         "/api/transactions",
         json={
             "account_id": sample_account.id,
-            "category_id": sample_category.id,
-            "date": "2026-01-15",
-            "payee": "Test",
-            "amount": 100.0,
-        },
-    )
-    assert response.status_code == 201
-    splits = {s["user_id"]: s for s in response.json()["splits"]}
-    assert splits[sample_user.id]["share_amount"] == 60.0
-    assert splits[sample_user.id]["source"] == "global_default"
-    assert splits[other_user_id]["share_amount"] == 40.0
-
-
-def test_create_transaction_single_owner_account_skips_global_default(client, sample_account_with_user, sample_category, sample_user, db):
-    from models import GlobalSplitWeight, User
-    other_user = User(name="Other User")
-    db.add(other_user)
-    db.flush()
-    db.add_all([
-        GlobalSplitWeight(user_id=sample_user.id, weight=50.0),
-        GlobalSplitWeight(user_id=other_user.id, weight=50.0),
-    ])
-    db.commit()
-
-    response = client.post(
-        "/api/transactions",
-        json={
-            "account_id": sample_account_with_user.id,
             "category_id": sample_category.id,
             "date": "2026-01-15",
             "payee": "Test",
@@ -341,7 +306,64 @@ def test_create_transaction_single_owner_account_skips_global_default(client, sa
     assert response.json()["splits"] == []
 
 
-def test_create_transaction_single_owner_account_manual_override_still_applies(client, sample_account_with_user, sample_category, sample_user):
+def test_create_transaction_with_explicit_split_weights_prorates(client, sample_account, sample_category, sample_user, sample_user2):
+    response = client.post(
+        "/api/transactions",
+        json={
+            "account_id": sample_account.id,
+            "category_id": sample_category.id,
+            "date": "2026-01-15",
+            "payee": "Test",
+            "amount": 100.0,
+            "split_weights": [
+                {"user_id": sample_user.id, "weight": 3},
+                {"user_id": sample_user2.id, "weight": 1},
+            ],
+        },
+    )
+    assert response.status_code == 201
+    splits = {s["user_id"]: s for s in response.json()["splits"]}
+    assert splits[sample_user.id]["weight"] == 3
+    assert splits[sample_user.id]["share_amount"] == 75.0
+    assert splits[sample_user.id]["source"] == "custom"
+    assert splits[sample_user2.id]["share_amount"] == 25.0
+
+
+def test_create_transaction_with_split_source_tag(client, sample_account, sample_category, sample_user):
+    response = client.post(
+        "/api/transactions",
+        json={
+            "account_id": sample_account.id,
+            "category_id": sample_category.id,
+            "date": "2026-01-15",
+            "payee": "Test",
+            "amount": 100.0,
+            "split_weights": [{"user_id": sample_user.id, "weight": 1}],
+            "split_source": "global",
+        },
+    )
+    assert response.status_code == 201
+    assert response.json()["splits"][0]["source"] == "global"
+
+
+def test_create_transaction_negative_weight_rejected(client, sample_account, sample_category, sample_user):
+    response = client.post(
+        "/api/transactions",
+        json={
+            "account_id": sample_account.id,
+            "category_id": sample_category.id,
+            "date": "2026-01-15",
+            "payee": "Test",
+            "amount": 100.0,
+            "split_weights": [{"user_id": sample_user.id, "weight": -1}],
+        },
+    )
+    assert response.status_code == 422
+
+
+def test_create_transaction_single_owner_account_explicit_weights_succeeds(client, sample_account_with_user, sample_category, sample_user):
+    """No ownership-based gating exists any more: an explicit weight set
+    applies on a single-owner account exactly as given."""
     response = client.post(
         "/api/transactions",
         json={
@@ -350,50 +372,19 @@ def test_create_transaction_single_owner_account_manual_override_still_applies(c
             "date": "2026-01-15",
             "payee": "Test",
             "amount": 100.0,
-            "split_overrides": [{"user_id": sample_user.id, "share_amount": 100.0}],
-        },
-    )
-    assert response.status_code == 201
-    splits = response.json()["splits"]
-    assert len(splits) == 1
-    assert splits[0]["source"] == "manual"
-
-
-def test_create_transaction_with_manual_split_override(client, sample_account, sample_category, sample_user):
-    response = client.post(
-        "/api/transactions",
-        json={
-            "account_id": sample_account.id,
-            "category_id": sample_category.id,
-            "date": "2026-01-15",
-            "payee": "Test",
-            "amount": 100.0,
-            "split_overrides": [{"user_id": sample_user.id, "share_amount": 100.0}],
+            "split_weights": [{"user_id": sample_user.id, "weight": 1}],
         },
     )
     assert response.status_code == 201
     splits = response.json()["splits"]
     assert len(splits) == 1
     assert splits[0]["share_amount"] == 100.0
-    assert splits[0]["source"] == "manual"
 
 
-def test_create_transaction_manual_override_sum_mismatch_422(client, sample_account, sample_category, sample_user):
-    response = client.post(
-        "/api/transactions",
-        json={
-            "account_id": sample_account.id,
-            "category_id": sample_category.id,
-            "date": "2026-01-15",
-            "payee": "Test",
-            "amount": 100.0,
-            "split_overrides": [{"user_id": sample_user.id, "share_amount": 40.0}],
-        },
-    )
-    assert response.status_code == 422
-
-
-def test_update_transaction_amount_on_manual_split_requires_new_override(client, sample_account, sample_category, sample_user):
+def test_update_transaction_omitted_split_weights_keeps_existing_but_recomputes_share_amount(client, sample_account, sample_category, sample_user):
+    """Regression test for the removed manual-freeze 422: an amount change
+    with split_weights omitted from the PUT body must succeed and recompute
+    share_amount against the transaction's existing stored weight."""
     create_response = client.post(
         "/api/transactions",
         json={
@@ -402,34 +393,44 @@ def test_update_transaction_amount_on_manual_split_requires_new_override(client,
             "date": "2026-01-15",
             "payee": "Test",
             "amount": 100.0,
-            "split_overrides": [{"user_id": sample_user.id, "share_amount": 100.0}],
+            "split_weights": [{"user_id": sample_user.id, "weight": 1}],
         },
     )
     transaction_id = create_response.json()["id"]
 
-    # Changing the amount without a matching override should fail...
     response = client.put(f"/api/transactions/{transaction_id}", json={"amount": 200.0})
-    assert response.status_code == 422
+    assert response.status_code == 200
+    splits = response.json()["splits"]
+    assert len(splits) == 1
+    assert splits[0]["weight"] == 1
+    assert splits[0]["share_amount"] == 200.0
 
-    # ...but succeeds once a matching override is supplied.
+
+def test_update_transaction_explicit_split_weights_replaces_existing(client, sample_account, sample_category, sample_user):
+    create_response = client.post(
+        "/api/transactions",
+        json={
+            "account_id": sample_account.id,
+            "category_id": sample_category.id,
+            "date": "2026-01-15",
+            "payee": "Test",
+            "amount": 100.0,
+            "split_weights": [{"user_id": sample_user.id, "weight": 1}],
+        },
+    )
+    transaction_id = create_response.json()["id"]
+
     response = client.put(
         f"/api/transactions/{transaction_id}",
-        json={"amount": 200.0, "split_overrides": [{"user_id": sample_user.id, "share_amount": 200.0}]},
+        json={"split_weights": [{"user_id": sample_user.id, "weight": 5}]},
     )
     assert response.status_code == 200
-    assert response.json()["splits"][0]["share_amount"] == 200.0
+    splits = response.json()["splits"]
+    assert splits[0]["weight"] == 5
+    assert splits[0]["share_amount"] == 100.0
 
 
-def test_update_transaction_amount_on_auto_split_recomputes(client, sample_account, sample_category, sample_user, sample_user2, db):
-    from models import AccountUser, GlobalSplitWeight
-    db.add_all([
-        # Joint account (more than one owner) — required for default splitting to apply.
-        AccountUser(account_id=sample_account.id, user_id=sample_user.id, ownership_percentage=50.0),
-        AccountUser(account_id=sample_account.id, user_id=sample_user2.id, ownership_percentage=50.0),
-        GlobalSplitWeight(user_id=sample_user.id, weight=100.0),
-    ])
-    db.commit()
-
+def test_update_transaction_explicit_empty_split_weights_clears_split(client, sample_account, sample_category, sample_user):
     create_response = client.post(
         "/api/transactions",
         json={
@@ -438,45 +439,17 @@ def test_update_transaction_amount_on_auto_split_recomputes(client, sample_accou
             "date": "2026-01-15",
             "payee": "Test",
             "amount": 100.0,
+            "split_weights": [{"user_id": sample_user.id, "weight": 1}],
         },
     )
     transaction_id = create_response.json()["id"]
-    assert create_response.json()["splits"][0]["share_amount"] == 100.0
 
-    response = client.put(f"/api/transactions/{transaction_id}", json={"amount": 200.0})
-    assert response.status_code == 200
-    assert response.json()["splits"][0]["share_amount"] == 200.0
-
-
-def test_split_preview_endpoint(client, sample_category, sample_user):
-    client.put("/api/split-weights", json=[{"user_id": sample_user.id, "weight": 100.0}])
-
-    response = client.post(
-        "/api/split-preview",
-        json={"amount": 50.0, "category_id": sample_category.id},
+    response = client.put(
+        f"/api/transactions/{transaction_id}",
+        json={"split_weights": []},
     )
     assert response.status_code == 200
-    data = response.json()
-    assert len(data) == 1
-    assert data[0]["share_amount"] == 50.0
-
-
-def test_split_preview_no_config_returns_422(client, sample_category):
-    response = client.post(
-        "/api/split-preview",
-        json={"amount": 50.0, "category_id": sample_category.id},
-    )
-    assert response.status_code == 422
-
-
-def test_split_preview_single_owner_account_returns_422(client, sample_account_with_user, sample_category, sample_user):
-    client.put("/api/split-weights", json=[{"user_id": sample_user.id, "weight": 100.0}])
-
-    response = client.post(
-        "/api/split-preview",
-        json={"amount": 50.0, "category_id": sample_category.id, "account_id": sample_account_with_user.id},
-    )
-    assert response.status_code == 422
+    assert response.json()["splits"] == []
 
 
 # ── Transaction search ────────────────────────────────────────────

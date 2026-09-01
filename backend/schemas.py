@@ -47,6 +47,18 @@ def _validate_currency_code(value: str) -> str:
     return value
 
 
+class AccountSplitWeightOut(BaseModel):
+    user_id: int
+    user_name: str
+    weight: int
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AccountSplitWeightUpdateItem(BaseModel):
+    user_id: int
+    weight: int
+
+
 class AccountOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -57,6 +69,7 @@ class AccountOut(BaseModel):
     currency: str
     created_at: datetime
     users: list[AccountUserOut] = []
+    split_weights: list[AccountSplitWeightOut] = []
 
 
 class AccountCreate(BaseModel):
@@ -88,13 +101,13 @@ class AccountUpdate(BaseModel):
 class CategorySplitOut(BaseModel):
     user_id: int
     user_name: str
-    split_percentage: float
+    weight: int
     model_config = ConfigDict(from_attributes=True)
 
 
 class CategorySplitCreate(BaseModel):
     user_id: int
-    split_percentage: float
+    weight: int
 
 
 class CategoryOut(BaseModel):
@@ -127,32 +140,27 @@ class CategoryUpdate(BaseModel):
 class GlobalSplitWeightOut(BaseModel):
     user_id: int
     user_name: str
-    weight: float
+    weight: int
     model_config = ConfigDict(from_attributes=True)
 
 
 class GlobalSplitWeightUpdateItem(BaseModel):
     user_id: int
-    weight: float
+    weight: int
 
 
-class SplitShareCreate(BaseModel):
+class SplitWeightCreate(BaseModel):
     user_id: int
-    share_amount: float
+    weight: int
 
 
 class TransactionSplitOut(BaseModel):
     user_id: int
     user_name: str
+    weight: int
     share_amount: float
     source: str
     model_config = ConfigDict(from_attributes=True)
-
-
-class SplitPreviewRequest(BaseModel):
-    amount: float
-    category_id: int | None = None
-    account_id: int | None = None
 
 
 class UserBalanceOut(BaseModel):
@@ -190,7 +198,8 @@ class TransactionCreate(BaseModel):
     account_id: int
     category_id: Optional[int] = None
     accounting_month_offset: int = Field(0, ge=-3, le=3)
-    split_overrides: list[SplitShareCreate] | None = None
+    split_weights: list[SplitWeightCreate] | None = None
+    split_source: Literal["global", "account", "category", "custom"] | None = None
 
 
 class TransactionUpdate(BaseModel):
@@ -201,7 +210,8 @@ class TransactionUpdate(BaseModel):
     account_id: Optional[int] = None
     category_id: Optional[int] = None
     accounting_month_offset: Optional[int] = Field(None, ge=-3, le=3)
-    split_overrides: list[SplitShareCreate] | None = None
+    split_weights: list[SplitWeightCreate] | None = None
+    split_source: Literal["global", "account", "category", "custom"] | None = None
 
 
 TEXT_OPERATORS = {"contains", "equals", "not_equals", "starts_with", "ends_with"}
@@ -343,8 +353,9 @@ class ImportPreviewRequest(BaseModel):
     category_col: str | None = None
 
 
-class SplitPreviewShare(BaseModel):
+class ImportPreviewSplitShare(BaseModel):
     user_id: int
+    weight: int
     share_amount: float
     source: str
 
@@ -360,7 +371,7 @@ class ImportPreviewRow(BaseModel):
     category_name: str | None = None
     status: str  # 'ok' | 'needs_category' | 'possible_duplicate' | 'error'
     error_message: str | None = None
-    preview_split: list[SplitPreviewShare] = []
+    preview_split: list[ImportPreviewSplitShare] = []
 
 
 class ImportCommitRequest(BaseModel):
@@ -420,14 +431,22 @@ class CategorySplitExport(BaseModel):
 
     category_id: int
     user_id: int
-    split_percentage: float
+    weight: int
 
 
 class GlobalSplitWeightExport(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     user_id: int
-    weight: float
+    weight: int
+
+
+class AccountSplitWeightExport(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    account_id: int
+    user_id: int
+    weight: int
 
 
 class TransactionExport(BaseModel):
@@ -449,6 +468,7 @@ class TransactionSplitExport(BaseModel):
 
     transaction_id: int
     user_id: int
+    weight: int
     share_amount: float
     source: str
 
@@ -481,6 +501,7 @@ class DatabaseExport(BaseModel):
     account_users: list[AccountUserExport] = []
     category_splits: list[CategorySplitExport] = []
     global_split_weights: list[GlobalSplitWeightExport] = []
+    account_split_weights: list[AccountSplitWeightExport] = []
     transactions: list[TransactionExport] = []
     transaction_splits: list[TransactionSplitExport] = []
     transaction_history: list[TransactionHistoryExport] = []
@@ -494,6 +515,7 @@ class ImportSummary(BaseModel):
     account_users: int
     category_splits: int
     global_split_weights: int
+    account_split_weights: int
     transactions: int
     transaction_splits: int
     transaction_history: int

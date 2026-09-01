@@ -18,6 +18,7 @@ class Account(Base):
 
     transactions = relationship("Transaction", back_populates="account")
     user_associations = relationship("AccountUser", back_populates="account", cascade="all, delete-orphan")
+    split_weight_associations = relationship("AccountSplitWeight", back_populates="account", cascade="all, delete-orphan")
 
 
 class Category(Base):
@@ -80,7 +81,9 @@ class CategorySplit(Base):
 
     category_id = Column(Integer, ForeignKey("categories.id"), primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
-    split_percentage = Column(Float, nullable=False, default=0.0)
+    # Relative integer weight, not a percentage — no sum-to-100 requirement.
+    # Highest-priority tier: used only to prefill a transaction's own weights.
+    weight = Column(Integer, nullable=False, default=0)
 
     category = relationship("Category", back_populates="splits")
     user = relationship("User")
@@ -90,8 +93,22 @@ class GlobalSplitWeight(Base):
     __tablename__ = "global_split_weights"
 
     user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
-    weight = Column(Float, nullable=False, default=0.0)
+    # Lowest-priority tier: used only to prefill a transaction's own weights.
+    weight = Column(Integer, nullable=False, default=0)
 
+    user = relationship("User")
+
+
+class AccountSplitWeight(Base):
+    __tablename__ = "account_split_weights"
+
+    account_id = Column(Integer, ForeignKey("accounts.id"), primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
+    # Middle-priority tier: used only to prefill a transaction's own weights.
+    # Entirely separate from AccountUser.ownership_percentage.
+    weight = Column(Integer, nullable=False, default=0)
+
+    account = relationship("Account", back_populates="split_weight_associations")
     user = relationship("User")
 
 
@@ -100,8 +117,15 @@ class TransactionSplit(Base):
 
     transaction_id = Column(Integer, ForeignKey("transactions.id"), primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
+    # The integer weight this transaction stores for this user — freely
+    # typed by the client, or bulk-filled from a tier via a quick-access
+    # button. Never re-resolved from current tier config after the fact.
+    weight = Column(Integer, nullable=False, default=0)
+    # Derived from weight + the transaction's current amount, recomputed and
+    # persisted on every create/update. Never directly client-editable.
     share_amount = Column(Float, nullable=False)
-    source = Column(String(20), nullable=False)  # 'manual' | 'category_default' | 'global_default'
+    # Which tier/button produced the current weight set.
+    source = Column(String(20), nullable=False)  # 'global' | 'account' | 'category' | 'custom'
 
     transaction = relationship("Transaction", back_populates="splits")
     user = relationship("User")

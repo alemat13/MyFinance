@@ -11,12 +11,12 @@ from sqlalchemy.orm import Session, sessionmaker
 from database import Base
 from models import (
     Account, Category, Transaction, User, AccountUser,
-    CategorySplit, GlobalSplitWeight, TransactionSplit, TransactionHistory,
+    CategorySplit, GlobalSplitWeight, AccountSplitWeight, TransactionSplit, TransactionHistory,
 )
 from schemas import (
     DatabaseExport, ImportSummary,
     UserExport, AccountExport, CategoryExport, AccountUserExport,
-    CategorySplitExport, GlobalSplitWeightExport, TransactionExport,
+    CategorySplitExport, GlobalSplitWeightExport, AccountSplitWeightExport, TransactionExport,
     TransactionSplitExport, TransactionHistoryExport,
 )
 
@@ -42,6 +42,7 @@ def build_export(db: Session) -> DatabaseExport:
         account_users=[AccountUserExport.model_validate(au) for au in db.query(AccountUser).all()],
         category_splits=[CategorySplitExport.model_validate(cs) for cs in db.query(CategorySplit).all()],
         global_split_weights=[GlobalSplitWeightExport.model_validate(w) for w in db.query(GlobalSplitWeight).all()],
+        account_split_weights=[AccountSplitWeightExport.model_validate(w) for w in db.query(AccountSplitWeight).all()],
         transactions=[TransactionExport.model_validate(t) for t in db.query(Transaction).all()],
         transaction_splits=[TransactionSplitExport.model_validate(s) for s in db.query(TransactionSplit).all()],
         transaction_history=[TransactionHistoryExport.model_validate(h) for h in db.query(TransactionHistory).all()],
@@ -104,6 +105,9 @@ def _validate_referential_integrity(data: DatabaseExport) -> None:
         _check("category_splits.user_id", cs.user_id, user_ids)
     for w in data.global_split_weights:
         _check("global_split_weights.user_id", w.user_id, user_ids)
+    for w in data.account_split_weights:
+        _check("account_split_weights.account_id", w.account_id, account_ids)
+        _check("account_split_weights.user_id", w.user_id, user_ids)
     for t in data.transactions:
         _check("transactions.account_id", t.account_id, account_ids)
         _check("transactions.category_id", t.category_id, category_ids)
@@ -141,6 +145,7 @@ def import_database(db: Session, data: DatabaseExport, mode: Literal["overwrite"
         session.add_all(AccountUser(**au.model_dump()) for au in data.account_users)
         session.add_all(CategorySplit(**cs.model_dump()) for cs in data.category_splits)
         session.add_all(GlobalSplitWeight(**w.model_dump()) for w in data.global_split_weights)
+        session.add_all(AccountSplitWeight(**w.model_dump()) for w in data.account_split_weights)
         session.flush()
 
         # Restoring an already-valid snapshot, not fresh user input, so this
@@ -169,6 +174,7 @@ def import_database(db: Session, data: DatabaseExport, mode: Literal["overwrite"
         account_users=len(data.account_users),
         category_splits=len(data.category_splits),
         global_split_weights=len(data.global_split_weights),
+        account_split_weights=len(data.account_split_weights),
         transactions=len(data.transactions),
         transaction_splits=len(data.transaction_splits),
         transaction_history=len(data.transaction_history),

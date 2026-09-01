@@ -2,7 +2,7 @@ import { describe, test, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import AccountCard from '../AccountCard'
 
-const baseAccount = { id: 1, name: 'Checking', type: 'Checking', balance: 1500.5, currency: 'USD', created_at: '2026-01-01', users: [] }
+const baseAccount = { id: 1, name: 'Checking', type: 'Checking', balance: 1500.5, currency: 'USD', created_at: '2026-01-01', users: [], split_weights: [] }
 
 test('renders account name, type and formatted balance', () => {
   render(<AccountCard account={baseAccount} />)

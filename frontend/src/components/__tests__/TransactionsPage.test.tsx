@@ -4,7 +4,7 @@ import { renderWithProviders } from '../../test-utils'
 import TransactionsPage from '../TransactionsPage'
 import { formatDateGroupHeader } from '../../utils/transactions'
 
-const { mockSearchTransactions, mockFetchAccounts, mockFetchCategories, mockCreateTransaction, mockUpdateTransaction, mockDeleteTransaction, mockFetchUsers, mockFetchSplitPreview, mockFetchTransaction, mockFetchTransactionHistory } = vi.hoisted(() => ({
+const { mockSearchTransactions, mockFetchAccounts, mockFetchCategories, mockCreateTransaction, mockUpdateTransaction, mockDeleteTransaction, mockFetchUsers, mockFetchSplitWeights, mockFetchTransaction, mockFetchTransactionHistory } = vi.hoisted(() => ({
   mockSearchTransactions: vi.fn(),
   mockFetchAccounts: vi.fn(),
   mockFetchCategories: vi.fn(),
@@ -12,7 +12,7 @@ const { mockSearchTransactions, mockFetchAccounts, mockFetchCategories, mockCrea
   mockUpdateTransaction: vi.fn(),
   mockDeleteTransaction: vi.fn(),
   mockFetchUsers: vi.fn().mockResolvedValue([]),
-  mockFetchSplitPreview: vi.fn().mockResolvedValue([]),
+  mockFetchSplitWeights: vi.fn().mockResolvedValue([]),
   mockFetchTransaction: vi.fn(),
   mockFetchTransactionHistory: vi.fn().mockResolvedValue([]),
 }))
@@ -25,12 +25,12 @@ vi.mock('../../api/client', () => ({
   updateTransaction: mockUpdateTransaction,
   deleteTransaction: mockDeleteTransaction,
   fetchUsers: mockFetchUsers,
-  fetchSplitPreview: mockFetchSplitPreview,
+  fetchSplitWeights: mockFetchSplitWeights,
   fetchTransaction: mockFetchTransaction,
   fetchTransactionHistory: mockFetchTransactionHistory,
 }))
 
-const baseAccount = { id: 1, name: 'Checking', type: 'Checking', balance: 100, currency: 'USD', created_at: '2026-01-01', users: [] }
+const baseAccount = { id: 1, name: 'Checking', type: 'Checking', balance: 100, currency: 'USD', created_at: '2026-01-01', users: [], split_weights: [] }
 const baseCategory = { id: 1, name: 'Salary', type: 'Income', splits: [] }
 
 const searchResult = (items: any[]) => ({ items, total: items.length, page: 1, page_size: 50, total_pages: 1 })
@@ -38,7 +38,7 @@ const searchResult = (items: any[]) => ({ items, total: items.length, page: 1, p
 beforeEach(() => {
   vi.clearAllMocks()
   mockFetchUsers.mockResolvedValue([])
-  mockFetchSplitPreview.mockResolvedValue([])
+  mockFetchSplitWeights.mockResolvedValue([])
   mockFetchTransactionHistory.mockResolvedValue([])
   window.history.replaceState(null, '', '/')
 })
@@ -234,15 +234,12 @@ test('clicking a transaction row opens the detail view and updates the URL', asy
   expect(await screen.findByRole('dialog')).toBeInTheDocument()
 })
 
-test('shows default split preview and can submit a custom override', async () => {
+test('auto-prefills split weights from the category default when a category is selected', async () => {
+  const categoryWithSplit = { ...baseCategory, splits: [{ user_id: 1, user_name: 'Alex', weight: 3 }, { user_id: 2, user_name: 'Olivia', weight: 1 }] }
   mockSearchTransactions.mockResolvedValue(searchResult([]))
   mockFetchAccounts.mockResolvedValue([baseAccount])
-  mockFetchCategories.mockResolvedValue([baseCategory])
+  mockFetchCategories.mockResolvedValue([categoryWithSplit])
   mockFetchUsers.mockResolvedValue([{ id: 1, name: 'Alex', email: null, created_at: '' }, { id: 2, name: 'Olivia', email: null, created_at: '' }])
-  mockFetchSplitPreview.mockResolvedValue([
-    { user_id: 1, user_name: 'Alex', share_amount: 60, source: 'global_default' },
-    { user_id: 2, user_name: 'Olivia', share_amount: 40, source: 'global_default' },
-  ])
   mockCreateTransaction.mockResolvedValue({ id: 1, date: '2026-01-15', payee: 'New Payee', memo: '', amount: 100, account_id: 1, account_name: 'Checking', category_id: 1, category_name: 'Salary', splits: [] })
 
   renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
@@ -257,35 +254,43 @@ test('shows default split preview and can submit a custom override', async () =>
   fireEvent.change(selects[3], { target: { value: '1' } })
   fireEvent.change(selects[4], { target: { value: '1' } })
 
-  await waitFor(() => {
-    expect(screen.getByText(/Default split: Alex \$60.00 \/ Olivia \$40.00/)).toBeInTheDocument()
-  })
-
-  fireEvent.click(screen.getByLabelText('Customize split'))
-  const amountInputs = screen.getAllByDisplayValue('60')
-  fireEvent.change(amountInputs[0], { target: { value: '70' } })
-  const remaining = screen.getAllByDisplayValue('40')
-  fireEvent.change(remaining[0], { target: { value: '30' } })
-
   fireEvent.change(screen.getByPlaceholderText('Payee'), { target: { value: 'New Payee' } })
   fireEvent.click(screen.getByText('Save'))
 
   await waitFor(() => {
     expect(mockCreateTransaction).toHaveBeenCalledWith(expect.objectContaining({
-      split_overrides: [
-        { user_id: 1, share_amount: 70 },
-        { user_id: 2, share_amount: 30 },
+      split_weights: [
+        { user_id: 1, weight: 3 },
+        { user_id: 2, weight: 1 },
       ],
+      split_source: 'category',
     }), null)
   })
 })
 
-test('rejects a custom split that does not sum to the amount', async () => {
+test('quick-fill button is disabled when the account has no configured split weight', async () => {
   mockSearchTransactions.mockResolvedValue(searchResult([]))
   mockFetchAccounts.mockResolvedValue([baseAccount])
   mockFetchCategories.mockResolvedValue([baseCategory])
   mockFetchUsers.mockResolvedValue([{ id: 1, name: 'Alex', email: null, created_at: '' }])
-  mockFetchSplitPreview.mockResolvedValue([{ user_id: 1, user_name: 'Alex', share_amount: 100, source: 'global_default' }])
+
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+
+  await waitFor(() => {
+    expect(screen.getByText('No transactions match your filters')).toBeInTheDocument()
+  })
+
+  fireEvent.click(screen.getByText('+ New Transaction'))
+
+  expect(screen.getByRole('button', { name: 'Account' })).toBeDisabled()
+})
+
+test('free-form weight entry on a new transaction is submitted with source "custom"', async () => {
+  mockSearchTransactions.mockResolvedValue(searchResult([]))
+  mockFetchAccounts.mockResolvedValue([baseAccount])
+  mockFetchCategories.mockResolvedValue([baseCategory])
+  mockFetchUsers.mockResolvedValue([{ id: 1, name: 'Alex', email: null, created_at: '' }])
+  mockCreateTransaction.mockResolvedValue({ id: 1, date: '2026-01-15', payee: 'New Payee', memo: '', amount: 100, account_id: 1, account_name: 'Checking', category_id: 1, category_name: 'Salary', splits: [] })
 
   renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
 
@@ -300,17 +305,19 @@ test('rejects a custom split that does not sum to the amount', async () => {
   fireEvent.change(selects[3], { target: { value: '1' } })
   fireEvent.change(selects[4], { target: { value: '1' } })
 
-  await waitFor(() => {
-    expect(screen.getByText(/Default split:/)).toBeInTheDocument()
-  })
-
-  fireEvent.click(screen.getByLabelText('Customize split'))
-  const hundredInputs = screen.getAllByDisplayValue('100')
-  fireEvent.change(hundredInputs[hundredInputs.length - 1], { target: { value: '40' } })
+  fireEvent.click(screen.getByLabelText('Add user'))
+  const numberInputs = screen.getAllByRole('spinbutton')
+  const weightInput = numberInputs.find(el => (el as HTMLInputElement).value === '0')!
+  fireEvent.change(weightInput, { target: { value: '5' } })
 
   fireEvent.click(screen.getByText('Save'))
 
-  expect(mockCreateTransaction).not.toHaveBeenCalled()
+  await waitFor(() => {
+    expect(mockCreateTransaction).toHaveBeenCalledWith(expect.objectContaining({
+      split_weights: [{ user_id: 1, weight: 5 }],
+      split_source: 'custom',
+    }), null)
+  })
 })
 
 test('simple mode text search triggers a debounced search request', async () => {
