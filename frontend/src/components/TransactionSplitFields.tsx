@@ -30,7 +30,7 @@ export default function TransactionSplitFields({
 
   return (
     <div className="mt-2">
-      <div className="flex gap-1.5 items-center mb-1">
+      <div className="flex flex-wrap gap-1.5 items-center mb-1">
         <span className="text-xs text-slate-600 dark:text-slate-300 mr-1">Quick fill:</span>
         <Button
           size="sm"
@@ -56,6 +56,24 @@ export default function TransactionSplitFields({
         >
           Category
         </Button>
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={allUsers.length === 0}
+          onClick={() => applyTier(allUsers.map(u => ({ user_id: u.id, value: 1 })), 'custom')}
+        >
+          Split Evenly
+        </Button>
+        {allUsers.map(u => (
+          <Button
+            key={u.id}
+            size="sm"
+            variant="secondary"
+            onClick={() => applyTier([{ user_id: u.id, value: 1 }], 'custom')}
+          >
+            {u.name}
+          </Button>
+        ))}
       </div>
       <SplitEditor
         rows={rows}
