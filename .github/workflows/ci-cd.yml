@@ -60,7 +60,8 @@ jobs:
       - name: Build & push frontend
         run: |
           docker build --build-arg VITE_API_URL=/api \
-            -t ${{ vars.REGION }}-docker.pkg.dev/${{ vars.PROJECT_ID }}/myfinance/frontend:${{ github.sha }} frontend
+            -f frontend/Dockerfile \
+            -t ${{ vars.REGION }}-docker.pkg.dev/${{ vars.PROJECT_ID }}/myfinance/frontend:${{ github.sha }} .
           docker push ${{ vars.REGION }}-docker.pkg.dev/${{ vars.PROJECT_ID }}/myfinance/frontend:${{ github.sha }}
 
       - name: Run database migrations
