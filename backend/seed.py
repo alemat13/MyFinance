@@ -4,7 +4,7 @@ import split_engine
 from database import engine, SessionLocal, Base
 from models import (
     Account, Category, Transaction, User, AccountUser,
-    CategorySplit, GlobalSplitWeight,
+    CategorySplit, GlobalSplitWeight, AccountSplitWeight,
 )
 
 
@@ -195,32 +195,45 @@ def seed():
     session.add_all(transactions)
     session.flush()
 
-    # Global default split weights (tier 3) — income-proportional fallback.
+    # Global default split weights (lowest priority) — income-proportional fallback.
     session.add_all([
-        GlobalSplitWeight(user_id=users[0].id, weight=52000.0),
-        GlobalSplitWeight(user_id=users[1].id, weight=48000.0),
+        GlobalSplitWeight(user_id=users[0].id, weight=52000),
+        GlobalSplitWeight(user_id=users[1].id, weight=48000),
     ])
 
-    # Category default split (tier 2) — Transfer is always split 50/50.
+    # Account-level split weights (middle priority) — deliberately different
+    # from both ownership (50/50) and the global weight above, so seeded
+    # data visibly exercises the account tier on Joint Checking transactions
+    # that don't have a category default.
+    session.add_all([
+        AccountSplitWeight(account_id=accounts[0].id, user_id=users[0].id, weight=55),
+        AccountSplitWeight(account_id=accounts[0].id, user_id=users[1].id, weight=45),
+    ])
+
+    # Category default split (highest priority) — Transfer is always split 50/50.
     transfer_category = categories[6]
     session.add_all([
-        CategorySplit(category_id=transfer_category.id, user_id=users[0].id, split_percentage=50.0),
-        CategorySplit(category_id=transfer_category.id, user_id=users[1].id, split_percentage=50.0),
+        CategorySplit(category_id=transfer_category.id, user_id=users[0].id, weight=50),
+        CategorySplit(category_id=transfer_category.id, user_id=users[1].id, weight=50),
     ])
     session.flush()
 
-    # Resolve a split for every seeded transaction, exactly as the API does
-    # on create — a manual override (tier 1) on the rent payment, everything
-    # else auto-resolved (tier 2 category default or tier 3 global default).
+    # Resolve a split for every seeded transaction, exactly as the interactive
+    # form would — an explicit custom weight set on the rent payment,
+    # everything else auto-resolved via category > account > global priority.
     rent_transaction = transactions[1]
     for transaction in transactions:
         if transaction is rent_transaction:
-            split_engine.apply_split(session, transaction, override=[
-                (users[0].id, -900.0),
-                (users[1].id, -900.0),
-            ])
+            split_engine.apply_split(
+                session, transaction,
+                weights={users[0].id: 1, users[1].id: 1},
+                source="custom",
+            )
         else:
-            split_engine.apply_split(session, transaction)
+            source, weights = split_engine.resolve_default_weights(
+                session, transaction.category_id, transaction.account_id,
+            )
+            split_engine.apply_split(session, transaction, weights or None, source or "custom")
 
     session.commit()
     session.close()

@@ -7,8 +7,10 @@ erDiagram
     accounts ||--o{ transactions : contains
     categories |o--o{ transactions : categorizes
     categories ||--o{ category_splits : "defaults to"
-    users ||--o{ category_splits : "shares"
+    users ||--o{ category_splits : "weighted as"
     users ||--o{ global_split_weights : "weighted as"
+    accounts ||--o{ account_split_weights : "defaults to"
+    users ||--o{ account_split_weights : "weighted as"
     transactions ||--o{ transaction_splits : "split into"
     users ||--o{ transaction_splits : "owes"
 
@@ -62,12 +64,18 @@ erDiagram
     category_splits {
         int category_id PK,FK
         int user_id PK,FK
-        float split_percentage "0-100, sum=100 per category"
+        int weight ">= 0, relative, no sum requirement"
     }
 
     global_split_weights {
         int user_id PK,FK
-        float weight ">= 0, relative weight"
+        int weight ">= 0, relative, no sum requirement"
+    }
+
+    account_split_weights {
+        int account_id PK,FK
+        int user_id PK,FK
+        int weight ">= 0, relative, no sum requirement"
     }
 
     transactions {
@@ -85,8 +93,9 @@ erDiagram
     transaction_splits {
         int transaction_id PK,FK
         int user_id PK,FK
-        float share_amount "frozen at write time"
-        string source "manual | category_default | global_default"
+        int weight "this transaction's own stored weight"
+        float share_amount "derived from weight, recomputed on every write"
+        string source "global | account | category | custom"
     }
 ```
 
@@ -150,31 +159,41 @@ Individual financial transactions.
 | `created_at` | DateTime | Default: current UTC time |
 
 ### `category_splits`
-Optional default split (tier 2) for a category — e.g. "Mortgage" always splits 50/50 regardless of the global default weighting.
+The **highest-priority** weight tier: an optional default split-weight for a category — e.g. "Mortgage" always prefills 1:1 regardless of the account or global default. Purely a prefill source for new/edited transactions' own weights; never live-resolved.
 
 | Column | Type | Notes |
 |--------|------|-------|
 | `category_id` | Integer | Foreign key → `categories.id`, part of composite PK |
 | `user_id` | Integer | Foreign key → `users.id`, part of composite PK |
-| `split_percentage` | Float | Percentage of this category's amount attributed to this user. Sum must equal 100 per category |
+| `weight` | Integer | Relative integer weight, `>= 0`. No sum requirement — it's a ratio, not a percentage |
 
 ### `global_split_weights`
-The fallback (tier 3) split: a relative weight per user (e.g. proportional to income), used whenever a transaction's category has no `category_splits` override and no manual override was given.
+The **lowest-priority** weight tier: a relative integer weight per user (e.g. proportional to income), used to prefill a transaction's weights when neither its account nor its category has a weight configured.
 
 | Column | Type | Notes |
 |--------|------|-------|
 | `user_id` | Integer | Primary key, foreign key → `users.id` |
-| `weight` | Float | Relative weight (not a percentage) — normalized against the sum of all weights at split time |
+| `weight` | Integer | Relative weight (not a percentage), `>= 0` — normalized against the sum of all weights when prefilling |
+
+### `account_split_weights`
+The **middle-priority** weight tier: a relative integer weight per user, scoped to one account. Entirely independent of `account_users.ownership_percentage` — ownership and split weight are two separate, coexisting concepts (ownership drives visibility and the "paid" side of balances; this table only feeds split-weight prefill).
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `account_id` | Integer | Foreign key → `accounts.id`, part of composite PK |
+| `user_id` | Integer | Foreign key → `users.id`, part of composite PK |
+| `weight` | Integer | Relative weight, `>= 0`. No sum requirement |
 
 ### `transaction_splits`
-The resolved split for one transaction, computed once and stored — never silently recomputed if `global_split_weights` or `category_splits` change later.
+Every transaction stores its **own** integer `weight` per involved user — freely typed by the client, or bulk-filled from a tier via a quick-access button (category > account > global priority, prefill-only). `share_amount` is always *derived* from `weight` against the transaction's current `amount`, recomputed and persisted on every create/update — it is never itself client-editable, and it is never re-resolved from the tiers' *current* configuration once the transaction exists (only its own stored `weight` matters going forward).
 
 | Column | Type | Notes |
 |--------|------|-------|
 | `transaction_id` | Integer | Foreign key → `transactions.id`, part of composite PK |
 | `user_id` | Integer | Foreign key → `users.id`, part of composite PK |
-| `share_amount` | Float | What this user is liable for, frozen at the time the transaction was created/updated |
-| `source` | String(20) | How this share was determined: `manual`, `category_default`, or `global_default` |
+| `weight` | Integer | This transaction's own stored weight for this user |
+| `share_amount` | Float | What this user is liable for — derived from `weight`, recomputed on every write |
+| `source` | String(20) | Which tier/button last produced this weight set: `global`, `account`, `category`, or `custom` (hand-typed) — display-only, never used for split logic |
 
 ### `transaction_history`
 Audit trail: one row per transaction create/update/delete, with a snapshot of the transaction's fields at that moment. Deliberately **not** linked by foreign key to `transactions` or `users` — see Key Relationships below.
@@ -198,7 +217,8 @@ Audit trail: one row per transaction create/update/delete, with a snapshot of th
 - **Ownership validation**: The backend enforces that ownership percentages sum to exactly 100% per account (within 0.01 tolerance).
 - **User filtering**: API endpoints `/api/transactions`, `/api/dashboard`, `/api/accounts` accept an optional `?user_id=X` query parameter to filter by account ownership (where `ownership_percentage > 0`).
 - **Accounting month**: each transaction stores `accounting_month_offset` (months relative to its own `date`, -3..+3, default 0), letting a transaction be attributed to a different reporting month than the one it was dated in — e.g. a paycheck dated the last day of a month that should count toward the next. The API also returns a derived, not stored, `accounting_month` ("YYYY-MM") computed from `date + accounting_month_offset` (`backend/accounting_month.py`), for reports/dashboards to group by later.
-- **Split resolution** (`backend/split_engine.py`): for each transaction, the split is resolved in priority order — an explicit override (`manual`) > `category_splits` for its category (`category_default`) > `global_split_weights` (`global_default`). If nothing is configured at any tier, no `transaction_splits` rows are created (the feature is opt-in).
-- **Splits are frozen, ownership is live**: `transaction_splits.share_amount` (what a user is *liable* for) is computed once at write time and persisted. What a user *paid* is instead derived live from the account's *current* `account_users.ownership_percentage` — so historical liability stays stable even if account ownership changes later, but the settlement report always reflects today's ownership. The household balance report (`GET /api/balances`, also embedded in `GET /api/dashboard`) is `sum(paid) − sum(share_amount)` per user — positive means the household owes them, negative means they owe the household.
+- **Split weights are prefill-only, never live-resolved** (`backend/split_engine.py`): every transaction stores its own integer `weight` per involved user in `transaction_splits`, freely editable or bulk-filled via a quick-access button from one of three tiers, in ascending priority: `global_split_weights` (lowest) → `account_split_weights` (middle) → `category_splits` (highest, wins when configured). `resolve_default_weights()` is used *only* to suggest a default when composing/editing a transaction's own weights (interactively client-side, or server-side for CSV import) — it is never consulted again once a transaction exists, so changing a tier's weights later never retroactively changes an existing transaction's split. If nothing is configured at any tier and the client supplies no weights of its own, no `transaction_splits` rows are created (the feature stays opt-in). There is no single-owner-account gating of any kind — a tier's weights apply regardless of how many owners an account has.
+- **Ownership and split weight are independent, coexisting concepts**: `account_users.ownership_percentage` is unrelated to `account_split_weights` — the former drives account/dashboard visibility filtering, the sum-to-100 ownership validation, and the "paid" side of balance math (below); the latter is purely one of the three split-weight prefill tiers. A single-owner account can have a configured `account_split_weights` row just like a joint one.
+- **Splits are frozen, ownership is live**: `transaction_splits.share_amount` (what a user is *liable* for) is recomputed from the transaction's own stored `weight` and persisted on every write that touches either the weight or the amount — but never re-derived from the *tiers'* current configuration. What a user *paid* is instead derived live from the account's *current* `account_users.ownership_percentage` — so historical liability stays stable even if account ownership changes later, but the settlement report always reflects today's ownership. The household balance report (`GET /api/balances`, also embedded in `GET /api/dashboard`) is `sum(paid) − sum(share_amount)` per user — positive means the household owes them, negative means they owe the household.
 - **Multi-currency accounts, no conversion**: each account has its own `currency`; transactions and splits inherit it from their account rather than storing it themselves. Amounts are never converted or summed across currencies — `compute_balances()` (`backend/split_engine.py`) partitions by `(user_id, currency)`, so `GET /api/balances` returns one net position per user *per currency*, and a household with mixed-currency accounts gets a separate settlement line for each currency instead of a single blended total.
 - **Audit trail is intentionally unlinked**: `transaction_history.transaction_id` and `changed_by_user_id` are plain (indexed) integers, not foreign keys. SQLite runs with `PRAGMA foreign_keys=ON`, so a real FK to `transactions.id` would either block a hard delete or be cascaded away with it — defeating the point of an audit log that must outlive the row it describes. History rows are written by `backend/audit.py` on every transaction create/update/delete and read via `GET /api/transactions/{id}/history`.

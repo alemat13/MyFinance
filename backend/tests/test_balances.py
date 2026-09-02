@@ -25,7 +25,7 @@ def test_balances_reflect_split_vs_ownership(client, db):
     db.commit()
 
     # Alex pays the full $100 (100% ownership of the paying account), but the
-    # split is manual 50/50 -> Alex should be owed $50 by Olivia.
+    # split is a custom 50/50 weight -> Alex should be owed $50 by Olivia.
     response = client.post(
         "/api/transactions",
         json={
@@ -34,9 +34,9 @@ def test_balances_reflect_split_vs_ownership(client, db):
             "date": "2026-01-15",
             "payee": "Groceries",
             "amount": -100.0,
-            "split_overrides": [
-                {"user_id": alex.id, "share_amount": -50.0},
-                {"user_id": olivia.id, "share_amount": -50.0},
+            "split_weights": [
+                {"user_id": alex.id, "weight": 1},
+                {"user_id": olivia.id, "weight": 1},
             ],
         },
     )
@@ -80,9 +80,9 @@ def test_balances_kept_separate_per_currency(client, db):
                 "date": "2026-01-15",
                 "payee": "Groceries",
                 "amount": amount,
-                "split_overrides": [
-                    {"user_id": alex.id, "share_amount": amount / 2},
-                    {"user_id": olivia.id, "share_amount": amount / 2},
+                "split_weights": [
+                    {"user_id": alex.id, "weight": 1},
+                    {"user_id": olivia.id, "weight": 1},
                 ],
             },
         )

@@ -103,11 +103,11 @@ def test_import_preview_european_number_format(client, sample_account, sample_ca
 
 def test_import_preview_matches_commit_for_single_owner_account(client, sample_account, sample_category, sample_user):
     # sample_account has no AccountUser owners at all (a degenerate single/no-owner
-    # account), so global split weights must never be auto-applied to it - same rule
-    # apply_split enforces on commit.
+    # account). The old single-owner skip no longer exists — global split weights
+    # apply regardless of owner count, and preview/commit must resolve identically.
     response = client.put(
         "/api/split-weights",
-        json=[{"user_id": sample_user.id, "weight": 100.0}],
+        json=[{"user_id": sample_user.id, "weight": 100}],
     )
     assert response.status_code == 200
 
@@ -115,7 +115,10 @@ def test_import_preview_matches_commit_for_single_owner_account(client, sample_a
     assert response.status_code == 200
     rows = response.json()
     assert rows[0]["status"] == "ok"
-    assert rows[0]["preview_split"] == []
+    preview_split = rows[0]["preview_split"]
+    assert len(preview_split) == 1
+    assert preview_split[0]["share_amount"] == -42.50
+    assert preview_split[0]["source"] == "global"
 
     response = client.post(
         "/api/import/commit",
@@ -129,7 +132,8 @@ def test_import_preview_matches_commit_for_single_owner_account(client, sample_a
 
     response = client.get("/api/transactions")
     committed = next(t for t in response.json() if t["id"] == transaction_id)
-    assert committed["splits"] == []
+    assert len(committed["splits"]) == 1
+    assert committed["splits"][0]["share_amount"] == -42.50
 
 
 def test_import_commit_rejects_rows_without_category(client, sample_account, sample_category):

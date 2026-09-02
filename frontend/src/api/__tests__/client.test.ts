@@ -5,7 +5,7 @@ import {
   fetchTransactions, createTransaction, updateTransaction, deleteTransaction, searchTransactions,
   fetchTransactionHistory,
   fetchDashboard,
-  fetchSplitWeights, updateSplitWeights, fetchSplitPreview, fetchBalances,
+  fetchSplitWeights, updateSplitWeights, fetchAccountSplitWeights, updateAccountSplitWeights, fetchBalances,
   detectImport, previewImport, commitImport,
 } from '../client'
 
@@ -402,7 +402,25 @@ test('updateSplitWeights makes PUT request', async () => {
   )
 })
 
-test('fetchSplitPreview makes POST request', async () => {
+test('fetchAccountSplitWeights makes GET request', async () => {
+  const mockData = [{ user_id: 1, user_name: 'Alex', weight: 55 }]
+  vi.mocked(globalThis.fetch).mockResolvedValue({
+    ok: true,
+    status: 200,
+    json: () => Promise.resolve(mockData),
+    text: () => Promise.resolve(''),
+  } as Response)
+
+  const result = await fetchAccountSplitWeights(3)
+
+  expect(globalThis.fetch).toHaveBeenCalledWith(
+    'http://localhost:8000/api/accounts/3/split-weights',
+    expect.objectContaining({ headers: { 'Content-Type': 'application/json' } }),
+  )
+  expect(result).toEqual(mockData)
+})
+
+test('updateAccountSplitWeights makes PUT request', async () => {
   vi.mocked(globalThis.fetch).mockResolvedValue({
     ok: true,
     status: 200,
@@ -410,13 +428,13 @@ test('fetchSplitPreview makes POST request', async () => {
     text: () => Promise.resolve(''),
   } as Response)
 
-  await fetchSplitPreview(100, 5)
+  await updateAccountSplitWeights(3, [{ user_id: 1, weight: 55 }])
 
   expect(globalThis.fetch).toHaveBeenCalledWith(
-    'http://localhost:8000/api/split-preview',
+    'http://localhost:8000/api/accounts/3/split-weights',
     expect.objectContaining({
-      method: 'POST',
-      body: JSON.stringify({ amount: 100, category_id: 5, account_id: null }),
+      method: 'PUT',
+      body: JSON.stringify([{ user_id: 1, weight: 55 }]),
     }),
   )
 })

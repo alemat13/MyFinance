@@ -8,8 +8,8 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from models import Category, Transaction
-from schemas import ImportDetectResponse, ImportPreviewRequest, ImportPreviewRow, SplitPreviewShare
-from split_engine import resolve_split
+from schemas import ImportDetectResponse, ImportPreviewRequest, ImportPreviewRow, ImportPreviewSplitShare
+from split_engine import prorate, resolve_default_weights
 
 _ENCODINGS = ["utf-8-sig", "utf-8", "cp1252", "latin-1"]
 _DATE_FORMATS = ["%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%d-%m-%Y", "%d.%m.%Y", "%Y/%m/%d"]
@@ -159,8 +159,12 @@ def preview_import(db: Session, raw: bytes, data: ImportPreviewRequest) -> list[
 
         preview_split = []
         if category is not None:
-            shares = resolve_split(db, amount, category.id, override=None, required=False, account_id=data.account_id)
-            preview_split = [SplitPreviewShare(user_id=s.user_id, share_amount=s.share_amount, source=s.source) for s in shares]
+            source, weights = resolve_default_weights(db, category.id, data.account_id)
+            shares = prorate(amount, weights) if weights else []
+            preview_split = [
+                ImportPreviewSplitShare(user_id=s.user_id, weight=s.weight, share_amount=s.share_amount, source=source or "custom")
+                for s in shares
+            ]
 
         rows.append(ImportPreviewRow(
             row_number=i,

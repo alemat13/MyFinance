@@ -3,12 +3,11 @@ import { screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { renderWithProviders } from '../../test-utils'
 import TransactionDetail from '../TransactionDetail'
 
-const { mockFetchTransaction, mockUpdateTransaction, mockDeleteTransaction, mockFetchTransactionHistory, mockFetchSplitPreview } = vi.hoisted(() => ({
+const { mockFetchTransaction, mockUpdateTransaction, mockDeleteTransaction, mockFetchTransactionHistory } = vi.hoisted(() => ({
   mockFetchTransaction: vi.fn(),
   mockUpdateTransaction: vi.fn(),
   mockDeleteTransaction: vi.fn(),
   mockFetchTransactionHistory: vi.fn(),
-  mockFetchSplitPreview: vi.fn().mockResolvedValue([]),
 }))
 
 vi.mock('../../api/client', () => ({
@@ -16,10 +15,9 @@ vi.mock('../../api/client', () => ({
   updateTransaction: mockUpdateTransaction,
   deleteTransaction: mockDeleteTransaction,
   fetchTransactionHistory: mockFetchTransactionHistory,
-  fetchSplitPreview: mockFetchSplitPreview,
 }))
 
-const baseAccount = { id: 1, name: 'Checking', type: 'Checking', balance: 100, currency: 'USD', created_at: '2026-01-01', users: [] }
+const baseAccount = { id: 1, name: 'Checking', type: 'Checking', balance: 100, currency: 'USD', created_at: '2026-01-01', users: [], split_weights: [] }
 const baseCategory = { id: 1, name: 'Salary', type: 'Income', splits: [] }
 const baseTxn = {
   id: 1, date: '2026-01-15', payee: 'Test', memo: null, amount: 50,
@@ -33,6 +31,7 @@ const baseProps = {
   accounts: [baseAccount],
   categories: [baseCategory],
   allUsers: [],
+  globalWeights: [],
   selectedUserId: null,
   onClose: vi.fn(),
   onSaved: vi.fn(),
@@ -41,7 +40,6 @@ const baseProps = {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mockFetchSplitPreview.mockResolvedValue([])
   mockFetchTransactionHistory.mockResolvedValue([])
 })
 
@@ -57,7 +55,7 @@ test('loads and displays the transaction fields', async () => {
   expect(screen.getByDisplayValue('50')).toBeInTheDocument()
 })
 
-test('edits a field and saves', async () => {
+test('edits a field and saves, submitting the transaction\'s existing (empty) split weights', async () => {
   mockFetchTransaction.mockResolvedValue(baseTxn)
   mockUpdateTransaction.mockResolvedValue({ ...baseTxn, payee: 'Updated' })
 
@@ -69,30 +67,89 @@ test('edits a field and saves', async () => {
   fireEvent.click(screen.getByText('Save'))
 
   await waitFor(() => {
-    expect(mockUpdateTransaction).toHaveBeenCalledWith(1, expect.objectContaining({ payee: 'Updated' }), null)
+    expect(mockUpdateTransaction).toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({ payee: 'Updated', split_weights: [], split_source: 'custom' }),
+      null,
+    )
   })
   expect(baseProps.onSaved).toHaveBeenCalled()
 })
 
-test('rejects a custom split that does not sum to the amount', async () => {
-  mockFetchTransaction.mockResolvedValue(baseTxn)
-  mockFetchSplitPreview.mockResolvedValue([{ user_id: 1, user_name: 'Alex', share_amount: 50, source: 'global_default' }])
-
-  renderWithProviders(<TransactionDetail {...baseProps} allUsers={[{ id: 1, name: 'Alex', email: null, created_at: '' }]} />)
-
-  await screen.findByDisplayValue('Test')
-
-  await waitFor(() => {
-    expect(screen.getByText(/Default split:/)).toBeInTheDocument()
+test('shows the transaction\'s own stored weights, not re-prefilled from the category\'s current weight', async () => {
+  const alex = { id: 1, name: 'Alex', email: null, created_at: '' }
+  mockFetchTransaction.mockResolvedValue({
+    ...baseTxn,
+    splits: [{ user_id: 1, user_name: 'Alex', weight: 2, share_amount: 50, source: 'custom' }],
   })
 
-  fireEvent.click(screen.getByLabelText('Customize split'))
-  const shareInputs = screen.getAllByDisplayValue('50')
-  fireEvent.change(shareInputs[shareInputs.length - 1], { target: { value: '30' } })
+  renderWithProviders(<TransactionDetail
+    {...baseProps}
+    allUsers={[alex]}
+    categories={[{ ...baseCategory, splits: [{ user_id: 1, user_name: 'Alex', weight: 5 }] }]}
+  />)
 
+  await screen.findByDisplayValue('Test')
+  // The stored weight (2) is shown, not the category's current weight (5).
+  expect(screen.getByDisplayValue('2')).toBeInTheDocument()
+  expect(screen.queryByDisplayValue('5')).not.toBeInTheDocument()
+})
+
+test('quick-fill buttons are disabled when their tier has nothing configured, and enabled when it does', async () => {
+  const alex = { id: 1, name: 'Alex', email: null, created_at: '' }
+  mockFetchTransaction.mockResolvedValue(baseTxn)
+
+  renderWithProviders(<TransactionDetail
+    {...baseProps}
+    allUsers={[alex]}
+    accounts={[{ ...baseAccount, split_weights: [{ user_id: 1, user_name: 'Alex', weight: 7 }] }]}
+  />)
+
+  await screen.findByDisplayValue('Test')
+  expect(screen.getByRole('button', { name: 'Global' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Account' })).not.toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Category' })).toBeDisabled()
+})
+
+test('clicking the Account quick-fill button overwrites the weight fields', async () => {
+  const alex = { id: 1, name: 'Alex', email: null, created_at: '' }
+  mockFetchTransaction.mockResolvedValue(baseTxn)
+
+  renderWithProviders(<TransactionDetail
+    {...baseProps}
+    allUsers={[alex]}
+    accounts={[{ ...baseAccount, split_weights: [{ user_id: 1, user_name: 'Alex', weight: 7 }] }]}
+  />)
+
+  await screen.findByDisplayValue('Test')
+  fireEvent.click(screen.getByRole('button', { name: 'Account' }))
+
+  expect(screen.getByDisplayValue('7')).toBeInTheDocument()
+})
+
+test('free-form weight entry is accepted and submitted as source "custom"', async () => {
+  const alex = { id: 1, name: 'Alex', email: null, created_at: '' }
+  mockFetchTransaction.mockResolvedValue({
+    ...baseTxn,
+    splits: [{ user_id: 1, user_name: 'Alex', weight: 1, share_amount: 50, source: 'custom' }],
+  })
+  mockUpdateTransaction.mockResolvedValue(baseTxn)
+
+  renderWithProviders(<TransactionDetail {...baseProps} allUsers={[alex]} />)
+
+  await screen.findByDisplayValue('Test')
+  const numberInputs = screen.getAllByRole('spinbutton')
+  const weightInput = numberInputs.find(el => (el as HTMLInputElement).value === '1')!
+  fireEvent.change(weightInput, { target: { value: '9' } })
   fireEvent.click(screen.getByText('Save'))
 
-  expect(mockUpdateTransaction).not.toHaveBeenCalled()
+  await waitFor(() => {
+    expect(mockUpdateTransaction).toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({ split_weights: [{ user_id: 1, weight: 9 }], split_source: 'custom' }),
+      null,
+    )
+  })
 })
 
 test('delete flow asks for confirmation then deletes', async () => {

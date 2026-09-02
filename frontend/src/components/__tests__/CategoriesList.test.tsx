@@ -133,7 +133,7 @@ test('cancels delete when cancel is clicked', async () => {
   expect(mockDeleteCategory).not.toHaveBeenCalled()
 })
 
-test('can add a default split row and submit', async () => {
+test('can add a default split weight row and submit', async () => {
   mockFetchUsers.mockResolvedValueOnce([{ id: 1, name: 'Alex', email: null, created_at: '' }, { id: 2, name: 'Olivia', email: null, created_at: '' }])
   mockFetchCategories.mockResolvedValue([])
   mockCreateCategory.mockResolvedValue({ id: 1, name: 'Mortgage', type: 'Expense', splits: [] })
@@ -149,20 +149,47 @@ test('can add a default split row and submit', async () => {
   fireEvent.change(screen.getByPlaceholderText('Type (Income / Expense / Transfer)'), { target: { value: 'Expense' } })
 
   fireEvent.click(screen.getByRole('button', { name: 'Add user' }))
-  const percentInput = screen.getByDisplayValue('0')
-  fireEvent.change(percentInput, { target: { value: '100' } })
+  const weightInput = screen.getByDisplayValue('0')
+  fireEvent.change(weightInput, { target: { value: '3' } })
 
   fireEvent.click(screen.getByText('Save'))
 
   await waitFor(() => {
     expect(mockCreateCategory).toHaveBeenCalledWith({
       name: 'Mortgage', type: 'Expense', color: null, icon: null,
-      splits: [{ user_id: 1, split_percentage: 100 }],
+      splits: [{ user_id: 1, weight: 3 }],
     })
   })
 })
 
-test('rejects a default split that does not sum to 100', async () => {
+test('allows a default split weight that does not sum to any target', async () => {
+  mockFetchUsers.mockResolvedValueOnce([{ id: 1, name: 'Alex', email: null, created_at: '' }, { id: 2, name: 'Olivia', email: null, created_at: '' }])
+  mockFetchCategories.mockResolvedValue([])
+  mockCreateCategory.mockResolvedValue({ id: 1, name: 'Mortgage', type: 'Expense', splits: [] })
+
+  renderWithProviders(<CategoriesList onBack={() => {}} />)
+
+  await waitFor(() => {
+    expect(screen.getByText('No categories yet')).toBeInTheDocument()
+  })
+
+  fireEvent.click(screen.getByText('+ New Category'))
+  fireEvent.change(screen.getByPlaceholderText('Name'), { target: { value: 'Mortgage' } })
+  fireEvent.change(screen.getByPlaceholderText('Type (Income / Expense / Transfer)'), { target: { value: 'Expense' } })
+
+  fireEvent.click(screen.getByRole('button', { name: 'Add user' }))
+  fireEvent.change(screen.getByDisplayValue('0'), { target: { value: '30' } })
+
+  fireEvent.click(screen.getByText('Save'))
+
+  await waitFor(() => {
+    expect(mockCreateCategory).toHaveBeenCalledWith(expect.objectContaining({
+      splits: [{ user_id: 1, weight: 30 }],
+    }))
+  })
+})
+
+test('rejects a default split weight with all-zero weights', async () => {
   mockFetchUsers.mockResolvedValueOnce([{ id: 1, name: 'Alex', email: null, created_at: '' }])
   mockFetchCategories.mockResolvedValue([])
 
@@ -177,7 +204,27 @@ test('rejects a default split that does not sum to 100', async () => {
   fireEvent.change(screen.getByPlaceholderText('Type (Income / Expense / Transfer)'), { target: { value: 'Expense' } })
 
   fireEvent.click(screen.getByRole('button', { name: 'Add user' }))
-  fireEvent.change(screen.getByDisplayValue('0'), { target: { value: '50' } })
+  fireEvent.click(screen.getByText('Save'))
+
+  expect(mockCreateCategory).not.toHaveBeenCalled()
+})
+
+test('rejects a default split weight with a negative weight', async () => {
+  mockFetchUsers.mockResolvedValueOnce([{ id: 1, name: 'Alex', email: null, created_at: '' }])
+  mockFetchCategories.mockResolvedValue([])
+
+  renderWithProviders(<CategoriesList onBack={() => {}} />)
+
+  await waitFor(() => {
+    expect(screen.getByText('No categories yet')).toBeInTheDocument()
+  })
+
+  fireEvent.click(screen.getByText('+ New Category'))
+  fireEvent.change(screen.getByPlaceholderText('Name'), { target: { value: 'Mortgage' } })
+  fireEvent.change(screen.getByPlaceholderText('Type (Income / Expense / Transfer)'), { target: { value: 'Expense' } })
+
+  fireEvent.click(screen.getByRole('button', { name: 'Add user' }))
+  fireEvent.change(screen.getByDisplayValue('0'), { target: { value: '-5' } })
 
   fireEvent.click(screen.getByText('Save'))
 
