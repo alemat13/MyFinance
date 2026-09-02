@@ -167,9 +167,11 @@ The transaction form captures:
     from whichever tier applies first: the **category's** default split weight, then
     the **account's**, then the household's **global** weight (see
     [Split Weights](#split-weights)).
-  - Three **quick-fill buttons** — Global, Account, Category — let you pull in a
-    specific tier's weights at any time, overwriting whatever's currently in the
-    fields. A button is disabled if that tier has nothing configured.
+  - **Quick-fill buttons** let you pull in weights at any time, overwriting
+    whatever's currently in the fields: Global, Account, and Category pull in a
+    specific tier's weights (disabled if that tier has nothing configured);
+    **Split Evenly** sets weight 1 for every user; and a button per user (named
+    after them) assigns weight 1 to that user alone, with no one else in the split.
   - You can also just type your own weight for anyone directly — there's no
     requirement that the numbers add up to anything in particular, or match any tier.
   - Editing an **existing** transaction always starts from its own previously-saved
@@ -216,8 +218,9 @@ ratio (e.g. 2:1), not a percentage.
 
 **These tiers only ever prefill.** Once a transaction is saved, its own weights are
 what's used going forward — editing a tier later never reaches back and changes an
-already-saved transaction. The three quick-fill buttons on the transaction form are the
-only way to pull a tier's *current* weights into an existing transaction.
+already-saved transaction. The Global/Account/Category quick-fill buttons on the
+transaction form are the only way to pull a tier's *current* weights into an existing
+transaction.
 
 ## Import CSV
 
