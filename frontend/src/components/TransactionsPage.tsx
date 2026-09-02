@@ -365,7 +365,6 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
   const currencyFor = (accountId: number | undefined) =>
     accounts.find(a => a.id === accountId)?.currency ?? 'EUR'
 
-  const hasMemo = transactions.some(t => t.memo !== null)
   const groupByDate = sortBy === 'date'
 
   const acctOptions = accounts.map(a => ({ value: a.id, label: a.name }))
@@ -512,19 +511,16 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
         <Table>
           <Thead>
             <Tr>
-              <Th>Date</Th>
-              <Th>Accounting Month</Th>
               <Th>Payee</Th>
               <Th>Category</Th>
               <Th>Account</Th>
-              {hasMemo && <Th>Memo</Th>}
               <Th className="text-right">Amount</Th>
               <Th>Split</Th>
             </Tr>
           </Thead>
           <Tbody>
             {transactions.length === 0 && (
-              <Tr><Td colSpan={hasMemo ? 8 : 7} className="text-center py-5 text-slate-400">No transactions match your filters</Td></Tr>
+              <Tr><Td colSpan={5} className="text-center py-5 text-slate-400">No transactions match your filters</Td></Tr>
             )}
             {transactions.map((t, idx) => {
               const showDateHeader = groupByDate && (idx === 0 || transactions[idx - 1].date !== t.date)
@@ -532,18 +528,15 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
               <Fragment key={t.id}>
               {showDateHeader && (
                 <Tr className="hover:bg-transparent bg-slate-100 dark:bg-slate-800/70">
-                  <Td colSpan={hasMemo ? 8 : 7} className="py-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  <Td colSpan={5} className="py-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400">
                     {formatDateGroupHeader(t.date)}
                   </Td>
                 </Tr>
               )}
               <Tr onClick={() => openDetail(t.id)} className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                <Td>{t.date}</Td>
-                <Td>{t.accounting_month}</Td>
                 <Td>{t.payee}</Td>
                 <Td><CategoryBadge name={t.category_name} color={t.category_color} icon={t.category_icon} /></Td>
                 <Td>{t.account_name}</Td>
-                {hasMemo && <Td>{t.memo ?? ''}</Td>}
                 <Td className={`text-right ${t.amount >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                   {formatMoney(t.amount, t.currency)}
                   {sharedShareFor(t, selectedUserId, accounts) !== null && (
