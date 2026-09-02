@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
   LayoutDashboard, Wallet, Tags, ArrowLeftRight, Users as UsersIcon,
-  Scale, Upload, Database, Settings, Sun, Moon, BarChart3,
+  Scale, Upload, Database, Settings, Sun, Moon, BarChart3, HelpCircle,
 } from 'lucide-react'
 import { fetchUsers, User } from './api/client'
 import { useTheme } from './context/ThemeContext'
@@ -17,8 +17,9 @@ import SplitWeightsSettings from './components/SplitWeightsSettings'
 import CsvImportPage from './components/CsvImportPage'
 import BackupPage from './components/BackupPage'
 import ChartsPage from './components/ChartsPage'
+import HelpPage from './components/HelpPage'
 
-type View = 'dashboard' | 'accounts' | 'categories' | 'transactions' | 'users' | 'split-settings' | 'import' | 'backup' | 'charts'
+type View = 'dashboard' | 'accounts' | 'categories' | 'transactions' | 'users' | 'split-settings' | 'import' | 'backup' | 'charts' | 'help'
 
 const viewLabels: Record<View, string> = {
   dashboard: 'Dashboard',
@@ -30,6 +31,7 @@ const viewLabels: Record<View, string> = {
   import: 'Import CSV',
   backup: 'Backup & Restore',
   charts: 'Charts',
+  help: 'Help',
 }
 
 const viewIcons: Record<View, typeof LayoutDashboard> = {
@@ -42,6 +44,7 @@ const viewIcons: Record<View, typeof LayoutDashboard> = {
   import: Upload,
   backup: Database,
   charts: BarChart3,
+  help: HelpCircle,
 }
 
 function loadSelectedUserId(): number | null {
@@ -185,6 +188,7 @@ export default function App() {
       {view === 'import' && <CsvImportPage onBack={() => navigateToView('dashboard')} selectedUserId={selectedUserId} />}
       {view === 'backup' && <BackupPage onBack={() => navigateToView('dashboard')} />}
       {view === 'charts' && <ChartsPage onBack={() => navigateToView('dashboard')} selectedUserId={selectedUserId} />}
+      {view === 'help' && <HelpPage onBack={() => navigateToView('dashboard')} />}
 
       {menuOpen && (
         <div className="fixed inset-0 z-[1000]" onClick={() => setMenuOpen(false)} />
