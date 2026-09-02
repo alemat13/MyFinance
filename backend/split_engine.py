@@ -1,106 +1,99 @@
 from dataclasses import dataclass
 
-from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from models import CategorySplit, GlobalSplitWeight, Transaction, TransactionSplit, AccountUser
+from models import AccountSplitWeight, AccountUser, CategorySplit, GlobalSplitWeight, Transaction, TransactionSplit
 
 
 @dataclass
 class Share:
     user_id: int
     share_amount: float
-    source: str  # 'manual' | 'category_default' | 'global_default'
+    weight: int
 
 
-def _distribute(amount: float, weights: dict[int, float], source: str) -> list[Share]:
+def prorate(amount: float, weights: dict[int, int]) -> list[Share]:
+    """Prorate `amount` across `weights` (a plain {user_id: weight} dict).
+
+    Each user except the last (sorted ascending by user_id) gets
+    round(amount * weight / total_weight, 2); the last user absorbs the
+    exact remainder so shares always sum to `amount` to the cent.
+
+    If every weight is 0 (but the dict is non-empty — e.g. the user
+    explicitly typed 0 for everyone), each user still gets an explicit
+    Share of 0.0 rather than being dropped.
+    """
+    if not weights:
+        return []
+
     total = sum(weights.values())
     ordered_ids = sorted(weights)
+
+    if total <= 0:
+        return [Share(user_id, 0.0, weights[user_id]) for user_id in ordered_ids]
+
     shares = []
     running = 0.0
     for user_id in ordered_ids[:-1]:
         share = round(amount * weights[user_id] / total, 2)
-        shares.append(Share(user_id, share, source))
+        shares.append(Share(user_id, share, weights[user_id]))
         running += share
     last_id = ordered_ids[-1]
-    shares.append(Share(last_id, round(amount - running, 2), source))
+    shares.append(Share(last_id, round(amount - running, 2), weights[last_id]))
     return shares
 
 
-def resolve_split(
-    db: Session,
-    amount: float,
-    category_id: int | None,
-    override: list[tuple[int, float]] | None = None,
-    required: bool = False,
-    account_id: int | None = None,
-) -> list[Share]:
-    """Resolve the per-user split for a transaction amount.
+def resolve_default_weights(
+    db: Session, category_id: int | None, account_id: int | None,
+) -> tuple[str | None, dict[int, int]]:
+    """Resolve default weights to prefill a transaction's split with.
 
-    Precedence: explicit override > category default > global default weighting.
-    If `required` is False and nothing is configured for tiers 2/3, returns []
-    rather than raising — automatic split computation is opt-in until a
-    household configures category splits or global weights.
-
-    Accounts with a single owner are never auto-split by category/global
-    defaults — only joint accounts (more than one owner) get a default split.
+    Priority, ascending: global < account < category (category wins if
+    configured). This never inspects AccountUser/ownership — a tier applies
+    whenever it's configured, regardless of how many owners an account has.
+    Used only to suggest defaults (CSV import, or client-side prefill for
+    the interactive form) — never to live-resolve an existing transaction's
+    split, which is always driven by its own stored weights.
     """
-    if override is not None:
-        total = sum(amount for _, amount in override)
-        if abs(total - amount) > 0.01:
-            raise HTTPException(422, f"Split amounts must sum to {amount}, got {total}")
-        return [Share(user_id, share_amount, "manual") for user_id, share_amount in override]
-
-    if account_id is not None:
-        owners = db.query(AccountUser.user_id).filter(
-            AccountUser.account_id == account_id, AccountUser.ownership_percentage > 0
-        ).all()
-        if len(owners) <= 1:
-            if required:
-                raise HTTPException(422, "Account has a single owner; no default split applies")
-            return []
-
     if category_id is not None:
         cat_splits = db.query(CategorySplit).filter(CategorySplit.category_id == category_id).all()
         if cat_splits:
-            weights = {c.user_id: c.split_percentage for c in cat_splits}
-            return _distribute(amount, weights, "category_default")
+            return "category", {c.user_id: c.weight for c in cat_splits}
+
+    if account_id is not None:
+        acct_weights = db.query(AccountSplitWeight).filter(AccountSplitWeight.account_id == account_id).all()
+        if acct_weights:
+            return "account", {w.user_id: w.weight for w in acct_weights}
 
     global_weights = db.query(GlobalSplitWeight).filter(GlobalSplitWeight.weight > 0).all()
     if global_weights:
-        weights = {g.user_id: g.weight for g in global_weights}
-        return _distribute(amount, weights, "global_default")
+        return "global", {g.user_id: g.weight for g in global_weights}
 
-    if required:
-        raise HTTPException(422, "No split configuration available: no category default and no global split weights configured")
-    return []
+    return None, {}
 
 
-def apply_split(db: Session, transaction: Transaction, override: list[tuple[int, float]] | None = None, amount_changed: bool = False):
-    """(Re)computes and persists TransactionSplit rows for a transaction."""
-    existing = db.query(TransactionSplit).filter(TransactionSplit.transaction_id == transaction.id).all()
-    existing_is_manual = bool(existing) and all(s.source == "manual" for s in existing)
+def apply_split(
+    db: Session, transaction: Transaction, weights: dict[int, int] | None, source: str = "custom",
+) -> None:
+    """(Re)computes and persists TransactionSplit rows for a transaction.
 
-    if override is None and existing_is_manual:
-        if amount_changed:
-            raise HTTPException(
-                422,
-                "Transaction has a manual split; provide split_overrides matching the new amount",
-            )
-        return  # no-op: leave the existing manual split untouched
-
-    shares = resolve_split(
-        db, transaction.amount, transaction.category_id,
-        override=override, required=False, account_id=transaction.account_id,
-    )
-
+    Always deletes any existing rows first. If `weights` is falsy, the
+    transaction ends up with no split rows (opt-in, same as today). Every
+    call recomputes share_amount from the transaction's *current* amount —
+    there is no freeze/protection against recomputation.
+    """
     db.query(TransactionSplit).filter(TransactionSplit.transaction_id == transaction.id).delete()
+    if not weights:
+        return
+
+    shares = prorate(transaction.amount, weights)
     for share in shares:
         db.add(TransactionSplit(
             transaction_id=transaction.id,
             user_id=share.user_id,
+            weight=share.weight,
             share_amount=share.share_amount,
-            source=share.source,
+            source=source,
         ))
 
 
@@ -119,6 +112,10 @@ def compute_balances(db: Session, user_id: int | None = None) -> list[tuple[int,
     split transactions still spans the whole household (an owner's paid-side
     liability applies whenever their account's transaction was split, even
     with a zero share for them).
+
+    Driven entirely by TransactionSplit.share_amount and
+    AccountUser.ownership_percentage — unaffected by the split-weight
+    refactor (weight/source never factor into balance math).
     """
     from models import Account, User
 

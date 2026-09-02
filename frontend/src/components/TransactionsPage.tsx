@@ -1,18 +1,20 @@
 import { Fragment, useEffect, useState } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import {
-  Transaction, TransactionCreate, TransactionSplit,
+  Transaction, TransactionCreate, TransactionSplit, GlobalSplitWeight, SplitSource,
   Account, Category, User, FilterField, TransactionSearchRequest,
   createTransaction,
-  fetchAccounts, fetchCategories, fetchUsers, fetchSplitPreview, searchTransactions,
+  fetchAccounts, fetchCategories, fetchUsers, fetchSplitWeights, searchTransactions,
 } from '../api/client'
-import SplitEditor, { SplitRow } from './SplitEditor'
+import { SplitRow } from './SplitEditor'
+import TransactionSplitFields from './TransactionSplitFields'
 import TransactionDetail from './TransactionDetail'
 import { useToast } from '../context/ToastContext'
 import { Button, Input, Select, Table, Thead, Tbody, Tr, Th, Td, StatusMessage, Badge, CategoryBadge } from './ui'
 import { formatMoney } from '../utils/currency'
 import { getParam, patchQueryParams } from '../utils/urlState'
 import { sharedShareFor, formatDateGroupHeader } from '../utils/transactions'
+import { resolveDefaultSplitRows } from '../utils/splitWeights'
 
 interface Props {
   onBack: () => void
@@ -151,8 +153,9 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [showNew, setShowNew] = useState(false)
   const [newData, setNewData] = useState<TransactionCreate>(emptyForm)
-  const [newSplit, setNewSplit] = useState<SplitRow[] | null>(null)
-  const [newPreview, setNewPreview] = useState<TransactionSplit[]>([])
+  const [newSplit, setNewSplit] = useState<SplitRow[]>([])
+  const [newSplitSource, setNewSplitSource] = useState<SplitSource | null>(null)
+  const [globalWeights, setGlobalWeights] = useState<GlobalSplitWeight[]>([])
   const [detailTransactionId, setDetailTransactionId] = useState<number | null>(() => loadInitialInt('transaction', 0) || null)
   const { showToast } = useToast()
 
@@ -180,11 +183,13 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
       fetchAccounts(selectedUserId ?? undefined),
       fetchCategories(),
       fetchUsers(),
+      fetchSplitWeights(),
     ])
-      .then(([accts, cats, users]) => {
+      .then(([accts, cats, users, weights]) => {
         setAccounts(accts)
         setCategories(cats)
         setAllUsers(users)
+        setGlobalWeights(weights)
       })
       .catch(err => { console.error(err); setError(err.message) })
   }
@@ -314,16 +319,17 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
     setConditions(conditions.map((c, idx) => idx === i ? { ...c, [key]: value } : c))
   }
 
-  // Live default-split preview for the "new transaction" form, while no manual override is active.
+  // Prefill the "new transaction" split from category > account > global priority
+  // whenever category/account selection changes — but never once the user has
+  // hand-edited weights (source === 'custom'), which always wins.
   useEffect(() => {
-    if (!showNew || newSplit !== null || !newData.category_id || !newData.amount) {
-      setNewPreview([])
-      return
-    }
-    fetchSplitPreview(newData.amount, newData.category_id, newData.account_id || null)
-      .then(setNewPreview)
-      .catch(() => setNewPreview([]))
-  }, [showNew, newSplit, newData.amount, newData.category_id, newData.account_id])
+    if (!showNew || newSplitSource === 'custom') return
+    const category = categories.find(c => c.id === newData.category_id) ?? null
+    const account = accounts.find(a => a.id === newData.account_id) ?? null
+    const { rows, source } = resolveDefaultSplitRows(category, account, globalWeights)
+    setNewSplit(rows)
+    setNewSplitSource(source)
+  }, [showNew, newData.category_id, newData.account_id])
 
   const openDetail = (id: number) => {
     setDetailTransactionId(id)
@@ -339,66 +345,22 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
     if (!newData.payee || !newData.account_id) {
       showToast('Payee and account are required'); return
     }
-    if (newSplit !== null) {
-      const total = newSplit.reduce((s, r) => s + r.value, 0)
-      if (Math.abs(total - newData.amount) > 0.01) {
-        showToast(`Custom split must sum to the transaction amount (${newData.amount})`); return
-      }
-    }
     createTransaction({
       ...newData,
       category_id: newData.category_id || null,
-      split_overrides: newSplit ? newSplit.map(r => ({ user_id: r.user_id, share_amount: r.value })) : undefined,
+      split_weights: newSplit.length > 0 ? newSplit.map(r => ({ user_id: r.user_id, weight: r.value })) : undefined,
+      split_source: newSplit.length > 0 ? (newSplitSource ?? 'custom') : undefined,
     }, selectedUserId)
-      .then(() => { setShowNew(false); setNewData(emptyForm); setNewSplit(null); loadTransactions(); loadMeta() })
+      .then(() => { setShowNew(false); setNewData(emptyForm); setNewSplit([]); setNewSplitSource(null); loadTransactions(); loadMeta() })
       .catch(err => showToast(err.message))
   }
 
   const cancelNew = () => {
     setShowNew(false)
     setNewData(emptyForm)
-    setNewSplit(null)
+    setNewSplit([])
+    setNewSplitSource(null)
   }
-
-  const toggleCustomSplit = (
-    active: boolean,
-    preview: TransactionSplit[],
-    setSplit: (s: SplitRow[] | null) => void,
-  ) => {
-    if (active) {
-      setSplit(preview.map(p => ({ user_id: p.user_id, value: p.share_amount })))
-    } else {
-      setSplit(null)
-    }
-  }
-
-  const renderSplitSection = (
-    amount: number,
-    currency: string,
-    split: SplitRow[] | null,
-    preview: TransactionSplit[],
-    setSplit: (s: SplitRow[] | null) => void,
-  ) => (
-    <div className="mt-2">
-      <label className="text-xs flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
-        <input
-          type="checkbox"
-          checked={split !== null}
-          onChange={e => toggleCustomSplit(e.target.checked, preview, setSplit)}
-        />
-        Customize split
-      </label>
-      {split !== null ? (
-        <SplitEditor rows={split} allUsers={allUsers} total={amount} unit="currency" currency={currency} label="Split" onChange={setSplit} />
-      ) : (
-        preview.length > 0 && (
-          <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            Default split: {preview.map(p => `${p.user_name} ${formatMoney(p.share_amount, currency)}`).join(' / ')}
-          </div>
-        )
-      )}
-    </div>
-  )
 
   const currencyFor = (accountId: number | undefined) =>
     accounts.find(a => a.id === accountId)?.currency ?? 'EUR'
@@ -529,7 +491,18 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
             <Button onClick={saveNew}>Save</Button>
             <Button variant="secondary" onClick={cancelNew}>Cancel</Button>
           </div>
-          {renderSplitSection(newData.amount, currencyFor(newData.account_id), newSplit, newPreview, setNewSplit)}
+          <TransactionSplitFields
+            rows={newSplit}
+            onChange={setNewSplit}
+            amount={newData.amount}
+            currency={currencyFor(newData.account_id)}
+            allUsers={allUsers}
+            account={accounts.find(a => a.id === newData.account_id) ?? null}
+            category={categories.find(c => c.id === newData.category_id) ?? null}
+            globalWeights={globalWeights}
+            source={newSplitSource}
+            onSourceChange={setNewSplitSource}
+          />
         </div>
       )}
 
@@ -610,6 +583,7 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
           accounts={accounts}
           categories={categories}
           allUsers={allUsers}
+          globalWeights={globalWeights}
           selectedUserId={selectedUserId}
           onClose={closeDetail}
           onSaved={() => { closeDetail(); loadTransactions(); loadMeta() }}

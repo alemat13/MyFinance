@@ -1,143 +1,156 @@
-import pytest
-
-from models import AccountUser, CategorySplit, GlobalSplitWeight
-from split_engine import resolve_split
+from models import AccountSplitWeight, AccountUser, CategorySplit, GlobalSplitWeight, TransactionSplit
+from split_engine import apply_split, prorate, resolve_default_weights
 
 
-def test_resolve_split_no_config_not_required_returns_empty(db, sample_category):
-    shares = resolve_split(db, 100.0, sample_category.id, override=None, required=False)
-    assert shares == []
+# ── prorate() ──────────────────────────────────────────────────────
+
+def test_prorate_empty_weights_returns_empty():
+    assert prorate(100.0, {}) == []
 
 
-def test_resolve_split_no_config_required_raises_422(db, sample_category):
-    from fastapi import HTTPException
-    with pytest.raises(HTTPException) as exc_info:
-        resolve_split(db, 100.0, sample_category.id, override=None, required=True)
-    assert exc_info.value.status_code == 422
-
-
-def test_resolve_split_global_default_weighting(db, sample_category, sample_user):
-    other_user_id = sample_user.id + 1000  # doesn't need to exist for this unit-level test
-    db.add_all([
-        GlobalSplitWeight(user_id=sample_user.id, weight=60.0),
-        GlobalSplitWeight(user_id=other_user_id, weight=40.0),
-    ])
-    db.commit()
-
-    shares = resolve_split(db, 100.0, sample_category.id, override=None, required=False)
+def test_prorate_all_zero_weights_returns_zero_shares_not_dropped():
+    shares = prorate(100.0, {1: 0, 2: 0})
     by_user = {s.user_id: s for s in shares}
-    assert by_user[sample_user.id].share_amount == 60.0
-    assert by_user[other_user_id].share_amount == 40.0
-    assert all(s.source == "global_default" for s in shares)
-    # Shares sum exactly to the amount.
+    assert set(by_user) == {1, 2}
+    assert by_user[1].share_amount == 0.0
+    assert by_user[2].share_amount == 0.0
+    assert by_user[1].weight == 0
+    assert by_user[2].weight == 0
+
+
+def test_prorate_normal_weighted_split():
+    shares = prorate(100.0, {1: 60, 2: 40})
+    by_user = {s.user_id: s for s in shares}
+    assert by_user[1].share_amount == 60.0
+    assert by_user[2].share_amount == 40.0
     assert round(sum(s.share_amount for s in shares), 2) == 100.0
 
 
-def test_resolve_split_rounding_remainder_absorbed_by_last_user(db, sample_category):
-    db.add_all([
-        GlobalSplitWeight(user_id=1, weight=1.0),
-        GlobalSplitWeight(user_id=2, weight=1.0),
-        GlobalSplitWeight(user_id=3, weight=1.0),
-    ])
-    db.commit()
-
-    shares = resolve_split(db, 100.0, sample_category.id, override=None, required=False)
+def test_prorate_rounding_remainder_absorbed_by_last_user_id():
+    shares = prorate(100.0, {1: 1, 2: 1, 3: 1})
     assert round(sum(s.share_amount for s in shares), 2) == 100.0
-    # 100/3 = 33.33 repeating; two users get 33.33, the last absorbs the remainder (33.34).
-    amounts = sorted(s.share_amount for s in shares)
-    assert amounts[0] == 33.33
-    assert amounts[1] == 33.33
-    assert amounts[2] == 33.34
+    by_user = {s.user_id: s for s in shares}
+    # 100/3 = 33.33 repeating; the highest user_id absorbs the remainder.
+    assert by_user[1].share_amount == 33.33
+    assert by_user[2].share_amount == 33.33
+    assert by_user[3].share_amount == 33.34
 
 
-def test_resolve_split_category_default_takes_precedence_over_global(db, sample_category, sample_user):
+# ── resolve_default_weights() ─────────────────────────────────────
+
+def test_resolve_default_weights_nothing_configured(db, sample_category):
+    source, weights = resolve_default_weights(db, sample_category.id, None)
+    assert source is None
+    assert weights == {}
+
+
+def test_resolve_default_weights_global_only(db, sample_category, sample_user):
     other_user_id = sample_user.id + 1000
     db.add_all([
-        GlobalSplitWeight(user_id=sample_user.id, weight=90.0),
-        GlobalSplitWeight(user_id=other_user_id, weight=10.0),
-        CategorySplit(category_id=sample_category.id, user_id=sample_user.id, split_percentage=50.0),
-        CategorySplit(category_id=sample_category.id, user_id=other_user_id, split_percentage=50.0),
+        GlobalSplitWeight(user_id=sample_user.id, weight=60),
+        GlobalSplitWeight(user_id=other_user_id, weight=40),
     ])
     db.commit()
 
-    shares = resolve_split(db, 100.0, sample_category.id, override=None, required=False)
-    by_user = {s.user_id: s for s in shares}
-    assert by_user[sample_user.id].share_amount == 50.0
-    assert by_user[other_user_id].share_amount == 50.0
-    assert all(s.source == "category_default" for s in shares)
+    source, weights = resolve_default_weights(db, sample_category.id, None)
+    assert source == "global"
+    assert weights == {sample_user.id: 60, other_user_id: 40}
 
 
-def test_resolve_split_manual_override_takes_precedence(db, sample_category, sample_user):
-    db.add(GlobalSplitWeight(user_id=sample_user.id, weight=100.0))
-    db.commit()
-
-    override = [(sample_user.id, 30.0), (sample_user.id + 1000, 70.0)]
-    shares = resolve_split(db, 100.0, sample_category.id, override=override, required=False)
-    assert all(s.source == "manual" for s in shares)
-    assert {s.user_id: s.share_amount for s in shares} == {sample_user.id: 30.0, sample_user.id + 1000: 70.0}
-
-
-def test_resolve_split_manual_override_sum_mismatch_raises_422(db, sample_category):
-    from fastapi import HTTPException
-    override = [(1, 30.0), (2, 60.0)]  # doesn't sum to 100
-    with pytest.raises(HTTPException) as exc_info:
-        resolve_split(db, 100.0, sample_category.id, override=override, required=False)
-    assert exc_info.value.status_code == 422
-
-
-def test_resolve_split_single_owner_account_skips_default(db, sample_account, sample_category, sample_user):
-    db.add_all([
-        AccountUser(account_id=sample_account.id, user_id=sample_user.id, ownership_percentage=100.0),
-        GlobalSplitWeight(user_id=sample_user.id, weight=100.0),
-    ])
-    db.commit()
-
-    shares = resolve_split(db, 100.0, sample_category.id, override=None, required=False, account_id=sample_account.id)
-    assert shares == []
-
-
-def test_resolve_split_no_owners_account_skips_default(db, sample_account, sample_category, sample_user):
-    db.add(GlobalSplitWeight(user_id=sample_user.id, weight=100.0))
-    db.commit()
-
-    shares = resolve_split(db, 100.0, sample_category.id, override=None, required=False, account_id=sample_account.id)
-    assert shares == []
-
-
-def test_resolve_split_single_owner_account_required_raises_422(db, sample_account, sample_category, sample_user):
-    from fastapi import HTTPException
-    db.add_all([
-        AccountUser(account_id=sample_account.id, user_id=sample_user.id, ownership_percentage=100.0),
-        GlobalSplitWeight(user_id=sample_user.id, weight=100.0),
-    ])
-    db.commit()
-
-    with pytest.raises(HTTPException) as exc_info:
-        resolve_split(db, 100.0, sample_category.id, override=None, required=True, account_id=sample_account.id)
-    assert exc_info.value.status_code == 422
-
-
-def test_resolve_split_joint_account_applies_default(db, sample_account, sample_category, sample_user):
+def test_resolve_default_weights_account_takes_precedence_over_global(db, sample_account, sample_category, sample_user):
     other_user_id = sample_user.id + 1000
     db.add_all([
-        AccountUser(account_id=sample_account.id, user_id=sample_user.id, ownership_percentage=60.0),
-        AccountUser(account_id=sample_account.id, user_id=other_user_id, ownership_percentage=40.0),
-        GlobalSplitWeight(user_id=sample_user.id, weight=60.0),
-        GlobalSplitWeight(user_id=other_user_id, weight=40.0),
+        GlobalSplitWeight(user_id=sample_user.id, weight=90),
+        GlobalSplitWeight(user_id=other_user_id, weight=10),
+        AccountSplitWeight(account_id=sample_account.id, user_id=sample_user.id, weight=70),
+        AccountSplitWeight(account_id=sample_account.id, user_id=other_user_id, weight=30),
     ])
     db.commit()
 
-    shares = resolve_split(db, 100.0, sample_category.id, override=None, required=False, account_id=sample_account.id)
-    by_user = {s.user_id: s for s in shares}
-    assert by_user[sample_user.id].share_amount == 60.0
-    assert by_user[other_user_id].share_amount == 40.0
+    source, weights = resolve_default_weights(db, sample_category.id, sample_account.id)
+    assert source == "account"
+    assert weights == {sample_user.id: 70, other_user_id: 30}
 
 
-def test_resolve_split_single_owner_account_manual_override_still_applies(db, sample_account, sample_category, sample_user):
-    db.add(AccountUser(account_id=sample_account.id, user_id=sample_user.id, ownership_percentage=100.0))
+def test_resolve_default_weights_category_takes_precedence_over_account_and_global(db, sample_account, sample_category, sample_user):
+    other_user_id = sample_user.id + 1000
+    db.add_all([
+        GlobalSplitWeight(user_id=sample_user.id, weight=90),
+        AccountSplitWeight(account_id=sample_account.id, user_id=sample_user.id, weight=70),
+        CategorySplit(category_id=sample_category.id, user_id=sample_user.id, weight=50),
+        CategorySplit(category_id=sample_category.id, user_id=other_user_id, weight=50),
+    ])
     db.commit()
 
-    override = [(sample_user.id, 100.0)]
-    shares = resolve_split(db, 100.0, sample_category.id, override=override, required=False, account_id=sample_account.id)
-    assert shares == [s for s in shares if s.source == "manual"]
-    assert {s.user_id: s.share_amount for s in shares} == {sample_user.id: 100.0}
+    source, weights = resolve_default_weights(db, sample_category.id, sample_account.id)
+    assert source == "category"
+    assert weights == {sample_user.id: 50, other_user_id: 50}
+
+
+def test_resolve_default_weights_single_owner_account_still_applies(db, sample_account, sample_category, sample_user):
+    """The old single-owner skip no longer exists: resolve_default_weights
+    never even looks at AccountUser/ownership."""
+    other_user_id = sample_user.id + 1000
+    db.add_all([
+        AccountUser(account_id=sample_account.id, user_id=sample_user.id, ownership_percentage=100.0),
+        AccountSplitWeight(account_id=sample_account.id, user_id=sample_user.id, weight=50),
+        AccountSplitWeight(account_id=sample_account.id, user_id=other_user_id, weight=50),
+    ])
+    db.commit()
+
+    source, weights = resolve_default_weights(db, sample_category.id, sample_account.id)
+    assert source == "account"
+    assert weights == {sample_user.id: 50, other_user_id: 50}
+
+
+# ── apply_split() ──────────────────────────────────────────────────
+
+def test_apply_split_with_weights_persists_rows(db, sample_transaction, sample_user):
+    other_user_id = sample_user.id + 1000
+    apply_split(db, sample_transaction, {sample_user.id: 3, other_user_id: 1}, source="custom")
+    db.commit()
+
+    rows = db.query(TransactionSplit).filter(TransactionSplit.transaction_id == sample_transaction.id).all()
+    by_user = {r.user_id: r for r in rows}
+    assert by_user[sample_user.id].weight == 3
+    assert by_user[sample_user.id].share_amount == 375.0  # 500 * 3/4
+    assert by_user[sample_user.id].source == "custom"
+    assert by_user[other_user_id].share_amount == 125.0
+
+
+def test_apply_split_falsy_weights_leaves_no_rows(db, sample_transaction):
+    apply_split(db, sample_transaction, None)
+    db.commit()
+    rows = db.query(TransactionSplit).filter(TransactionSplit.transaction_id == sample_transaction.id).all()
+    assert rows == []
+
+    apply_split(db, sample_transaction, {})
+    db.commit()
+    rows = db.query(TransactionSplit).filter(TransactionSplit.transaction_id == sample_transaction.id).all()
+    assert rows == []
+
+
+def test_apply_split_recomputes_share_amount_when_amount_changes(db, sample_transaction, sample_user):
+    """Regression test for the removed manual-freeze protection: changing
+    the transaction's amount and calling apply_split again with the SAME
+    weights must recompute share_amount with no exception."""
+    apply_split(db, sample_transaction, {sample_user.id: 1}, source="custom")
+    db.commit()
+
+    sample_transaction.amount = 1000.0
+    db.add(sample_transaction)
+    apply_split(db, sample_transaction, {sample_user.id: 1}, source="custom")
+    db.commit()
+
+    row = db.query(TransactionSplit).filter(TransactionSplit.transaction_id == sample_transaction.id).first()
+    assert row.share_amount == 1000.0
+
+
+def test_apply_split_arbitrary_custom_weights_not_matching_any_tier(db, sample_transaction, sample_user):
+    other_user_id = sample_user.id + 1000
+    apply_split(db, sample_transaction, {sample_user.id: 7, other_user_id: 3}, source="custom")
+    db.commit()
+
+    rows = {r.user_id: r for r in db.query(TransactionSplit).filter(TransactionSplit.transaction_id == sample_transaction.id).all()}
+    assert rows[sample_user.id].weight == 7
+    assert rows[sample_user.id].source == "custom"

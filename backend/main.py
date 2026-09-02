@@ -16,7 +16,7 @@ from sqlalchemy.exc import IntegrityError
 from database import get_db, engine, Base, sync_schema
 from models import (
     Account, Category, Transaction, User, AccountUser,
-    CategorySplit, GlobalSplitWeight, TransactionSplit, TransactionHistory,
+    CategorySplit, GlobalSplitWeight, AccountSplitWeight, TransactionSplit, TransactionHistory,
 )
 from schemas import (
     AccountOut, AccountCreate, AccountUpdate,
@@ -30,7 +30,8 @@ from schemas import (
     UserOut, UserCreate, UserUpdate,
     AccountUserOut, AccountUserCreate,
     GlobalSplitWeightOut, GlobalSplitWeightUpdateItem,
-    SplitPreviewRequest, UserBalanceOut,
+    AccountSplitWeightOut, AccountSplitWeightUpdateItem,
+    UserBalanceOut,
     ImportDetectResponse, ImportPreviewRequest, ImportPreviewRow, ImportCommitRequest, ImportCommitResponse,
     ImportSummary,
 )
@@ -136,6 +137,14 @@ def _account_out(account: Account) -> AccountOut:
             )
             for au in account.user_associations
         ],
+        split_weights=[
+            AccountSplitWeightOut(
+                user_id=w.user_id,
+                user_name=w.user.name,
+                weight=w.weight,
+            )
+            for w in account.split_weight_associations
+        ],
     )
 
 
@@ -144,6 +153,7 @@ def _splits_out(t: Transaction) -> list[TransactionSplitOut]:
         TransactionSplitOut(
             user_id=s.user_id,
             user_name=s.user.name,
+            weight=s.weight,
             share_amount=s.share_amount,
             source=s.source,
         )
@@ -189,7 +199,7 @@ def _category_out(category: Category) -> CategoryOut:
             CategorySplitOut(
                 user_id=cs.user_id,
                 user_name=cs.user.name,
-                split_percentage=cs.split_percentage,
+                weight=cs.weight,
             )
             for cs in category.splits
         ],
@@ -229,15 +239,25 @@ def _sync_category_splits(db: Session, category: Category, splits: list[Category
         db.add(CategorySplit(
             category_id=category.id,
             user_id=s.user_id,
-            split_percentage=s.split_percentage,
+            weight=s.weight,
         ))
 
 
-def _validate_split_percentages(splits: list[CategorySplitCreate]):
-    if splits:
-        total = sum(s.split_percentage for s in splits)
-        if abs(total - 100.0) > 0.01:
-            raise HTTPException(422, f"Split percentages must sum to 100, got {total}")
+def _validate_weights(items: list) -> None:
+    if any(item.weight < 0 for item in items):
+        raise HTTPException(422, "Weights must be >= 0")
+    if items and sum(item.weight for item in items) <= 0:
+        raise HTTPException(422, "At least one weight must be greater than 0")
+
+
+def _sync_account_split_weights(db: Session, account: Account, weights: list[AccountSplitWeightUpdateItem]):
+    db.query(AccountSplitWeight).filter(AccountSplitWeight.account_id == account.id).delete()
+    for w in weights:
+        db.add(AccountSplitWeight(
+            account_id=account.id,
+            user_id=w.user_id,
+            weight=w.weight,
+        ))
 
 
 # ── Users ──────────────────────────────────────────────────────────
@@ -277,6 +297,7 @@ def delete_user(user_id: int, db: Session = Depends(get_db)):
         raise HTTPException(409, "Cannot delete user who owns accounts")
     db.query(CategorySplit).filter(CategorySplit.user_id == user_id).delete()
     db.query(GlobalSplitWeight).filter(GlobalSplitWeight.user_id == user_id).delete()
+    db.query(AccountSplitWeight).filter(AccountSplitWeight.user_id == user_id).delete()
     db.query(TransactionSplit).filter(TransactionSplit.user_id == user_id).delete()
     db.delete(user)
     db.commit()
@@ -352,7 +373,7 @@ def get_categories(db: Session = Depends(get_db)):
 
 @app.post("/api/categories", response_model=CategoryOut, status_code=201)
 def create_category(data: CategoryCreate, db: Session = Depends(get_db)):
-    _validate_split_percentages(data.splits)
+    _validate_weights(data.splits)
     category = Category(name=data.name, type=data.type, color=data.color, icon=data.icon)
     db.add(category)
     db.flush()
@@ -370,7 +391,7 @@ def update_category(category_id: int, data: CategoryUpdate, db: Session = Depend
     update_data = data.model_dump(exclude_unset=True)
     splits_data = update_data.pop("splits", None)
     if splits_data is not None:
-        _validate_split_percentages(data.splits)
+        _validate_weights(data.splits)
         _sync_category_splits(db, category, data.splits)
     for field, value in update_data.items():
         setattr(category, field, value)
@@ -493,10 +514,9 @@ def search_transactions(req: TransactionSearchRequest, db: Session = Depends(get
 
 @app.post("/api/transactions", response_model=TransactionOut, status_code=201)
 def create_transaction(data: TransactionCreate, actor_user_id: int | None = Query(None), db: Session = Depends(get_db)):
-    override = (
-        [(s.user_id, s.share_amount) for s in data.split_overrides]
-        if data.split_overrides is not None else None
-    )
+    weights = {w.user_id: w.weight for w in data.split_weights} if data.split_weights else None
+    if data.split_weights:
+        _validate_weights(data.split_weights)
     transaction = Transaction(
         date=data.date, payee=data.payee, memo=data.memo, amount=data.amount,
         account_id=data.account_id, category_id=data.category_id,
@@ -504,7 +524,7 @@ def create_transaction(data: TransactionCreate, actor_user_id: int | None = Quer
     )
     db.add(transaction)
     db.flush()
-    split_engine.apply_split(db, transaction, override=override)
+    split_engine.apply_split(db, transaction, weights, source=data.split_source or "custom")
     record_transaction_history(db, transaction, "created", actor_user_id, source="manual")
     db.commit()
     return _transaction_out(db, transaction.id)
@@ -523,9 +543,12 @@ def update_transaction(transaction_id: int, data: TransactionUpdate, actor_user_
     transaction = db.query(Transaction).filter(Transaction.id == transaction_id).first()
     if not transaction:
         raise HTTPException(404, "Transaction not found")
+    existing_splits = {s.user_id: (s.weight, s.source) for s in transaction.splits}
+
     update_data = data.model_dump(exclude_unset=True)
-    update_data.pop("split_overrides", None)
-    amount_changed = "amount" in update_data and update_data["amount"] != transaction.amount
+    split_weights_provided = "split_weights" in update_data
+    update_data.pop("split_weights", None)
+    update_data.pop("split_source", None)
 
     old_values = {f: getattr(transaction, f) for f in update_data if f in TRACKED_FIELDS}
     for field, value in update_data.items():
@@ -535,11 +558,19 @@ def update_transaction(transaction_id: int, data: TransactionUpdate, actor_user_
         for f, old in old_values.items() if old != getattr(transaction, f)
     }
 
-    override = (
-        [(s.user_id, s.share_amount) for s in data.split_overrides]
-        if data.split_overrides is not None else None
-    )
-    split_engine.apply_split(db, transaction, override=override, amount_changed=amount_changed)
+    if split_weights_provided:
+        weights = {w.user_id: w.weight for w in data.split_weights} if data.split_weights else None
+        if data.split_weights:
+            _validate_weights(data.split_weights)
+        source = data.split_source or "custom"
+    else:
+        # Client didn't touch the split editor: keep the existing weights,
+        # but still recompute share_amount against whatever else changed
+        # (e.g. a new amount) — this is what removes the old manual-freeze 422.
+        weights = {uid: w for uid, (w, _) in existing_splits.items()} or None
+        source = next((s for _, s in existing_splits.values()), "custom")
+
+    split_engine.apply_split(db, transaction, weights, source)
     if changes:
         record_transaction_history(db, transaction, "updated", actor_user_id, changes=changes)
     db.commit()
@@ -590,10 +621,7 @@ def get_split_weights(db: Session = Depends(get_db)):
 
 @app.put("/api/split-weights", response_model=list[GlobalSplitWeightOut])
 def update_split_weights(data: list[GlobalSplitWeightUpdateItem], db: Session = Depends(get_db)):
-    if any(w.weight < 0 for w in data):
-        raise HTTPException(422, "Split weights must be >= 0")
-    if data and sum(w.weight for w in data) <= 0:
-        raise HTTPException(422, "At least one split weight must be greater than 0")
+    _validate_weights(data)
     db.query(GlobalSplitWeight).delete()
     for w in data:
         db.add(GlobalSplitWeight(user_id=w.user_id, weight=w.weight))
@@ -601,16 +629,27 @@ def update_split_weights(data: list[GlobalSplitWeightUpdateItem], db: Session = 
     return get_split_weights(db)
 
 
-@app.post("/api/split-preview", response_model=list[TransactionSplitOut])
-def preview_split(data: SplitPreviewRequest, db: Session = Depends(get_db)):
-    shares = split_engine.resolve_split(
-        db, data.amount, data.category_id, override=None, required=True, account_id=data.account_id,
-    )
-    users_by_id = {u.id: u.name for u in db.query(User).all()}
+@app.get("/api/accounts/{account_id}/split-weights", response_model=list[AccountSplitWeightOut])
+def get_account_split_weights(account_id: int, db: Session = Depends(get_db)):
+    account = db.query(Account).filter(Account.id == account_id).first()
+    if not account:
+        raise HTTPException(404, "Account not found")
+    weights_by_user = {w.user_id: w.weight for w in db.query(AccountSplitWeight).filter(AccountSplitWeight.account_id == account_id).all()}
     return [
-        TransactionSplitOut(user_id=s.user_id, user_name=users_by_id.get(s.user_id, "Unknown"), share_amount=s.share_amount, source=s.source)
-        for s in shares
+        AccountSplitWeightOut(user_id=u.id, user_name=u.name, weight=weights_by_user.get(u.id, 0))
+        for u in db.query(User).all()
     ]
+
+
+@app.put("/api/accounts/{account_id}/split-weights", response_model=list[AccountSplitWeightOut])
+def update_account_split_weights(account_id: int, data: list[AccountSplitWeightUpdateItem], db: Session = Depends(get_db)):
+    account = db.query(Account).filter(Account.id == account_id).first()
+    if not account:
+        raise HTTPException(404, "Account not found")
+    _validate_weights(data)
+    _sync_account_split_weights(db, account, data)
+    db.commit()
+    return get_account_split_weights(account_id, db)
 
 
 @app.get("/api/balances", response_model=list[UserBalanceOut])
@@ -664,10 +703,12 @@ def import_commit(data: ImportCommitRequest, actor_user_id: int | None = Query(N
 
     transaction_ids = []
     for row in data.rows:
-        override = (
-            [(s.user_id, s.share_amount) for s in row.split_overrides]
-            if row.split_overrides is not None else None
-        )
+        if row.split_weights is not None:
+            weights = {w.user_id: w.weight for w in row.split_weights} or None
+            source = row.split_source or "custom"
+        else:
+            source, weights = split_engine.resolve_default_weights(db, row.category_id, row.account_id)
+            source = source or "custom"
         transaction = Transaction(
             date=row.date, payee=row.payee, memo=row.memo, amount=row.amount,
             account_id=row.account_id, category_id=row.category_id,
@@ -675,7 +716,7 @@ def import_commit(data: ImportCommitRequest, actor_user_id: int | None = Query(N
         )
         db.add(transaction)
         db.flush()
-        split_engine.apply_split(db, transaction, override=override)
+        split_engine.apply_split(db, transaction, weights or None, source)
         record_transaction_history(db, transaction, "created", actor_user_id, source="csv_import")
         transaction_ids.append(transaction.id)
 
