@@ -136,6 +136,27 @@ def test_import_overwrite_replaces_data(client, db, sample_account, sample_categ
     assert len(history) == 1
 
 
+def test_import_overwrite_with_uncategorized_transaction_succeeds(client, db, sample_account, sample_user):
+    transaction = Transaction(
+        date=date(2026, 1, 15), payee="Uncategorized Payee", amount=42.0,
+        account_id=sample_account.id, category_id=None,
+    )
+    db.add(transaction)
+    db.commit()
+
+    export_response = client.get("/api/backup/export")
+    payload = _unzip_payload(export_response.content)
+    assert payload["transactions"][0]["category_id"] is None
+    zip_bytes = export_response.content
+
+    response = _post_import(client, zip_bytes, mode="overwrite")
+    assert response.status_code == 200
+
+    transactions = client.get("/api/transactions").json()
+    assert len(transactions) == 1
+    assert transactions[0]["category_id"] is None
+
+
 def test_import_append_combines_with_existing(client, sample_account, sample_category):
     # Existing data already present via fixtures (ids 1). Append payload uses
     # disjoint ids so no collision occurs.

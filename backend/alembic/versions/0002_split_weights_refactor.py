@@ -94,6 +94,12 @@ def downgrade() -> None:
 
     op.drop_table('account_split_weights')
 
+    # postgresql_using already rescales weight / 100.0 as part of the type
+    # conversion on Postgres; SQLite's batch-recreate path ignores
+    # postgresql_using entirely and just copies the raw integer value
+    # across unscaled, so only SQLite still needs the explicit backfill
+    # below. Running it unconditionally on both backends would divide by
+    # 100 twice on Postgres.
     with op.batch_alter_table('global_split_weights') as batch_op:
         batch_op.alter_column(
             'weight',
@@ -101,7 +107,8 @@ def downgrade() -> None:
             postgresql_using='weight / 100.0',
             server_default=None,
         )
-    op.execute("UPDATE global_split_weights SET weight = weight / 100.0")
+    if op.get_bind().dialect.name != 'postgresql':
+        op.execute("UPDATE global_split_weights SET weight = weight / 100.0")
 
     with op.batch_alter_table('category_splits') as batch_op:
         batch_op.add_column(sa.Column('split_percentage', sa.Float(), nullable=True))

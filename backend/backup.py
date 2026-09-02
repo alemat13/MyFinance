@@ -110,7 +110,8 @@ def _validate_referential_integrity(data: DatabaseExport) -> None:
         _check("account_split_weights.user_id", w.user_id, user_ids)
     for t in data.transactions:
         _check("transactions.account_id", t.account_id, account_ids)
-        _check("transactions.category_id", t.category_id, category_ids)
+        if t.category_id is not None:
+            _check("transactions.category_id", t.category_id, category_ids)
     for s in data.transaction_splits:
         _check("transaction_splits.transaction_id", s.transaction_id, transaction_ids)
         _check("transaction_splits.user_id", s.user_id, user_ids)
