@@ -233,6 +233,7 @@ export interface MonthChartItem {
   month: string
   income: number
   expense: number
+  uncategorized: number
   currency: string
 }
 
@@ -393,8 +394,9 @@ export function searchTransactions(req: TransactionSearchRequest): Promise<Trans
   return request<TransactionSearchResponse>('/transactions/search', { method: 'POST', body: JSON.stringify(req) })
 }
 
-export function fetchTransaction(id: number): Promise<Transaction> {
-  return request<Transaction>(`/transactions/${id}`)
+export function fetchTransaction(id: number, userId?: number | null): Promise<Transaction> {
+  const params = userId ? `?user_id=${userId}` : ''
+  return request<Transaction>(`/transactions/${id}${params}`)
 }
 
 export function createTransaction(data: TransactionCreate, actorUserId?: number | null): Promise<Transaction> {

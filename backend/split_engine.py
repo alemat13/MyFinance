@@ -56,12 +56,16 @@ def resolve_default_weights(
     split, which is always driven by its own stored weights.
     """
     if category_id is not None:
-        cat_splits = db.query(CategorySplit).filter(CategorySplit.category_id == category_id).all()
+        cat_splits = db.query(CategorySplit).filter(
+            CategorySplit.category_id == category_id, CategorySplit.weight > 0,
+        ).all()
         if cat_splits:
             return "category", {c.user_id: c.weight for c in cat_splits}
 
     if account_id is not None:
-        acct_weights = db.query(AccountSplitWeight).filter(AccountSplitWeight.account_id == account_id).all()
+        acct_weights = db.query(AccountSplitWeight).filter(
+            AccountSplitWeight.account_id == account_id, AccountSplitWeight.weight > 0,
+        ).all()
         if acct_weights:
             return "account", {w.user_id: w.weight for w in acct_weights}
 

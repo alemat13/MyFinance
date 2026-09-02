@@ -17,7 +17,7 @@ const sampleData = {
     { category_id: 2, category_name: 'Rent', category_type: 'Expense' as const, amount: -300, currency: 'EUR' },
   ],
   by_month: [
-    { month: '2026-01', income: 1000, expense: 300, currency: 'EUR' },
+    { month: '2026-01', income: 1000, expense: 300, uncategorized: 0, currency: 'EUR' },
   ],
   net_by_month: [
     { month: '2026-01', net: 700, currency: 'EUR' },
@@ -31,8 +31,8 @@ const multiCurrencyData = {
     { category_id: 2, category_name: 'Freelance', category_type: 'Income' as const, amount: 200, currency: 'USD' },
   ],
   by_month: [
-    { month: '2026-01', income: 1000, expense: 0, currency: 'EUR' },
-    { month: '2026-01', income: 200, expense: 0, currency: 'USD' },
+    { month: '2026-01', income: 1000, expense: 0, uncategorized: 0, currency: 'EUR' },
+    { month: '2026-01', income: 200, expense: 0, uncategorized: 0, currency: 'USD' },
   ],
   net_by_month: [
     { month: '2026-01', net: 1000, currency: 'EUR' },
@@ -126,6 +126,21 @@ test('shows an Uncategorized legend swatch when the data includes an uncategoriz
     expect(screen.getByText('Amounts by Category')).toBeInTheDocument()
   })
   expect(screen.getByText('Uncategorized')).toBeInTheDocument()
+})
+
+test('renders the by-month chart without error when a month has an uncategorized bucket', async () => {
+  mockFetchCharts.mockResolvedValue({
+    ...sampleData,
+    by_month: [
+      { month: '2026-01', income: 1000, expense: 300, uncategorized: 50, currency: 'EUR' },
+    ],
+  })
+
+  render(<ChartsPage selectedUserId={1} onBack={() => {}} />)
+
+  await waitFor(() => {
+    expect(screen.getByText('Income vs Expense by Month')).toBeInTheDocument()
+  })
 })
 
 test('does not show an Uncategorized legend swatch when there is no uncategorized data', async () => {

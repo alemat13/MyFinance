@@ -7,6 +7,7 @@ import {
 import { SplitRow } from './SplitEditor'
 import TransactionSplitFields from './TransactionSplitFields'
 import { useToast } from '../context/ToastContext'
+import { validateTransactionForm } from '../utils/transactions'
 import { Modal, Button, Input, Select, StatusMessage, ConfirmDialog, Badge } from './ui'
 
 interface Props {
@@ -56,7 +57,7 @@ export default function TransactionDetail({
   useEffect(() => {
     setLoading(true)
     setError(null)
-    fetchTransaction(transactionId)
+    fetchTransaction(transactionId, selectedUserId)
       .then(t => {
         setTransaction(t)
         setFormData({
@@ -83,9 +84,13 @@ export default function TransactionDetail({
       .then(setHistoryEntries)
       .catch(err => setHistoryError(err.message))
       .finally(() => setHistoryLoading(false))
-  }, [transactionId])
+  }, [transactionId, selectedUserId])
 
   const save = () => {
+    const validationError = validateTransactionForm(formData.payee, formData.account_id)
+    if (validationError) {
+      showToast(validationError); return
+    }
     updateTransaction(transactionId, {
       ...formData,
       category_id: formData.category_id || null,

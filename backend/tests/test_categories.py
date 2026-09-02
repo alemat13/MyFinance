@@ -40,6 +40,38 @@ def test_update_category_color_and_icon(client, sample_category):
     assert data["icon"] == "Landmark"
 
 
+def test_create_category_malformed_color_422(client):
+    response = client.post(
+        "/api/categories",
+        json={"name": "Bad Color", "type": "Expense", "color": "not-a-color"},
+    )
+    assert response.status_code == 422
+
+
+def test_create_category_overlong_color_422(client):
+    response = client.post(
+        "/api/categories",
+        json={"name": "Overlong Color", "type": "Expense", "color": "#d97706ff"},
+    )
+    assert response.status_code == 422
+
+
+def test_create_category_unknown_icon_422(client):
+    response = client.post(
+        "/api/categories",
+        json={"name": "Bad Icon", "type": "Expense", "icon": "NotARealIcon"},
+    )
+    assert response.status_code == 422
+
+
+def test_update_category_malformed_color_422(client, sample_category):
+    response = client.put(
+        f"/api/categories/{sample_category.id}",
+        json={"color": "red"},
+    )
+    assert response.status_code == 422
+
+
 def test_create_category_duplicate_name_409(client, sample_category):
     response = client.post(
         "/api/categories",

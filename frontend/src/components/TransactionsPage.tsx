@@ -13,7 +13,7 @@ import { useToast } from '../context/ToastContext'
 import { Button, Input, Select, Table, Thead, Tbody, Tr, Th, Td, StatusMessage, Badge, CategoryBadge } from './ui'
 import { formatMoney } from '../utils/currency'
 import { getParam, patchQueryParams } from '../utils/urlState'
-import { sharedShareFor, formatDateGroupHeader } from '../utils/transactions'
+import { sharedShareFor, formatDateGroupHeader, validateTransactionForm } from '../utils/transactions'
 import { resolveDefaultSplitRows } from '../utils/splitWeights'
 
 interface Props {
@@ -342,8 +342,9 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
   }
 
   const saveNew = () => {
-    if (!newData.payee || !newData.account_id) {
-      showToast('Payee and account are required'); return
+    const validationError = validateTransactionForm(newData.payee, newData.account_id)
+    if (validationError) {
+      showToast(validationError); return
     }
     createTransaction({
       ...newData,
@@ -533,7 +534,13 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
                   </Td>
                 </Tr>
               )}
-              <Tr onClick={() => openDetail(t.id)} className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50">
+              <Tr
+                onClick={() => openDetail(t.id)}
+                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDetail(t.id) } }}
+                role="button"
+                tabIndex={0}
+                className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50"
+              >
                 <Td>{t.payee}</Td>
                 <Td><CategoryBadge name={t.category_name} color={t.category_color} icon={t.category_icon} /></Td>
                 <Td>{t.account_name}</Td>
@@ -579,8 +586,8 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
           globalWeights={globalWeights}
           selectedUserId={selectedUserId}
           onClose={closeDetail}
-          onSaved={() => { closeDetail(); loadTransactions(); loadMeta() }}
-          onDeleted={() => { closeDetail(); loadTransactions(); loadMeta() }}
+          onSaved={() => { closeDetail(); loadTransactions() }}
+          onDeleted={() => { closeDetail(); loadTransactions() }}
         />
       )}
     </div>
