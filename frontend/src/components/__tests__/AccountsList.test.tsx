@@ -3,12 +3,13 @@ import { screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { renderWithProviders } from '../../test-utils'
 import AccountsList from '../AccountsList'
 
-const { mockFetchAccounts, mockCreateAccount, mockUpdateAccount, mockDeleteAccount, mockFetchUsers } = vi.hoisted(() => ({
+const { mockFetchAccounts, mockCreateAccount, mockUpdateAccount, mockDeleteAccount, mockFetchUsers, mockUpdateAccountSplitWeights } = vi.hoisted(() => ({
   mockFetchAccounts: vi.fn(),
   mockCreateAccount: vi.fn(),
   mockUpdateAccount: vi.fn(),
   mockDeleteAccount: vi.fn(),
   mockFetchUsers: vi.fn().mockResolvedValue([]),
+  mockUpdateAccountSplitWeights: vi.fn(),
 }))
 
 vi.mock('../../api/client', () => ({
@@ -17,12 +18,14 @@ vi.mock('../../api/client', () => ({
   updateAccount: mockUpdateAccount,
   deleteAccount: mockDeleteAccount,
   fetchUsers: mockFetchUsers,
+  updateAccountSplitWeights: mockUpdateAccountSplitWeights,
 }))
 
-const baseAccount = { id: 1, name: 'Checking', type: 'Checking', balance: 100, currency: 'EUR', created_at: '2026-01-01', users: [] }
+const baseAccount = { id: 1, name: 'Checking', type: 'Checking', balance: 100, currency: 'EUR', created_at: '2026-01-01', users: [], split_weights: [] }
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mockUpdateAccountSplitWeights.mockResolvedValue([])
 })
 
 test('shows loading initially', () => {
@@ -96,6 +99,33 @@ test('can edit an account inline', async () => {
   await waitFor(() => {
     expect(mockUpdateAccount).toHaveBeenCalledWith(1, expect.objectContaining({ name: 'Updated' }))
   })
+})
+
+test('can add an account-level split weight row and save, independently of ownership', async () => {
+  mockFetchUsers.mockResolvedValueOnce([{ id: 1, name: 'Alex', email: null, created_at: '' }])
+  mockFetchAccounts.mockResolvedValue([baseAccount])
+  mockUpdateAccount.mockResolvedValue(baseAccount)
+
+  renderWithProviders(<AccountsList onBack={() => {}} selectedUserId={null} />)
+
+  await waitFor(() => {
+    expect(screen.getByText(/\$?100/)).toBeInTheDocument()
+  })
+
+  fireEvent.click(screen.getByText('Edit'))
+
+  const addUserButtons = screen.getAllByRole('button', { name: 'Add user' })
+  // Two SplitEditors are rendered while editing (Owners, then Split Weight) — use the second.
+  fireEvent.click(addUserButtons[addUserButtons.length - 1])
+  const weightInput = screen.getByDisplayValue('0')
+  fireEvent.change(weightInput, { target: { value: '55' } })
+
+  fireEvent.click(screen.getByText('Save'))
+
+  await waitFor(() => {
+    expect(mockUpdateAccountSplitWeights).toHaveBeenCalledWith(1, [{ user_id: 1, weight: 55 }])
+  })
+  expect(mockUpdateAccount).toHaveBeenCalled()
 })
 
 test('can delete an account', async () => {

@@ -4,6 +4,17 @@ export interface AccountUser {
   ownership_percentage: number
 }
 
+export interface AccountSplitWeight {
+  user_id: number
+  user_name: string
+  weight: number
+}
+
+export interface AccountSplitWeightCreate {
+  user_id: number
+  weight: number
+}
+
 export interface Account {
   id: number
   name: string
@@ -12,6 +23,7 @@ export interface Account {
   currency: string
   created_at: string
   users: AccountUser[]
+  split_weights: AccountSplitWeight[]
 }
 
 export interface AccountUserCreate {
@@ -38,12 +50,12 @@ export interface AccountUpdate {
 export interface CategorySplit {
   user_id: number
   user_name: string
-  split_percentage: number
+  weight: number
 }
 
 export interface CategorySplitCreate {
   user_id: number
-  split_percentage: number
+  weight: number
 }
 
 export interface Category {
@@ -77,16 +89,19 @@ export interface GlobalSplitWeight {
   weight: number
 }
 
-export interface SplitShareCreate {
+export type SplitSource = 'global' | 'account' | 'category' | 'custom'
+
+export interface SplitWeightCreate {
   user_id: number
-  share_amount: number
+  weight: number
 }
 
 export interface TransactionSplit {
   user_id: number
   user_name: string
+  weight: number
   share_amount: number
-  source: 'manual' | 'category_default' | 'global_default'
+  source: SplitSource
 }
 
 export interface UserBalance {
@@ -122,7 +137,8 @@ export interface TransactionCreate {
   account_id: number
   category_id?: number | null
   accounting_month_offset?: number
-  split_overrides?: SplitShareCreate[] | null
+  split_weights?: SplitWeightCreate[] | null
+  split_source?: SplitSource | null
 }
 
 export interface TransactionUpdate {
@@ -133,7 +149,8 @@ export interface TransactionUpdate {
   account_id?: number
   category_id?: number | null
   accounting_month_offset?: number
-  split_overrides?: SplitShareCreate[] | null
+  split_weights?: SplitWeightCreate[] | null
+  split_source?: SplitSource | null
 }
 
 export type FilterField = 'payee' | 'memo' | 'amount' | 'date' | 'account_id' | 'category_id'
@@ -256,7 +273,7 @@ export interface ImportPreviewRow {
   category_name: string | null
   status: 'ok' | 'needs_category' | 'possible_duplicate' | 'error'
   error_message: string | null
-  preview_split: { user_id: number; share_amount: number; source: string }[]
+  preview_split: { user_id: number; weight: number; share_amount: number; source: string }[]
 }
 
 export interface ImportCommitResponse {
@@ -274,6 +291,7 @@ export interface ImportSummary {
   account_users: number
   category_splits: number
   global_split_weights: number
+  account_split_weights: number
   transactions: number
   transaction_splits: number
   transaction_history: number
@@ -433,11 +451,12 @@ export function updateSplitWeights(weights: { user_id: number; weight: number }[
   return request<GlobalSplitWeight[]>("/split-weights", { method: 'PUT', body: JSON.stringify(weights) })
 }
 
-export function fetchSplitPreview(amount: number, categoryId: number | null, accountId: number | null = null): Promise<TransactionSplit[]> {
-  return request<TransactionSplit[]>("/split-preview", {
-    method: 'POST',
-    body: JSON.stringify({ amount, category_id: categoryId, account_id: accountId }),
-  })
+export function fetchAccountSplitWeights(accountId: number): Promise<AccountSplitWeight[]> {
+  return request<AccountSplitWeight[]>(`/accounts/${accountId}/split-weights`)
+}
+
+export function updateAccountSplitWeights(accountId: number, weights: AccountSplitWeightCreate[]): Promise<AccountSplitWeight[]> {
+  return request<AccountSplitWeight[]>(`/accounts/${accountId}/split-weights`, { method: 'PUT', body: JSON.stringify(weights) })
 }
 
 export function fetchBalances(): Promise<UserBalance[]> {

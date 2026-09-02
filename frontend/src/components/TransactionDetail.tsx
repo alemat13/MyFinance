@@ -1,19 +1,20 @@
 import { useEffect, useState } from 'react'
 import {
-  Transaction, TransactionUpdate, TransactionSplit, TransactionHistoryEntry,
+  Transaction, TransactionUpdate, TransactionHistoryEntry, GlobalSplitWeight, SplitSource,
   Account, Category, User,
-  fetchTransaction, updateTransaction, deleteTransaction, fetchTransactionHistory, fetchSplitPreview,
+  fetchTransaction, updateTransaction, deleteTransaction, fetchTransactionHistory,
 } from '../api/client'
-import SplitEditor, { SplitRow } from './SplitEditor'
+import { SplitRow } from './SplitEditor'
+import TransactionSplitFields from './TransactionSplitFields'
 import { useToast } from '../context/ToastContext'
 import { Modal, Button, Input, Select, StatusMessage, ConfirmDialog, Badge } from './ui'
-import { formatMoney } from '../utils/currency'
 
 interface Props {
   transactionId: number
   accounts: Account[]
   categories: Category[]
   allUsers: User[]
+  globalWeights: GlobalSplitWeight[]
   selectedUserId: number | null
   onClose: () => void
   onSaved: () => void
@@ -38,14 +39,14 @@ const describeHistoryChanges = (changes: TransactionHistoryEntry['changes']) =>
     : ''
 
 export default function TransactionDetail({
-  transactionId, accounts, categories, allUsers, selectedUserId, onClose, onSaved, onDeleted,
+  transactionId, accounts, categories, allUsers, globalWeights, selectedUserId, onClose, onSaved, onDeleted,
 }: Props) {
   const [transaction, setTransaction] = useState<Transaction | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [formData, setFormData] = useState<TransactionUpdate>({})
-  const [split, setSplit] = useState<SplitRow[] | null>(null)
-  const [preview, setPreview] = useState<TransactionSplit[]>([])
+  const [split, setSplit] = useState<SplitRow[]>([])
+  const [splitSource, setSplitSource] = useState<SplitSource | null>(null)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [historyEntries, setHistoryEntries] = useState<TransactionHistoryEntry[]>([])
   const [historyLoading, setHistoryLoading] = useState(true)
@@ -67,8 +68,11 @@ export default function TransactionDetail({
           category_id: t.category_id,
           accounting_month_offset: t.accounting_month_offset,
         })
-        const isManual = t.splits.length > 0 && t.splits.every(s => s.source === 'manual')
-        setSplit(isManual ? t.splits.map(s => ({ user_id: s.user_id, value: s.share_amount })) : null)
+        // Always populated from the transaction's own stored weights — never
+        // re-prefilled from current tier config while editing. The 3 quick
+        // buttons are the only way to pull a tier's weights into this form.
+        setSplit(t.splits.map(s => ({ user_id: s.user_id, value: s.weight })))
+        setSplitSource(t.splits[0]?.source ?? null)
       })
       .catch(err => setError(err.message))
       .finally(() => setLoading(false))
@@ -81,33 +85,12 @@ export default function TransactionDetail({
       .finally(() => setHistoryLoading(false))
   }, [transactionId])
 
-  // Live default-split preview while no manual override is active.
-  useEffect(() => {
-    if (split !== null || !formData.category_id || !formData.amount) {
-      setPreview([])
-      return
-    }
-    fetchSplitPreview(formData.amount, formData.category_id, formData.account_id || null)
-      .then(setPreview)
-      .catch(() => setPreview([]))
-  }, [split, formData.amount, formData.category_id, formData.account_id])
-
-  const toggleCustomSplit = (active: boolean) => {
-    setSplit(active ? preview.map(p => ({ user_id: p.user_id, value: p.share_amount })) : null)
-  }
-
   const save = () => {
-    const amount = formData.amount ?? 0
-    if (split !== null) {
-      const total = split.reduce((s, r) => s + r.value, 0)
-      if (Math.abs(total - amount) > 0.01) {
-        showToast(`Custom split must sum to the transaction amount (${amount})`); return
-      }
-    }
     updateTransaction(transactionId, {
       ...formData,
       category_id: formData.category_id || null,
-      split_overrides: split ? split.map(r => ({ user_id: r.user_id, share_amount: r.value })) : null,
+      split_weights: split.map(r => ({ user_id: r.user_id, weight: r.value })),
+      split_source: splitSource ?? 'custom',
     }, selectedUserId)
       .then(() => onSaved())
       .catch(err => showToast(err.message))
@@ -154,21 +137,18 @@ export default function TransactionDetail({
             </Select>
           </div>
 
-          <div>
-            <label className="text-xs flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
-              <input type="checkbox" checked={split !== null} onChange={e => toggleCustomSplit(e.target.checked)} />
-              Customize split
-            </label>
-            {split !== null ? (
-              <SplitEditor rows={split} allUsers={allUsers} total={formData.amount ?? 0} unit="currency" currency={currency} label="Split" onChange={setSplit} />
-            ) : (
-              preview.length > 0 && (
-                <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                  Default split: {preview.map(p => `${p.user_name} ${formatMoney(p.share_amount, currency)}`).join(' / ')}
-                </div>
-              )
-            )}
-          </div>
+          <TransactionSplitFields
+            rows={split}
+            onChange={setSplit}
+            amount={formData.amount ?? 0}
+            currency={currency}
+            allUsers={allUsers}
+            account={accounts.find(a => a.id === formData.account_id) ?? null}
+            category={categories.find(c => c.id === formData.category_id) ?? null}
+            globalWeights={globalWeights}
+            source={splitSource}
+            onSourceChange={setSplitSource}
+          />
 
           <div className="flex gap-2">
             <Button onClick={save}>Save</Button>

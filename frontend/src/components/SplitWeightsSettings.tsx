@@ -49,8 +49,9 @@ export default function SplitWeightsSettings({ onBack }: Props) {
       </button>
       <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-1">Split Weights</h2>
       <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-0 mb-4">
-        The default fallback split for transactions with no category-specific split configured:
-        each transaction's amount is divided proportionally to these relative weights (e.g. income-proportional).
+        The lowest-priority default: used only to prefill a transaction's own split weights
+        when no account- or category-specific weight is configured. Integer, relative weights
+        (e.g. income-proportional) — no need to sum to any particular total.
       </p>
 
       <StatusMessage loading={loading} />
@@ -66,7 +67,7 @@ export default function SplitWeightsSettings({ onBack }: Props) {
                 min="0"
                 step="1"
                 value={w.weight}
-                onChange={e => updateWeight(w.user_id, parseFloat(e.target.value) || 0)}
+                onChange={e => updateWeight(w.user_id, parseInt(e.target.value, 10) || 0)}
                 className="w-[100px] text-right"
               />
             </div>

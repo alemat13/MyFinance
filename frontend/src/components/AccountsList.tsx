@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import {
-  Account, AccountCreate, AccountUpdate, AccountUserCreate,
+  Account, AccountCreate, AccountUpdate, AccountUserCreate, AccountSplitWeightCreate,
   User, fetchAccounts, createAccount, updateAccount, deleteAccount,
-  fetchUsers,
+  fetchUsers, updateAccountSplitWeights,
 } from '../api/client'
 import SplitEditor, { SplitRow } from './SplitEditor'
 import { useToast } from '../context/ToastContext'
@@ -16,11 +16,25 @@ const toRows = (users: AccountUserCreate[]): SplitRow[] =>
 const fromRows = (rows: SplitRow[]): AccountUserCreate[] =>
   rows.map(r => ({ user_id: r.user_id, ownership_percentage: r.value }))
 
+const toWeightRows = (weights: AccountSplitWeightCreate[]): SplitRow[] =>
+  weights.map(w => ({ user_id: w.user_id, value: w.weight }))
+
+const fromWeightRows = (rows: SplitRow[]): AccountSplitWeightCreate[] =>
+  rows.map(r => ({ user_id: r.user_id, weight: r.value }))
+
 const validateOwners = (users: AccountUserCreate[]): string | null => {
   if (users.length === 0) return null
   if (users.some(u => !u.user_id)) return 'Select a user for every owner row'
   const total = users.reduce((s, u) => s + u.ownership_percentage, 0)
   if (Math.abs(total - 100) > 0.01) return 'Ownership percentages must sum to 100'
+  return null
+}
+
+const validateSplitWeights = (weights: AccountSplitWeightCreate[]): string | null => {
+  if (weights.length === 0) return null
+  if (weights.some(w => !w.user_id)) return 'Select a user for every split weight row'
+  if (weights.some(w => w.weight < 0)) return 'Split weights must be >= 0'
+  if (weights.every(w => w.weight === 0)) return 'At least one split weight must be greater than 0'
   return null
 }
 
@@ -68,8 +82,10 @@ export default function AccountsList({ onBack, selectedUserId }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editData, setEditData] = useState<AccountUpdate>({})
+  const [editSplitWeights, setEditSplitWeights] = useState<SplitRow[]>([])
   const [showNew, setShowNew] = useState(false)
   const [newData, setNewData] = useState<AccountCreate>(emptyForm)
+  const [newSplitWeights, setNewSplitWeights] = useState<SplitRow[]>([])
   const [deletingAccount, setDeletingAccount] = useState<Account | null>(null)
   const { showToast } = useToast()
 
@@ -98,17 +114,24 @@ export default function AccountsList({ onBack, selectedUserId }: Props) {
       currency: a.currency,
       users: a.users.map(u => ({ user_id: u.user_id, ownership_percentage: u.ownership_percentage })),
     })
+    setEditSplitWeights(toWeightRows(a.split_weights.map(w => ({ user_id: w.user_id, weight: w.weight }))))
   }
 
   const cancelEdit = () => {
     setEditingId(null)
     setEditData({})
+    setEditSplitWeights([])
   }
 
   const saveEdit = (id: number) => {
     const err = validateOwners(editData.users ?? [])
     if (err) { showToast(err); return }
-    updateAccount(id, editData)
+    const weightsErr = validateSplitWeights(fromWeightRows(editSplitWeights))
+    if (weightsErr) { showToast(weightsErr); return }
+    Promise.all([
+      updateAccount(id, editData),
+      updateAccountSplitWeights(id, fromWeightRows(editSplitWeights)),
+    ])
       .then(() => { cancelEdit(); load() })
       .catch(err => showToast(err.message))
   }
@@ -125,14 +148,19 @@ export default function AccountsList({ onBack, selectedUserId }: Props) {
     if (!newData.name || !newData.type) { showToast('Name and type are required'); return }
     const err = validateOwners(newData.users ?? [])
     if (err) { showToast(err); return }
+    const splitWeights = fromWeightRows(newSplitWeights)
+    const weightsErr = validateSplitWeights(splitWeights)
+    if (weightsErr) { showToast(weightsErr); return }
     createAccount(newData)
-      .then(() => { setShowNew(false); setNewData(emptyForm); load() })
+      .then(created => updateAccountSplitWeights(created.id, splitWeights))
+      .then(() => { setShowNew(false); setNewData(emptyForm); setNewSplitWeights([]); load() })
       .catch(err => showToast(err.message))
   }
 
   const cancelNew = () => {
     setShowNew(false)
     setNewData(emptyForm)
+    setNewSplitWeights([])
   }
 
   const ownersDisplay = (a: Account) => {
@@ -172,6 +200,13 @@ export default function AccountsList({ onBack, selectedUserId }: Props) {
             label="Owners"
             onChange={rows => setNewData({ ...newData, users: fromRows(rows) })}
           />
+          <SplitEditor
+            rows={newSplitWeights}
+            allUsers={allUsers}
+            unit="weight"
+            label="Split Weight (optional — prefills new transactions on this account; separate from ownership)"
+            onChange={setNewSplitWeights}
+          />
         </div>
       )}
 
@@ -209,6 +244,13 @@ export default function AccountsList({ onBack, selectedUserId }: Props) {
                         unit="%"
                         label="Owners"
                         onChange={rows => setEditData({ ...editData, users: fromRows(rows) })}
+                      />
+                      <SplitEditor
+                        rows={editSplitWeights}
+                        allUsers={allUsers}
+                        unit="weight"
+                        label="Split Weight (optional — prefills new transactions on this account; separate from ownership)"
+                        onChange={setEditSplitWeights}
                       />
                       <div className="mt-1.5 flex gap-1">
                         <Button size="sm" onClick={() => saveEdit(a.id)}>Save</Button>

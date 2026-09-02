@@ -5,7 +5,7 @@ from datetime import date, datetime
 
 from models import (
     Account, Category, Transaction, User, AccountUser,
-    CategorySplit, GlobalSplitWeight, TransactionSplit, TransactionHistory,
+    CategorySplit, GlobalSplitWeight, AccountSplitWeight, TransactionSplit, TransactionHistory,
 )
 import backup
 
@@ -40,6 +40,7 @@ def _minimal_payload(schema_version: int = 1, **overrides) -> dict:
         "account_users": [],
         "category_splits": [],
         "global_split_weights": [],
+        "account_split_weights": [],
         "transactions": [],
         "transaction_splits": [],
         "transaction_history": [],
@@ -50,16 +51,17 @@ def _minimal_payload(schema_version: int = 1, **overrides) -> dict:
 
 def _seed_full_graph(db, sample_account, sample_category, sample_user, sample_user2):
     db.add(AccountUser(account_id=sample_account.id, user_id=sample_user.id, ownership_percentage=100.0))
-    db.add(CategorySplit(category_id=sample_category.id, user_id=sample_user.id, split_percentage=50.0))
-    db.add(CategorySplit(category_id=sample_category.id, user_id=sample_user2.id, split_percentage=50.0))
-    db.add(GlobalSplitWeight(user_id=sample_user.id, weight=1.0))
+    db.add(CategorySplit(category_id=sample_category.id, user_id=sample_user.id, weight=50))
+    db.add(CategorySplit(category_id=sample_category.id, user_id=sample_user2.id, weight=50))
+    db.add(GlobalSplitWeight(user_id=sample_user.id, weight=1))
+    db.add(AccountSplitWeight(account_id=sample_account.id, user_id=sample_user.id, weight=1))
     transaction = Transaction(
         date=date(2026, 1, 15), payee="Payee", amount=100.0,
         account_id=sample_account.id, category_id=sample_category.id,
     )
     db.add(transaction)
     db.flush()
-    db.add(TransactionSplit(transaction_id=transaction.id, user_id=sample_user.id, share_amount=100.0, source="manual"))
+    db.add(TransactionSplit(transaction_id=transaction.id, user_id=sample_user.id, weight=1, share_amount=100.0, source="custom"))
     db.add(TransactionHistory(
         transaction_id=transaction.id, action="created", source="manual",
         changed_at=datetime.utcnow(), changed_by_user_id=sample_user.id,
@@ -93,6 +95,7 @@ def test_export_with_data(client, db, sample_account, sample_category, sample_us
     assert len(data["account_users"]) == 1
     assert len(data["category_splits"]) == 2
     assert len(data["global_split_weights"]) == 1
+    assert len(data["account_split_weights"]) == 1
     assert [t["id"] for t in data["transactions"]] == [transaction.id]
     assert len(data["transaction_splits"]) == 1
     assert len(data["transaction_history"]) == 1
@@ -113,6 +116,7 @@ def test_import_overwrite_replaces_data(client, db, sample_account, sample_categ
     assert summary["mode"] == "overwrite"
     assert summary["users"] == 2
     assert summary["transactions"] == 1
+    assert summary["account_split_weights"] == 1
 
     users = client.get("/api/users").json()
     assert {u["id"] for u in users} == {sample_user.id, sample_user2.id}
@@ -121,6 +125,7 @@ def test_import_overwrite_replaces_data(client, db, sample_account, sample_categ
     assert len(accounts) == 1
     assert accounts[0]["id"] == sample_account.id
     assert len(accounts[0]["users"]) == 1
+    assert len(accounts[0]["split_weights"]) == 1
 
     transactions = client.get("/api/transactions").json()
     assert len(transactions) == 1

@@ -12,14 +12,16 @@ export interface SplitRow {
 interface Props {
   rows: SplitRow[]
   allUsers: User[]
-  total: number
-  unit: '%' | 'currency'
+  total?: number
+  unit: '%' | 'currency' | 'weight'
   currency?: string
   label: string
   onChange: (rows: SplitRow[]) => void
+  /** weight mode only: read-only computed euro amount shown next to each row's weight input. */
+  computeShare?: (row: SplitRow) => number
 }
 
-export default function SplitEditor({ rows, allUsers, total, unit, currency, label, onChange }: Props) {
+export default function SplitEditor({ rows, allUsers, total, unit, currency, label, onChange, computeShare }: Props) {
   const { showToast } = useToast()
 
   const addRow = () => {
@@ -37,8 +39,8 @@ export default function SplitEditor({ rows, allUsers, total, unit, currency, lab
   }
 
   const totalSoFar = rows.reduce((s, r) => s + r.value, 0)
-  const suffix = unit === '%' ? '%' : (currency ?? '')
-  const mismatch = rows.length > 0 && Math.abs(totalSoFar - total) > 0.01
+  const suffix = unit === '%' ? '%' : unit === 'weight' ? '' : (currency ?? '')
+  const mismatch = unit !== 'weight' && rows.length > 0 && Math.abs(totalSoFar - (total ?? 0)) > 0.01
   const fmtTotal = (n: number) => unit === 'currency' && currency ? formatMoney(n, currency) : `${n}${suffix}`
 
   return (
@@ -66,21 +68,33 @@ export default function SplitEditor({ rows, allUsers, total, unit, currency, lab
           </Select>
           <Input
             type="number"
-            step={unit === '%' ? '0.1' : '0.01'}
+            step={unit === '%' ? '0.1' : unit === 'weight' ? '1' : '0.01'}
+            min={unit === 'weight' ? '0' : undefined}
             value={r.value}
-            onChange={e => updateRow(i, 'value', parseFloat(e.target.value) || 0)}
+            onChange={e => updateRow(i, 'value', (unit === 'weight' ? parseInt(e.target.value, 10) : parseFloat(e.target.value)) || 0)}
             className="w-20 text-right"
           />
           <span className="text-xs text-slate-500 dark:text-slate-400">{suffix}</span>
+          {unit === 'weight' && computeShare && (
+            <span className="text-xs text-slate-400 dark:text-slate-500 tabular-nums">
+              = {formatMoney(computeShare(r), currency ?? '')}
+            </span>
+          )}
           <IconButton aria-label="Remove row" onClick={() => removeRow(i)}>
             <X size={14} />
           </IconButton>
         </div>
       ))}
       {rows.length > 0 && (
-        <div className={`text-xs mt-1 ${mismatch ? 'text-negative' : 'text-slate-500 dark:text-slate-400'}`}>
-          Total: {fmtTotal(totalSoFar)} (target {fmtTotal(total)})
-        </div>
+        unit === 'weight' ? (
+          <div className="text-xs mt-1 text-slate-500 dark:text-slate-400">
+            Total weight: {totalSoFar}
+          </div>
+        ) : (
+          <div className={`text-xs mt-1 ${mismatch ? 'text-negative' : 'text-slate-500 dark:text-slate-400'}`}>
+            Total: {fmtTotal(totalSoFar)} (target {fmtTotal(total ?? 0)})
+          </div>
+        )
       )}
     </div>
   )

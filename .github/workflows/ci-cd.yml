@@ -63,6 +63,20 @@ jobs:
             -t ${{ vars.REGION }}-docker.pkg.dev/${{ vars.PROJECT_ID }}/myfinance/frontend:${{ github.sha }} frontend
           docker push ${{ vars.REGION }}-docker.pkg.dev/${{ vars.PROJECT_ID }}/myfinance/frontend:${{ github.sha }}
 
+      - name: Run database migrations
+        run: |
+          gcloud run jobs deploy myfinance-migrate \
+            --image=${{ vars.REGION }}-docker.pkg.dev/${{ vars.PROJECT_ID }}/myfinance/backend:${{ github.sha }} \
+            --region=${{ vars.REGION }} \
+            --service-account=${{ vars.BACKEND_SA_EMAIL }} \
+            --add-cloudsql-instances=${{ vars.CLOUDSQL_INSTANCE_CONNECTION_NAME }} \
+            --set-secrets=DATABASE_URL=myfinance-database-url:latest \
+            --command=alembic \
+            --args=upgrade,head \
+            --max-retries=0 \
+            --quiet
+          gcloud run jobs execute myfinance-migrate --region=${{ vars.REGION }} --wait
+
       - name: Deploy backend
         run: |
           gcloud run deploy myfinance-backend \

@@ -19,10 +19,17 @@ interface Props {
 const emptyForm: CategoryCreate = { name: '', type: '', color: null, icon: null, splits: [] }
 
 const toRows = (splits: CategorySplitCreate[]): SplitRow[] =>
-  splits.map(s => ({ user_id: s.user_id, value: s.split_percentage }))
+  splits.map(s => ({ user_id: s.user_id, value: s.weight }))
 
 const fromRows = (rows: SplitRow[]): CategorySplitCreate[] =>
-  rows.map(r => ({ user_id: r.user_id, split_percentage: r.value }))
+  rows.map(r => ({ user_id: r.user_id, weight: r.value }))
+
+const validateSplitWeights = (splits: CategorySplitCreate[]): string | null => {
+  if (splits.length === 0) return null
+  if (splits.some(s => s.weight < 0)) return 'Split weights must be >= 0'
+  if (splits.every(s => s.weight === 0)) return 'At least one split weight must be greater than 0'
+  return null
+}
 
 export default function CategoriesList({ onBack }: Props) {
   const [categories, setCategories] = useState<Category[]>([])
@@ -53,7 +60,7 @@ export default function CategoriesList({ onBack }: Props) {
       type: c.type,
       color: c.color,
       icon: c.icon,
-      splits: c.splits.map(s => ({ user_id: s.user_id, split_percentage: s.split_percentage })),
+      splits: c.splits.map(s => ({ user_id: s.user_id, weight: s.weight })),
     })
   }
 
@@ -63,11 +70,8 @@ export default function CategoriesList({ onBack }: Props) {
   }
 
   const saveEdit = (id: number) => {
-    const splits = editData.splits ?? []
-    const total = splits.reduce((s, x) => s + x.split_percentage, 0)
-    if (splits.length > 0 && Math.abs(total - 100) > 0.01) {
-      showToast('Split percentages must sum to 100'); return
-    }
+    const err = validateSplitWeights(editData.splits ?? [])
+    if (err) { showToast(err); return }
     updateCategory(id, editData)
       .then(() => { cancelEdit(); load() })
       .catch(err => showToast(err.message))
@@ -83,10 +87,8 @@ export default function CategoriesList({ onBack }: Props) {
 
   const saveNew = () => {
     if (!newData.name || !newData.type) { showToast('Name and type are required'); return }
-    const total = (newData.splits ?? []).reduce((s, x) => s + x.split_percentage, 0)
-    if ((newData.splits ?? []).length > 0 && Math.abs(total - 100) > 0.01) {
-      showToast('Split percentages must sum to 100'); return
-    }
+    const err = validateSplitWeights(newData.splits ?? [])
+    if (err) { showToast(err); return }
     createCategory(newData)
       .then(() => { setShowNew(false); setNewData(emptyForm); load() })
       .catch(err => showToast(err.message))
@@ -124,9 +126,8 @@ export default function CategoriesList({ onBack }: Props) {
           <SplitEditor
             rows={toRows(newData.splits ?? [])}
             allUsers={allUsers}
-            total={100}
-            unit="%"
-            label="Default Split (leave empty to use the global default weighting)"
+            unit="weight"
+            label="Default Split Weight (highest priority; leave empty to fall back to the account or global weight)"
             onChange={rows => setNewData({ ...newData, splits: fromRows(rows) })}
           />
         </div>
@@ -164,9 +165,8 @@ export default function CategoriesList({ onBack }: Props) {
                       <SplitEditor
                         rows={toRows(editData.splits ?? [])}
                         allUsers={allUsers}
-                        total={100}
-                        unit="%"
-                        label="Default Split"
+                        unit="weight"
+                        label="Default Split Weight (highest priority; leave empty to fall back to the account or global weight)"
                         onChange={rows => setEditData({ ...editData, splits: fromRows(rows) })}
                       />
                       <div className="mt-1.5 flex gap-1">
@@ -181,8 +181,8 @@ export default function CategoriesList({ onBack }: Props) {
                     <Td>{c.type}</Td>
                     <Td className="text-xs">
                       {c.splits.length === 0
-                        ? <span className="text-slate-400">— (global default)</span>
-                        : c.splits.map(s => `${s.user_name} (${s.split_percentage}%)`).join(', ')}
+                        ? <span className="text-slate-400">— (uses account/global default)</span>
+                        : c.splits.map(s => `${s.user_name}: ${s.weight}`).join(', ')}
                     </Td>
                     <Td className="text-center">
                       <Button size="sm" variant="secondary" onClick={() => startEdit(c)} className="mr-1">Edit</Button>

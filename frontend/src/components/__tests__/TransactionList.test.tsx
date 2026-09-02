@@ -61,7 +61,7 @@ test('shows a Shared badge with the user\'s share for a transaction on an accoun
       id: 1, date: '2026-01-15', payee: 'Shared Bill', memo: null, amount: 100, account_id: 1,
       account_name: 'Joint Checking', currency: 'USD', category_id: 1, category_name: 'Groceries',
       accounting_month_offset: 0, accounting_month: '2026-01',
-      splits: [{ user_id: 2, user_name: 'Bob', share_amount: 40, source: 'manual' as const }],
+      splits: [{ user_id: 2, user_name: 'Bob', weight: 1, share_amount: 40, source: 'custom' as const }],
     },
   ]
 
@@ -85,7 +85,7 @@ test('does not show a Shared badge for a transaction on an account the selected 
     <TransactionList
       transactions={transactions}
       selectedUserId={2}
-      accounts={[{ id: 1, name: 'My Checking', type: 'Checking', balance: 0, currency: 'USD', created_at: '2026-01-01', users: [] }]}
+      accounts={[{ id: 1, name: 'My Checking', type: 'Checking', balance: 0, currency: 'USD', created_at: '2026-01-01', users: [], split_weights: [] }]}
     />
   )
 
