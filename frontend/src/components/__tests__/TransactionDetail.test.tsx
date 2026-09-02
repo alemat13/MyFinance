@@ -127,6 +127,55 @@ test('clicking the Account quick-fill button overwrites the weight fields', asyn
   expect(screen.getByDisplayValue('7')).toBeInTheDocument()
 })
 
+test('clicking Split Evenly fills weight 1 for every user', async () => {
+  const alex = { id: 1, name: 'Alex', email: null, created_at: '' }
+  const sam = { id: 2, name: 'Sam', email: null, created_at: '' }
+  mockFetchTransaction.mockResolvedValue(baseTxn)
+
+  renderWithProviders(<TransactionDetail {...baseProps} allUsers={[alex, sam]} />)
+
+  await screen.findByDisplayValue('Test')
+  fireEvent.click(screen.getByRole('button', { name: 'Split Evenly' }))
+  fireEvent.click(screen.getByText('Save'))
+
+  await waitFor(() => {
+    expect(mockUpdateTransaction).toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({
+        split_weights: [{ user_id: 1, weight: 1 }, { user_id: 2, weight: 1 }],
+        split_source: 'custom',
+      }),
+      null,
+    )
+  })
+})
+
+test('clicking a per-user quick-fill button assigns weight 1 to that user only', async () => {
+  const alex = { id: 1, name: 'Alex', email: null, created_at: '' }
+  const sam = { id: 2, name: 'Sam', email: null, created_at: '' }
+  mockFetchTransaction.mockResolvedValue({
+    ...baseTxn,
+    splits: [
+      { user_id: 1, user_name: 'Alex', weight: 3, share_amount: 25, source: 'custom' },
+      { user_id: 2, user_name: 'Sam', weight: 3, share_amount: 25, source: 'custom' },
+    ],
+  })
+
+  renderWithProviders(<TransactionDetail {...baseProps} allUsers={[alex, sam]} />)
+
+  await screen.findByDisplayValue('Test')
+  fireEvent.click(screen.getByRole('button', { name: 'Sam' }))
+  fireEvent.click(screen.getByText('Save'))
+
+  await waitFor(() => {
+    expect(mockUpdateTransaction).toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({ split_weights: [{ user_id: 2, weight: 1 }], split_source: 'custom' }),
+      null,
+    )
+  })
+})
+
 test('free-form weight entry is accepted and submitted as source "custom"', async () => {
   const alex = { id: 1, name: 'Alex', email: null, created_at: '' }
   mockFetchTransaction.mockResolvedValue({
