@@ -147,6 +147,9 @@ export default function ChartsPage({ selectedUserId, onBack }: Props) {
                 <Legend wrapperStyle={{ fontSize: 12 }} />
                 <Bar dataKey="income" name="Income" fill={POSITIVE} maxBarSize={24} radius={[4, 4, 0, 0]} />
                 <Bar dataKey="expense" name="Expense" fill={NEGATIVE} maxBarSize={24} radius={[4, 4, 0, 0]} />
+                {byMonth.some(m => m.uncategorized !== 0) && (
+                  <Bar dataKey="uncategorized" name="Uncategorized" fill={UNCATEGORIZED} maxBarSize={24} radius={[4, 4, 0, 0]} />
+                )}
               </BarChart>
             </ResponsiveContainer>
           </Card>

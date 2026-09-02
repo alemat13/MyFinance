@@ -218,7 +218,42 @@ def test_charts_uncategorized_transaction_bucketed(client, sample_account, sampl
 
     by_month = data["by_month"]
     assert len(by_month) == 1
-    assert by_month[0]["expense"] == 42.0
+    assert by_month[0]["income"] == 0.0
+    assert by_month[0]["expense"] == 0.0
+    assert by_month[0]["uncategorized"] == -42.0
+
+
+def test_charts_uncategorized_transactions_not_mixed_into_income_or_expense_by_sign(client, sample_account, sample_user, db):
+    """Regression test: uncategorized transactions used to be classified as
+    income/expense by the sign of share_amount alone. A positive and a
+    negative uncategorized transaction in the same month must not land in
+    Income/Expense at all - they belong in their own bucket."""
+    t_pos = Transaction(
+        date=date(2026, 3, 5), payee="Mystery credit", amount=80.0,
+        account_id=sample_account.id, category_id=None,
+    )
+    t_neg = Transaction(
+        date=date(2026, 3, 10), payee="Mystery debit", amount=-30.0,
+        account_id=sample_account.id, category_id=None,
+    )
+    db.add_all([t_pos, t_neg])
+    db.flush()
+    db.add_all([
+        TransactionSplit(transaction_id=t_pos.id, user_id=sample_user.id, share_amount=80.0, source="manual"),
+        TransactionSplit(transaction_id=t_neg.id, user_id=sample_user.id, share_amount=-30.0, source="manual"),
+    ])
+    db.commit()
+
+    response = client.get(f"/api/charts?user_id={sample_user.id}")
+    assert response.status_code == 200
+    by_month = response.json()["by_month"]
+    assert len(by_month) == 1
+    assert by_month[0]["income"] == 0.0
+    assert by_month[0]["expense"] == 0.0
+    assert by_month[0]["uncategorized"] == 50.0
+
+    net_by_month = response.json()["net_by_month"]
+    assert net_by_month[0]["net"] == 50.0
 
 
 def test_compute_chart_data_signed_vs_magnitude(db, sample_account, sample_user):
