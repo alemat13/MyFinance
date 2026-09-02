@@ -69,7 +69,7 @@ jobs:
             --image=${{ vars.REGION }}-docker.pkg.dev/${{ vars.PROJECT_ID }}/myfinance/backend:${{ github.sha }} \
             --region=${{ vars.REGION }} \
             --service-account=${{ vars.BACKEND_SA_EMAIL }} \
-            --add-cloudsql-instances=${{ vars.CLOUDSQL_INSTANCE_CONNECTION_NAME }} \
+            --set-cloudsql-instances=${{ vars.CLOUDSQL_INSTANCE_CONNECTION_NAME }} \
             --set-secrets=DATABASE_URL=myfinance-database-url:latest \
             --command=alembic \
             --args=upgrade,head \
