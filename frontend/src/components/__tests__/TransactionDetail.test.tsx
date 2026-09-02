@@ -49,7 +49,7 @@ test('loads and displays the transaction fields', async () => {
   renderWithProviders(<TransactionDetail {...baseProps} />)
 
   await waitFor(() => {
-    expect(mockFetchTransaction).toHaveBeenCalledWith(1)
+    expect(mockFetchTransaction).toHaveBeenCalledWith(1, null)
   })
   expect(await screen.findByDisplayValue('Test')).toBeInTheDocument()
   expect(screen.getByDisplayValue('50')).toBeInTheDocument()
@@ -152,6 +152,33 @@ test('free-form weight entry is accepted and submitted as source "custom"', asyn
   })
 })
 
+test('save is rejected when payee is cleared, without calling the API', async () => {
+  mockFetchTransaction.mockResolvedValue(baseTxn)
+
+  renderWithProviders(<TransactionDetail {...baseProps} />)
+
+  const payeeInput = await screen.findByDisplayValue('Test')
+  fireEvent.change(payeeInput, { target: { value: '' } })
+  fireEvent.click(screen.getByText('Save'))
+
+  expect(await screen.findByText('Payee and account are required')).toBeInTheDocument()
+  expect(mockUpdateTransaction).not.toHaveBeenCalled()
+})
+
+test('save is rejected when account is left at the placeholder, without calling the API', async () => {
+  mockFetchTransaction.mockResolvedValue(baseTxn)
+
+  renderWithProviders(<TransactionDetail {...baseProps} />)
+
+  await screen.findByDisplayValue('Test')
+  const accountSelect = screen.getByDisplayValue('Checking')
+  fireEvent.change(accountSelect, { target: { value: '0' } })
+  fireEvent.click(screen.getByText('Save'))
+
+  expect(await screen.findByText('Payee and account are required')).toBeInTheDocument()
+  expect(mockUpdateTransaction).not.toHaveBeenCalled()
+})
+
 test('delete flow asks for confirmation then deletes', async () => {
   mockFetchTransaction.mockResolvedValue(baseTxn)
   mockDeleteTransaction.mockResolvedValue(undefined)
@@ -169,6 +196,23 @@ test('delete flow asks for confirmation then deletes', async () => {
     expect(mockDeleteTransaction).toHaveBeenCalledWith(1, null)
   })
   expect(baseProps.onDeleted).toHaveBeenCalled()
+})
+
+test('pressing Escape while the delete confirmation is open closes only the confirmation, not the whole detail view', async () => {
+  mockFetchTransaction.mockResolvedValue(baseTxn)
+
+  renderWithProviders(<TransactionDetail {...baseProps} />)
+
+  await screen.findByDisplayValue('Test')
+  fireEvent.click(screen.getByText('Delete'))
+  await screen.findByRole('dialog', { name: 'Delete transaction' })
+
+  fireEvent.keyDown(document, { key: 'Escape' })
+
+  await waitFor(() => {
+    expect(screen.queryByRole('dialog', { name: 'Delete transaction' })).not.toBeInTheDocument()
+  })
+  expect(baseProps.onClose).not.toHaveBeenCalled()
 })
 
 test('shows history entries', async () => {

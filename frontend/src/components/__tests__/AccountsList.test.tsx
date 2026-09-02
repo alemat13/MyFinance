@@ -79,6 +79,27 @@ test('can open and submit new account form', async () => {
   })
 })
 
+test('shows a clarifying toast (and keeps the form open) when account creation succeeds but split weights fail to save', async () => {
+  mockFetchAccounts.mockResolvedValue([])
+  mockCreateAccount.mockResolvedValue({ ...baseAccount, id: 2, name: 'New', type: 'Savings', balance: 50 })
+  mockUpdateAccountSplitWeights.mockRejectedValue(new Error('boom'))
+
+  renderWithProviders(<AccountsList onBack={() => {}} selectedUserId={null} />)
+
+  await waitFor(() => {
+    expect(screen.getByText('No accounts yet')).toBeInTheDocument()
+  })
+
+  fireEvent.click(screen.getByText('+ New Account'))
+  fireEvent.change(screen.getByPlaceholderText('Name'), { target: { value: 'New' } })
+  fireEvent.change(screen.getByPlaceholderText('Type'), { target: { value: 'Savings' } })
+  fireEvent.click(screen.getByText('Save'))
+
+  expect(await screen.findByText(/was created, but its split weights failed to save/)).toBeInTheDocument()
+  // The form isn't silently reset, so the user doesn't retry and create a duplicate.
+  expect(screen.getByDisplayValue('New')).toBeInTheDocument()
+})
+
 test('can edit an account inline', async () => {
   mockFetchAccounts.mockResolvedValue([baseAccount])
   mockUpdateAccount.mockResolvedValue({ ...baseAccount, name: 'Updated' })
@@ -99,6 +120,25 @@ test('can edit an account inline', async () => {
   await waitFor(() => {
     expect(mockUpdateAccount).toHaveBeenCalledWith(1, expect.objectContaining({ name: 'Updated' }))
   })
+})
+
+test('shows a clarifying toast when account edit succeeds but split weights fail to save', async () => {
+  mockFetchAccounts.mockResolvedValue([baseAccount])
+  mockUpdateAccount.mockResolvedValue({ ...baseAccount, name: 'Updated' })
+  mockUpdateAccountSplitWeights.mockRejectedValue(new Error('boom'))
+
+  renderWithProviders(<AccountsList onBack={() => {}} selectedUserId={null} />)
+
+  await waitFor(() => {
+    expect(screen.getByText(/\$?100/)).toBeInTheDocument()
+  })
+
+  fireEvent.click(screen.getByText('Edit'))
+  const nameInput = screen.getAllByDisplayValue('Checking')[0]
+  fireEvent.change(nameInput, { target: { value: 'Updated' } })
+  fireEvent.click(screen.getByText('Save'))
+
+  expect(await screen.findByText(/details were saved, but its split weights failed to save/)).toBeInTheDocument()
 })
 
 test('can add an account-level split weight row and save, independently of ownership', async () => {

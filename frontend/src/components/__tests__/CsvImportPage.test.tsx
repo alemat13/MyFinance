@@ -121,10 +121,11 @@ test('previews a CSV and shows row statuses', async () => {
   })
 })
 
-test('commit is disabled until all active rows have a category', async () => {
+test('commit is allowed for rows still flagged as needing a category, and imports them uncategorized', async () => {
   mockPreviewImport.mockResolvedValue([
     { row_number: 1, transaction_date: '2026-01-16', payee: 'Unknown', memo: null, amount: -10, account_id: 1, category_id: null, category_name: null, status: 'needs_category', error_message: null, preview_split: [] },
   ])
+  mockCommitImport.mockResolvedValue({ created_count: 1, transaction_ids: [5] })
 
   await goToConfirm()
   fireEvent.click(screen.getByText('Preview'))
@@ -134,13 +135,15 @@ test('commit is disabled until all active rows have a category', async () => {
   })
 
   const commitButton = screen.getByText(/Commit/)
-  expect(commitButton).toBeDisabled()
+  expect(commitButton).not.toBeDisabled()
 
-  const categorySelect = screen.getAllByRole('combobox').find(el => el.textContent?.includes('Groceries'))!
-  fireEvent.change(categorySelect, { target: { value: '1' } })
+  fireEvent.click(commitButton)
 
   await waitFor(() => {
-    expect(screen.getByText(/Commit/)).not.toBeDisabled()
+    expect(mockCommitImport).toHaveBeenCalledWith(
+      [expect.objectContaining({ payee: 'Unknown', category_id: null })],
+      null,
+    )
   })
 })
 

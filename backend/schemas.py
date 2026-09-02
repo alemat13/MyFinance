@@ -1,3 +1,4 @@
+import re
 from datetime import date, datetime
 from typing import List, Literal, Optional
 
@@ -110,6 +111,32 @@ class CategorySplitCreate(BaseModel):
     weight: int
 
 
+_COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
+
+# Keep in sync with CATEGORY_ICON_NAMES in frontend/src/utils/categoryIcons.ts.
+_VALID_CATEGORY_ICONS = {
+    "ShoppingCart", "Home", "Utensils", "Car", "Plane", "Wifi", "Tv", "Music", "Heart", "PiggyBank",
+    "Landmark", "Briefcase", "GraduationCap", "Gift", "Gamepad2", "Dumbbell", "Stethoscope",
+    "Fuel", "CreditCard", "Wallet", "Coffee", "ShoppingBag", "Dog", "Smartphone", "ArrowLeftRight",
+}
+
+
+def _validate_category_color(value: str | None) -> str | None:
+    if value is None:
+        return None
+    if not _COLOR_RE.match(value):
+        raise ValueError(f"color must be a '#RRGGBB' hex string, got '{value}'")
+    return value
+
+
+def _validate_category_icon(value: str | None) -> str | None:
+    if value is None:
+        return None
+    if value not in _VALID_CATEGORY_ICONS:
+        raise ValueError(f"Unknown category icon '{value}'")
+    return value
+
+
 class CategoryOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -128,6 +155,16 @@ class CategoryCreate(BaseModel):
     icon: str | None = None
     splits: list[CategorySplitCreate] = []
 
+    @field_validator("color")
+    @classmethod
+    def _validate_color(cls, value: str | None) -> str | None:
+        return _validate_category_color(value)
+
+    @field_validator("icon")
+    @classmethod
+    def _validate_icon(cls, value: str | None) -> str | None:
+        return _validate_category_icon(value)
+
 
 class CategoryUpdate(BaseModel):
     name: Optional[str] = None
@@ -135,6 +172,16 @@ class CategoryUpdate(BaseModel):
     color: Optional[str] = None
     icon: Optional[str] = None
     splits: list[CategorySplitCreate] | None = None
+
+    @field_validator("color")
+    @classmethod
+    def _validate_color(cls, value: str | None) -> str | None:
+        return _validate_category_color(value)
+
+    @field_validator("icon")
+    @classmethod
+    def _validate_icon(cls, value: str | None) -> str | None:
+        return _validate_category_icon(value)
 
 
 class GlobalSplitWeightOut(BaseModel):
@@ -294,6 +341,7 @@ class MonthChartItem(BaseModel):
     month: str
     income: float
     expense: float
+    uncategorized: float
     currency: str
 
 

@@ -22,6 +22,7 @@ class MonthAmounts:
     month: str  # "YYYY-MM"
     income: float  # sum of share_amount for Income categories (>= 0 in normal use)
     expense: float  # sum of share_amount for Expense categories (<= 0, i.e. still signed)
+    uncategorized: float  # sum of share_amount for transactions with no category (signed, own bucket)
     currency: str
 
 
@@ -70,8 +71,6 @@ def compute_chart_data(
     month_agg: dict[tuple[str, str], dict] = {}
 
     for share_amount, t_date, offset, cat_id, cat_name, cat_type, cat_color, cur in query.all():
-        is_income = cat_type == "Income" if cat_type is not None else share_amount >= 0
-
         ckey = (cat_id, cur)
         centry = category_agg.setdefault(ckey, {
             "name": cat_name if cat_id is not None else "Uncategorized",
@@ -83,8 +82,14 @@ def compute_chart_data(
 
         month = compute_accounting_month(t_date, offset)
         mkey = (month, cur)
-        mentry = month_agg.setdefault(mkey, {"income": 0.0, "expense": 0.0})
-        if is_income:
+        mentry = month_agg.setdefault(mkey, {"income": 0.0, "expense": 0.0, "uncategorized": 0.0})
+        # Uncategorized transactions get their own bucket rather than being
+        # guessed into Income/Expense by the sign of share_amount - that
+        # heuristic would silently apply a different classification rule
+        # than every categorized transaction uses.
+        if cat_type is None:
+            mentry["uncategorized"] += share_amount
+        elif cat_type == "Income":
             mentry["income"] += share_amount
         else:
             mentry["expense"] += share_amount
@@ -97,11 +102,14 @@ def compute_chart_data(
         for (cid, cur), v in category_agg.items()
     ]
     by_month = [
-        MonthAmounts(month=m, income=round(v["income"], 2), expense=round(v["expense"], 2), currency=cur)
+        MonthAmounts(
+            month=m, income=round(v["income"], 2), expense=round(v["expense"], 2),
+            uncategorized=round(v["uncategorized"], 2), currency=cur,
+        )
         for (m, cur), v in month_agg.items()
     ]
     net_by_month = [
-        NetMonth(month=m, net=round(v["income"] + v["expense"], 2), currency=cur)
+        NetMonth(month=m, net=round(v["income"] + v["expense"] + v["uncategorized"], 2), currency=cur)
         for (m, cur), v in month_agg.items()
     ]
 

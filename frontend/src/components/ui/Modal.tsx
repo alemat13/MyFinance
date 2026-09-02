@@ -1,4 +1,4 @@
-import { ReactNode, useEffect } from 'react'
+import { ReactNode, useEffect, useRef } from 'react'
 import { X } from 'lucide-react'
 import { IconButton } from './IconButton'
 
@@ -15,14 +15,31 @@ const SIZE_CLASSES: Record<'sm' | 'lg', string> = {
   lg: 'max-w-2xl max-h-[85vh] overflow-y-auto',
 }
 
+// Stack of currently-open Modal instances (by a per-instance id), topmost
+// (most recently opened) last. Modals can be nested (e.g. a ConfirmDialog
+// opened from within another Modal); without this, every open Modal's
+// Escape listener would fire independently and close all of them at once
+// instead of just the topmost one.
+let openModalStack: symbol[] = []
+
 export function Modal({ isOpen, onClose, title, children, size = 'sm' }: ModalProps) {
+  const idRef = useRef<symbol | null>(null)
+  if (!idRef.current) idRef.current = Symbol('modal')
+
   useEffect(() => {
     if (!isOpen) return
+    const id = idRef.current!
+    openModalStack.push(id)
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape' && openModalStack[openModalStack.length - 1] === id) {
+        onClose()
+      }
     }
     document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('keydown', onKeyDown)
+      openModalStack = openModalStack.filter(stackId => stackId !== id)
+    }
   }, [isOpen, onClose])
 
   if (!isOpen) return null

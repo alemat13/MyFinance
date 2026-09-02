@@ -107,7 +107,7 @@ export default function CsvImportPage({ onBack, selectedUserId }: Props) {
   }
 
   const activeRows = rows.filter(r => !skipped.has(r.row_number))
-  const canCommit = activeRows.length > 0 && activeRows.every(r => effectiveStatus(r) !== 'error' && resolvedCategoryId(r))
+  const canCommit = activeRows.length > 0 && activeRows.every(r => effectiveStatus(r) !== 'error')
 
   const commit = () => {
     setFormError(null)
@@ -117,7 +117,7 @@ export default function CsvImportPage({ onBack, selectedUserId }: Props) {
       memo: r.memo,
       amount: r.amount as number,
       account_id: r.account_id,
-      category_id: resolvedCategoryId(r) as number,
+      category_id: resolvedCategoryId(r) ?? null,
     }))
     setCommitting(true)
     commitImport(toCreate, selectedUserId)

@@ -128,11 +128,15 @@ export default function AccountsList({ onBack, selectedUserId }: Props) {
     if (err) { showToast(err); return }
     const weightsErr = validateSplitWeights(fromWeightRows(editSplitWeights))
     if (weightsErr) { showToast(weightsErr); return }
-    Promise.all([
-      updateAccount(id, editData),
-      updateAccountSplitWeights(id, fromWeightRows(editSplitWeights)),
-    ])
-      .then(() => { cancelEdit(); load() })
+    updateAccount(id, editData)
+      .then(() => {
+        updateAccountSplitWeights(id, fromWeightRows(editSplitWeights))
+          .then(() => { cancelEdit(); load() })
+          .catch(weightsErr => {
+            showToast(`Account details were saved, but its split weights failed to save: ${weightsErr.message}`)
+            load()
+          })
+      })
       .catch(err => showToast(err.message))
   }
 
@@ -152,8 +156,14 @@ export default function AccountsList({ onBack, selectedUserId }: Props) {
     const weightsErr = validateSplitWeights(splitWeights)
     if (weightsErr) { showToast(weightsErr); return }
     createAccount(newData)
-      .then(created => updateAccountSplitWeights(created.id, splitWeights))
-      .then(() => { setShowNew(false); setNewData(emptyForm); setNewSplitWeights([]); load() })
+      .then(created => {
+        updateAccountSplitWeights(created.id, splitWeights)
+          .then(() => { setShowNew(false); setNewData(emptyForm); setNewSplitWeights([]); load() })
+          .catch(weightsErr => {
+            showToast(`Account "${created.name}" was created, but its split weights failed to save: ${weightsErr.message}`)
+            load()
+          })
+      })
       .catch(err => showToast(err.message))
   }
 

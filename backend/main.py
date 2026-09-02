@@ -248,6 +248,9 @@ def _validate_weights(items: list) -> None:
         raise HTTPException(422, "Weights must be >= 0")
     if items and sum(item.weight for item in items) <= 0:
         raise HTTPException(422, "At least one weight must be greater than 0")
+    user_ids = [item.user_id for item in items]
+    if len(user_ids) != len(set(user_ids)):
+        raise HTTPException(422, "Duplicate user_id in weights")
 
 
 def _sync_account_split_weights(db: Session, account: Account, weights: list[AccountSplitWeightUpdateItem]):
@@ -531,8 +534,11 @@ def create_transaction(data: TransactionCreate, actor_user_id: int | None = Quer
 
 
 @app.get("/api/transactions/{transaction_id}", response_model=TransactionOut)
-def get_transaction(transaction_id: int, db: Session = Depends(get_db)):
-    transaction = db.query(Transaction).filter(Transaction.id == transaction_id).first()
+def get_transaction(transaction_id: int, user_id: int | None = Query(None), db: Session = Depends(get_db)):
+    query = db.query(Transaction).filter(Transaction.id == transaction_id)
+    if user_id is not None:
+        query = query.filter(_visible_transaction_filter(db, user_id))
+    transaction = query.first()
     if not transaction:
         raise HTTPException(404, "Transaction not found")
     return _transaction_out(db, transaction_id)
@@ -698,8 +704,9 @@ async def import_preview(
 
 @app.post("/api/import/commit", response_model=ImportCommitResponse)
 def import_commit(data: ImportCommitRequest, actor_user_id: int | None = Query(None), db: Session = Depends(get_db)):
-    if any(row.category_id is None for row in data.rows):
-        raise HTTPException(422, "All rows must have a category_id before committing")
+    for row in data.rows:
+        if row.split_weights:
+            _validate_weights(row.split_weights)
 
     transaction_ids = []
     for row in data.rows:
@@ -817,7 +824,10 @@ def get_charts(
             for c in by_category
         ],
         by_month=[
-            MonthChartItem(month=m.month, income=m.income, expense=round(abs(m.expense), 2), currency=m.currency)
+            MonthChartItem(
+                month=m.month, income=m.income, expense=round(abs(m.expense), 2),
+                uncategorized=m.uncategorized, currency=m.currency,
+            )
             for m in by_month
         ],
         net_by_month=[

@@ -228,9 +228,66 @@ test('clicking a transaction row opens the detail view and updates the URL', asy
   fireEvent.click(screen.getByText('Test'))
 
   await waitFor(() => {
-    expect(mockFetchTransaction).toHaveBeenCalledWith(1)
+    expect(mockFetchTransaction).toHaveBeenCalledWith(1, null)
   })
   expect(window.location.search).toContain('transaction=1')
+  expect(await screen.findByRole('dialog')).toBeInTheDocument()
+})
+
+test('saving from the detail view refreshes the transaction list without refetching accounts/categories/users', async () => {
+  const txn = { id: 1, date: '2026-01-15', payee: 'Test', memo: null, amount: 50, account_id: 1, account_name: 'Checking', category_id: 1, category_name: 'Salary', accounting_month_offset: 0, accounting_month: '2026-01', currency: 'USD', splits: [] }
+  mockSearchTransactions.mockResolvedValue(searchResult([txn]))
+  mockFetchAccounts.mockResolvedValue([baseAccount])
+  mockFetchCategories.mockResolvedValue([baseCategory])
+  mockFetchTransaction.mockResolvedValue(txn)
+  mockUpdateTransaction.mockResolvedValue({ ...txn, payee: 'Updated' })
+
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+
+  await waitFor(() => {
+    expect(screen.getByText('Test')).toBeInTheDocument()
+  })
+  fireEvent.click(screen.getByText('Test'))
+  await screen.findByRole('dialog')
+
+  mockFetchAccounts.mockClear()
+  mockFetchCategories.mockClear()
+  mockFetchUsers.mockClear()
+  mockSearchTransactions.mockClear()
+
+  fireEvent.click(screen.getByText('Save'))
+
+  await waitFor(() => {
+    expect(mockUpdateTransaction).toHaveBeenCalled()
+  })
+  await waitFor(() => {
+    expect(mockSearchTransactions).toHaveBeenCalled()
+  })
+  expect(mockFetchAccounts).not.toHaveBeenCalled()
+  expect(mockFetchCategories).not.toHaveBeenCalled()
+  expect(mockFetchUsers).not.toHaveBeenCalled()
+})
+
+test('pressing Enter on a focused transaction row opens the detail view', async () => {
+  const txn = { id: 1, date: '2026-01-15', payee: 'Test', memo: null, amount: 50, account_id: 1, account_name: 'Checking', category_id: 1, category_name: 'Salary', accounting_month_offset: 0, accounting_month: '2026-01', currency: 'USD', splits: [] }
+  mockSearchTransactions.mockResolvedValue(searchResult([txn]))
+  mockFetchAccounts.mockResolvedValue([baseAccount])
+  mockFetchCategories.mockResolvedValue([baseCategory])
+  mockFetchTransaction.mockResolvedValue(txn)
+
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+
+  await waitFor(() => {
+    expect(screen.getByText('Test')).toBeInTheDocument()
+  })
+
+  const row = screen.getByText('Test').closest('tr')!
+  expect(row).toHaveAttribute('tabIndex', '0')
+  fireEvent.keyDown(row, { key: 'Enter' })
+
+  await waitFor(() => {
+    expect(mockFetchTransaction).toHaveBeenCalledWith(1, null)
+  })
   expect(await screen.findByRole('dialog')).toBeInTheDocument()
 })
 

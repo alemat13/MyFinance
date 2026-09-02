@@ -13,3 +13,11 @@ export function formatDateGroupHeader(isoDate: string): string {
     weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
   })
 }
+
+// Shared by the "new transaction" inline form and TransactionDetail's edit
+// form. account_id is falsy both when unset and when left at the select's
+// placeholder value (0).
+export function validateTransactionForm(payee: string | null | undefined, accountId: number | null | undefined): string | null {
+  if (!payee || !accountId) return 'Payee and account are required'
+  return null
+}

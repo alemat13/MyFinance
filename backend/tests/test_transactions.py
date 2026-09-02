@@ -61,6 +61,28 @@ def test_get_single_transaction_not_found(client):
     assert response.status_code == 404
 
 
+def test_get_single_transaction_filtered_by_user_no_match(client, sample_transaction, sample_user):
+    # sample_transaction's account has no AccountUser row for sample_user and
+    # no split share for them, so it must not be visible via user_id scoping.
+    response = client.get(f"/api/transactions/{sample_transaction.id}?user_id={sample_user.id}")
+    assert response.status_code == 404
+
+
+def test_get_single_transaction_filtered_by_user_visible(client, sample_account_with_user, sample_user, sample_category, db):
+    from datetime import date
+    from models import Transaction
+    t = Transaction(
+        date=date(2026, 1, 15), payee="User Specific", amount=100.0,
+        account_id=sample_account_with_user.id, category_id=sample_category.id,
+    )
+    db.add(t)
+    db.commit()
+
+    response = client.get(f"/api/transactions/{t.id}?user_id={sample_user.id}")
+    assert response.status_code == 200
+    assert response.json()["payee"] == "User Specific"
+
+
 def test_transaction_currency_reflects_account(client, db, sample_category):
     from models import Account
     account = Account(name="USD Checking", type="Checking", balance=0.0, currency="USD")
@@ -356,6 +378,24 @@ def test_create_transaction_negative_weight_rejected(client, sample_account, sam
             "payee": "Test",
             "amount": 100.0,
             "split_weights": [{"user_id": sample_user.id, "weight": -1}],
+        },
+    )
+    assert response.status_code == 422
+
+
+def test_create_transaction_duplicate_user_weight_rejected(client, sample_account, sample_category, sample_user):
+    response = client.post(
+        "/api/transactions",
+        json={
+            "account_id": sample_account.id,
+            "category_id": sample_category.id,
+            "date": "2026-01-15",
+            "payee": "Test",
+            "amount": 100.0,
+            "split_weights": [
+                {"user_id": sample_user.id, "weight": 3},
+                {"user_id": sample_user.id, "weight": 7},
+            ],
         },
     )
     assert response.status_code == 422
