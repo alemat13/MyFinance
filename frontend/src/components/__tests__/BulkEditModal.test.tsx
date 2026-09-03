@@ -12,7 +12,10 @@ vi.mock('../../api/client', () => ({
 }))
 
 const baseCategory = { id: 1, name: 'Salary', type: 'Income', splits: [] }
-const baseUsers = [{ id: 1, name: 'Alice' }, { id: 2, name: 'Bob' }]
+const baseUsers = [
+  { id: 1, name: 'Alice', email: null, created_at: '2026-01-01' },
+  { id: 2, name: 'Bob', email: null, created_at: '2026-01-01' },
+]
 const baseTxns = [
   { id: 1, date: '2026-01-15', payee: 'Coffee', memo: null, amount: 50, account_id: 1, account_name: 'Checking', currency: 'USD', category_id: 1, category_name: 'Salary', accounting_month_offset: 0, accounting_month: '2026-01', splits: [] },
   { id: 2, date: '2026-01-16', payee: 'Lunch', memo: null, amount: 75, account_id: 1, account_name: 'Checking', currency: 'USD', category_id: 1, category_name: 'Salary', accounting_month_offset: 0, accounting_month: '2026-01', splits: [] },
