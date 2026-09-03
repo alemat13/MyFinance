@@ -39,8 +39,9 @@ from schemas import (
 import split_engine
 import charts
 import serializers
+import rules
 import backup
-from filtering import build_where_clause
+from filtering import build_where_clause, visible_transaction_filter
 from import_csv import detect_import_settings, preview_import
 from audit import record_transaction_history, TRACKED_FIELDS, _jsonify
 
@@ -100,6 +101,11 @@ def _handle_validation_error(request, exc):
     return JSONResponse(status_code=422, content={"detail": detail})
 
 
+@app.exception_handler(rules.RuleViolation)
+def _handle_rule_violation(request, exc):
+    return JSONResponse(status_code=422, content={"detail": str(exc)})
+
+
 @app.exception_handler(Exception)
 def _handle_unexpected_error(request, exc):
     logger.exception("Unhandled exception on %s %s", request.method, request.url.path)
@@ -107,20 +113,6 @@ def _handle_unexpected_error(request, exc):
 
 
 # ── Helpers ────────────────────────────────────────────────────────
-
-def _visible_transaction_filter(db: Session, user_id: int):
-    """Transactions visible to user_id: in an account they own, or bearing a split share for them."""
-    owned_account_ids = db.query(AccountUser.account_id).filter(
-        AccountUser.user_id == user_id, AccountUser.ownership_percentage > 0
-    )
-    split_txn_ids = db.query(TransactionSplit.transaction_id).filter(
-        TransactionSplit.user_id == user_id
-    )
-    return or_(
-        Transaction.account_id.in_(owned_account_ids),
-        Transaction.id.in_(split_txn_ids),
-    )
-
 
 def _sync_account_users(db: Session, account: Account, users: list[AccountUserCreate]):
     db.query(AccountUser).filter(AccountUser.account_id == account.id).delete()
@@ -132,23 +124,6 @@ def _sync_account_users(db: Session, account: Account, users: list[AccountUserCr
         ))
 
 
-def _validate_ownership(users: list[AccountUserCreate]):
-    if users:
-        total = sum(u.ownership_percentage for u in users)
-        if abs(total - 100.0) > 0.01:
-            raise HTTPException(422, f"Ownership percentages must sum to 100, got {total}")
-
-
-def _validate_users_exist(db: Session, users: list[AccountUserCreate]):
-    if not users:
-        return
-    requested_ids = {u.user_id for u in users}
-    existing_ids = {uid for (uid,) in db.query(User.id).filter(User.id.in_(requested_ids)).all()}
-    missing = sorted(requested_ids - existing_ids)
-    if missing:
-        raise HTTPException(422, f"Unknown user_id(s): {missing}")
-
-
 def _sync_category_splits(db: Session, category: Category, splits: list[CategorySplitCreate]):
     db.query(CategorySplit).filter(CategorySplit.category_id == category.id).delete()
     for s in splits:
@@ -157,37 +132,6 @@ def _sync_category_splits(db: Session, category: Category, splits: list[Category
             user_id=s.user_id,
             weight=s.weight,
         ))
-
-
-def _validate_weights(items: list) -> None:
-    if any(item.weight < 0 for item in items):
-        raise HTTPException(422, "Weights must be >= 0")
-    if items and sum(item.weight for item in items) <= 0:
-        raise HTTPException(422, "At least one weight must be greater than 0")
-    user_ids = [item.user_id for item in items]
-    if len(user_ids) != len(set(user_ids)):
-        raise HTTPException(422, "Duplicate user_id in weights")
-
-
-def _validate_category_hierarchy(db: Session, category: Category | None, parent_id: int | None, type_: str) -> None:
-    """Enforces the 2-level category hierarchy: a category may have a parent,
-    but that parent must itself be top-level, and a subcategory's type must
-    match its parent's. `category` is the category being updated (None on
-    create)."""
-    if parent_id is None:
-        return
-    if category is not None:
-        if parent_id == category.id:
-            raise HTTPException(422, "A category cannot be its own parent")
-        if category.children:
-            raise HTTPException(422, "Cannot set a parent on a category that has its own subcategories")
-    parent = db.query(Category).filter(Category.id == parent_id).first()
-    if not parent:
-        raise HTTPException(422, f"Parent category {parent_id} not found")
-    if parent.parent_id is not None:
-        raise HTTPException(422, "Only 2 levels of categories are allowed")
-    if parent.type != type_:
-        raise HTTPException(422, "Subcategory type must match its parent category's type")
 
 
 def _sync_account_split_weights(db: Session, account: Account, weights: list[AccountSplitWeightUpdateItem]):
@@ -259,8 +203,8 @@ def get_accounts(user_id: int | None = Query(None), db: Session = Depends(get_db
 
 @app.post("/api/accounts", response_model=AccountOut, status_code=201)
 def create_account(data: AccountCreate, db: Session = Depends(get_db)):
-    _validate_ownership(data.users)
-    _validate_users_exist(db, data.users)
+    rules.validate_ownership(data.users)
+    rules.validate_users_exist(db, data.users)
     account = Account(name=data.name, type=data.type, balance=data.balance, currency=data.currency)
     db.add(account)
     db.flush()
@@ -283,8 +227,8 @@ def update_account(account_id: int, data: AccountUpdate, db: Session = Depends(g
     update_data = data.model_dump(exclude_unset=True)
     update_data.pop("users", None)
     if data.users is not None:
-        _validate_ownership(data.users)
-        _validate_users_exist(db, data.users)
+        rules.validate_ownership(data.users)
+        rules.validate_users_exist(db, data.users)
         _sync_account_users(db, account, data.users)
     for field, value in update_data.items():
         setattr(account, field, value)
@@ -313,8 +257,8 @@ def get_categories(db: Session = Depends(get_db)):
 
 @app.post("/api/categories", response_model=CategoryOut, status_code=201)
 def create_category(data: CategoryCreate, db: Session = Depends(get_db)):
-    _validate_weights(data.splits)
-    _validate_category_hierarchy(db, None, data.parent_id, data.type)
+    rules.validate_weights(data.splits)
+    rules.validate_category_hierarchy(db, None, data.parent_id, data.type)
     category = Category(name=data.name, type=data.type, color=data.color, icon=data.icon, parent_id=data.parent_id)
     db.add(category)
     db.flush()
@@ -332,17 +276,9 @@ def update_category(category_id: int, data: CategoryUpdate, db: Session = Depend
     update_data = data.model_dump(exclude_unset=True)
     splits_data = update_data.pop("splits", None)
     if splits_data is not None:
-        _validate_weights(data.splits)
+        rules.validate_weights(data.splits)
 
-    if "type" in update_data and update_data["type"] != category.type and category.children:
-        raise HTTPException(422, "Cannot change type of a category with existing subcategories")
-
-    if "parent_id" in update_data:
-        effective_type = update_data.get("type", category.type)
-        _validate_category_hierarchy(db, category, update_data["parent_id"], effective_type)
-    elif "type" in update_data and category.parent_id is not None:
-        if category.parent and category.parent.type != update_data["type"]:
-            raise HTTPException(422, "Subcategory type must match its parent category's type")
+    rules.validate_category_update(db, category, update_data)
 
     if splits_data is not None:
         _sync_category_splits(db, category, data.splits)
@@ -372,7 +308,7 @@ def delete_category(category_id: int, db: Session = Depends(get_db)):
 def get_transactions(user_id: int | None = Query(None), db: Session = Depends(get_db)):
     query = serializers.transaction_query(db)
     if user_id is not None:
-        query = query.filter(_visible_transaction_filter(db, user_id))
+        query = query.filter(visible_transaction_filter(db, user_id))
     results = query.order_by(Transaction.date.desc()).all()
     return [
         serializers.transaction_out(t) for t in results
@@ -383,7 +319,7 @@ def get_transactions(user_id: int | None = Query(None), db: Session = Depends(ge
 def search_transactions(req: TransactionSearchRequest, db: Session = Depends(get_db)):
     query = serializers.transaction_query(db)
     if req.user_id is not None:
-        query = query.filter(_visible_transaction_filter(db, req.user_id))
+        query = query.filter(visible_transaction_filter(db, req.user_id))
 
     if req.search:
         like = f"%{req.search.lower()}%"
@@ -445,7 +381,7 @@ def search_transactions(req: TransactionSearchRequest, db: Session = Depends(get
 def create_transaction(data: TransactionCreate, actor_user_id: int | None = Query(None), db: Session = Depends(get_db)):
     weights = {w.user_id: w.weight for w in data.split_weights} if data.split_weights else None
     if data.split_weights:
-        _validate_weights(data.split_weights)
+        rules.validate_weights(data.split_weights)
     transaction = Transaction(
         date=data.date, payee=data.payee, memo=data.memo, amount=data.amount,
         account_id=data.account_id, category_id=data.category_id,
@@ -485,7 +421,7 @@ def bulk_update_transactions(data: BulkUpdateTransactionsRequest, actor_user_id:
 
     weights = None
     if split_weights_provided and data.update.split_weights:
-        _validate_weights(data.update.split_weights)
+        rules.validate_weights(data.update.split_weights)
         weights = {w.user_id: w.weight for w in data.update.split_weights}
     source = data.update.split_source or "custom"
 
@@ -516,7 +452,7 @@ def bulk_update_transactions(data: BulkUpdateTransactionsRequest, actor_user_id:
 def get_transaction(transaction_id: int, user_id: int | None = Query(None), db: Session = Depends(get_db)):
     query = db.query(Transaction).filter(Transaction.id == transaction_id)
     if user_id is not None:
-        query = query.filter(_visible_transaction_filter(db, user_id))
+        query = query.filter(visible_transaction_filter(db, user_id))
     transaction = query.first()
     if not transaction:
         raise HTTPException(404, "Transaction not found")
@@ -546,7 +482,7 @@ def update_transaction(transaction_id: int, data: TransactionUpdate, actor_user_
     if split_weights_provided:
         weights = {w.user_id: w.weight for w in data.split_weights} if data.split_weights else None
         if data.split_weights:
-            _validate_weights(data.split_weights)
+            rules.validate_weights(data.split_weights)
         source = data.split_source or "custom"
     else:
         # Client didn't touch the split editor: keep the existing weights,
@@ -597,7 +533,7 @@ def get_split_weights(db: Session = Depends(get_db)):
 
 @app.put("/api/split-weights", response_model=list[GlobalSplitWeightOut])
 def update_split_weights(data: list[GlobalSplitWeightUpdateItem], db: Session = Depends(get_db)):
-    _validate_weights(data)
+    rules.validate_weights(data)
     db.query(GlobalSplitWeight).delete()
     for w in data:
         db.add(GlobalSplitWeight(user_id=w.user_id, weight=w.weight))
@@ -622,7 +558,7 @@ def update_account_split_weights(account_id: int, data: list[AccountSplitWeightU
     account = db.query(Account).filter(Account.id == account_id).first()
     if not account:
         raise HTTPException(404, "Account not found")
-    _validate_weights(data)
+    rules.validate_weights(data)
     _sync_account_split_weights(db, account, data)
     db.commit()
     return get_account_split_weights(account_id, db)
@@ -675,7 +611,7 @@ async def import_preview(
 def import_commit(data: ImportCommitRequest, actor_user_id: int | None = Query(None), db: Session = Depends(get_db)):
     for row in data.rows:
         if row.split_weights:
-            _validate_weights(row.split_weights)
+            rules.validate_weights(row.split_weights)
 
     transaction_ids = []
     for row in data.rows:
@@ -741,7 +677,7 @@ def get_dashboard(user_id: int | None = Query(None), db: Session = Depends(get_d
 
     tx_query = serializers.transaction_query(db)
     if user_id is not None:
-        tx_query = tx_query.filter(_visible_transaction_filter(db, user_id))
+        tx_query = tx_query.filter(visible_transaction_filter(db, user_id))
     recent_results = tx_query.order_by(Transaction.date.desc()).limit(10).all()
 
     recent_transactions = [serializers.transaction_out(t) for t in recent_results]

@@ -2,7 +2,7 @@ from datetime import date
 
 from sqlalchemy import and_, func, or_
 
-from models import Transaction
+from models import AccountUser, Transaction, TransactionSplit
 from schemas import DATE_FIELDS, TEXT_FIELDS, FilterCondition
 
 FIELD_COLUMN_MAP = {
@@ -88,3 +88,17 @@ def build_where_clause(conditions: list[FilterCondition], match_mode: str):
         return None
     exprs = [build_condition_expr(c) for c in conditions]
     return and_(*exprs) if match_mode == "all" else or_(*exprs)
+
+
+def visible_transaction_filter(db, user_id: int):
+    """Transactions visible to user_id: in an account they own, or bearing a split share for them."""
+    owned_account_ids = db.query(AccountUser.account_id).filter(
+        AccountUser.user_id == user_id, AccountUser.ownership_percentage > 0
+    )
+    split_txn_ids = db.query(TransactionSplit.transaction_id).filter(
+        TransactionSplit.user_id == user_id
+    )
+    return or_(
+        Transaction.account_id.in_(owned_account_ids),
+        Transaction.id.in_(split_txn_ids),
+    )
