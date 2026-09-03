@@ -1,21 +1,16 @@
 import { Fragment, useEffect, useState } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import {
-  Transaction, TransactionCreate, TransactionSplit, GlobalSplitWeight, SplitSource,
+  Transaction, TransactionSplit, GlobalSplitWeight,
   Account, Category, User, FilterField, TransactionSearchRequest,
-  createTransaction,
   fetchAccounts, fetchCategories, fetchUsers, fetchSplitWeights, searchTransactions,
 } from '../api/client'
-import { SplitRow } from './SplitEditor'
-import TransactionSplitFields from './TransactionSplitFields'
 import TransactionDetail from './TransactionDetail'
 import CategoryPicker from './CategoryPicker'
-import { useToast } from '../context/ToastContext'
 import { Button, Input, Select, Table, Thead, Tbody, Tr, Th, Td, StatusMessage, Badge, CategoryBadge } from './ui'
 import { formatMoney } from '../utils/currency'
 import { getParam, patchQueryParams } from '../utils/urlState'
-import { sharedShareFor, formatDateGroupHeader, validateTransactionForm } from '../utils/transactions'
-import { resolveDefaultSplitRows } from '../utils/splitWeights'
+import { sharedShareFor, formatDateGroupHeader } from '../utils/transactions'
 
 interface Props {
   onBack: () => void
@@ -124,27 +119,6 @@ const splitsDisplay = (splits: TransactionSplit[], currency: string) => {
   return splits.map(s => `${s.user_name} ${formatMoney(s.share_amount, currency)}`).join(' / ')
 }
 
-const emptyForm: TransactionCreate = {
-  date: new Date().toISOString().slice(0, 10),
-  payee: '',
-  memo: '',
-  amount: 0,
-  account_id: 0,
-  category_id: 0,
-  accounting_month_offset: 0,
-}
-
-const ACCOUNTING_MONTH_OFFSETS = [-3, -2, -1, 0, 1, 2, 3] as const
-
-// Human-readable label for an accounting-month offset relative to a form's date field,
-// e.g. "April" for 0, "May (+1)" for +1 — recomputed live as the date field changes.
-function accountingMonthLabel(dateStr: string, offset: number): string {
-  const base = dateStr ? new Date(`${dateStr}T00:00:00`) : new Date()
-  const target = new Date(base.getFullYear(), base.getMonth() + offset, 1)
-  const name = target.toLocaleString('default', { month: 'long' })
-  return offset === 0 ? name : `${name} (${offset > 0 ? '+' : ''}${offset})`
-}
-
 export default function TransactionsPage({ onBack, selectedUserId }: Props) {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
@@ -152,13 +126,8 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
   const [allUsers, setAllUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [showNew, setShowNew] = useState(false)
-  const [newData, setNewData] = useState<TransactionCreate>(emptyForm)
-  const [newSplit, setNewSplit] = useState<SplitRow[]>([])
-  const [newSplitSource, setNewSplitSource] = useState<SplitSource | null>(null)
   const [globalWeights, setGlobalWeights] = useState<GlobalSplitWeight[]>([])
-  const [detailTransactionId, setDetailTransactionId] = useState<number | null>(() => loadInitialInt('transaction', 0) || null)
-  const { showToast } = useToast()
+  const [detailTarget, setDetailTarget] = useState<number | 'new' | null>(() => loadInitialInt('transaction', 0) || null)
 
   const [mode, setMode] = useState<FilterMode>(loadInitialMode)
   const [searchText, setSearchText] = useState(() => getParam('q') ?? '')
@@ -320,52 +289,17 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
     setConditions(conditions.map((c, idx) => idx === i ? { ...c, [key]: value } : c))
   }
 
-  // Prefill the "new transaction" split from category > account > global priority
-  // whenever category/account selection changes — but never once the user has
-  // hand-edited weights (source === 'custom'), which always wins.
-  useEffect(() => {
-    if (!showNew || newSplitSource === 'custom') return
-    const category = categories.find(c => c.id === newData.category_id) ?? null
-    const account = accounts.find(a => a.id === newData.account_id) ?? null
-    const { rows, source } = resolveDefaultSplitRows(category, account, globalWeights)
-    setNewSplit(rows)
-    setNewSplitSource(source)
-  }, [showNew, newData.category_id, newData.account_id])
-
   const openDetail = (id: number) => {
-    setDetailTransactionId(id)
+    setDetailTarget(id)
     patchQueryParams({ transaction: String(id) })
   }
 
+  const openNew = () => setDetailTarget('new')
+
   const closeDetail = () => {
-    setDetailTransactionId(null)
+    setDetailTarget(null)
     patchQueryParams({ transaction: undefined })
   }
-
-  const saveNew = () => {
-    const validationError = validateTransactionForm(newData.payee, newData.account_id)
-    if (validationError) {
-      showToast(validationError); return
-    }
-    createTransaction({
-      ...newData,
-      category_id: newData.category_id || null,
-      split_weights: newSplit.length > 0 ? newSplit.map(r => ({ user_id: r.user_id, weight: r.value })) : undefined,
-      split_source: newSplit.length > 0 ? (newSplitSource ?? 'custom') : undefined,
-    }, selectedUserId)
-      .then(() => { setShowNew(false); setNewData(emptyForm); setNewSplit([]); setNewSplitSource(null); loadTransactions(); loadMeta() })
-      .catch(err => showToast(err.message))
-  }
-
-  const cancelNew = () => {
-    setShowNew(false)
-    setNewData(emptyForm)
-    setNewSplit([])
-    setNewSplitSource(null)
-  }
-
-  const currencyFor = (accountId: number | undefined) =>
-    accounts.find(a => a.id === accountId)?.currency ?? 'EUR'
 
   const groupByDate = sortBy === 'date'
 
@@ -382,7 +316,7 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
       </button>
       <div className="flex justify-between items-center mb-3">
         <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Transactions</h2>
-        <Button onClick={() => setShowNew(true)}>+ New Transaction</Button>
+        <Button onClick={openNew}>+ New Transaction</Button>
       </div>
 
       <div className="p-3 mb-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60">
@@ -470,50 +404,6 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
         )}
       </div>
 
-      {showNew && (
-        <div className="p-3 mb-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60">
-          <div className="flex gap-2 flex-wrap items-end">
-            <Input type="date" value={newData.date} onChange={e => setNewData({ ...newData, date: e.target.value })} />
-            <Select
-              value={newData.accounting_month_offset ?? 0}
-              onChange={e => setNewData({ ...newData, accounting_month_offset: parseInt(e.target.value) })}
-              className="min-w-[160px]"
-            >
-              {ACCOUNTING_MONTH_OFFSETS.map(o => (
-                <option key={o} value={o}>{accountingMonthLabel(newData.date, o)}</option>
-              ))}
-            </Select>
-            <Input placeholder="Payee" value={newData.payee} onChange={e => setNewData({ ...newData, payee: e.target.value })} />
-            <Input placeholder="Memo" value={newData.memo ?? ''} onChange={e => setNewData({ ...newData, memo: e.target.value || null })} />
-            <Input placeholder="Amount" type="number" step="0.01" value={newData.amount} onChange={e => setNewData({ ...newData, amount: parseFloat(e.target.value) || 0 })} className="w-[110px]" />
-            <Select value={newData.account_id} onChange={e => setNewData({ ...newData, account_id: parseInt(e.target.value) || 0 })} className="min-w-[140px]">
-              <option value={0}>Account</option>
-              {acctOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </Select>
-            <CategoryPicker
-              categories={categories}
-              value={newData.category_id ?? null}
-              onChange={id => setNewData({ ...newData, category_id: id })}
-              className="min-w-[140px]"
-            />
-            <Button onClick={saveNew}>Save</Button>
-            <Button variant="secondary" onClick={cancelNew}>Cancel</Button>
-          </div>
-          <TransactionSplitFields
-            rows={newSplit}
-            onChange={setNewSplit}
-            amount={newData.amount}
-            currency={currencyFor(newData.account_id)}
-            allUsers={allUsers}
-            account={accounts.find(a => a.id === newData.account_id) ?? null}
-            category={categories.find(c => c.id === newData.category_id) ?? null}
-            globalWeights={globalWeights}
-            source={newSplitSource}
-            onSourceChange={setNewSplitSource}
-          />
-        </div>
-      )}
-
       <StatusMessage loading={loading} />
 
       {!loading && (
@@ -585,9 +475,10 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
         </div>
       )}
 
-      {detailTransactionId !== null && (
+      {detailTarget !== null && (
         <TransactionDetail
-          transactionId={detailTransactionId}
+          key={detailTarget === 'new' ? 'new' : detailTarget}
+          transactionId={detailTarget === 'new' ? null : detailTarget}
           accounts={accounts}
           categories={categories}
           allUsers={allUsers}

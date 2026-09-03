@@ -3,8 +3,18 @@ import { screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { renderWithProviders } from '../../test-utils'
 import TransactionDetail from '../TransactionDetail'
 
-const { mockFetchTransaction, mockUpdateTransaction, mockDeleteTransaction, mockFetchTransactionHistory } = vi.hoisted(() => ({
+// The form's CategoryPicker is a popover, not a native <select> — open it and
+// click the target category by name, scoped to the main field row so it
+// doesn't collide with any other CategoryPicker instance on the page.
+function selectCategoryInForm(categoryName: string) {
+  const formContainer = screen.getByPlaceholderText('Payee').closest('.flex.gap-2.flex-wrap.items-end') as HTMLElement
+  fireEvent.click(within(formContainer).getByText('Uncategorized'))
+  fireEvent.click(within(formContainer).getByText(categoryName))
+}
+
+const { mockFetchTransaction, mockCreateTransaction, mockUpdateTransaction, mockDeleteTransaction, mockFetchTransactionHistory } = vi.hoisted(() => ({
   mockFetchTransaction: vi.fn(),
+  mockCreateTransaction: vi.fn(),
   mockUpdateTransaction: vi.fn(),
   mockDeleteTransaction: vi.fn(),
   mockFetchTransactionHistory: vi.fn(),
@@ -12,6 +22,7 @@ const { mockFetchTransaction, mockUpdateTransaction, mockDeleteTransaction, mock
 
 vi.mock('../../api/client', () => ({
   fetchTransaction: mockFetchTransaction,
+  createTransaction: mockCreateTransaction,
   updateTransaction: mockUpdateTransaction,
   deleteTransaction: mockDeleteTransaction,
   fetchTransactionHistory: mockFetchTransactionHistory,
@@ -298,5 +309,153 @@ test('shows empty state when there is no recorded history', async () => {
 
   await waitFor(() => {
     expect(screen.getByText('No history recorded for this transaction')).toBeInTheDocument()
+  })
+})
+
+// --- Create mode (transactionId === null) ---
+
+test('opens in create mode with an empty form, no Delete button, and no history section', () => {
+  renderWithProviders(<TransactionDetail {...baseProps} transactionId={null} />)
+
+  expect(screen.getByRole('dialog', { name: 'New Transaction' })).toBeInTheDocument()
+  expect(screen.getByPlaceholderText('Payee')).toBeInTheDocument()
+  expect(screen.getByPlaceholderText('Amount')).toBeInTheDocument()
+  expect(mockFetchTransaction).not.toHaveBeenCalled()
+  expect(mockFetchTransactionHistory).not.toHaveBeenCalled()
+  expect(screen.queryByText('Delete')).not.toBeInTheDocument()
+  expect(screen.queryByText('History')).not.toBeInTheDocument()
+})
+
+test('creates a new transaction', async () => {
+  mockCreateTransaction.mockResolvedValue({ id: 1, date: '2026-01-15', payee: 'New Payee', memo: '', amount: 100, account_id: 1, account_name: 'Checking', category_id: 1, category_name: 'Salary', splits: [] })
+
+  renderWithProviders(<TransactionDetail {...baseProps} transactionId={null} />)
+
+  fireEvent.change(screen.getByPlaceholderText('Payee'), { target: { value: 'New Payee' } })
+  fireEvent.change(screen.getByPlaceholderText('Amount'), { target: { value: '100' } })
+
+  // Standalone (no filter bar competing for combobox 0): [0] is Accounting
+  // Month, [1] is Account — Category is a CategoryPicker popover, not a <select>.
+  const selects = screen.getAllByRole('combobox')
+  fireEvent.change(selects[1], { target: { value: '1' } })
+  selectCategoryInForm('Salary')
+
+  fireEvent.click(screen.getByText('Save'))
+
+  await waitFor(() => {
+    expect(mockCreateTransaction).toHaveBeenCalled()
+  })
+  expect(baseProps.onSaved).toHaveBeenCalled()
+})
+
+test('can save a new transaction without picking a category', async () => {
+  mockCreateTransaction.mockResolvedValue({ id: 1, date: '2026-01-15', payee: 'New Payee', memo: '', amount: 100, account_id: 1, account_name: 'Checking', category_id: null, category_name: null, splits: [] })
+
+  renderWithProviders(<TransactionDetail {...baseProps} transactionId={null} />)
+
+  fireEvent.change(screen.getByPlaceholderText('Payee'), { target: { value: 'New Payee' } })
+  fireEvent.change(screen.getByPlaceholderText('Amount'), { target: { value: '100' } })
+
+  // Only the account is picked; category is left as "Uncategorized" (the default).
+  const selects = screen.getAllByRole('combobox')
+  fireEvent.change(selects[1], { target: { value: '1' } })
+
+  fireEvent.click(screen.getByText('Save'))
+
+  await waitFor(() => {
+    expect(mockCreateTransaction).toHaveBeenCalledWith(
+      expect.objectContaining({ category_id: null }),
+      null,
+    )
+  })
+})
+
+test('can select a non-default accounting month offset when creating a transaction', async () => {
+  mockCreateTransaction.mockResolvedValue({ id: 1, date: '2026-01-15', payee: 'New Payee', memo: '', amount: 100, account_id: 1, account_name: 'Checking', category_id: 1, category_name: 'Salary', accounting_month_offset: 1, accounting_month: '2026-02', splits: [] })
+
+  renderWithProviders(<TransactionDetail {...baseProps} transactionId={null} />)
+
+  fireEvent.change(screen.getByPlaceholderText('Payee'), { target: { value: 'New Payee' } })
+  fireEvent.change(screen.getByPlaceholderText('Amount'), { target: { value: '100' } })
+
+  const selects = screen.getAllByRole('combobox')
+  fireEvent.change(selects[0], { target: { value: '1' } })
+  fireEvent.change(selects[1], { target: { value: '1' } })
+  selectCategoryInForm('Salary')
+
+  fireEvent.click(screen.getByText('Save'))
+
+  await waitFor(() => {
+    expect(mockCreateTransaction).toHaveBeenCalledWith(
+      expect.objectContaining({ accounting_month_offset: 1 }),
+      null,
+    )
+  })
+})
+
+test('auto-prefills split weights from the category default when a category is selected', async () => {
+  const alex = { id: 1, name: 'Alex', email: null, created_at: '' }
+  const olivia = { id: 2, name: 'Olivia', email: null, created_at: '' }
+  const categoryWithSplit = { ...baseCategory, splits: [{ user_id: 1, user_name: 'Alex', weight: 3 }, { user_id: 2, user_name: 'Olivia', weight: 1 }] }
+  mockCreateTransaction.mockResolvedValue({ id: 1, date: '2026-01-15', payee: 'New Payee', memo: '', amount: 100, account_id: 1, account_name: 'Checking', category_id: 1, category_name: 'Salary', splits: [] })
+
+  renderWithProviders(<TransactionDetail
+    {...baseProps}
+    transactionId={null}
+    categories={[categoryWithSplit]}
+    allUsers={[alex, olivia]}
+  />)
+
+  fireEvent.change(screen.getByPlaceholderText('Amount'), { target: { value: '100' } })
+  fireEvent.change(screen.getByPlaceholderText('Payee'), { target: { value: 'New Payee' } })
+  const selects = screen.getAllByRole('combobox')
+  fireEvent.change(selects[1], { target: { value: '1' } })
+  selectCategoryInForm('Salary')
+
+  fireEvent.click(screen.getByText('Save'))
+
+  await waitFor(() => {
+    expect(mockCreateTransaction).toHaveBeenCalledWith(expect.objectContaining({
+      split_weights: [
+        { user_id: 1, weight: 3 },
+        { user_id: 2, weight: 1 },
+      ],
+      split_source: 'category',
+    }), null)
+  })
+})
+
+test('quick-fill button is disabled when the account has no configured split weight, in create mode', () => {
+  const alex = { id: 1, name: 'Alex', email: null, created_at: '' }
+
+  renderWithProviders(<TransactionDetail {...baseProps} transactionId={null} allUsers={[alex]} />)
+
+  expect(screen.getByRole('button', { name: 'Account' })).toBeDisabled()
+})
+
+test('free-form weight entry on a new transaction is submitted with source "custom"', async () => {
+  const alex = { id: 1, name: 'Alex', email: null, created_at: '' }
+  mockCreateTransaction.mockResolvedValue({ id: 1, date: '2026-01-15', payee: 'New Payee', memo: '', amount: 100, account_id: 1, account_name: 'Checking', category_id: 1, category_name: 'Salary', splits: [] })
+
+  renderWithProviders(<TransactionDetail {...baseProps} transactionId={null} allUsers={[alex]} />)
+
+  fireEvent.change(screen.getByPlaceholderText('Payee'), { target: { value: 'New Payee' } })
+  fireEvent.change(screen.getByPlaceholderText('Amount'), { target: { value: '100' } })
+  const selects = screen.getAllByRole('combobox')
+  fireEvent.change(selects[1], { target: { value: '1' } })
+  selectCategoryInForm('Salary')
+
+  fireEvent.click(screen.getByLabelText('Add user'))
+  const numberInputs = screen.getAllByRole('spinbutton')
+  const weightInput = numberInputs.find(el => (el as HTMLInputElement).value === '0')!
+  fireEvent.change(weightInput, { target: { value: '5' } })
+
+  fireEvent.click(screen.getByText('Save'))
+
+  await waitFor(() => {
+    expect(mockCreateTransaction).toHaveBeenCalledWith(expect.objectContaining({
+      split_weights: [{ user_id: 1, weight: 5 }],
+      split_source: 'custom',
+    }), null)
   })
 })

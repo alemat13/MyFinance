@@ -2,17 +2,18 @@ import { useEffect, useState } from 'react'
 import {
   Transaction, TransactionUpdate, TransactionHistoryEntry, GlobalSplitWeight, SplitSource,
   Account, Category, User,
-  fetchTransaction, updateTransaction, deleteTransaction, fetchTransactionHistory,
+  fetchTransaction, createTransaction, updateTransaction, deleteTransaction, fetchTransactionHistory,
 } from '../api/client'
 import { SplitRow } from './SplitEditor'
 import TransactionSplitFields from './TransactionSplitFields'
 import CategoryPicker from './CategoryPicker'
 import { useToast } from '../context/ToastContext'
 import { validateTransactionForm } from '../utils/transactions'
+import { resolveDefaultSplitRows } from '../utils/splitWeights'
 import { Modal, Button, Input, Select, StatusMessage, ConfirmDialog, Badge } from './ui'
 
 interface Props {
-  transactionId: number
+  transactionId: number | null
   accounts: Account[]
   categories: Category[]
   allUsers: User[]
@@ -24,6 +25,16 @@ interface Props {
 }
 
 const ACCOUNTING_MONTH_OFFSETS = [-3, -2, -1, 0, 1, 2, 3] as const
+
+const emptyFormData: TransactionUpdate = {
+  date: new Date().toISOString().slice(0, 10),
+  payee: '',
+  memo: '',
+  amount: 0,
+  account_id: 0,
+  category_id: 0,
+  accounting_month_offset: 0,
+}
 
 function accountingMonthLabel(dateStr: string, offset: number): string {
   const base = dateStr ? new Date(`${dateStr}T00:00:00`) : new Date()
@@ -44,18 +55,20 @@ export default function TransactionDetail({
   transactionId, accounts, categories, allUsers, globalWeights, selectedUserId, onClose, onSaved, onDeleted,
 }: Props) {
   const [transaction, setTransaction] = useState<Transaction | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(transactionId !== null)
   const [error, setError] = useState<string | null>(null)
-  const [formData, setFormData] = useState<TransactionUpdate>({})
+  const [formData, setFormData] = useState<TransactionUpdate>(() => transactionId === null ? emptyFormData : {})
   const [split, setSplit] = useState<SplitRow[]>([])
   const [splitSource, setSplitSource] = useState<SplitSource | null>(null)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [historyEntries, setHistoryEntries] = useState<TransactionHistoryEntry[]>([])
-  const [historyLoading, setHistoryLoading] = useState(true)
+  const [historyLoading, setHistoryLoading] = useState(transactionId !== null)
   const [historyError, setHistoryError] = useState<string | null>(null)
   const { showToast } = useToast()
 
   useEffect(() => {
+    if (transactionId === null) return
+
     setLoading(true)
     setError(null)
     fetchTransaction(transactionId, selectedUserId)
@@ -87,22 +100,47 @@ export default function TransactionDetail({
       .finally(() => setHistoryLoading(false))
   }, [transactionId, selectedUserId])
 
+  // Prefill a new transaction's split from category > account > global priority
+  // whenever category/account selection changes — but never once the user has
+  // hand-edited weights (source === 'custom'), which always wins. Editing an
+  // existing transaction never re-prefills like this (see comment above).
+  useEffect(() => {
+    if (transactionId !== null || splitSource === 'custom') return
+    const category = categories.find(c => c.id === formData.category_id) ?? null
+    const account = accounts.find(a => a.id === formData.account_id) ?? null
+    const { rows, source } = resolveDefaultSplitRows(category, account, globalWeights)
+    setSplit(rows)
+    setSplitSource(source)
+  }, [transactionId, formData.category_id, formData.account_id])
+
   const save = () => {
     const validationError = validateTransactionForm(formData.payee, formData.account_id)
     if (validationError) {
       showToast(validationError); return
     }
-    updateTransaction(transactionId, {
-      ...formData,
-      category_id: formData.category_id || null,
-      split_weights: split.map(r => ({ user_id: r.user_id, weight: r.value })),
-      split_source: splitSource ?? 'custom',
-    }, selectedUserId)
-      .then(() => onSaved())
-      .catch(err => showToast(err.message))
+    const request = transactionId === null
+      ? createTransaction({
+          date: formData.date || new Date().toISOString().slice(0, 10),
+          payee: formData.payee ?? '',
+          memo: formData.memo,
+          amount: formData.amount ?? 0,
+          account_id: formData.account_id ?? 0,
+          category_id: formData.category_id || null,
+          accounting_month_offset: formData.accounting_month_offset,
+          split_weights: split.length > 0 ? split.map(r => ({ user_id: r.user_id, weight: r.value })) : undefined,
+          split_source: split.length > 0 ? (splitSource ?? 'custom') : undefined,
+        }, selectedUserId)
+      : updateTransaction(transactionId, {
+          ...formData,
+          category_id: formData.category_id || null,
+          split_weights: split.map(r => ({ user_id: r.user_id, weight: r.value })),
+          split_source: splitSource ?? 'custom',
+        }, selectedUserId)
+    request.then(() => onSaved()).catch(err => showToast(err.message))
   }
 
   const confirmDelete = () => {
+    if (transactionId === null) return
     deleteTransaction(transactionId, selectedUserId)
       .then(() => onDeleted())
       .catch(err => showToast(err.message))
@@ -113,7 +151,7 @@ export default function TransactionDetail({
   const acctOptions = accounts.map(a => ({ value: a.id, label: a.name }))
 
   return (
-    <Modal isOpen size="lg" onClose={onClose} title={transaction?.payee ?? 'Transaction'}>
+    <Modal isOpen size="lg" onClose={onClose} title={transactionId === null ? 'New Transaction' : (transaction?.payee ?? 'Transaction')}>
       {loading && <StatusMessage loading />}
       {error && <StatusMessage error={error} />}
       {!loading && !error && (
@@ -159,44 +197,50 @@ export default function TransactionDetail({
 
           <div className="flex gap-2">
             <Button onClick={save}>Save</Button>
-            <Button variant="danger" onClick={() => setConfirmingDelete(true)}>Delete</Button>
+            {transactionId !== null && (
+              <Button variant="danger" onClick={() => setConfirmingDelete(true)}>Delete</Button>
+            )}
             <Button variant="secondary" onClick={onClose}>Cancel</Button>
           </div>
 
-          <div className="pt-2 border-t border-slate-200 dark:border-slate-700">
-            <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1.5">History</h4>
-            {historyLoading && <StatusMessage loading />}
-            {historyError && <StatusMessage error={historyError} />}
-            {!historyLoading && !historyError && historyEntries.length === 0 && (
-              <div className="text-xs text-slate-400 py-1">No history recorded for this transaction</div>
-            )}
-            {!historyLoading && !historyError && historyEntries.length > 0 && (
-              <div className="flex flex-col gap-1.5 py-1">
-                {historyEntries.map(h => (
-                  <div key={h.id} className="flex items-center gap-2 text-xs flex-wrap">
-                    <Badge variant={historyBadgeVariant(h.action)}>
-                      {h.action}{h.source === 'csv_import' ? ' · CSV' : ''}
-                    </Badge>
-                    <span className="text-slate-500 dark:text-slate-400">{new Date(h.changed_at).toLocaleString()}</span>
-                    <span className="text-slate-500 dark:text-slate-400">by {h.changed_by_user_name ?? 'Unknown user'}</span>
-                    {h.action === 'updated' && (
-                      <span className="text-slate-700 dark:text-slate-200">{describeHistoryChanges(h.changes)}</span>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          {transactionId !== null && (
+            <div className="pt-2 border-t border-slate-200 dark:border-slate-700">
+              <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1.5">History</h4>
+              {historyLoading && <StatusMessage loading />}
+              {historyError && <StatusMessage error={historyError} />}
+              {!historyLoading && !historyError && historyEntries.length === 0 && (
+                <div className="text-xs text-slate-400 py-1">No history recorded for this transaction</div>
+              )}
+              {!historyLoading && !historyError && historyEntries.length > 0 && (
+                <div className="flex flex-col gap-1.5 py-1">
+                  {historyEntries.map(h => (
+                    <div key={h.id} className="flex items-center gap-2 text-xs flex-wrap">
+                      <Badge variant={historyBadgeVariant(h.action)}>
+                        {h.action}{h.source === 'csv_import' ? ' · CSV' : ''}
+                      </Badge>
+                      <span className="text-slate-500 dark:text-slate-400">{new Date(h.changed_at).toLocaleString()}</span>
+                      <span className="text-slate-500 dark:text-slate-400">by {h.changed_by_user_name ?? 'Unknown user'}</span>
+                      {h.action === 'updated' && (
+                        <span className="text-slate-700 dark:text-slate-200">{describeHistoryChanges(h.changes)}</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
-      <ConfirmDialog
-        isOpen={confirmingDelete}
-        title="Delete transaction"
-        message={`Delete transaction "${transaction?.payee}"?`}
-        onConfirm={confirmDelete}
-        onCancel={() => setConfirmingDelete(false)}
-      />
+      {transactionId !== null && (
+        <ConfirmDialog
+          isOpen={confirmingDelete}
+          title="Delete transaction"
+          message={`Delete transaction "${transaction?.payee}"?`}
+          onConfirm={confirmDelete}
+          onCancel={() => setConfirmingDelete(false)}
+        />
+      )}
     </Modal>
   )
 }

@@ -162,7 +162,8 @@ when, what fields changed, and whether it originated from a CSV import.
 
 ### Adding or editing a transaction
 
-The transaction form captures:
+Clicking **+ New Transaction** or an existing row both open the same panel. The form
+captures:
 
 - **Date** and an **accounting month** offset — normally a transaction counts toward
   the reporting month it's dated in, but you can shift it up to 3 months earlier or
@@ -198,7 +199,9 @@ The transaction form captures:
     currently stands — the quick-fill buttons are the only way to pull a tier's
     *current* weights into an existing transaction.
 
-Deleting a transaction asks for confirmation first.
+The **Delete** button and the **History** panel only appear once the transaction
+already exists — there's nothing to delete or show history for while you're still
+filling in a new one. Deleting a transaction asks for confirmation first.
 
 ## Users
 
