@@ -27,3 +27,19 @@ def record_transaction_history(db, transaction: Transaction, action: str,
         accounting_month_offset=transaction.accounting_month_offset,
         changes=changes,
     ))
+
+
+def apply_tracked_changes(transaction: Transaction, fields: dict) -> dict:
+    """Assign `fields` onto `transaction`, returning the {field: {old, new}} diff
+    for those in TRACKED_FIELDS whose value actually changed.
+
+    Shared by the single and bulk transaction updates, which built the same diff
+    independently.
+    """
+    old_values = {f: getattr(transaction, f) for f in fields if f in TRACKED_FIELDS}
+    for field, value in fields.items():
+        setattr(transaction, field, value)
+    return {
+        f: {"old": _jsonify(old), "new": _jsonify(getattr(transaction, f))}
+        for f, old in old_values.items() if old != getattr(transaction, f)
+    }
