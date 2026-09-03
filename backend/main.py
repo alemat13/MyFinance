@@ -41,7 +41,7 @@ import charts
 import backup
 from filtering import build_where_clause
 from import_csv import detect_import_settings, preview_import
-from audit import record_transaction_history, TRACKED_FIELDS, _jsonify
+from audit import record_transaction_history, TRACKED_FIELDS, _jsonify, diff_splits, splits_created_changes
 from accounting_month import compute_accounting_month
 
 logger = logging.getLogger(__name__)
@@ -566,8 +566,10 @@ def create_transaction(data: TransactionCreate, actor_user_id: int | None = Quer
     )
     db.add(transaction)
     db.flush()
-    split_engine.apply_split(db, transaction, weights, source=data.split_source or "custom")
-    record_transaction_history(db, transaction, "created", actor_user_id, source="manual")
+    split_source = data.split_source or "custom"
+    split_engine.apply_split(db, transaction, weights, source=split_source)
+    record_transaction_history(db, transaction, "created", actor_user_id, source="manual",
+                                changes=splits_created_changes(weights, split_source))
     db.commit()
     return _transaction_out(db, transaction.id)
 
@@ -613,10 +615,13 @@ def bulk_update_transactions(data: BulkUpdateTransactionsRequest, actor_user_id:
         }
 
         if split_weights_provided:
+            existing_splits = {s.user_id: (s.weight, s.source) for s in transaction.splits}
+            new_splits = {uid: (w, source) for uid, w in (weights or {}).items()}
+            splits_diff = diff_splits(existing_splits, new_splits)
+            if splits_diff:
+                changes["splits"] = splits_diff
             split_engine.apply_split(db, transaction, weights, source)
 
-        # Split weights aren't in TRACKED_FIELDS, so a split-only bulk edit
-        # writes no history row here — same as the single-transaction PUT above.
         if changes:
             record_transaction_history(db, transaction, "updated", actor_user_id, changes=changes)
         updated_ids.append(transaction.id)
@@ -667,6 +672,11 @@ def update_transaction(transaction_id: int, data: TransactionUpdate, actor_user_
         # (e.g. a new amount) — this is what removes the old manual-freeze 422.
         weights = {uid: w for uid, (w, _) in existing_splits.items()} or None
         source = next((s for _, s in existing_splits.values()), "custom")
+
+    new_splits = {uid: (w, source) for uid, w in (weights or {}).items()}
+    splits_diff = diff_splits(existing_splits, new_splits)
+    if splits_diff:
+        changes["splits"] = splits_diff
 
     split_engine.apply_split(db, transaction, weights, source)
     if changes:
@@ -816,7 +826,8 @@ def import_commit(data: ImportCommitRequest, actor_user_id: int | None = Query(N
         db.add(transaction)
         db.flush()
         split_engine.apply_split(db, transaction, weights or None, source)
-        record_transaction_history(db, transaction, "created", actor_user_id, source="csv_import")
+        record_transaction_history(db, transaction, "created", actor_user_id, source="csv_import",
+                                    changes=splits_created_changes(weights, source))
         transaction_ids.append(transaction.id)
 
     db.commit()

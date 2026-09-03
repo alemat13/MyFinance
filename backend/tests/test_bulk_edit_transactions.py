@@ -158,7 +158,7 @@ def test_bulk_update_writes_one_history_row_per_changed_transaction(client, db, 
         }
 
 
-def test_bulk_update_split_only_change_writes_no_history_row(client, db, sample_account, sample_category, sample_user):
+def test_bulk_update_split_only_change_writes_history_row(client, db, sample_account, sample_category, sample_user):
     t1 = _make_transaction(db, sample_account, sample_category)
 
     client.put(
@@ -170,7 +170,13 @@ def test_bulk_update_split_only_change_writes_no_history_row(client, db, sample_
     )
 
     history = client.get(f"/api/transactions/{t1.id}/history").json()
-    assert history == []
+    assert len(history) == 1
+    assert history[0]["changes"] == {
+        "splits": {
+            "old": [],
+            "new": [{"user_id": sample_user.id, "weight": 1, "source": "custom"}],
+        },
+    }
 
 
 def test_bulk_update_mixed_accounts_and_currencies_succeeds(client, db, sample_category, sample_user):

@@ -9,6 +9,23 @@ def _jsonify(value):
     return value.isoformat() if isinstance(value, date_type) else value
 
 
+def _splits_snapshot(splits: dict[int, tuple[int, str]]) -> list[dict]:
+    return [{"user_id": uid, "weight": weight, "source": source}
+            for uid, (weight, source) in sorted(splits.items())]
+
+
+def diff_splits(old_splits: dict[int, tuple[int, str]], new_splits: dict[int, tuple[int, str]]) -> dict | None:
+    if old_splits == new_splits:
+        return None
+    return {"old": _splits_snapshot(old_splits), "new": _splits_snapshot(new_splits)}
+
+
+def splits_created_changes(weights: dict[int, int] | None, source: str) -> dict | None:
+    if not weights:
+        return None
+    return {"splits": {"old": None, "new": _splits_snapshot({uid: (w, source) for uid, w in weights.items()})}}
+
+
 def record_transaction_history(db, transaction: Transaction, action: str,
                                 actor_user_id: int | None = None,
                                 source: str | None = None,
