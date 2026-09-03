@@ -1,6 +1,7 @@
 export { Button } from './Button'
 export type { ButtonVariant, ButtonSize } from './Button'
 export { IconButton } from './IconButton'
+export { BackButton } from './BackButton'
 export { Card } from './Card'
 export { Input, Select } from './Input'
 export { Table, Thead, Tbody, Tr, Th, Td } from './Table'

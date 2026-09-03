@@ -1,9 +1,8 @@
 import ReactMarkdown, { Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeSlug from 'rehype-slug'
-import { ArrowLeft } from 'lucide-react'
 import userGuideMarkdown from '../../../docs/user-guide.md?raw'
-import { Card } from './ui'
+import { Card, BackButton } from './ui'
 
 interface Props {
   onBack: () => void
@@ -24,9 +23,7 @@ const components: Components = {
 export default function HelpPage({ onBack }: Props) {
   return (
     <div>
-      <button onClick={onBack} className="flex items-center gap-1 text-accent hover:underline text-sm mb-4 cursor-pointer">
-        <ArrowLeft size={14} /> Back
-      </button>
+      <BackButton onClick={onBack} />
       <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-3">Help</h2>
 
       <Card className="p-4 max-w-3xl">

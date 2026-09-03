@@ -1,15 +1,15 @@
-import { Fragment, useEffect, useState } from 'react'
-import { ArrowLeft, ChevronDown, ChevronRight } from 'lucide-react'
+import { Fragment, useState } from 'react'
+import { ChevronDown, ChevronRight } from 'lucide-react'
 import {
   Category, CategoryCreate, CategoryUpdate, CategorySplitCreate,
   User, fetchCategories, createCategory, updateCategory, deleteCategory,
   fetchUsers,
 } from '../api/client'
 import SplitEditor, { SplitRow } from './SplitEditor'
-import { useToast } from '../context/ToastContext'
+import { useCrudList } from '../hooks/useCrudList'
 import {
   Button, Input, Select, Table, Thead, Tbody, Tr, Th, Td, StatusMessage, ConfirmDialog,
-  CategoryBadge, IconPicker, ColorPicker,
+  CategoryBadge, IconPicker, ColorPicker, BackButton,
 } from './ui'
 import { groupCategoriesByParent, isValidParentCandidate } from '../utils/categoryHierarchy'
 
@@ -33,27 +33,34 @@ const validateSplitWeights = (splits: CategorySplitCreate[]): string | null => {
 }
 
 export default function CategoriesList({ onBack }: Props) {
-  const [categories, setCategories] = useState<Category[]>([])
   const [allUsers, setAllUsers] = useState<User[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [editingId, setEditingId] = useState<number | null>(null)
-  const [editData, setEditData] = useState<CategoryUpdate>({})
-  const [showNew, setShowNew] = useState(false)
-  const [newData, setNewData] = useState<CategoryCreate>(emptyForm)
-  const [deletingCategory, setDeletingCategory] = useState<Category | null>(null)
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set())
-  const { showToast } = useToast()
 
-  const load = () => {
-    setLoading(true)
-    Promise.all([fetchCategories(), fetchUsers()])
-      .then(([cats, users]) => { setCategories(cats); setAllUsers(users) })
-      .catch(err => { console.error(err); setError(err.message) })
-      .finally(() => setLoading(false))
-  }
-
-  useEffect(load, [])
+  const {
+    items: categories, loading, error,
+    editingId, editData, setEditData, startEdit, cancelEdit, saveEdit,
+    showNew, setShowNew, newData, setNewData, saveNew, cancelNew,
+    deletingItem: deletingCategory, setDeletingItem: setDeletingCategory, confirmDelete,
+  } = useCrudList<Category, CategoryCreate, CategoryUpdate>({
+    fetchAll: () => Promise.all([fetchCategories(), fetchUsers()]).then(([cats, users]) => { setAllUsers(users); return cats }),
+    create: createCategory,
+    update: updateCategory,
+    remove: deleteCategory,
+    getId: c => c.id,
+    emptyForm,
+    toEditData: c => ({
+      name: c.name,
+      type: c.type,
+      color: c.color,
+      icon: c.icon,
+      parent_id: c.parent_id ?? null,
+      splits: c.splits.map(s => ({ user_id: s.user_id, weight: s.weight })),
+    }),
+    validate: d => {
+      if (!d.name || !d.type) return 'Name and type are required'
+      return validateSplitWeights(d.splits ?? [])
+    },
+  })
 
   const toggleExpanded = (id: number) => {
     setExpandedIds(prev => {
@@ -61,53 +68,6 @@ export default function CategoriesList({ onBack }: Props) {
       if (next.has(id)) next.delete(id); else next.add(id)
       return next
     })
-  }
-
-  const startEdit = (c: Category) => {
-    setEditingId(c.id)
-    setEditData({
-      name: c.name,
-      type: c.type,
-      color: c.color,
-      icon: c.icon,
-      parent_id: c.parent_id ?? null,
-      splits: c.splits.map(s => ({ user_id: s.user_id, weight: s.weight })),
-    })
-  }
-
-  const cancelEdit = () => {
-    setEditingId(null)
-    setEditData({})
-  }
-
-  const saveEdit = (id: number) => {
-    const err = validateSplitWeights(editData.splits ?? [])
-    if (err) { showToast(err); return }
-    updateCategory(id, editData)
-      .then(() => { cancelEdit(); load() })
-      .catch(err => showToast(err.message))
-  }
-
-  const confirmDelete = () => {
-    if (!deletingCategory) return
-    deleteCategory(deletingCategory.id)
-      .then(() => load())
-      .catch(err => showToast(err.message))
-      .finally(() => setDeletingCategory(null))
-  }
-
-  const saveNew = () => {
-    if (!newData.name || !newData.type) { showToast('Name and type are required'); return }
-    const err = validateSplitWeights(newData.splits ?? [])
-    if (err) { showToast(err); return }
-    createCategory(newData)
-      .then(() => { setShowNew(false); setNewData(emptyForm); load() })
-      .catch(err => showToast(err.message))
-  }
-
-  const cancelNew = () => {
-    setShowNew(false)
-    setNewData(emptyForm)
   }
 
   const startNewSubcategory = (parent: Category) => {
@@ -222,9 +182,7 @@ export default function CategoriesList({ onBack }: Props) {
 
   return (
     <div>
-      <button onClick={onBack} className="flex items-center gap-1 text-accent hover:underline text-sm mb-4 cursor-pointer">
-        <ArrowLeft size={14} /> Back
-      </button>
+      <BackButton onClick={onBack} />
       <div className="flex justify-between items-center mb-3">
         <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Categories</h2>
         <Button onClick={() => setShowNew(true)}>+ New Category</Button>
