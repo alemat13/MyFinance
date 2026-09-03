@@ -6,7 +6,7 @@ category_splits.weight / global_split_weights.weight in that same
 migration, which both got an explicit backfill UPDATE). Since 0002 has
 already run in production, every transaction split that existed before it
 is stuck at weight=0 for every user, which either 422s on edit
-(_validate_weights requires at least one weight > 0) or, via the path that
+(rules.validate_weights requires at least one weight > 0) or, via the path that
 omits split_weights, silently recomputes share_amount to 0.0 for real
 historical transactions. This is a data-only fix - no schema change.
 
@@ -19,7 +19,7 @@ transaction with a non-zero amount is guaranteed to end up with at least
 one positive weight from this pass. Transactions whose amount was 0 (so
 every share was necessarily 0 too) can't be back-derived this way; those
 get an equal weight of 1 per involved user as a fallback, so
-_validate_weights's "at least one weight > 0" invariant holds for every
+rules.validate_weights's "at least one weight > 0" invariant holds for every
 transaction split afterward.
 
 Only rows still at weight=0 are touched, so this is safe to run
