@@ -6,6 +6,7 @@ import {
   fetchAccounts, fetchCategories, fetchUsers, fetchSplitWeights, searchTransactions,
 } from '../api/client'
 import TransactionDetail from './TransactionDetail'
+import BulkEditModal from './BulkEditModal'
 import CategoryPicker from './CategoryPicker'
 import { Button, Input, Select, Table, Thead, Tbody, Tr, Th, Td, StatusMessage, Badge, CategoryBadge } from './ui'
 import { formatMoney } from '../utils/currency'
@@ -128,6 +129,8 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [globalWeights, setGlobalWeights] = useState<GlobalSplitWeight[]>([])
   const [detailTarget, setDetailTarget] = useState<number | 'new' | null>(() => loadInitialInt('transaction', 0) || null)
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  const [bulkEditOpen, setBulkEditOpen] = useState(false)
 
   const [mode, setMode] = useState<FilterMode>(loadInitialMode)
   const [searchText, setSearchText] = useState(() => getParam('q') ?? '')
@@ -209,6 +212,7 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
         setTransactions(res.items)
         setTotal(res.total)
         setTotalPages(res.total_pages)
+        setSelectedIds(new Set())
       })
       .catch(err => { console.error(err); setError(err.message) })
       .finally(() => setLoading(false))
@@ -295,6 +299,20 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
   }
 
   const openNew = () => setDetailTarget('new')
+
+  const toggleSelected = (id: number) => {
+    setSelectedIds(current => {
+      const next = new Set(current)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const allSelected = transactions.length > 0 && transactions.every(t => selectedIds.has(t.id))
+  const toggleSelectAll = () => {
+    setSelectedIds(allSelected ? new Set() : new Set(transactions.map(t => t.id)))
+  }
 
   const closeDetail = () => {
     setDetailTarget(null)
@@ -406,10 +424,21 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
 
       <StatusMessage loading={loading} />
 
+      {!loading && selectedIds.size > 0 && (
+        <div className="flex items-center gap-3 mb-2 p-2 rounded-md bg-accent/10 border border-accent/30">
+          <span className="text-sm">{selectedIds.size} selected</span>
+          <Button size="sm" onClick={() => setBulkEditOpen(true)}>Bulk Edit</Button>
+          <Button size="sm" variant="secondary" onClick={() => setSelectedIds(new Set())}>Clear selection</Button>
+        </div>
+      )}
+
       {!loading && (
         <Table>
           <Thead>
             <Tr>
+              <Th className="w-8">
+                <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} aria-label="Select all on this page" />
+              </Th>
               <Th>Payee</Th>
               <Th>Category</Th>
               <Th>Account</Th>
@@ -419,7 +448,7 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
           </Thead>
           <Tbody>
             {transactions.length === 0 && (
-              <Tr><Td colSpan={5} className="text-center py-5 text-slate-400">No transactions match your filters</Td></Tr>
+              <Tr><Td colSpan={6} className="text-center py-5 text-slate-400">No transactions match your filters</Td></Tr>
             )}
             {transactions.map((t, idx) => {
               const showDateHeader = groupByDate && (idx === 0 || transactions[idx - 1].date !== t.date)
@@ -427,7 +456,7 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
               <Fragment key={t.id}>
               {showDateHeader && (
                 <Tr className="hover:bg-transparent bg-slate-100 dark:bg-slate-800/70">
-                  <Td colSpan={5} className="py-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  <Td colSpan={6} className="py-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400">
                     {formatDateGroupHeader(t.date)}
                   </Td>
                 </Tr>
@@ -439,6 +468,14 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
                 tabIndex={0}
                 className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50"
               >
+                <Td onClick={e => e.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(t.id)}
+                    onChange={() => toggleSelected(t.id)}
+                    aria-label={`Select transaction ${t.payee}`}
+                  />
+                </Td>
                 <Td>{t.payee}</Td>
                 <Td><CategoryBadge name={t.category_name} color={t.category_color} icon={t.category_icon} /></Td>
                 <Td>{t.account_name}</Td>
@@ -487,6 +524,20 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
           onClose={closeDetail}
           onSaved={() => { closeDetail(); loadTransactions() }}
           onDeleted={() => { closeDetail(); loadTransactions() }}
+        />
+      )}
+
+      {bulkEditOpen && (
+        <BulkEditModal
+          transactionIds={[...selectedIds]}
+          transactions={transactions.filter(t => selectedIds.has(t.id))}
+          accounts={accounts}
+          categories={categories}
+          allUsers={allUsers}
+          globalWeights={globalWeights}
+          selectedUserId={selectedUserId}
+          onClose={() => setBulkEditOpen(false)}
+          onSaved={() => { setBulkEditOpen(false); loadTransactions() }}
         />
       )}
     </div>
