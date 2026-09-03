@@ -1,5 +1,4 @@
 import { Fragment, useEffect, useState } from 'react'
-import { ArrowLeft } from 'lucide-react'
 import {
   Transaction, TransactionSplit, GlobalSplitWeight,
   Account, Category, User, FilterField, TransactionSearchRequest,
@@ -8,7 +7,7 @@ import {
 import TransactionDetail from './TransactionDetail'
 import BulkEditModal from './BulkEditModal'
 import CategoryPicker from './CategoryPicker'
-import { Button, Input, Select, Table, Thead, Tbody, Tr, Th, Td, StatusMessage, Badge, CategoryBadge } from './ui'
+import { Button, Input, Select, Table, Thead, Tbody, Tr, Th, Td, StatusMessage, Badge, CategoryBadge, BackButton } from './ui'
 import { formatMoney } from '../utils/currency'
 import { getParam, patchQueryParams } from '../utils/urlState'
 import { sharedShareFor, formatDateGroupHeader } from '../utils/transactions'
@@ -329,9 +328,7 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
 
   return (
     <div>
-      <button onClick={onBack} className="flex items-center gap-1 text-accent hover:underline text-sm mb-4 cursor-pointer">
-        <ArrowLeft size={14} /> Back
-      </button>
+      <BackButton onClick={onBack} />
       <div className="flex justify-between items-center mb-3">
         <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Transactions</h2>
         <Button onClick={openNew}>+ New Transaction</Button>

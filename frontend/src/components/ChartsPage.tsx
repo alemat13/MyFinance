@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react'
-import { ArrowLeft } from 'lucide-react'
 import {
   Bar, BarChart, CartesianGrid, Cell, Legend, ResponsiveContainer,
   Tooltip, XAxis, YAxis,
 } from 'recharts'
 import { ChartsData, fetchCharts } from '../api/client'
-import { Card, Select, StatusMessage } from './ui'
+import { Card, Select, StatusMessage, BackButton } from './ui'
 import { formatMoney } from '../utils/currency'
 
 interface Props {
@@ -62,11 +61,7 @@ export default function ChartsPage({ selectedUserId, onBack }: Props) {
       })
   }, [selectedUserId])
 
-  const backButton = (
-    <button onClick={onBack} className="flex items-center gap-1 text-accent hover:underline text-sm mb-4 cursor-pointer">
-      <ArrowLeft size={14} /> Back
-    </button>
-  )
+  const backButton = <BackButton onClick={onBack} />
 
   if (selectedUserId == null) {
     return (

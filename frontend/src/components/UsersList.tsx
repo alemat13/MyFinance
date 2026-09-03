@@ -1,11 +1,9 @@
-import { useEffect, useState } from 'react'
-import { ArrowLeft } from 'lucide-react'
 import {
   User, UserCreate, UserUpdate,
   fetchUsers, createUser, updateUser, deleteUser,
 } from '../api/client'
-import { useToast } from '../context/ToastContext'
-import { Button, Input, Card, Table, Thead, Tbody, Tr, Th, Td, StatusMessage, ConfirmDialog } from './ui'
+import { useCrudList } from '../hooks/useCrudList'
+import { Button, Input, Card, Table, Thead, Tbody, Tr, Th, Td, StatusMessage, ConfirmDialog, BackButton } from './ui'
 
 interface Props {
   onBack: () => void
@@ -15,61 +13,21 @@ interface Props {
 const emptyForm: UserCreate = { name: '', email: '' }
 
 export default function UsersList({ onBack, onSelectUser }: Props) {
-  const [users, setUsers] = useState<User[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [editingId, setEditingId] = useState<number | null>(null)
-  const [editData, setEditData] = useState<UserUpdate>({})
-  const [showNew, setShowNew] = useState(false)
-  const [newData, setNewData] = useState<UserCreate>(emptyForm)
-  const [deletingUser, setDeletingUser] = useState<User | null>(null)
-  const { showToast } = useToast()
-
-  const load = () => {
-    setLoading(true)
-    fetchUsers()
-      .then(setUsers)
-      .catch(err => { console.error(err); setError(err.message) })
-      .finally(() => setLoading(false))
-  }
-
-  useEffect(load, [])
-
-  const startEdit = (u: User) => {
-    setEditingId(u.id)
-    setEditData({ name: u.name, email: u.email })
-  }
-
-  const cancelEdit = () => {
-    setEditingId(null)
-    setEditData({})
-  }
-
-  const saveEdit = (id: number) => {
-    updateUser(id, editData)
-      .then(() => { cancelEdit(); load() })
-      .catch(err => showToast(err.message))
-  }
-
-  const confirmDelete = () => {
-    if (!deletingUser) return
-    deleteUser(deletingUser.id)
-      .then(() => load())
-      .catch(err => showToast(err.message))
-      .finally(() => setDeletingUser(null))
-  }
-
-  const saveNew = () => {
-    if (!newData.name) { showToast('Name is required'); return }
-    createUser(newData)
-      .then(() => { setShowNew(false); setNewData(emptyForm); load() })
-      .catch(err => showToast(err.message))
-  }
-
-  const cancelNew = () => {
-    setShowNew(false)
-    setNewData(emptyForm)
-  }
+  const {
+    items: users, loading, error,
+    editingId, editData, setEditData, startEdit, cancelEdit, saveEdit,
+    showNew, setShowNew, newData, setNewData, saveNew, cancelNew,
+    deletingItem: deletingUser, setDeletingItem: setDeletingUser, confirmDelete,
+  } = useCrudList<User, UserCreate, UserUpdate>({
+    fetchAll: fetchUsers,
+    create: createUser,
+    update: updateUser,
+    remove: deleteUser,
+    getId: u => u.id,
+    emptyForm,
+    toEditData: u => ({ name: u.name, email: u.email }),
+    validate: d => !d.name ? 'Name is required' : null,
+  })
 
   if (error) {
     return <StatusMessage error={error} />
@@ -77,9 +35,7 @@ export default function UsersList({ onBack, onSelectUser }: Props) {
 
   return (
     <div>
-      <button onClick={onBack} className="flex items-center gap-1 text-accent hover:underline text-sm mb-4 cursor-pointer">
-        <ArrowLeft size={14} /> Back
-      </button>
+      <BackButton onClick={onBack} />
       <div className="flex justify-between items-center mb-3">
         <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Users</h2>
         <Button onClick={() => setShowNew(true)}>+ New User</Button>

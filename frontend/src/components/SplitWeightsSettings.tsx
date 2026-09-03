@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
-import { ArrowLeft } from 'lucide-react'
 import { GlobalSplitWeight, fetchSplitWeights, updateSplitWeights } from '../api/client'
 import { useToast } from '../context/ToastContext'
-import { Button, Input, Card, StatusMessage } from './ui'
+import { Button, Input, Card, StatusMessage, BackButton } from './ui'
 
 interface Props {
   onBack: () => void
@@ -44,9 +43,7 @@ export default function SplitWeightsSettings({ onBack }: Props) {
 
   return (
     <div>
-      <button onClick={onBack} className="flex items-center gap-1 text-accent hover:underline text-sm mb-4 cursor-pointer">
-        <ArrowLeft size={14} /> Back
-      </button>
+      <BackButton onClick={onBack} />
       <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-1">Split Weights</h2>
       <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-0 mb-4">
         The lowest-priority default: used only to prefill a transaction's own split weights

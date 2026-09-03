@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react'
-import { ArrowLeft } from 'lucide-react'
 import {
   Account, Category, ImportDetectResponse, ImportPreviewRow, TransactionCreate,
   fetchAccounts, fetchCategories, detectImport, previewImport, commitImport,
 } from '../api/client'
-import { Button, Input, Select, Card, Table, Thead, Tbody, Tr, Th, Td, Badge, StatusMessage } from './ui'
+import { Button, Input, Select, Card, Table, Thead, Tbody, Tr, Th, Td, Badge, StatusMessage, BackButton } from './ui'
 
 interface Props {
   onBack: () => void
@@ -135,9 +134,7 @@ export default function CsvImportPage({ onBack, selectedUserId }: Props) {
 
   return (
     <div>
-      <button onClick={onBack} className="flex items-center gap-1 text-accent hover:underline text-sm mb-4 cursor-pointer">
-        <ArrowLeft size={14} /> Back
-      </button>
+      <BackButton onClick={onBack} />
       <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-3">Import CSV</h2>
 
       {formError && (
