@@ -4,7 +4,7 @@ import { renderWithProviders } from '../../test-utils'
 import TransactionsPage from '../TransactionsPage'
 import { formatDateGroupHeader } from '../../utils/transactions'
 
-const { mockSearchTransactions, mockFetchAccounts, mockFetchCategories, mockCreateTransaction, mockUpdateTransaction, mockDeleteTransaction, mockFetchUsers, mockFetchSplitWeights, mockFetchTransaction, mockFetchTransactionHistory } = vi.hoisted(() => ({
+const { mockSearchTransactions, mockFetchAccounts, mockFetchCategories, mockCreateTransaction, mockUpdateTransaction, mockDeleteTransaction, mockFetchUsers, mockFetchSplitWeights, mockFetchTransaction, mockFetchTransactionHistory, mockBulkUpdateTransactions } = vi.hoisted(() => ({
   mockSearchTransactions: vi.fn(),
   mockFetchAccounts: vi.fn(),
   mockFetchCategories: vi.fn(),
@@ -15,6 +15,7 @@ const { mockSearchTransactions, mockFetchAccounts, mockFetchCategories, mockCrea
   mockFetchSplitWeights: vi.fn().mockResolvedValue([]),
   mockFetchTransaction: vi.fn(),
   mockFetchTransactionHistory: vi.fn().mockResolvedValue([]),
+  mockBulkUpdateTransactions: vi.fn(),
 }))
 
 vi.mock('../../api/client', () => ({
@@ -28,6 +29,7 @@ vi.mock('../../api/client', () => ({
   fetchSplitWeights: mockFetchSplitWeights,
   fetchTransaction: mockFetchTransaction,
   fetchTransactionHistory: mockFetchTransactionHistory,
+  bulkUpdateTransactions: mockBulkUpdateTransactions,
 }))
 
 const baseAccount = { id: 1, name: 'Checking', type: 'Checking', balance: 100, currency: 'USD', created_at: '2026-01-01', users: [], split_weights: [] }
@@ -306,4 +308,99 @@ test('advanced mode conditions round-trip through the conditions URL param', asy
   expect(JSON.parse(decodeURIComponent(conditionsParam))).toEqual([
     { field: 'payee', operator: 'contains', value: 'amazon', value2: '' },
   ])
+})
+
+const twoTxns = [
+  { id: 1, date: '2026-01-15', payee: 'Coffee', memo: null, amount: -5, account_id: 1, account_name: 'Checking', category_id: 1, category_name: 'Salary', accounting_month_offset: 0, accounting_month: '2026-01', currency: 'USD', splits: [] },
+  { id: 2, date: '2026-01-14', payee: 'Lunch', memo: null, amount: -12, account_id: 1, account_name: 'Checking', category_id: 1, category_name: 'Salary', accounting_month_offset: 0, accounting_month: '2026-01', currency: 'USD', splits: [] },
+]
+
+test('selecting rows shows the bulk-actions bar with correct count, and Clear selection empties it', async () => {
+  mockSearchTransactions.mockResolvedValue(searchResult(twoTxns))
+  mockFetchAccounts.mockResolvedValue([baseAccount])
+  mockFetchCategories.mockResolvedValue([baseCategory])
+
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+
+  await waitFor(() => expect(screen.getByText('Coffee')).toBeInTheDocument())
+
+  expect(screen.queryByText('Bulk Edit')).not.toBeInTheDocument()
+
+  fireEvent.click(screen.getByLabelText('Select transaction Coffee'))
+
+  expect(screen.getByText('1 selected')).toBeInTheDocument()
+  expect(screen.getByText('Bulk Edit')).toBeInTheDocument()
+
+  fireEvent.click(screen.getByLabelText('Select transaction Lunch'))
+  expect(screen.getByText('2 selected')).toBeInTheDocument()
+
+  fireEvent.click(screen.getByText('Clear selection'))
+  expect(screen.queryByText('Bulk Edit')).not.toBeInTheDocument()
+})
+
+test('select-all-on-page checkbox selects and deselects every row currently shown', async () => {
+  mockSearchTransactions.mockResolvedValue(searchResult(twoTxns))
+  mockFetchAccounts.mockResolvedValue([baseAccount])
+  mockFetchCategories.mockResolvedValue([baseCategory])
+
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+
+  await waitFor(() => expect(screen.getByText('Coffee')).toBeInTheDocument())
+
+  fireEvent.click(screen.getByLabelText('Select all on this page'))
+  expect(screen.getByText('2 selected')).toBeInTheDocument()
+
+  fireEvent.click(screen.getByLabelText('Select all on this page'))
+  expect(screen.queryByText('Bulk Edit')).not.toBeInTheDocument()
+})
+
+test('clicking a row checkbox does not open the transaction detail modal', async () => {
+  mockSearchTransactions.mockResolvedValue(searchResult(twoTxns))
+  mockFetchAccounts.mockResolvedValue([baseAccount])
+  mockFetchCategories.mockResolvedValue([baseCategory])
+
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+
+  await waitFor(() => expect(screen.getByText('Coffee')).toBeInTheDocument())
+
+  fireEvent.click(screen.getByLabelText('Select transaction Coffee'))
+
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  expect(mockFetchTransaction).not.toHaveBeenCalled()
+})
+
+test('clicking Bulk Edit with N selected opens BulkEditModal with the right transaction ids', async () => {
+  mockSearchTransactions.mockResolvedValue(searchResult(twoTxns))
+  mockFetchAccounts.mockResolvedValue([baseAccount])
+  mockFetchCategories.mockResolvedValue([baseCategory])
+
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+
+  await waitFor(() => expect(screen.getByText('Coffee')).toBeInTheDocument())
+
+  fireEvent.click(screen.getByLabelText('Select transaction Coffee'))
+  fireEvent.click(screen.getByLabelText('Select transaction Lunch'))
+  fireEvent.click(screen.getByText('Bulk Edit'))
+
+  expect(screen.getByRole('dialog', { name: 'Bulk Edit Transactions' })).toBeInTheDocument()
+  expect(screen.getByText('2 transactions selected')).toBeInTheDocument()
+})
+
+test('changing page clears the existing selection', async () => {
+  mockSearchTransactions.mockResolvedValue({ items: twoTxns, total: 60, page: 1, page_size: 50, total_pages: 2 })
+  mockFetchAccounts.mockResolvedValue([baseAccount])
+  mockFetchCategories.mockResolvedValue([baseCategory])
+
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+
+  await waitFor(() => expect(screen.getByText('Coffee')).toBeInTheDocument())
+
+  fireEvent.click(screen.getByLabelText('Select transaction Coffee'))
+  expect(screen.getByText('1 selected')).toBeInTheDocument()
+
+  mockSearchTransactions.mockResolvedValue({ items: [], total: 60, page: 2, page_size: 50, total_pages: 2 })
+  fireEvent.click(screen.getByText('Next'))
+
+  await waitFor(() => expect(screen.getByText('Page 2 / 2')).toBeInTheDocument())
+  expect(screen.queryByText('Bulk Edit')).not.toBeInTheDocument()
 })

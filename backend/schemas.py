@@ -269,6 +269,27 @@ class TransactionUpdate(BaseModel):
     split_source: Literal["global", "account", "category", "custom"] | None = None
 
 
+class BulkTransactionUpdate(BaseModel):
+    """Same "field omitted vs explicitly null" contract as TransactionUpdate,
+    via exclude_unset: only include a key here when its section is meant to be
+    applied to every selected transaction. An omitted key leaves that field
+    untouched on all of them; category_id explicitly set to null clears it."""
+    category_id: Optional[int] = None
+    accounting_month_offset: Optional[int] = Field(None, ge=-3, le=3)
+    split_weights: list[SplitWeightCreate] | None = None
+    split_source: Literal["global", "account", "category", "custom"] | None = None
+
+
+class BulkUpdateTransactionsRequest(BaseModel):
+    transaction_ids: list[int]
+    update: BulkTransactionUpdate
+
+
+class BulkUpdateTransactionsResponse(BaseModel):
+    updated_count: int
+    transaction_ids: list[int]
+
+
 TEXT_OPERATORS = {"contains", "equals", "not_equals", "starts_with", "ends_with"}
 NUMERIC_OPERATORS = {"eq", "ne", "gt", "gte", "lt", "lte", "between"}
 DATE_OPERATORS = {"on", "before", "after", "between"}
