@@ -46,6 +46,15 @@ def seed():
     session.add_all(categories)
     session.flush()
 
+    # Example parent/subcategory group: "Housing" as a top-level parent, with
+    # the existing "Rent" category reparented under it alongside a new sibling.
+    housing = Category(name="Housing", type="Expense", color="#b91c1c", icon="Home")
+    session.add(housing)
+    session.flush()
+    categories[2].parent_id = housing.id  # Rent
+    session.add(Category(name="Home Insurance", type="Expense", color="#f97316", icon="Home", parent_id=housing.id))
+    session.flush()
+
     transactions = [
         Transaction(
             date=date(2026, 1, 3),

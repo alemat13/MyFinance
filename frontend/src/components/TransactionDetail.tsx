@@ -6,6 +6,7 @@ import {
 } from '../api/client'
 import { SplitRow } from './SplitEditor'
 import TransactionSplitFields from './TransactionSplitFields'
+import CategoryPicker from './CategoryPicker'
 import { useToast } from '../context/ToastContext'
 import { validateTransactionForm } from '../utils/transactions'
 import { Modal, Button, Input, Select, StatusMessage, ConfirmDialog, Badge } from './ui'
@@ -110,7 +111,6 @@ export default function TransactionDetail({
 
   const currency = accounts.find(a => a.id === formData.account_id)?.currency ?? 'EUR'
   const acctOptions = accounts.map(a => ({ value: a.id, label: a.name }))
-  const catOptions = categories.map(c => ({ value: c.id, label: `${c.name} (${c.type})` }))
 
   return (
     <Modal isOpen size="lg" onClose={onClose} title={transaction?.payee ?? 'Transaction'}>
@@ -136,10 +136,12 @@ export default function TransactionDetail({
               <option value={0}>Account</option>
               {acctOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </Select>
-            <Select value={formData.category_id ?? 0} onChange={e => setFormData({ ...formData, category_id: parseInt(e.target.value) || 0 })} className="min-w-[140px]">
-              <option value={0}>Uncategorized</option>
-              {catOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </Select>
+            <CategoryPicker
+              categories={categories}
+              value={formData.category_id ?? null}
+              onChange={id => setFormData({ ...formData, category_id: id })}
+              className="min-w-[140px]"
+            />
           </div>
 
           <TransactionSplitFields

@@ -7,6 +7,7 @@ erDiagram
     accounts ||--o{ transactions : contains
     categories |o--o{ transactions : categorizes
     categories ||--o{ category_splits : "defaults to"
+    categories |o--o{ categories : "parent of"
     users ||--o{ category_splits : "weighted as"
     users ||--o{ global_split_weights : "weighted as"
     accounts ||--o{ account_split_weights : "defaults to"
@@ -59,6 +60,7 @@ erDiagram
         string type
         string color "nullable, e.g. #4f46e5"
         string icon "nullable, lucide-react icon name"
+        int parent_id "nullable, FK -> categories.id; 2-level hierarchy only"
     }
 
     category_splits {
@@ -142,6 +144,7 @@ Transaction categories (income, expense, transfer).
 | `type` | String(50) | Required |
 | `color` | String(7) | Optional, hex color (e.g. `#4f46e5`) shown as the category's badge color |
 | `icon` | String(50) | Optional, `lucide-react` icon name shown as the category's badge icon |
+| `parent_id` | Integer | Optional, self-referential foreign key → `categories.id`. A strict 2-level hierarchy: a category with `parent_id` set is a subcategory, and its parent must itself have no parent. A subcategory's `type` must match its parent's |
 
 ### `transactions`
 Individual financial transactions.
@@ -213,7 +216,8 @@ Audit trail: one row per transaction create/update/delete, with a snapshot of th
 
 - **Users ↔ Accounts**: Many-to-many via `account_users`. Each user can own multiple accounts; each account can have multiple owners (joint account).
 - **Accounts ↔ Transactions**: One-to-many. An account can have many transactions.
-- **Categories ↔ Transactions**: One-to-many, and optional — `category_id` is nullable, so a transaction can have no category ("Uncategorized").
+- **Categories ↔ Transactions**: One-to-many, and optional — `category_id` is nullable, so a transaction can have no category ("Uncategorized"). A transaction may be assigned either a top-level category or a subcategory — there's no requirement to always pick the most specific one.
+- **Categories ↔ Categories (subcategories)**: Self-referential, one-to-many via `parent_id`, capped at exactly 2 levels — a category with `parent_id` set (a subcategory) cannot itself have children, enforced in `backend/main.py` rather than at the DB level. A subcategory's `type` must equal its parent's. Deleting a category with existing subcategories is blocked (409), the same pattern used for a category with existing transactions. Subcategories do **not** inherit their parent's `category_splits` weight tier or roll up into it in `charts.py` — each category's split-weight prefill and chart grouping is independent of the hierarchy.
 - **Ownership validation**: The backend enforces that ownership percentages sum to exactly 100% per account (within 0.01 tolerance).
 - **User filtering**: API endpoints `/api/transactions`, `/api/dashboard`, `/api/accounts` accept an optional `?user_id=X` query parameter to filter by account ownership (where `ownership_percentage > 0`).
 - **Accounting month**: each transaction stores `accounting_month_offset` (months relative to its own `date`, -3..+3, default 0), letting a transaction be attributed to a different reporting month than the one it was dated in — e.g. a paycheck dated the last day of a month that should count toward the next. The API also returns a derived, not stored, `accounting_month` ("YYYY-MM") computed from `date + accounting_month_offset` (`backend/accounting_month.py`), for reports/dashboards to group by later.

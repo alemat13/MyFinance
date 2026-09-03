@@ -207,6 +207,48 @@ def test_import_wrong_schema_version_returns_422(client):
     assert response.status_code == 422
 
 
+def test_export_includes_category_parent_id(client, db, sample_category):
+    child = Category(name="Child", type=sample_category.type, parent_id=sample_category.id)
+    db.add(child)
+    db.commit()
+
+    response = client.get("/api/backup/export")
+    data = _unzip_payload(response.content)
+    by_name = {c["name"]: c for c in data["categories"]}
+    assert by_name["Child"]["parent_id"] == sample_category.id
+    assert by_name[sample_category.name]["parent_id"] is None
+
+
+def test_import_overwrite_reorders_out_of_order_category_hierarchy(client):
+    # Child listed before its parent in the payload - import must still
+    # succeed, since categories are inserted top-level-first regardless of
+    # payload order (parent_id is a self-referential FK, checked immediately).
+    payload = _minimal_payload(
+        categories=[
+            {"id": 2, "name": "Rent", "type": "Expense", "color": None, "icon": None, "parent_id": 1},
+            {"id": 1, "name": "Housing", "type": "Expense", "color": None, "icon": None, "parent_id": None},
+        ],
+    )
+    zip_bytes = _zip_payload(payload)
+    response = _post_import(client, zip_bytes, mode="overwrite")
+    assert response.status_code == 200
+
+    categories = client.get("/api/categories").json()
+    by_name = {c["name"]: c for c in categories}
+    assert by_name["Rent"]["parent_id"] == by_name["Housing"]["id"]
+
+
+def test_import_overwrite_dangling_category_parent_returns_422(client):
+    payload = _minimal_payload(
+        categories=[{
+            "id": 1, "name": "Rent", "type": "Expense", "color": None, "icon": None, "parent_id": 999999,
+        }],
+    )
+    zip_bytes = _zip_payload(payload)
+    response = _post_import(client, zip_bytes, mode="overwrite")
+    assert response.status_code == 422
+
+
 def test_import_overwrite_dangling_fk_returns_422_without_wiping_data(client, sample_account):
     payload = _minimal_payload(
         transactions=[{

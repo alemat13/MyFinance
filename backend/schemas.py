@@ -145,6 +145,8 @@ class CategoryOut(BaseModel):
     type: str
     color: str | None = None
     icon: str | None = None
+    parent_id: int | None = None
+    parent_name: str | None = None
     splits: list[CategorySplitOut] = []
 
 
@@ -153,6 +155,7 @@ class CategoryCreate(BaseModel):
     type: str
     color: str | None = None
     icon: str | None = None
+    parent_id: int | None = None
     splits: list[CategorySplitCreate] = []
 
     @field_validator("color")
@@ -171,6 +174,7 @@ class CategoryUpdate(BaseModel):
     type: Optional[str] = None
     color: Optional[str] = None
     icon: Optional[str] = None
+    parent_id: int | None = None
     splits: list[CategorySplitCreate] | None = None
 
     @field_validator("color")
@@ -464,6 +468,7 @@ class CategoryExport(BaseModel):
     type: str
     color: str | None = None
     icon: str | None = None
+    parent_id: int | None = None
 
 
 class AccountUserExport(BaseModel):
