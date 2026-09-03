@@ -118,6 +118,10 @@ _VALID_CATEGORY_ICONS = {
     "ShoppingCart", "Home", "Utensils", "Car", "Plane", "Wifi", "Tv", "Music", "Heart", "PiggyBank",
     "Landmark", "Briefcase", "GraduationCap", "Gift", "Gamepad2", "Dumbbell", "Stethoscope",
     "Fuel", "CreditCard", "Wallet", "Coffee", "ShoppingBag", "Dog", "Smartphone", "ArrowLeftRight",
+    "Shield", "Zap", "TrainFront", "Bus", "Mail", "Receipt", "TrendingUp", "Baby", "Sofa", "Shirt",
+    "Scissors", "Banknote", "Ticket", "Sparkles", "Laptop", "BookOpen", "Film", "Palette", "Trophy",
+    "Hammer", "Flower2", "HeartHandshake", "ParkingCircle", "Ship", "Sandwich", "Umbrella",
+    "Building2", "School", "Bike", "PartyPopper",
 }
 
 
