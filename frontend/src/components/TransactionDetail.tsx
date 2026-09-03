@@ -46,9 +46,28 @@ function accountingMonthLabel(dateStr: string, offset: number): string {
 const historyBadgeVariant = (action: TransactionHistoryEntry['action']) =>
   action === 'created' ? 'positive' : action === 'deleted' ? 'negative' : 'info'
 
-const describeHistoryChanges = (changes: TransactionHistoryEntry['changes']) =>
+interface SplitSnapshotEntry {
+  user_id: number
+  weight: number
+  source: string
+}
+
+const describeSplitsChange = (change: { old: SplitSnapshotEntry[] | null; new: SplitSnapshotEntry[] | null }, users: User[]) => {
+  const nameFor = (id: number) => users.find(u => u.id === id)?.name ?? `User ${id}`
+  const weightsById = (entries: SplitSnapshotEntry[] | null) => new Map((entries ?? []).map(e => [e.user_id, e.weight]))
+  const oldWeights = weightsById(change.old)
+  const newWeights = weightsById(change.new)
+  const userIds = [...new Set([...oldWeights.keys(), ...newWeights.keys()])].sort((a, b) => a - b)
+  return `splits: ${userIds.map(id => `${nameFor(id)} ${oldWeights.get(id) ?? 0}→${newWeights.get(id) ?? 0}`).join(', ')}`
+}
+
+const describeHistoryChanges = (changes: TransactionHistoryEntry['changes'], users: User[]) =>
   changes
-    ? Object.entries(changes).map(([field, { old, new: next }]) => `${field}: ${old ?? '—'} → ${next ?? '—'}`).join(', ')
+    ? Object.entries(changes).map(([field, value]) =>
+        field === 'splits'
+          ? describeSplitsChange(value as { old: SplitSnapshotEntry[] | null; new: SplitSnapshotEntry[] | null }, users)
+          : `${field}: ${value.old ?? '—'} → ${value.new ?? '—'}`
+      ).join(', ')
     : ''
 
 export default function TransactionDetail({
@@ -220,8 +239,8 @@ export default function TransactionDetail({
                       </Badge>
                       <span className="text-slate-500 dark:text-slate-400">{new Date(h.changed_at).toLocaleString()}</span>
                       <span className="text-slate-500 dark:text-slate-400">by {h.changed_by_user_name ?? 'Unknown user'}</span>
-                      {h.action === 'updated' && (
-                        <span className="text-slate-700 dark:text-slate-200">{describeHistoryChanges(h.changes)}</span>
+                      {h.changes && (
+                        <span className="text-slate-700 dark:text-slate-200">{describeHistoryChanges(h.changes, allUsers)}</span>
                       )}
                     </div>
                   ))}

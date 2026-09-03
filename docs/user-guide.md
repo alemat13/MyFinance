@@ -158,7 +158,9 @@ or share a specific search.
 
 The results table groups transactions by date and can be expanded per-row to show a
 **History** panel: a full audit trail of who created or edited the transaction and
-when, what fields changed, and whether it originated from a CSV import.
+when, what fields changed, and whether it originated from a CSV import. Changes to
+the transaction's own split weights — set on creation or edited later — are tracked
+here too, shown as each involved user's weight before and after the change.
 
 ### Adding or editing a transaction
 
