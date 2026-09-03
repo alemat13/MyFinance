@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 import backup
 import rules
 import split_engine
-from audit import record_transaction_history
+from audit import record_transaction_history, splits_created_changes
 from database import get_db
 from import_csv import detect_import_settings, preview_import
 from models import Transaction
@@ -79,7 +79,8 @@ def import_commit(data: ImportCommitRequest, actor_user_id: int | None = Query(N
         db.add(transaction)
         db.flush()
         split_engine.apply_split(db, transaction, weights or None, source)
-        record_transaction_history(db, transaction, "created", actor_user_id, source="csv_import")
+        record_transaction_history(db, transaction, "created", actor_user_id, source="csv_import",
+                                    changes=splits_created_changes(weights, source))
         transaction_ids.append(transaction.id)
 
     db.commit()
