@@ -9,8 +9,8 @@ from fastapi import FastAPI, Depends, HTTPException, Query, UploadFile, File, Fo
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from sqlalchemy.orm import Session
-from sqlalchemy import join, func, or_
+from sqlalchemy.orm import Session, joinedload, selectinload
+from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 
 from database import get_db, engine, Base, sync_schema
@@ -21,15 +21,15 @@ from models import (
 from schemas import (
     AccountOut, AccountCreate, AccountUpdate,
     CategoryOut, CategoryCreate, CategoryUpdate,
-    CategorySplitOut, CategorySplitCreate,
+    CategorySplitCreate,
     TransactionOut, TransactionCreate, TransactionUpdate,
-    TransactionSplitOut, TransactionHistoryOut,
+    TransactionHistoryOut,
     TransactionSearchRequest, TransactionSearchResponse,
     BulkUpdateTransactionsRequest, BulkUpdateTransactionsResponse,
     DashboardResponse,
     CategoryChartItem, MonthChartItem, NetMonthChartItem, ChartsResponse,
     UserOut, UserCreate, UserUpdate,
-    AccountUserOut, AccountUserCreate,
+    AccountUserCreate,
     GlobalSplitWeightOut, GlobalSplitWeightUpdateItem,
     AccountSplitWeightOut, AccountSplitWeightUpdateItem,
     UserBalanceOut,
@@ -42,7 +42,13 @@ import backup
 from filtering import build_where_clause
 from import_csv import detect_import_settings, preview_import
 from audit import record_transaction_history, TRACKED_FIELDS, _jsonify, diff_splits, splits_created_changes
-from accounting_month import compute_accounting_month
+from serializers import (
+    build_account_out,
+    build_category_out,
+    build_split_weight_rows,
+    build_transaction_out_from_row,
+    get_transaction_out,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -119,93 +125,6 @@ def _visible_transaction_filter(db: Session, user_id: int):
     return or_(
         Transaction.account_id.in_(owned_account_ids),
         Transaction.id.in_(split_txn_ids),
-    )
-
-
-def _account_out(account: Account) -> AccountOut:
-    return AccountOut(
-        id=account.id,
-        name=account.name,
-        type=account.type,
-        balance=account.balance,
-        currency=account.currency,
-        created_at=account.created_at,
-        users=[
-            AccountUserOut(
-                user_id=au.user_id,
-                user_name=au.user.name,
-                ownership_percentage=au.ownership_percentage,
-            )
-            for au in account.user_associations
-        ],
-        split_weights=[
-            AccountSplitWeightOut(
-                user_id=w.user_id,
-                user_name=w.user.name,
-                weight=w.weight,
-            )
-            for w in account.split_weight_associations
-        ],
-    )
-
-
-def _splits_out(t: Transaction) -> list[TransactionSplitOut]:
-    return [
-        TransactionSplitOut(
-            user_id=s.user_id,
-            user_name=s.user.name,
-            weight=s.weight,
-            share_amount=s.share_amount,
-            source=s.source,
-        )
-        for s in t.splits
-    ]
-
-
-def _transaction_out(db: Session, transaction_id: int) -> TransactionOut:
-    t, account_name, currency, category_name, category_color, category_icon = (
-        db.query(Transaction, Account.name, Account.currency, Category.name, Category.color, Category.icon)
-        .join(Account, Transaction.account_id == Account.id)
-        .outerjoin(Category, Transaction.category_id == Category.id)
-        .filter(Transaction.id == transaction_id)
-        .first()
-    )
-    return TransactionOut(
-        id=t.id,
-        date=t.date,
-        payee=t.payee,
-        memo=t.memo,
-        amount=t.amount,
-        account_id=t.account_id,
-        account_name=account_name,
-        currency=currency,
-        category_id=t.category_id,
-        category_name=category_name,
-        category_color=category_color,
-        category_icon=category_icon,
-        accounting_month_offset=t.accounting_month_offset,
-        accounting_month=compute_accounting_month(t.date, t.accounting_month_offset),
-        splits=_splits_out(t),
-    )
-
-
-def _category_out(category: Category) -> CategoryOut:
-    return CategoryOut(
-        id=category.id,
-        name=category.name,
-        type=category.type,
-        color=category.color,
-        icon=category.icon,
-        parent_id=category.parent_id,
-        parent_name=category.parent.name if category.parent else None,
-        splits=[
-            CategorySplitOut(
-                user_id=cs.user_id,
-                user_name=cs.user.name,
-                weight=cs.weight,
-            )
-            for cs in category.splits
-        ],
     )
 
 
@@ -334,14 +253,17 @@ def delete_user(user_id: int, db: Session = Depends(get_db)):
 
 @app.get("/api/accounts", response_model=list[AccountOut])
 def get_accounts(user_id: int | None = Query(None), db: Session = Depends(get_db)):
-    query = db.query(Account)
+    query = db.query(Account).options(
+        selectinload(Account.user_associations).joinedload(AccountUser.user),
+        selectinload(Account.split_weight_associations).joinedload(AccountSplitWeight.user),
+    )
     if user_id is not None:
         query = query.join(AccountUser).filter(
             AccountUser.user_id == user_id,
             AccountUser.ownership_percentage > 0,
         ).distinct()
     accounts = query.all()
-    return [_account_out(a) for a in accounts]
+    return [build_account_out(a) for a in accounts]
 
 
 @app.post("/api/accounts", response_model=AccountOut, status_code=201)
@@ -359,7 +281,7 @@ def create_account(data: AccountCreate, db: Session = Depends(get_db)):
         ))
     db.commit()
     db.refresh(account)
-    return _account_out(account)
+    return build_account_out(account)
 
 
 @app.put("/api/accounts/{account_id}", response_model=AccountOut)
@@ -377,7 +299,7 @@ def update_account(account_id: int, data: AccountUpdate, db: Session = Depends(g
         setattr(account, field, value)
     db.commit()
     db.refresh(account)
-    return _account_out(account)
+    return build_account_out(account)
 
 
 @app.delete("/api/accounts/{account_id}", status_code=204)
@@ -395,7 +317,11 @@ def delete_account(account_id: int, db: Session = Depends(get_db)):
 
 @app.get("/api/categories", response_model=list[CategoryOut])
 def get_categories(db: Session = Depends(get_db)):
-    return [_category_out(c) for c in db.query(Category).all()]
+    categories = db.query(Category).options(
+        joinedload(Category.parent),
+        selectinload(Category.splits).joinedload(CategorySplit.user),
+    ).all()
+    return [build_category_out(c) for c in categories]
 
 
 @app.post("/api/categories", response_model=CategoryOut, status_code=201)
@@ -408,7 +334,7 @@ def create_category(data: CategoryCreate, db: Session = Depends(get_db)):
     _sync_category_splits(db, category, data.splits)
     db.commit()
     db.refresh(category)
-    return _category_out(category)
+    return build_category_out(category)
 
 
 @app.put("/api/categories/{category_id}", response_model=CategoryOut)
@@ -437,7 +363,7 @@ def update_category(category_id: int, data: CategoryUpdate, db: Session = Depend
         setattr(category, field, value)
     db.commit()
     db.refresh(category)
-    return _category_out(category)
+    return build_category_out(category)
 
 
 @app.delete("/api/categories/{category_id}", status_code=204)
@@ -461,20 +387,13 @@ def get_transactions(user_id: int | None = Query(None), db: Session = Depends(ge
         db.query(Transaction, Account.name, Account.currency, Category.name, Category.color, Category.icon)
         .join(Account, Transaction.account_id == Account.id)
         .outerjoin(Category, Transaction.category_id == Category.id)
+        .options(selectinload(Transaction.splits).joinedload(TransactionSplit.user))
     )
     if user_id is not None:
         query = query.filter(_visible_transaction_filter(db, user_id))
     results = query.order_by(Transaction.date.desc()).all()
     return [
-        TransactionOut(
-            id=t.id, date=t.date, payee=t.payee, memo=t.memo,
-            amount=t.amount, account_id=t.account_id,
-            account_name=account_name, currency=currency, category_id=t.category_id,
-            category_name=category_name, category_color=category_color, category_icon=category_icon,
-            accounting_month_offset=t.accounting_month_offset,
-            accounting_month=compute_accounting_month(t.date, t.accounting_month_offset),
-            splits=_splits_out(t),
-        )
+        build_transaction_out_from_row(t, account_name, currency, category_name, category_color, category_icon)
         for t, account_name, currency, category_name, category_color, category_icon in results
     ]
 
@@ -485,6 +404,7 @@ def search_transactions(req: TransactionSearchRequest, db: Session = Depends(get
         db.query(Transaction, Account.name, Account.currency, Category.name, Category.color, Category.icon)
         .join(Account, Transaction.account_id == Account.id)
         .outerjoin(Category, Transaction.category_id == Category.id)
+        .options(selectinload(Transaction.splits).joinedload(TransactionSplit.user))
     )
     if req.user_id is not None:
         query = query.filter(_visible_transaction_filter(db, req.user_id))
@@ -537,15 +457,7 @@ def search_transactions(req: TransactionSearchRequest, db: Session = Depends(get
         .all()
     )
     items = [
-        TransactionOut(
-            id=t.id, date=t.date, payee=t.payee, memo=t.memo,
-            amount=t.amount, account_id=t.account_id,
-            account_name=account_name, currency=currency, category_id=t.category_id,
-            category_name=category_name, category_color=category_color, category_icon=category_icon,
-            accounting_month_offset=t.accounting_month_offset,
-            accounting_month=compute_accounting_month(t.date, t.accounting_month_offset),
-            splits=_splits_out(t),
-        )
+        build_transaction_out_from_row(t, account_name, currency, category_name, category_color, category_icon)
         for t, account_name, currency, category_name, category_color, category_icon in results
     ]
     total_pages = max(1, (total + page_size - 1) // page_size)
@@ -571,7 +483,7 @@ def create_transaction(data: TransactionCreate, actor_user_id: int | None = Quer
     record_transaction_history(db, transaction, "created", actor_user_id, source="manual",
                                 changes=splits_created_changes(weights, split_source))
     db.commit()
-    return _transaction_out(db, transaction.id)
+    return get_transaction_out(db, transaction.id)
 
 
 @app.put("/api/transactions/bulk-update", response_model=BulkUpdateTransactionsResponse)
@@ -638,7 +550,7 @@ def get_transaction(transaction_id: int, user_id: int | None = Query(None), db: 
     transaction = query.first()
     if not transaction:
         raise HTTPException(404, "Transaction not found")
-    return _transaction_out(db, transaction_id)
+    return get_transaction_out(db, transaction_id)
 
 
 @app.put("/api/transactions/{transaction_id}", response_model=TransactionOut)
@@ -682,7 +594,7 @@ def update_transaction(transaction_id: int, data: TransactionUpdate, actor_user_
     if changes:
         record_transaction_history(db, transaction, "updated", actor_user_id, changes=changes)
     db.commit()
-    return _transaction_out(db, transaction.id)
+    return get_transaction_out(db, transaction.id)
 
 
 @app.delete("/api/transactions/{transaction_id}", status_code=204)
@@ -721,10 +633,7 @@ def get_transaction_history(transaction_id: int, db: Session = Depends(get_db)):
 @app.get("/api/split-weights", response_model=list[GlobalSplitWeightOut])
 def get_split_weights(db: Session = Depends(get_db)):
     weights_by_user = {w.user_id: w.weight for w in db.query(GlobalSplitWeight).all()}
-    return [
-        GlobalSplitWeightOut(user_id=u.id, user_name=u.name, weight=weights_by_user.get(u.id, 0.0))
-        for u in db.query(User).all()
-    ]
+    return build_split_weight_rows(weights_by_user, db.query(User).all(), GlobalSplitWeightOut)
 
 
 @app.put("/api/split-weights", response_model=list[GlobalSplitWeightOut])
@@ -743,10 +652,7 @@ def get_account_split_weights(account_id: int, db: Session = Depends(get_db)):
     if not account:
         raise HTTPException(404, "Account not found")
     weights_by_user = {w.user_id: w.weight for w in db.query(AccountSplitWeight).filter(AccountSplitWeight.account_id == account_id).all()}
-    return [
-        AccountSplitWeightOut(user_id=u.id, user_name=u.name, weight=weights_by_user.get(u.id, 0))
-        for u in db.query(User).all()
-    ]
+    return build_split_weight_rows(weights_by_user, db.query(User).all(), AccountSplitWeightOut)
 
 
 @app.put("/api/accounts/{account_id}/split-weights", response_model=list[AccountSplitWeightOut])
@@ -865,7 +771,10 @@ async def import_backup(
 
 @app.get("/api/dashboard", response_model=DashboardResponse)
 def get_dashboard(user_id: int | None = Query(None), db: Session = Depends(get_db)):
-    accounts_query = db.query(Account)
+    accounts_query = db.query(Account).options(
+        selectinload(Account.user_associations).joinedload(AccountUser.user),
+        selectinload(Account.split_weight_associations).joinedload(AccountSplitWeight.user),
+    )
     if user_id is not None:
         accounts_query = accounts_query.join(AccountUser).filter(
             AccountUser.user_id == user_id,
@@ -877,21 +786,14 @@ def get_dashboard(user_id: int | None = Query(None), db: Session = Depends(get_d
         db.query(Transaction, Account.name, Account.currency, Category.name, Category.color, Category.icon)
         .join(Account, Transaction.account_id == Account.id)
         .outerjoin(Category, Transaction.category_id == Category.id)
+        .options(selectinload(Transaction.splits).joinedload(TransactionSplit.user))
     )
     if user_id is not None:
         tx_query = tx_query.filter(_visible_transaction_filter(db, user_id))
     recent_results = tx_query.order_by(Transaction.date.desc()).limit(10).all()
 
     recent_transactions = [
-        TransactionOut(
-            id=t.id, date=t.date, payee=t.payee, memo=t.memo,
-            amount=t.amount, account_id=t.account_id,
-            account_name=account_name, currency=currency, category_id=t.category_id,
-            category_name=category_name, category_color=category_color, category_icon=category_icon,
-            accounting_month_offset=t.accounting_month_offset,
-            accounting_month=compute_accounting_month(t.date, t.accounting_month_offset),
-            splits=_splits_out(t),
-        )
+        build_transaction_out_from_row(t, account_name, currency, category_name, category_color, category_icon)
         for t, account_name, currency, category_name, category_color, category_icon in recent_results
     ]
 
@@ -901,7 +803,7 @@ def get_dashboard(user_id: int | None = Query(None), db: Session = Depends(get_d
     ]
 
     return DashboardResponse(
-        accounts=[_account_out(a) for a in accounts],
+        accounts=[build_account_out(a) for a in accounts],
         recent_transactions=recent_transactions,
         balances=balances,
     )
