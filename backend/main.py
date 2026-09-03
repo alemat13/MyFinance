@@ -25,6 +25,7 @@ from schemas import (
     TransactionOut, TransactionCreate, TransactionUpdate,
     TransactionSplitOut, TransactionHistoryOut,
     TransactionSearchRequest, TransactionSearchResponse,
+    BulkUpdateTransactionsRequest, BulkUpdateTransactionsResponse,
     DashboardResponse,
     CategoryChartItem, MonthChartItem, NetMonthChartItem, ChartsResponse,
     UserOut, UserCreate, UserUpdate,
@@ -569,6 +570,59 @@ def create_transaction(data: TransactionCreate, actor_user_id: int | None = Quer
     record_transaction_history(db, transaction, "created", actor_user_id, source="manual")
     db.commit()
     return _transaction_out(db, transaction.id)
+
+
+@app.put("/api/transactions/bulk-update", response_model=BulkUpdateTransactionsResponse)
+def bulk_update_transactions(data: BulkUpdateTransactionsRequest, actor_user_id: int | None = Query(None), db: Session = Depends(get_db)):
+    # Registered before the /{transaction_id} routes below: Starlette matches
+    # routes in registration order, and {transaction_id} (typed int) would
+    # otherwise greedily match the literal "bulk-update" segment and 422 on
+    # int conversion before this route is ever tried.
+    if not data.transaction_ids:
+        raise HTTPException(422, "transaction_ids must not be empty")
+
+    update_data = data.update.model_dump(exclude_unset=True)
+    split_weights_provided = "split_weights" in update_data
+    non_split_fields = {k: v for k, v in update_data.items() if k not in ("split_weights", "split_source")}
+
+    if not non_split_fields and not split_weights_provided:
+        raise HTTPException(422, "At least one field must be set to apply")
+
+    # Validate everything before mutating anything, so a missing id or an
+    # invalid weight set 422s/404s without partially applying the batch.
+    transactions = db.query(Transaction).filter(Transaction.id.in_(data.transaction_ids)).all()
+    found_ids = {t.id for t in transactions}
+    missing_ids = sorted(set(data.transaction_ids) - found_ids)
+    if missing_ids:
+        raise HTTPException(404, f"Transaction(s) not found: {missing_ids}")
+
+    weights = None
+    if split_weights_provided and data.update.split_weights:
+        _validate_weights(data.update.split_weights)
+        weights = {w.user_id: w.weight for w in data.update.split_weights}
+    source = data.update.split_source or "custom"
+
+    updated_ids = []
+    for transaction in transactions:
+        old_values = {f: getattr(transaction, f) for f in non_split_fields if f in TRACKED_FIELDS}
+        for field, value in non_split_fields.items():
+            setattr(transaction, field, value)
+        changes = {
+            f: {"old": _jsonify(old), "new": _jsonify(getattr(transaction, f))}
+            for f, old in old_values.items() if old != getattr(transaction, f)
+        }
+
+        if split_weights_provided:
+            split_engine.apply_split(db, transaction, weights, source)
+
+        # Split weights aren't in TRACKED_FIELDS, so a split-only bulk edit
+        # writes no history row here — same as the single-transaction PUT above.
+        if changes:
+            record_transaction_history(db, transaction, "updated", actor_user_id, changes=changes)
+        updated_ids.append(transaction.id)
+
+    db.commit()
+    return BulkUpdateTransactionsResponse(updated_count=len(updated_ids), transaction_ids=updated_ids)
 
 
 @app.get("/api/transactions/{transaction_id}", response_model=TransactionOut)

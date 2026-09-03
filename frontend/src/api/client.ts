@@ -157,6 +157,21 @@ export interface TransactionUpdate {
   split_source?: SplitSource | null
 }
 
+// Only include a key here when its section is meant to be applied to every
+// selected transaction — an omitted key leaves that field untouched on all
+// of them, mirroring the backend's exclude_unset contract.
+export interface BulkTransactionUpdate {
+  category_id?: number | null
+  accounting_month_offset?: number
+  split_weights?: SplitWeightCreate[] | null
+  split_source?: SplitSource | null
+}
+
+export interface BulkUpdateTransactionsResponse {
+  updated_count: number
+  transaction_ids: number[]
+}
+
 export type FilterField = 'payee' | 'memo' | 'amount' | 'date' | 'account_id' | 'category_id'
 
 export interface FilterCondition {
@@ -416,6 +431,18 @@ export function updateTransaction(id: number, data: TransactionUpdate, actorUser
 export function deleteTransaction(id: number, actorUserId?: number | null): Promise<void> {
   const params = actorUserId ? `?actor_user_id=${actorUserId}` : ''
   return request<void>(`/transactions/${id}${params}`, { method: 'DELETE' })
+}
+
+export function bulkUpdateTransactions(
+  ids: number[],
+  data: BulkTransactionUpdate,
+  actorUserId?: number | null,
+): Promise<BulkUpdateTransactionsResponse> {
+  const params = actorUserId ? `?actor_user_id=${actorUserId}` : ''
+  return request<BulkUpdateTransactionsResponse>(`/transactions/bulk-update${params}`, {
+    method: 'PUT',
+    body: JSON.stringify({ transaction_ids: ids, update: data }),
+  })
 }
 
 export function fetchTransactionHistory(transactionId: number): Promise<TransactionHistoryEntry[]> {

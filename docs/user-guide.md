@@ -162,7 +162,8 @@ when, what fields changed, and whether it originated from a CSV import.
 
 ### Adding or editing a transaction
 
-The transaction form captures:
+Clicking **+ New Transaction** or an existing row both open the same panel. The form
+captures:
 
 - **Date** and an **accounting month** offset — normally a transaction counts toward
   the reporting month it's dated in, but you can shift it up to 3 months earlier or
@@ -198,7 +199,37 @@ The transaction form captures:
     currently stands — the quick-fill buttons are the only way to pull a tier's
     *current* weights into an existing transaction.
 
-Deleting a transaction asks for confirmation first.
+The **Delete** button and the **History** panel only appear once the transaction
+already exists — there's nothing to delete or show history for while you're still
+filling in a new one. Deleting a transaction asks for confirmation first.
+
+### Bulk editing transactions
+
+Select multiple transactions using the checkboxes in the results table — a checkbox
+in the header selects or deselects every transaction currently shown on the page
+(selection is per-page; it doesn't carry over when you change page or filters). Once
+at least one row is selected, a bar appears above the table showing how many are
+selected, with **Bulk Edit** and **Clear selection** buttons.
+
+**Bulk Edit** opens a dialog with three independent, optional changes you can apply
+together in a single save:
+
+- **Category** — leave this off to keep each transaction's own category unchanged;
+  turn it on to set every selected transaction to the same category (including
+  explicitly choosing "Uncategorized").
+- **Accounting month** — leave this off to keep each transaction's own accounting
+  month; turn it on to shift all of them by the same offset (e.g. +1 month). Because
+  the shift is relative to each transaction's own date, transactions with different
+  dates each land on their own correct target month, not necessarily the same
+  calendar month as each other.
+- **Split** — leave this off to keep each transaction's own existing split
+  untouched; turn it on to enter one set of per-person weights that gets applied to
+  every selected transaction. Each transaction still gets its own share amounts,
+  proportioned against its own amount — the weights are shared, but the euro amounts
+  are not.
+
+At least one of the three must be turned on to save. After saving, you'll see a
+confirmation, the list refreshes, and the selection is cleared.
 
 ## Users
 

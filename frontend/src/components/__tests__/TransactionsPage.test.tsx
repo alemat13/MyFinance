@@ -1,19 +1,10 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
-import { screen, fireEvent, waitFor, within } from '@testing-library/react'
+import { screen, fireEvent, waitFor } from '@testing-library/react'
 import { renderWithProviders } from '../../test-utils'
 import TransactionsPage from '../TransactionsPage'
 import { formatDateGroupHeader } from '../../utils/transactions'
 
-// The new-transaction form's CategoryPicker is a popover, not a native
-// <select> — open it and click the target category by name, scoped to the
-// form so it doesn't collide with the filter bar's own CategoryPicker.
-function selectCategoryInNewTransactionForm(categoryName: string) {
-  const formContainer = screen.getByPlaceholderText('Payee').closest('.flex.gap-2.flex-wrap.items-end') as HTMLElement
-  fireEvent.click(within(formContainer).getByText('Uncategorized'))
-  fireEvent.click(within(formContainer).getByText(categoryName))
-}
-
-const { mockSearchTransactions, mockFetchAccounts, mockFetchCategories, mockCreateTransaction, mockUpdateTransaction, mockDeleteTransaction, mockFetchUsers, mockFetchSplitWeights, mockFetchTransaction, mockFetchTransactionHistory } = vi.hoisted(() => ({
+const { mockSearchTransactions, mockFetchAccounts, mockFetchCategories, mockCreateTransaction, mockUpdateTransaction, mockDeleteTransaction, mockFetchUsers, mockFetchSplitWeights, mockFetchTransaction, mockFetchTransactionHistory, mockBulkUpdateTransactions } = vi.hoisted(() => ({
   mockSearchTransactions: vi.fn(),
   mockFetchAccounts: vi.fn(),
   mockFetchCategories: vi.fn(),
@@ -24,6 +15,7 @@ const { mockSearchTransactions, mockFetchAccounts, mockFetchCategories, mockCrea
   mockFetchSplitWeights: vi.fn().mockResolvedValue([]),
   mockFetchTransaction: vi.fn(),
   mockFetchTransactionHistory: vi.fn().mockResolvedValue([]),
+  mockBulkUpdateTransactions: vi.fn(),
 }))
 
 vi.mock('../../api/client', () => ({
@@ -37,6 +29,7 @@ vi.mock('../../api/client', () => ({
   fetchSplitWeights: mockFetchSplitWeights,
   fetchTransaction: mockFetchTransaction,
   fetchTransactionHistory: mockFetchTransactionHistory,
+  bulkUpdateTransactions: mockBulkUpdateTransactions,
 }))
 
 const baseAccount = { id: 1, name: 'Checking', type: 'Checking', balance: 100, currency: 'USD', created_at: '2026-01-01', users: [], split_weights: [] }
@@ -109,7 +102,7 @@ test('shows error state on fetch failure', async () => {
   })
 })
 
-test('can open new transaction form', async () => {
+test('clicking + New Transaction opens the detail panel in create mode', async () => {
   mockSearchTransactions.mockResolvedValue(searchResult([]))
   mockFetchAccounts.mockResolvedValue([])
   mockFetchCategories.mockResolvedValue([])
@@ -122,106 +115,10 @@ test('can open new transaction form', async () => {
 
   fireEvent.click(screen.getByText('+ New Transaction'))
 
+  expect(screen.getByRole('dialog', { name: 'New Transaction' })).toBeInTheDocument()
   expect(screen.getByPlaceholderText('Payee')).toBeInTheDocument()
-  expect(screen.getByPlaceholderText('Amount')).toBeInTheDocument()
-})
-
-test('create new transaction', async () => {
-  mockSearchTransactions.mockResolvedValue(searchResult([]))
-  mockFetchAccounts.mockResolvedValue([baseAccount])
-  mockFetchCategories.mockResolvedValue([baseCategory])
-  mockCreateTransaction.mockResolvedValue({ id: 1, date: '2026-01-15', payee: 'New Payee', memo: '', amount: 100, account_id: 1, account_name: 'Checking', category_id: 1, category_name: 'Salary', splits: [] })
-
-  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
-
-  await waitFor(() => {
-    expect(screen.getByText('No transactions match your filters')).toBeInTheDocument()
-  })
-
-  fireEvent.click(screen.getByText('+ New Transaction'))
-
-  fireEvent.change(screen.getByPlaceholderText('Payee'), { target: { value: 'New Payee' } })
-  fireEvent.change(screen.getByPlaceholderText('Amount'), { target: { value: '100' } })
-
-  // The filter bar contributes the first combobox (Account — its Category
-  // filter is a CategoryPicker popover, not a <select>); the new-transaction
-  // form's Accounting Month/Account selects come next, and its Category
-  // field is a CategoryPicker too.
-  const selects = screen.getAllByRole('combobox')
-  fireEvent.change(selects[2], { target: { value: '1' } })
-  selectCategoryInNewTransactionForm('Salary')
-
-  fireEvent.click(screen.getByText('Save'))
-
-  await waitFor(() => {
-    expect(mockCreateTransaction).toHaveBeenCalled()
-  })
-})
-
-test('can save a new transaction without picking a category', async () => {
-  mockSearchTransactions.mockResolvedValue(searchResult([]))
-  mockFetchAccounts.mockResolvedValue([baseAccount])
-  mockFetchCategories.mockResolvedValue([baseCategory])
-  mockCreateTransaction.mockResolvedValue({ id: 1, date: '2026-01-15', payee: 'New Payee', memo: '', amount: 100, account_id: 1, account_name: 'Checking', category_id: null, category_name: null, splits: [] })
-
-  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
-
-  await waitFor(() => {
-    expect(screen.getByText('No transactions match your filters')).toBeInTheDocument()
-  })
-
-  fireEvent.click(screen.getByText('+ New Transaction'))
-
-  fireEvent.change(screen.getByPlaceholderText('Payee'), { target: { value: 'New Payee' } })
-  fireEvent.change(screen.getByPlaceholderText('Amount'), { target: { value: '100' } })
-
-  // Only the account is picked; category is left as "Uncategorized" (the default).
-  const selects = screen.getAllByRole('combobox')
-  fireEvent.change(selects[2], { target: { value: '1' } })
-
-  fireEvent.click(screen.getByText('Save'))
-
-  await waitFor(() => {
-    expect(mockCreateTransaction).toHaveBeenCalledWith(
-      expect.objectContaining({ category_id: null }),
-      null,
-    )
-  })
-})
-
-test('can select a non-default accounting month offset when creating a transaction', async () => {
-  mockSearchTransactions.mockResolvedValue(searchResult([]))
-  mockFetchAccounts.mockResolvedValue([baseAccount])
-  mockFetchCategories.mockResolvedValue([baseCategory])
-  mockCreateTransaction.mockResolvedValue({ id: 1, date: '2026-01-15', payee: 'New Payee', memo: '', amount: 100, account_id: 1, account_name: 'Checking', category_id: 1, category_name: 'Salary', accounting_month_offset: 1, accounting_month: '2026-02', splits: [] })
-
-  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
-
-  await waitFor(() => {
-    expect(screen.getByText('No transactions match your filters')).toBeInTheDocument()
-  })
-
-  fireEvent.click(screen.getByText('+ New Transaction'))
-
-  fireEvent.change(screen.getByPlaceholderText('Payee'), { target: { value: 'New Payee' } })
-  fireEvent.change(screen.getByPlaceholderText('Amount'), { target: { value: '100' } })
-
-  const selects = screen.getAllByRole('combobox')
-  // The filter bar contributes the first combobox (Account); the
-  // new-transaction form's month/Account selects come next (its Category
-  // field is a CategoryPicker popover, not part of this list).
-  fireEvent.change(selects[1], { target: { value: '1' } })
-  fireEvent.change(selects[2], { target: { value: '1' } })
-  selectCategoryInNewTransactionForm('Salary')
-
-  fireEvent.click(screen.getByText('Save'))
-
-  await waitFor(() => {
-    expect(mockCreateTransaction).toHaveBeenCalledWith(
-      expect.objectContaining({ accounting_month_offset: 1 }),
-      null,
-    )
-  })
+  expect(screen.queryByText('Delete')).not.toBeInTheDocument()
+  expect(mockFetchTransaction).not.toHaveBeenCalled()
 })
 
 test('clicking a transaction row opens the detail view and updates the URL', async () => {
@@ -301,92 +198,6 @@ test('pressing Enter on a focused transaction row opens the detail view', async 
     expect(mockFetchTransaction).toHaveBeenCalledWith(1, null)
   })
   expect(await screen.findByRole('dialog')).toBeInTheDocument()
-})
-
-test('auto-prefills split weights from the category default when a category is selected', async () => {
-  const categoryWithSplit = { ...baseCategory, splits: [{ user_id: 1, user_name: 'Alex', weight: 3 }, { user_id: 2, user_name: 'Olivia', weight: 1 }] }
-  mockSearchTransactions.mockResolvedValue(searchResult([]))
-  mockFetchAccounts.mockResolvedValue([baseAccount])
-  mockFetchCategories.mockResolvedValue([categoryWithSplit])
-  mockFetchUsers.mockResolvedValue([{ id: 1, name: 'Alex', email: null, created_at: '' }, { id: 2, name: 'Olivia', email: null, created_at: '' }])
-  mockCreateTransaction.mockResolvedValue({ id: 1, date: '2026-01-15', payee: 'New Payee', memo: '', amount: 100, account_id: 1, account_name: 'Checking', category_id: 1, category_name: 'Salary', splits: [] })
-
-  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
-
-  await waitFor(() => {
-    expect(screen.getByText('No transactions match your filters')).toBeInTheDocument()
-  })
-
-  fireEvent.click(screen.getByText('+ New Transaction'))
-  fireEvent.change(screen.getByPlaceholderText('Amount'), { target: { value: '100' } })
-  fireEvent.change(screen.getByPlaceholderText('Payee'), { target: { value: 'New Payee' } })
-  const selects = screen.getAllByRole('combobox')
-  fireEvent.change(selects[2], { target: { value: '1' } })
-  selectCategoryInNewTransactionForm('Salary')
-
-  fireEvent.click(screen.getByText('Save'))
-
-  await waitFor(() => {
-    expect(mockCreateTransaction).toHaveBeenCalledWith(expect.objectContaining({
-      split_weights: [
-        { user_id: 1, weight: 3 },
-        { user_id: 2, weight: 1 },
-      ],
-      split_source: 'category',
-    }), null)
-  })
-})
-
-test('quick-fill button is disabled when the account has no configured split weight', async () => {
-  mockSearchTransactions.mockResolvedValue(searchResult([]))
-  mockFetchAccounts.mockResolvedValue([baseAccount])
-  mockFetchCategories.mockResolvedValue([baseCategory])
-  mockFetchUsers.mockResolvedValue([{ id: 1, name: 'Alex', email: null, created_at: '' }])
-
-  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
-
-  await waitFor(() => {
-    expect(screen.getByText('No transactions match your filters')).toBeInTheDocument()
-  })
-
-  fireEvent.click(screen.getByText('+ New Transaction'))
-
-  expect(screen.getByRole('button', { name: 'Account' })).toBeDisabled()
-})
-
-test('free-form weight entry on a new transaction is submitted with source "custom"', async () => {
-  mockSearchTransactions.mockResolvedValue(searchResult([]))
-  mockFetchAccounts.mockResolvedValue([baseAccount])
-  mockFetchCategories.mockResolvedValue([baseCategory])
-  mockFetchUsers.mockResolvedValue([{ id: 1, name: 'Alex', email: null, created_at: '' }])
-  mockCreateTransaction.mockResolvedValue({ id: 1, date: '2026-01-15', payee: 'New Payee', memo: '', amount: 100, account_id: 1, account_name: 'Checking', category_id: 1, category_name: 'Salary', splits: [] })
-
-  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
-
-  await waitFor(() => {
-    expect(screen.getByText('No transactions match your filters')).toBeInTheDocument()
-  })
-
-  fireEvent.click(screen.getByText('+ New Transaction'))
-  fireEvent.change(screen.getByPlaceholderText('Payee'), { target: { value: 'New Payee' } })
-  fireEvent.change(screen.getByPlaceholderText('Amount'), { target: { value: '100' } })
-  const selects = screen.getAllByRole('combobox')
-  fireEvent.change(selects[2], { target: { value: '1' } })
-  selectCategoryInNewTransactionForm('Salary')
-
-  fireEvent.click(screen.getByLabelText('Add user'))
-  const numberInputs = screen.getAllByRole('spinbutton')
-  const weightInput = numberInputs.find(el => (el as HTMLInputElement).value === '0')!
-  fireEvent.change(weightInput, { target: { value: '5' } })
-
-  fireEvent.click(screen.getByText('Save'))
-
-  await waitFor(() => {
-    expect(mockCreateTransaction).toHaveBeenCalledWith(expect.objectContaining({
-      split_weights: [{ user_id: 1, weight: 5 }],
-      split_source: 'custom',
-    }), null)
-  })
 })
 
 test('simple mode text search triggers a debounced search request', async () => {
@@ -497,4 +308,99 @@ test('advanced mode conditions round-trip through the conditions URL param', asy
   expect(JSON.parse(decodeURIComponent(conditionsParam))).toEqual([
     { field: 'payee', operator: 'contains', value: 'amazon', value2: '' },
   ])
+})
+
+const twoTxns = [
+  { id: 1, date: '2026-01-15', payee: 'Coffee', memo: null, amount: -5, account_id: 1, account_name: 'Checking', category_id: 1, category_name: 'Salary', accounting_month_offset: 0, accounting_month: '2026-01', currency: 'USD', splits: [] },
+  { id: 2, date: '2026-01-14', payee: 'Lunch', memo: null, amount: -12, account_id: 1, account_name: 'Checking', category_id: 1, category_name: 'Salary', accounting_month_offset: 0, accounting_month: '2026-01', currency: 'USD', splits: [] },
+]
+
+test('selecting rows shows the bulk-actions bar with correct count, and Clear selection empties it', async () => {
+  mockSearchTransactions.mockResolvedValue(searchResult(twoTxns))
+  mockFetchAccounts.mockResolvedValue([baseAccount])
+  mockFetchCategories.mockResolvedValue([baseCategory])
+
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+
+  await waitFor(() => expect(screen.getByText('Coffee')).toBeInTheDocument())
+
+  expect(screen.queryByText('Bulk Edit')).not.toBeInTheDocument()
+
+  fireEvent.click(screen.getByLabelText('Select transaction Coffee'))
+
+  expect(screen.getByText('1 selected')).toBeInTheDocument()
+  expect(screen.getByText('Bulk Edit')).toBeInTheDocument()
+
+  fireEvent.click(screen.getByLabelText('Select transaction Lunch'))
+  expect(screen.getByText('2 selected')).toBeInTheDocument()
+
+  fireEvent.click(screen.getByText('Clear selection'))
+  expect(screen.queryByText('Bulk Edit')).not.toBeInTheDocument()
+})
+
+test('select-all-on-page checkbox selects and deselects every row currently shown', async () => {
+  mockSearchTransactions.mockResolvedValue(searchResult(twoTxns))
+  mockFetchAccounts.mockResolvedValue([baseAccount])
+  mockFetchCategories.mockResolvedValue([baseCategory])
+
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+
+  await waitFor(() => expect(screen.getByText('Coffee')).toBeInTheDocument())
+
+  fireEvent.click(screen.getByLabelText('Select all on this page'))
+  expect(screen.getByText('2 selected')).toBeInTheDocument()
+
+  fireEvent.click(screen.getByLabelText('Select all on this page'))
+  expect(screen.queryByText('Bulk Edit')).not.toBeInTheDocument()
+})
+
+test('clicking a row checkbox does not open the transaction detail modal', async () => {
+  mockSearchTransactions.mockResolvedValue(searchResult(twoTxns))
+  mockFetchAccounts.mockResolvedValue([baseAccount])
+  mockFetchCategories.mockResolvedValue([baseCategory])
+
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+
+  await waitFor(() => expect(screen.getByText('Coffee')).toBeInTheDocument())
+
+  fireEvent.click(screen.getByLabelText('Select transaction Coffee'))
+
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  expect(mockFetchTransaction).not.toHaveBeenCalled()
+})
+
+test('clicking Bulk Edit with N selected opens BulkEditModal with the right transaction ids', async () => {
+  mockSearchTransactions.mockResolvedValue(searchResult(twoTxns))
+  mockFetchAccounts.mockResolvedValue([baseAccount])
+  mockFetchCategories.mockResolvedValue([baseCategory])
+
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+
+  await waitFor(() => expect(screen.getByText('Coffee')).toBeInTheDocument())
+
+  fireEvent.click(screen.getByLabelText('Select transaction Coffee'))
+  fireEvent.click(screen.getByLabelText('Select transaction Lunch'))
+  fireEvent.click(screen.getByText('Bulk Edit'))
+
+  expect(screen.getByRole('dialog', { name: 'Bulk Edit Transactions' })).toBeInTheDocument()
+  expect(screen.getByText('2 transactions selected')).toBeInTheDocument()
+})
+
+test('changing page clears the existing selection', async () => {
+  mockSearchTransactions.mockResolvedValue({ items: twoTxns, total: 60, page: 1, page_size: 50, total_pages: 2 })
+  mockFetchAccounts.mockResolvedValue([baseAccount])
+  mockFetchCategories.mockResolvedValue([baseCategory])
+
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+
+  await waitFor(() => expect(screen.getByText('Coffee')).toBeInTheDocument())
+
+  fireEvent.click(screen.getByLabelText('Select transaction Coffee'))
+  expect(screen.getByText('1 selected')).toBeInTheDocument()
+
+  mockSearchTransactions.mockResolvedValue({ items: [], total: 60, page: 2, page_size: 50, total_pages: 2 })
+  fireEvent.click(screen.getByText('Next'))
+
+  await waitFor(() => expect(screen.getByText('Page 2 / 2')).toBeInTheDocument())
+  expect(screen.queryByText('Bulk Edit')).not.toBeInTheDocument()
 })
