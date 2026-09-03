@@ -101,24 +101,40 @@ The **Owners** column shows each owner as "Name (percentage%)".
 
 ## Categories
 
-Categories classify transactions (e.g. Groceries, Rent, Salary).
+Categories classify transactions (e.g. Groceries, Rent, Salary). A category can
+optionally have **subcategories** — one extra level of grouping (e.g. "Housing" as a
+parent with "Rent" and "Home Insurance" underneath). Only two levels are allowed: a
+subcategory can't itself have subcategories.
 
-The table lists **Name, Type, Default Split,** and row actions.
+The table lists **Name, Type, Default Split,** and row actions. A category with
+subcategories shows a count ("N subcategories") and an expand/collapse arrow; clicking
+it reveals the subcategories indented underneath, along with a **+ Add subcategory**
+action that opens the New Category form pre-filled with that parent.
 
 - **+ New Category** (and Edit) lets you set a name, a type (free text — commonly
-  Income, Expense, or Transfer), a **color** and an **icon** (pick from a curated set
-  of finance-themed icons), and an optional **default split weight**: a set of
-  per-user integer weights used to prefill the split on any new transaction in this
-  category — this is the highest-priority of the three weight tiers (see
-  [Split Weights](#split-weights)). If you don't set one for a category, new
-  transactions in it fall back to the account's split weight, and then to the
-  household's global split weight, instead.
+  Income, Expense, or Transfer), an optional **parent category**, a **color** and an
+  **icon** (pick from a curated set of finance-themed icons), and an optional
+  **default split weight**: a set of per-user integer weights used to prefill the
+  split on any new transaction in this category — this is the highest-priority of the
+  three weight tiers (see [Split Weights](#split-weights)). If you don't set one for a
+  category, new transactions in it fall back to the account's split weight, and then
+  to the household's global split weight, instead.
+- Picking a parent category **locks the type field** to match the parent's — a
+  subcategory always shares its parent's type. Only a top-level category can be
+  chosen as a parent (no 3-level nesting).
+- A category that already has subcategories can't be turned into a subcategory
+  itself, and its type can't be changed while it still has subcategories.
+- Both a parent category and its subcategories can be assigned directly to a
+  transaction — picking the most specific one is never required.
 - The color and icon show up as a small colored badge wherever the category appears —
   in this table, on Transactions rows, and in the Dashboard's recent transactions.
 - Weights just need to be zero or greater, with at least one greater than zero — unlike
   ownership, there's no requirement that they add up to any particular total, since
-  they're a ratio (e.g. 2:1) rather than a percentage.
-- You can't delete a category that still has transactions assigned to it.
+  they're a ratio (e.g. 2:1) rather than a percentage. A subcategory does **not**
+  inherit its parent's default split weight — each category's weight tier (if any) is
+  its own.
+- You can't delete a category that still has transactions assigned to it, or one that
+  still has subcategories — delete or reassign those first.
 
 ## Transactions
 
@@ -157,7 +173,10 @@ The transaction form captures:
 - The **account** it belongs to, and its **category** — picking a category is
   optional; leaving it as "Uncategorized" (the default) is a valid, final choice, and
   such transactions display with a gray "Uncategorized" badge instead of a category
-  name.
+  name. The category field is a searchable dropdown: subcategories are grouped and
+  indented under their parent, the parent itself is also selectable, and typing in the
+  search box filters the list by category or parent name. The same picker is used for
+  the Transactions screen's category filters.
 - A **Split** section, always visible — no separate "customize" step. It shows one
   integer **weight** per involved person, with a read-only euro amount next to each
   that updates live as you type (each person's share is that person's weight divided
@@ -279,6 +298,8 @@ A quick reference for the rules the app enforces:
 | Currency must be a 3-letter code (e.g. `EUR`, `USD`) | Accounts |
 | Can't delete an account with existing transactions | Accounts |
 | Can't delete a category with existing transactions | Categories |
+| Can't delete a category with existing subcategories | Categories |
+| A subcategory's type must match its parent's, and only 2 levels of categories are allowed | Categories |
 | Can't delete a user who still owns a share of an account | Users |
 
 Split-weight prefill priority, from highest to lowest: a transaction's **category**

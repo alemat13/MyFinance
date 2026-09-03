@@ -97,6 +97,9 @@ def _validate_referential_integrity(data: DatabaseExport) -> None:
         if value not in valid:
             raise BackupFormatError(f"{label} {value} has no matching row in the backup payload")
 
+    for c in data.categories:
+        if c.parent_id is not None:
+            _check("categories.parent_id", c.parent_id, category_ids)
     for au in data.account_users:
         _check("account_users.account_id", au.account_id, account_ids)
         _check("account_users.user_id", au.user_id, user_ids)
@@ -140,7 +143,10 @@ def import_database(db: Session, data: DatabaseExport, mode: Literal["overwrite"
     try:
         session.add_all(User(**u.model_dump()) for u in data.users)
         session.add_all(Account(**a.model_dump()) for a in data.accounts)
-        session.add_all(Category(**c.model_dump()) for c in data.categories)
+        # Top-level categories before subcategories: parent_id is a
+        # self-referential FK checked immediately on insert.
+        ordered_categories = sorted(data.categories, key=lambda c: c.parent_id is not None)
+        session.add_all(Category(**c.model_dump()) for c in ordered_categories)
         session.flush()
 
         session.add_all(AccountUser(**au.model_dump()) for au in data.account_users)

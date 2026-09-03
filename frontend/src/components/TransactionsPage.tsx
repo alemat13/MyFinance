@@ -9,6 +9,7 @@ import {
 import { SplitRow } from './SplitEditor'
 import TransactionSplitFields from './TransactionSplitFields'
 import TransactionDetail from './TransactionDetail'
+import CategoryPicker from './CategoryPicker'
 import { useToast } from '../context/ToastContext'
 import { Button, Input, Select, Table, Thead, Tbody, Tr, Th, Td, StatusMessage, Badge, CategoryBadge } from './ui'
 import { formatMoney } from '../utils/currency'
@@ -369,7 +370,6 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
   const groupByDate = sortBy === 'date'
 
   const acctOptions = accounts.map(a => ({ value: a.id, label: a.name }))
-  const catOptions = categories.map(c => ({ value: c.id, label: `${c.name} (${c.type})` }))
 
   if (error) {
     return <StatusMessage error={error} />
@@ -400,10 +400,13 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
               <option value={0}>Account</option>
               {acctOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </Select>
-            <Select value={filterCategoryId} onChange={e => { setFilterCategoryId(parseInt(e.target.value) || 0); setPage(1) }} className="min-w-[140px]">
-              <option value={0}>Category</option>
-              {catOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </Select>
+            <CategoryPicker
+              categories={categories}
+              value={filterCategoryId || null}
+              onChange={id => { setFilterCategoryId(id ?? 0); setPage(1) }}
+              placeholder="Category"
+              className="min-w-[140px]"
+            />
             <Input placeholder="Min amount" type="number" step="0.01" value={amountMin} onChange={e => { setAmountMin(e.target.value); setPage(1) }} className="w-[110px]" />
             <Input placeholder="Max amount" type="number" step="0.01" value={amountMax} onChange={e => { setAmountMax(e.target.value); setPage(1) }} className="w-[110px]" />
             <Button size="sm" variant="secondary" onClick={clearSimpleFilters}>Clear</Button>
@@ -432,10 +435,13 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
                     {acctOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                   </Select>
                 ) : c.field === 'category_id' ? (
-                  <Select value={c.value} onChange={e => updateConditionValue(i, 'value', e.target.value)} className="min-w-[140px]">
-                    <option value="">Category</option>
-                    {catOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                  </Select>
+                  <CategoryPicker
+                    categories={categories}
+                    value={c.value ? parseInt(c.value) : null}
+                    onChange={id => updateConditionValue(i, 'value', id != null ? String(id) : '')}
+                    placeholder="Category"
+                    className="min-w-[140px]"
+                  />
                 ) : (
                   <Input
                     type={c.field === 'amount' ? 'number' : c.field === 'date' ? 'date' : 'text'}
@@ -484,10 +490,12 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
               <option value={0}>Account</option>
               {acctOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </Select>
-            <Select value={newData.category_id ?? 0} onChange={e => setNewData({ ...newData, category_id: parseInt(e.target.value) || 0 })} className="min-w-[140px]">
-              <option value={0}>Uncategorized</option>
-              {catOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </Select>
+            <CategoryPicker
+              categories={categories}
+              value={newData.category_id ?? null}
+              onChange={id => setNewData({ ...newData, category_id: id })}
+              className="min-w-[140px]"
+            />
             <Button onClick={saveNew}>Save</Button>
             <Button variant="secondary" onClick={cancelNew}>Cancel</Button>
           </div>
