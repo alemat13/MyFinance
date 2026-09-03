@@ -78,6 +78,10 @@ npm test -- AccountsList        # run tests matching a name/file
 - **Shared frontend infra**: `components/ui/` holds the design-system primitives (`Button`, `Card`, `Modal`, `Table`, `Toast`, etc.), `context/` holds `ThemeContext` (dark mode) and `ToastContext`, `utils/` holds `currency.ts`, `download.ts`, `splitWeights.ts` (client-side `prorateWeights()`/`resolveDefaultSplitRows()`, mirroring `split_engine.py`), `categoryHierarchy.ts` (client-side mirror of the backend's 2-level category grouping/parent-validation rules, used by `CategoriesList` and `CategoryPicker`), `transactions.ts`, `urlState.ts`. Styling is Tailwind CSS v4 utility classes (`index.css`), not a hand-rolled stylesheet.
 - **API client**: `frontend/src/api/client.ts`, fetch-based. Base URL is `` `http://${window.location.hostname}:8000/api` `` unless overridden by the `VITE_API_URL` build-time env var — not hardcoded to `localhost`.
 
+## Documentation
+
+- User-facing behavior changes (new/changed views, forms, buttons, flows) **must** be reflected in `docs/user-guide.md` in the same PR — don't leave it stale. Schema/entity changes likewise require updating `docs/data-model.md`. When editing `models.py`, `main.py` routes, or `frontend/src/` in ways that change what a user sees or does, check whether `docs/user-guide.md` needs a matching update before considering the task done, and do the same for this file (`CLAUDE.md`) when architecture, commands, or workflow change.
+
 ## Key gotchas
 
 - `seed.py` **destroys existing data** — `drop_all` then re-inserts sample rows. Never run it against production.
