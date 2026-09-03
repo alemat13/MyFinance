@@ -195,6 +195,8 @@ def _category_out(category: Category) -> CategoryOut:
         type=category.type,
         color=category.color,
         icon=category.icon,
+        parent_id=category.parent_id,
+        parent_name=category.parent.name if category.parent else None,
         splits=[
             CategorySplitOut(
                 user_id=cs.user_id,
@@ -251,6 +253,27 @@ def _validate_weights(items: list) -> None:
     user_ids = [item.user_id for item in items]
     if len(user_ids) != len(set(user_ids)):
         raise HTTPException(422, "Duplicate user_id in weights")
+
+
+def _validate_category_hierarchy(db: Session, category: Category | None, parent_id: int | None, type_: str) -> None:
+    """Enforces the 2-level category hierarchy: a category may have a parent,
+    but that parent must itself be top-level, and a subcategory's type must
+    match its parent's. `category` is the category being updated (None on
+    create)."""
+    if parent_id is None:
+        return
+    if category is not None:
+        if parent_id == category.id:
+            raise HTTPException(422, "A category cannot be its own parent")
+        if category.children:
+            raise HTTPException(422, "Cannot set a parent on a category that has its own subcategories")
+    parent = db.query(Category).filter(Category.id == parent_id).first()
+    if not parent:
+        raise HTTPException(422, f"Parent category {parent_id} not found")
+    if parent.parent_id is not None:
+        raise HTTPException(422, "Only 2 levels of categories are allowed")
+    if parent.type != type_:
+        raise HTTPException(422, "Subcategory type must match its parent category's type")
 
 
 def _sync_account_split_weights(db: Session, account: Account, weights: list[AccountSplitWeightUpdateItem]):
@@ -377,7 +400,8 @@ def get_categories(db: Session = Depends(get_db)):
 @app.post("/api/categories", response_model=CategoryOut, status_code=201)
 def create_category(data: CategoryCreate, db: Session = Depends(get_db)):
     _validate_weights(data.splits)
-    category = Category(name=data.name, type=data.type, color=data.color, icon=data.icon)
+    _validate_category_hierarchy(db, None, data.parent_id, data.type)
+    category = Category(name=data.name, type=data.type, color=data.color, icon=data.icon, parent_id=data.parent_id)
     db.add(category)
     db.flush()
     _sync_category_splits(db, category, data.splits)
@@ -395,6 +419,18 @@ def update_category(category_id: int, data: CategoryUpdate, db: Session = Depend
     splits_data = update_data.pop("splits", None)
     if splits_data is not None:
         _validate_weights(data.splits)
+
+    if "type" in update_data and update_data["type"] != category.type and category.children:
+        raise HTTPException(422, "Cannot change type of a category with existing subcategories")
+
+    if "parent_id" in update_data:
+        effective_type = update_data.get("type", category.type)
+        _validate_category_hierarchy(db, category, update_data["parent_id"], effective_type)
+    elif "type" in update_data and category.parent_id is not None:
+        if category.parent and category.parent.type != update_data["type"]:
+            raise HTTPException(422, "Subcategory type must match its parent category's type")
+
+    if splits_data is not None:
         _sync_category_splits(db, category, data.splits)
     for field, value in update_data.items():
         setattr(category, field, value)
@@ -410,6 +446,8 @@ def delete_category(category_id: int, db: Session = Depends(get_db)):
         raise HTTPException(404, "Category not found")
     if category.transactions:
         raise HTTPException(409, "Cannot delete category with existing transactions")
+    if category.children:
+        raise HTTPException(409, "Cannot delete category with existing subcategories")
     db.delete(category)
     db.commit()
 

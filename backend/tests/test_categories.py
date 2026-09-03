@@ -194,3 +194,122 @@ def test_update_category_splits_replaces_existing(client, sample_category, sampl
     data = response.json()
     assert len(data["splits"]) == 1
     assert data["splits"][0]["weight"] == 100
+
+
+def test_create_subcategory(client):
+    parent = client.post("/api/categories", json={"name": "Housing", "type": "Expense"}).json()
+    response = client.post(
+        "/api/categories",
+        json={"name": "Rent", "type": "Expense", "parent_id": parent["id"]},
+    )
+    assert response.status_code == 201
+    data = response.json()
+    assert data["parent_id"] == parent["id"]
+    assert data["parent_name"] == "Housing"
+
+
+def test_get_categories_includes_parent_fields(client, sample_category):
+    parent_id = sample_category.id
+    client.put(f"/api/categories/{parent_id}", json={"type": "Expense"})
+    child = client.post(
+        "/api/categories",
+        json={"name": "Child", "type": "Expense", "parent_id": parent_id},
+    ).json()
+    response = client.get("/api/categories")
+    by_name = {c["name"]: c for c in response.json()}
+    assert by_name["Child"]["parent_id"] == parent_id
+    assert by_name["Child"]["parent_name"] == by_name[sample_category.name]["name"]
+    assert child["id"] == by_name["Child"]["id"]
+
+
+def test_create_subcategory_type_mismatch_422(client):
+    parent = client.post("/api/categories", json={"name": "Housing", "type": "Expense"}).json()
+    response = client.post(
+        "/api/categories",
+        json={"name": "Salary", "type": "Income", "parent_id": parent["id"]},
+    )
+    assert response.status_code == 422
+
+
+def test_create_subcategory_parent_not_found_422(client):
+    response = client.post(
+        "/api/categories",
+        json={"name": "Rent", "type": "Expense", "parent_id": 999},
+    )
+    assert response.status_code == 422
+
+
+def test_create_category_under_a_subcategory_422(client):
+    parent = client.post("/api/categories", json={"name": "Housing", "type": "Expense"}).json()
+    child = client.post(
+        "/api/categories",
+        json={"name": "Rent", "type": "Expense", "parent_id": parent["id"]},
+    ).json()
+    response = client.post(
+        "/api/categories",
+        json={"name": "Grandchild", "type": "Expense", "parent_id": child["id"]},
+    )
+    assert response.status_code == 422
+
+
+def test_update_category_self_parent_422(client, sample_category):
+    response = client.put(
+        f"/api/categories/{sample_category.id}",
+        json={"parent_id": sample_category.id},
+    )
+    assert response.status_code == 422
+
+
+def test_update_category_cannot_demote_parent_with_children_422(client):
+    parent = client.post("/api/categories", json={"name": "Housing", "type": "Expense"}).json()
+    other = client.post("/api/categories", json={"name": "Other", "type": "Expense"}).json()
+    client.post("/api/categories", json={"name": "Rent", "type": "Expense", "parent_id": parent["id"]})
+    response = client.put(f"/api/categories/{parent['id']}", json={"parent_id": other["id"]})
+    assert response.status_code == 422
+
+
+def test_update_category_type_change_with_children_422(client):
+    parent = client.post("/api/categories", json={"name": "Housing", "type": "Expense"}).json()
+    client.post("/api/categories", json={"name": "Rent", "type": "Expense", "parent_id": parent["id"]})
+    response = client.put(f"/api/categories/{parent['id']}", json={"type": "Income"})
+    assert response.status_code == 422
+
+
+def test_update_subcategory_type_must_still_match_parent_422(client):
+    parent = client.post("/api/categories", json={"name": "Housing", "type": "Expense"}).json()
+    child = client.post(
+        "/api/categories",
+        json={"name": "Rent", "type": "Expense", "parent_id": parent["id"]},
+    ).json()
+    response = client.put(f"/api/categories/{child['id']}", json={"type": "Income"})
+    assert response.status_code == 422
+
+
+def test_update_category_can_reparent_to_another_top_level_category(client):
+    housing = client.post("/api/categories", json={"name": "Housing", "type": "Expense"}).json()
+    utilities = client.post("/api/categories", json={"name": "Utilities", "type": "Expense"}).json()
+    child = client.post(
+        "/api/categories",
+        json={"name": "Electricity", "type": "Expense", "parent_id": housing["id"]},
+    ).json()
+    response = client.put(f"/api/categories/{child['id']}", json={"parent_id": utilities["id"]})
+    assert response.status_code == 200
+    assert response.json()["parent_id"] == utilities["id"]
+
+
+def test_delete_category_with_subcategories_409(client):
+    parent = client.post("/api/categories", json={"name": "Housing", "type": "Expense"}).json()
+    client.post("/api/categories", json={"name": "Rent", "type": "Expense", "parent_id": parent["id"]})
+    response = client.delete(f"/api/categories/{parent['id']}")
+    assert response.status_code == 409
+
+
+def test_delete_category_after_removing_subcategories_succeeds(client):
+    parent = client.post("/api/categories", json={"name": "Housing", "type": "Expense"}).json()
+    child = client.post(
+        "/api/categories",
+        json={"name": "Rent", "type": "Expense", "parent_id": parent["id"]},
+    ).json()
+    client.delete(f"/api/categories/{child['id']}")
+    response = client.delete(f"/api/categories/{parent['id']}")
+    assert response.status_code == 204

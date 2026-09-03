@@ -64,6 +64,8 @@ export interface Category {
   type: string
   color?: string | null
   icon?: string | null
+  parent_id?: number | null
+  parent_name?: string | null
   splits: CategorySplit[]
 }
 
@@ -72,6 +74,7 @@ export interface CategoryCreate {
   type: string
   color?: string | null
   icon?: string | null
+  parent_id?: number | null
   splits?: CategorySplitCreate[]
 }
 
@@ -80,6 +83,7 @@ export interface CategoryUpdate {
   type?: string
   color?: string | null
   icon?: string | null
+  parent_id?: number | null
   splits?: CategorySplitCreate[]
 }
 

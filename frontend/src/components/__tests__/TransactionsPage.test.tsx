@@ -1,8 +1,17 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
-import { screen, fireEvent, waitFor } from '@testing-library/react'
+import { screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { renderWithProviders } from '../../test-utils'
 import TransactionsPage from '../TransactionsPage'
 import { formatDateGroupHeader } from '../../utils/transactions'
+
+// The new-transaction form's CategoryPicker is a popover, not a native
+// <select> — open it and click the target category by name, scoped to the
+// form so it doesn't collide with the filter bar's own CategoryPicker.
+function selectCategoryInNewTransactionForm(categoryName: string) {
+  const formContainer = screen.getByPlaceholderText('Payee').closest('.flex.gap-2.flex-wrap.items-end') as HTMLElement
+  fireEvent.click(within(formContainer).getByText('Uncategorized'))
+  fireEvent.click(within(formContainer).getByText(categoryName))
+}
 
 const { mockSearchTransactions, mockFetchAccounts, mockFetchCategories, mockCreateTransaction, mockUpdateTransaction, mockDeleteTransaction, mockFetchUsers, mockFetchSplitWeights, mockFetchTransaction, mockFetchTransactionHistory } = vi.hoisted(() => ({
   mockSearchTransactions: vi.fn(),
@@ -134,11 +143,13 @@ test('create new transaction', async () => {
   fireEvent.change(screen.getByPlaceholderText('Payee'), { target: { value: 'New Payee' } })
   fireEvent.change(screen.getByPlaceholderText('Amount'), { target: { value: '100' } })
 
-  // Filter bar contributes the first two comboboxes (Account, Category); the
-  // new-transaction form's Accounting Month/Account/Category selects come next.
+  // The filter bar contributes the first combobox (Account — its Category
+  // filter is a CategoryPicker popover, not a <select>); the new-transaction
+  // form's Accounting Month/Account selects come next, and its Category
+  // field is a CategoryPicker too.
   const selects = screen.getAllByRole('combobox')
-  fireEvent.change(selects[3], { target: { value: '1' } })
-  fireEvent.change(selects[4], { target: { value: '1' } })
+  fireEvent.change(selects[2], { target: { value: '1' } })
+  selectCategoryInNewTransactionForm('Salary')
 
   fireEvent.click(screen.getByText('Save'))
 
@@ -166,7 +177,7 @@ test('can save a new transaction without picking a category', async () => {
 
   // Only the account is picked; category is left as "Uncategorized" (the default).
   const selects = screen.getAllByRole('combobox')
-  fireEvent.change(selects[3], { target: { value: '1' } })
+  fireEvent.change(selects[2], { target: { value: '1' } })
 
   fireEvent.click(screen.getByText('Save'))
 
@@ -196,11 +207,12 @@ test('can select a non-default accounting month offset when creating a transacti
   fireEvent.change(screen.getByPlaceholderText('Amount'), { target: { value: '100' } })
 
   const selects = screen.getAllByRole('combobox')
-  // Filter bar contributes the first two comboboxes (Account, Category); the
-  // new-transaction form's month/Account/Category selects come next.
+  // The filter bar contributes the first combobox (Account); the
+  // new-transaction form's month/Account selects come next (its Category
+  // field is a CategoryPicker popover, not part of this list).
+  fireEvent.change(selects[1], { target: { value: '1' } })
   fireEvent.change(selects[2], { target: { value: '1' } })
-  fireEvent.change(selects[3], { target: { value: '1' } })
-  fireEvent.change(selects[4], { target: { value: '1' } })
+  selectCategoryInNewTransactionForm('Salary')
 
   fireEvent.click(screen.getByText('Save'))
 
@@ -307,11 +319,11 @@ test('auto-prefills split weights from the category default when a category is s
 
   fireEvent.click(screen.getByText('+ New Transaction'))
   fireEvent.change(screen.getByPlaceholderText('Amount'), { target: { value: '100' } })
-  const selects = screen.getAllByRole('combobox')
-  fireEvent.change(selects[3], { target: { value: '1' } })
-  fireEvent.change(selects[4], { target: { value: '1' } })
-
   fireEvent.change(screen.getByPlaceholderText('Payee'), { target: { value: 'New Payee' } })
+  const selects = screen.getAllByRole('combobox')
+  fireEvent.change(selects[2], { target: { value: '1' } })
+  selectCategoryInNewTransactionForm('Salary')
+
   fireEvent.click(screen.getByText('Save'))
 
   await waitFor(() => {
@@ -359,8 +371,8 @@ test('free-form weight entry on a new transaction is submitted with source "cust
   fireEvent.change(screen.getByPlaceholderText('Payee'), { target: { value: 'New Payee' } })
   fireEvent.change(screen.getByPlaceholderText('Amount'), { target: { value: '100' } })
   const selects = screen.getAllByRole('combobox')
-  fireEvent.change(selects[3], { target: { value: '1' } })
-  fireEvent.change(selects[4], { target: { value: '1' } })
+  fireEvent.change(selects[2], { target: { value: '1' } })
+  selectCategoryInNewTransactionForm('Salary')
 
   fireEvent.click(screen.getByLabelText('Add user'))
   const numberInputs = screen.getAllByRole('spinbutton')

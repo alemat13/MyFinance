@@ -29,9 +29,15 @@ class Category(Base):
     type = Column(String(50), nullable=False)
     color = Column(String(7), nullable=True)
     icon = Column(String(50), nullable=True)
+    # Self-referential FK for a strict 2-level hierarchy: a category with
+    # parent_id set is a subcategory, and its parent must itself have no
+    # parent (enforced in main.py, not at the DB level).
+    parent_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
 
     transactions = relationship("Transaction", back_populates="category")
     splits = relationship("CategorySplit", back_populates="category", cascade="all, delete-orphan")
+    parent = relationship("Category", remote_side=[id], back_populates="children")
+    children = relationship("Category", back_populates="parent")
 
 
 class Transaction(Base):

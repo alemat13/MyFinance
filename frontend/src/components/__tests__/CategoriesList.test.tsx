@@ -69,7 +69,7 @@ test('can open and submit new category form', async () => {
   fireEvent.click(screen.getByText('Save'))
 
   await waitFor(() => {
-    expect(mockCreateCategory).toHaveBeenCalledWith({ name: 'Food', type: 'Expense', color: null, icon: null, splits: [] })
+    expect(mockCreateCategory).toHaveBeenCalledWith({ name: 'Food', type: 'Expense', color: null, icon: null, parent_id: null, splits: [] })
   })
 })
 
@@ -156,7 +156,7 @@ test('can add a default split weight row and submit', async () => {
 
   await waitFor(() => {
     expect(mockCreateCategory).toHaveBeenCalledWith({
-      name: 'Mortgage', type: 'Expense', color: null, icon: null,
+      name: 'Mortgage', type: 'Expense', color: null, icon: null, parent_id: null,
       splits: [{ user_id: 1, weight: 3 }],
     })
   })
@@ -229,6 +229,97 @@ test('rejects a default split weight with a negative weight', async () => {
   fireEvent.click(screen.getByText('Save'))
 
   expect(mockCreateCategory).not.toHaveBeenCalled()
+})
+
+const housing = { id: 1, name: 'Housing', type: 'Expense', color: null, icon: null, parent_id: null, parent_name: null, splits: [] }
+const rent = { id: 2, name: 'Rent', type: 'Expense', color: null, icon: null, parent_id: 1, parent_name: 'Housing', splits: [] }
+
+test('groups subcategories under their parent, collapsed by default', async () => {
+  mockFetchCategories.mockResolvedValue([housing, rent])
+
+  renderWithProviders(<CategoriesList onBack={() => {}} />)
+
+  await waitFor(() => {
+    expect(screen.getByText('Housing')).toBeInTheDocument()
+  })
+
+  expect(screen.getByText('1 subcategories')).toBeInTheDocument()
+  expect(screen.queryByText('Rent')).not.toBeInTheDocument()
+})
+
+test('expanding a parent reveals its subcategory and an add-subcategory action', async () => {
+  mockFetchCategories.mockResolvedValue([housing, rent])
+
+  renderWithProviders(<CategoriesList onBack={() => {}} />)
+
+  await waitFor(() => {
+    expect(screen.getByText('Housing')).toBeInTheDocument()
+  })
+
+  fireEvent.click(screen.getByTitle('Expand'))
+
+  expect(screen.getByText('Rent')).toBeInTheDocument()
+  expect(screen.getByText('+ Add subcategory')).toBeInTheDocument()
+})
+
+test('clicking + Add subcategory prefills the parent and locks the type', async () => {
+  mockFetchCategories.mockResolvedValue([housing, rent])
+  mockCreateCategory.mockResolvedValue({ id: 2, name: 'Utilities', type: 'Expense', parent_id: 1, splits: [] })
+
+  renderWithProviders(<CategoriesList onBack={() => {}} />)
+
+  await waitFor(() => {
+    expect(screen.getByText('Housing')).toBeInTheDocument()
+  })
+
+  fireEvent.click(screen.getByTitle('Expand'))
+  fireEvent.click(screen.getByText('+ Add subcategory'))
+
+  const typeInput = screen.getByPlaceholderText('Type (Income / Expense / Transfer)')
+  expect(typeInput).toHaveValue('Expense')
+  expect(typeInput).toBeDisabled()
+
+  fireEvent.change(screen.getByPlaceholderText('Name'), { target: { value: 'Utilities' } })
+  fireEvent.click(screen.getByText('Save'))
+
+  await waitFor(() => {
+    expect(mockCreateCategory).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'Utilities', type: 'Expense', parent_id: 1,
+    }))
+  })
+})
+
+test('editing a category with subcategories disables the parent selector and type field', async () => {
+  mockFetchCategories.mockResolvedValue([housing, rent])
+
+  renderWithProviders(<CategoriesList onBack={() => {}} />)
+
+  await waitFor(() => {
+    expect(screen.getByText('Housing')).toBeInTheDocument()
+  })
+
+  fireEvent.click(screen.getByText('Edit'))
+
+  expect(screen.getByText("Has subcategories — can't set a parent")).toBeInTheDocument()
+  const typeInput = screen.getByDisplayValue('Expense')
+  expect(typeInput).toBeDisabled()
+})
+
+test('shows a clarifying toast when deleting a category with subcategories is rejected', async () => {
+  mockFetchCategories.mockResolvedValue([housing])
+  mockDeleteCategory.mockRejectedValue(new Error('Cannot delete category with existing subcategories'))
+
+  renderWithProviders(<CategoriesList onBack={() => {}} />)
+
+  await waitFor(() => {
+    expect(screen.getByText('Housing')).toBeInTheDocument()
+  })
+
+  fireEvent.click(screen.getByText('Delete'))
+  const dialog = await screen.findByRole('dialog')
+  fireEvent.click(within(dialog).getByText('Delete'))
+
+  expect(await screen.findByText('Cannot delete category with existing subcategories')).toBeInTheDocument()
 })
 
 test('shows error state on fetch failure', async () => {
