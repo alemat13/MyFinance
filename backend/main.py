@@ -10,7 +10,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import join, func, or_
+from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 
 from database import get_db, engine, Base, sync_schema
@@ -21,15 +21,15 @@ from models import (
 from schemas import (
     AccountOut, AccountCreate, AccountUpdate,
     CategoryOut, CategoryCreate, CategoryUpdate,
-    CategorySplitOut, CategorySplitCreate,
+    CategorySplitCreate,
     TransactionOut, TransactionCreate, TransactionUpdate,
-    TransactionSplitOut, TransactionHistoryOut,
+    TransactionHistoryOut,
     TransactionSearchRequest, TransactionSearchResponse,
     BulkUpdateTransactionsRequest, BulkUpdateTransactionsResponse,
     DashboardResponse,
-    CategoryChartItem, MonthChartItem, NetMonthChartItem, ChartsResponse,
+    ChartsResponse,
     UserOut, UserCreate, UserUpdate,
-    AccountUserOut, AccountUserCreate,
+    AccountUserCreate,
     GlobalSplitWeightOut, GlobalSplitWeightUpdateItem,
     AccountSplitWeightOut, AccountSplitWeightUpdateItem,
     UserBalanceOut,
@@ -38,11 +38,11 @@ from schemas import (
 )
 import split_engine
 import charts
+import serializers
 import backup
 from filtering import build_where_clause
 from import_csv import detect_import_settings, preview_import
 from audit import record_transaction_history, TRACKED_FIELDS, _jsonify
-from accounting_month import compute_accounting_month
 
 logger = logging.getLogger(__name__)
 
@@ -119,93 +119,6 @@ def _visible_transaction_filter(db: Session, user_id: int):
     return or_(
         Transaction.account_id.in_(owned_account_ids),
         Transaction.id.in_(split_txn_ids),
-    )
-
-
-def _account_out(account: Account) -> AccountOut:
-    return AccountOut(
-        id=account.id,
-        name=account.name,
-        type=account.type,
-        balance=account.balance,
-        currency=account.currency,
-        created_at=account.created_at,
-        users=[
-            AccountUserOut(
-                user_id=au.user_id,
-                user_name=au.user.name,
-                ownership_percentage=au.ownership_percentage,
-            )
-            for au in account.user_associations
-        ],
-        split_weights=[
-            AccountSplitWeightOut(
-                user_id=w.user_id,
-                user_name=w.user.name,
-                weight=w.weight,
-            )
-            for w in account.split_weight_associations
-        ],
-    )
-
-
-def _splits_out(t: Transaction) -> list[TransactionSplitOut]:
-    return [
-        TransactionSplitOut(
-            user_id=s.user_id,
-            user_name=s.user.name,
-            weight=s.weight,
-            share_amount=s.share_amount,
-            source=s.source,
-        )
-        for s in t.splits
-    ]
-
-
-def _transaction_out(db: Session, transaction_id: int) -> TransactionOut:
-    t, account_name, currency, category_name, category_color, category_icon = (
-        db.query(Transaction, Account.name, Account.currency, Category.name, Category.color, Category.icon)
-        .join(Account, Transaction.account_id == Account.id)
-        .outerjoin(Category, Transaction.category_id == Category.id)
-        .filter(Transaction.id == transaction_id)
-        .first()
-    )
-    return TransactionOut(
-        id=t.id,
-        date=t.date,
-        payee=t.payee,
-        memo=t.memo,
-        amount=t.amount,
-        account_id=t.account_id,
-        account_name=account_name,
-        currency=currency,
-        category_id=t.category_id,
-        category_name=category_name,
-        category_color=category_color,
-        category_icon=category_icon,
-        accounting_month_offset=t.accounting_month_offset,
-        accounting_month=compute_accounting_month(t.date, t.accounting_month_offset),
-        splits=_splits_out(t),
-    )
-
-
-def _category_out(category: Category) -> CategoryOut:
-    return CategoryOut(
-        id=category.id,
-        name=category.name,
-        type=category.type,
-        color=category.color,
-        icon=category.icon,
-        parent_id=category.parent_id,
-        parent_name=category.parent.name if category.parent else None,
-        splits=[
-            CategorySplitOut(
-                user_id=cs.user_id,
-                user_name=cs.user.name,
-                weight=cs.weight,
-            )
-            for cs in category.splits
-        ],
     )
 
 
@@ -341,7 +254,7 @@ def get_accounts(user_id: int | None = Query(None), db: Session = Depends(get_db
             AccountUser.ownership_percentage > 0,
         ).distinct()
     accounts = query.all()
-    return [_account_out(a) for a in accounts]
+    return [serializers.account_out(a) for a in accounts]
 
 
 @app.post("/api/accounts", response_model=AccountOut, status_code=201)
@@ -359,7 +272,7 @@ def create_account(data: AccountCreate, db: Session = Depends(get_db)):
         ))
     db.commit()
     db.refresh(account)
-    return _account_out(account)
+    return serializers.account_out(account)
 
 
 @app.put("/api/accounts/{account_id}", response_model=AccountOut)
@@ -377,7 +290,7 @@ def update_account(account_id: int, data: AccountUpdate, db: Session = Depends(g
         setattr(account, field, value)
     db.commit()
     db.refresh(account)
-    return _account_out(account)
+    return serializers.account_out(account)
 
 
 @app.delete("/api/accounts/{account_id}", status_code=204)
@@ -395,7 +308,7 @@ def delete_account(account_id: int, db: Session = Depends(get_db)):
 
 @app.get("/api/categories", response_model=list[CategoryOut])
 def get_categories(db: Session = Depends(get_db)):
-    return [_category_out(c) for c in db.query(Category).all()]
+    return [serializers.category_out(c) for c in db.query(Category).all()]
 
 
 @app.post("/api/categories", response_model=CategoryOut, status_code=201)
@@ -408,7 +321,7 @@ def create_category(data: CategoryCreate, db: Session = Depends(get_db)):
     _sync_category_splits(db, category, data.splits)
     db.commit()
     db.refresh(category)
-    return _category_out(category)
+    return serializers.category_out(category)
 
 
 @app.put("/api/categories/{category_id}", response_model=CategoryOut)
@@ -437,7 +350,7 @@ def update_category(category_id: int, data: CategoryUpdate, db: Session = Depend
         setattr(category, field, value)
     db.commit()
     db.refresh(category)
-    return _category_out(category)
+    return serializers.category_out(category)
 
 
 @app.delete("/api/categories/{category_id}", status_code=204)
@@ -457,35 +370,18 @@ def delete_category(category_id: int, db: Session = Depends(get_db)):
 
 @app.get("/api/transactions", response_model=list[TransactionOut])
 def get_transactions(user_id: int | None = Query(None), db: Session = Depends(get_db)):
-    query = (
-        db.query(Transaction, Account.name, Account.currency, Category.name, Category.color, Category.icon)
-        .join(Account, Transaction.account_id == Account.id)
-        .outerjoin(Category, Transaction.category_id == Category.id)
-    )
+    query = serializers.transaction_query(db)
     if user_id is not None:
         query = query.filter(_visible_transaction_filter(db, user_id))
     results = query.order_by(Transaction.date.desc()).all()
     return [
-        TransactionOut(
-            id=t.id, date=t.date, payee=t.payee, memo=t.memo,
-            amount=t.amount, account_id=t.account_id,
-            account_name=account_name, currency=currency, category_id=t.category_id,
-            category_name=category_name, category_color=category_color, category_icon=category_icon,
-            accounting_month_offset=t.accounting_month_offset,
-            accounting_month=compute_accounting_month(t.date, t.accounting_month_offset),
-            splits=_splits_out(t),
-        )
-        for t, account_name, currency, category_name, category_color, category_icon in results
+        serializers.transaction_out(t) for t in results
     ]
 
 
 @app.post("/api/transactions/search", response_model=TransactionSearchResponse)
 def search_transactions(req: TransactionSearchRequest, db: Session = Depends(get_db)):
-    query = (
-        db.query(Transaction, Account.name, Account.currency, Category.name, Category.color, Category.icon)
-        .join(Account, Transaction.account_id == Account.id)
-        .outerjoin(Category, Transaction.category_id == Category.id)
-    )
+    query = serializers.transaction_query(db)
     if req.user_id is not None:
         query = query.filter(_visible_transaction_filter(db, req.user_id))
 
@@ -537,16 +433,7 @@ def search_transactions(req: TransactionSearchRequest, db: Session = Depends(get
         .all()
     )
     items = [
-        TransactionOut(
-            id=t.id, date=t.date, payee=t.payee, memo=t.memo,
-            amount=t.amount, account_id=t.account_id,
-            account_name=account_name, currency=currency, category_id=t.category_id,
-            category_name=category_name, category_color=category_color, category_icon=category_icon,
-            accounting_month_offset=t.accounting_month_offset,
-            accounting_month=compute_accounting_month(t.date, t.accounting_month_offset),
-            splits=_splits_out(t),
-        )
-        for t, account_name, currency, category_name, category_color, category_icon in results
+        serializers.transaction_out(t) for t in results
     ]
     total_pages = max(1, (total + page_size - 1) // page_size)
     return TransactionSearchResponse(
@@ -569,7 +456,7 @@ def create_transaction(data: TransactionCreate, actor_user_id: int | None = Quer
     split_engine.apply_split(db, transaction, weights, source=data.split_source or "custom")
     record_transaction_history(db, transaction, "created", actor_user_id, source="manual")
     db.commit()
-    return _transaction_out(db, transaction.id)
+    return serializers.transaction_out(serializers.load_transaction(db, transaction.id))
 
 
 @app.put("/api/transactions/bulk-update", response_model=BulkUpdateTransactionsResponse)
@@ -633,7 +520,7 @@ def get_transaction(transaction_id: int, user_id: int | None = Query(None), db: 
     transaction = query.first()
     if not transaction:
         raise HTTPException(404, "Transaction not found")
-    return _transaction_out(db, transaction_id)
+    return serializers.transaction_out(serializers.load_transaction(db, transaction_id))
 
 
 @app.put("/api/transactions/{transaction_id}", response_model=TransactionOut)
@@ -672,7 +559,7 @@ def update_transaction(transaction_id: int, data: TransactionUpdate, actor_user_
     if changes:
         record_transaction_history(db, transaction, "updated", actor_user_id, changes=changes)
     db.commit()
-    return _transaction_out(db, transaction.id)
+    return serializers.transaction_out(serializers.load_transaction(db, transaction.id))
 
 
 @app.delete("/api/transactions/{transaction_id}", status_code=204)
@@ -694,16 +581,7 @@ def get_transaction_history(transaction_id: int, db: Session = Depends(get_db)):
         .all()
     )
     users_by_id = {u.id: u.name for u in db.query(User).all()}
-    return [
-        TransactionHistoryOut(
-            id=r.id, transaction_id=r.transaction_id, action=r.action, source=r.source,
-            changed_at=r.changed_at, changed_by_user_id=r.changed_by_user_id,
-            changed_by_user_name=users_by_id.get(r.changed_by_user_id),
-            date=r.date, payee=r.payee, memo=r.memo, amount=r.amount,
-            account_id=r.account_id, category_id=r.category_id, changes=r.changes,
-        )
-        for r in rows
-    ]
+    return [serializers.transaction_history_out(r, users_by_id) for r in rows]
 
 
 # ── Split weights, preview, balances ─────────────────────────────
@@ -753,8 +631,7 @@ def update_account_split_weights(account_id: int, data: list[AccountSplitWeightU
 @app.get("/api/balances", response_model=list[UserBalanceOut])
 def get_balances(db: Session = Depends(get_db)):
     return [
-        UserBalanceOut(user_id=user_id, user_name=user_name, currency=currency, net_position=net_position)
-        for user_id, user_name, currency, net_position in split_engine.compute_balances(db)
+        serializers.user_balance_out(row) for row in split_engine.compute_balances(db)
     ]
 
 
@@ -862,35 +739,19 @@ def get_dashboard(user_id: int | None = Query(None), db: Session = Depends(get_d
         ).distinct()
     accounts = accounts_query.all()
 
-    tx_query = (
-        db.query(Transaction, Account.name, Account.currency, Category.name, Category.color, Category.icon)
-        .join(Account, Transaction.account_id == Account.id)
-        .outerjoin(Category, Transaction.category_id == Category.id)
-    )
+    tx_query = serializers.transaction_query(db)
     if user_id is not None:
         tx_query = tx_query.filter(_visible_transaction_filter(db, user_id))
     recent_results = tx_query.order_by(Transaction.date.desc()).limit(10).all()
 
-    recent_transactions = [
-        TransactionOut(
-            id=t.id, date=t.date, payee=t.payee, memo=t.memo,
-            amount=t.amount, account_id=t.account_id,
-            account_name=account_name, currency=currency, category_id=t.category_id,
-            category_name=category_name, category_color=category_color, category_icon=category_icon,
-            accounting_month_offset=t.accounting_month_offset,
-            accounting_month=compute_accounting_month(t.date, t.accounting_month_offset),
-            splits=_splits_out(t),
-        )
-        for t, account_name, currency, category_name, category_color, category_icon in recent_results
-    ]
-
+    recent_transactions = [serializers.transaction_out(t) for t in recent_results]
     balances = [
-        UserBalanceOut(user_id=uid, user_name=user_name, currency=currency, net_position=net_position)
-        for uid, user_name, currency, net_position in split_engine.compute_balances(db, user_id=user_id)
+        serializers.user_balance_out(row)
+        for row in split_engine.compute_balances(db, user_id=user_id)
     ]
 
     return DashboardResponse(
-        accounts=[_account_out(a) for a in accounts],
+        accounts=[serializers.account_out(a) for a in accounts],
         recent_transactions=recent_transactions,
         balances=balances,
     )
@@ -905,25 +766,4 @@ def get_charts(
     db: Session = Depends(get_db),
 ):
     by_category, by_month, net_by_month = charts.compute_chart_data(db, user_id, currency)
-    currencies = sorted({c.currency for c in by_category} | {m.currency for m in by_month})
-    return ChartsResponse(
-        currencies=currencies,
-        by_category=[
-            CategoryChartItem(
-                category_id=c.category_id, category_name=c.category_name,
-                category_type=c.category_type, color=c.color, amount=c.amount, currency=c.currency,
-            )
-            for c in by_category
-        ],
-        by_month=[
-            MonthChartItem(
-                month=m.month, income=m.income, expense=round(abs(m.expense), 2),
-                uncategorized=m.uncategorized, currency=m.currency,
-            )
-            for m in by_month
-        ],
-        net_by_month=[
-            NetMonthChartItem(month=n.month, net=n.net, currency=n.currency)
-            for n in net_by_month
-        ],
-    )
+    return serializers.charts_response(by_category, by_month, net_by_month)
