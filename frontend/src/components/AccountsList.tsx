@@ -1,5 +1,4 @@
-import { useEffect, useState } from 'react'
-import { ArrowLeft } from 'lucide-react'
+import { useState } from 'react'
 import {
   Account, AccountCreate, AccountUpdate, AccountUserCreate, AccountSplitWeightCreate,
   User, fetchAccounts, createAccount, updateAccount, deleteAccount,
@@ -7,7 +6,8 @@ import {
 } from '../api/client'
 import SplitEditor, { SplitRow } from './SplitEditor'
 import { useToast } from '../context/ToastContext'
-import { Button, Input, Select, Table, Thead, Tbody, Tr, Th, Td, StatusMessage, ConfirmDialog } from './ui'
+import { useCrudList } from '../hooks/useCrudList'
+import { Button, Input, Select, Table, Thead, Tbody, Tr, Th, Td, StatusMessage, ConfirmDialog, BackButton } from './ui'
 import { CURRENCY_OPTIONS, formatMoney } from '../utils/currency'
 
 const toRows = (users: AccountUserCreate[]): SplitRow[] =>
@@ -76,51 +76,49 @@ function CurrencyField({ value, onChange }: CurrencyFieldProps) {
 }
 
 export default function AccountsList({ onBack, selectedUserId }: Props) {
-  const [accounts, setAccounts] = useState<Account[]>([])
   const [allUsers, setAllUsers] = useState<User[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [editingId, setEditingId] = useState<number | null>(null)
-  const [editData, setEditData] = useState<AccountUpdate>({})
   const [editSplitWeights, setEditSplitWeights] = useState<SplitRow[]>([])
-  const [showNew, setShowNew] = useState(false)
-  const [newData, setNewData] = useState<AccountCreate>(emptyForm)
   const [newSplitWeights, setNewSplitWeights] = useState<SplitRow[]>([])
-  const [deletingAccount, setDeletingAccount] = useState<Account | null>(null)
   const { showToast } = useToast()
 
-  const load = () => {
-    setLoading(true)
-    Promise.all([
-      fetchAccounts(selectedUserId ?? undefined),
-      fetchUsers(),
-    ])
-      .then(([accts, users]) => {
-        setAccounts(accts)
-        setAllUsers(users)
-      })
-      .catch(err => { console.error(err); setError(err.message) })
-      .finally(() => setLoading(false))
-  }
-
-  useEffect(load, [selectedUserId])
-
-  const startEdit = (a: Account) => {
-    setEditingId(a.id)
-    setEditData({
+  const {
+    items: accounts, loading, error, load,
+    editingId, editData, setEditData, startEdit: startEditHook, cancelEdit: cancelEditHook,
+    showNew, setShowNew, newData, setNewData, cancelNew: cancelNewHook,
+    deletingItem: deletingAccount, setDeletingItem: setDeletingAccount, confirmDelete,
+  } = useCrudList<Account, AccountCreate, AccountUpdate>({
+    fetchAll: () => Promise.all([fetchAccounts(selectedUserId ?? undefined), fetchUsers()]).then(([accts, users]) => { setAllUsers(users); return accts }),
+    create: createAccount,
+    update: updateAccount,
+    remove: deleteAccount,
+    getId: a => a.id,
+    emptyForm,
+    toEditData: a => ({
       name: a.name,
       type: a.type,
       balance: a.balance,
       currency: a.currency,
       users: a.users.map(u => ({ user_id: u.user_id, ownership_percentage: u.ownership_percentage })),
-    })
+    }),
+    deps: [selectedUserId],
+  })
+
+  // Split-weight tier isn't part of AccountUpdate/AccountCreate — it's saved via
+  // its own endpoint (updateAccountSplitWeights), so it's kept as separate state
+  // synced alongside the hook's editData/newData rather than folded into either.
+  const startEdit = (a: Account) => {
+    startEditHook(a)
     setEditSplitWeights(toWeightRows(a.split_weights.map(w => ({ user_id: w.user_id, weight: w.weight }))))
   }
 
   const cancelEdit = () => {
-    setEditingId(null)
-    setEditData({})
+    cancelEditHook()
     setEditSplitWeights([])
+  }
+
+  const cancelNew = () => {
+    cancelNewHook()
+    setNewSplitWeights([])
   }
 
   const saveEdit = (id: number) => {
@@ -140,14 +138,6 @@ export default function AccountsList({ onBack, selectedUserId }: Props) {
       .catch(err => showToast(err.message))
   }
 
-  const confirmDelete = () => {
-    if (!deletingAccount) return
-    deleteAccount(deletingAccount.id)
-      .then(() => load())
-      .catch(err => showToast(err.message))
-      .finally(() => setDeletingAccount(null))
-  }
-
   const saveNew = () => {
     if (!newData.name || !newData.type) { showToast('Name and type are required'); return }
     const err = validateOwners(newData.users ?? [])
@@ -158,19 +148,13 @@ export default function AccountsList({ onBack, selectedUserId }: Props) {
     createAccount(newData)
       .then(created => {
         updateAccountSplitWeights(created.id, splitWeights)
-          .then(() => { setShowNew(false); setNewData(emptyForm); setNewSplitWeights([]); load() })
+          .then(() => { cancelNew(); load() })
           .catch(weightsErr => {
             showToast(`Account "${created.name}" was created, but its split weights failed to save: ${weightsErr.message}`)
             load()
           })
       })
       .catch(err => showToast(err.message))
-  }
-
-  const cancelNew = () => {
-    setShowNew(false)
-    setNewData(emptyForm)
-    setNewSplitWeights([])
   }
 
   const ownersDisplay = (a: Account) => {
@@ -184,9 +168,7 @@ export default function AccountsList({ onBack, selectedUserId }: Props) {
 
   return (
     <div>
-      <button onClick={onBack} className="flex items-center gap-1 text-accent hover:underline text-sm mb-4 cursor-pointer">
-        <ArrowLeft size={14} /> Back
-      </button>
+      <BackButton onClick={onBack} />
       <div className="flex justify-between items-center mb-3">
         <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Accounts</h2>
         <Button onClick={() => setShowNew(true)}>+ New Account</Button>

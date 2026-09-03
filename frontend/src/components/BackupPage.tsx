@@ -1,9 +1,8 @@
 import { useState } from 'react'
-import { ArrowLeft } from 'lucide-react'
 import { BackupImportMode, ImportSummary, exportDatabase, importDatabase } from '../api/client'
 import { useToast } from '../context/ToastContext'
 import { downloadBlob } from '../utils/download'
-import { Button, Card, Input, Select, ConfirmDialog } from './ui'
+import { Button, Card, Input, Select, ConfirmDialog, BackButton } from './ui'
 
 interface Props {
   onBack: () => void
@@ -68,9 +67,7 @@ export default function BackupPage({ onBack }: Props) {
 
   return (
     <div>
-      <button onClick={onBack} className="flex items-center gap-1 text-accent hover:underline text-sm mb-4 cursor-pointer">
-        <ArrowLeft size={14} /> Back
-      </button>
+      <BackButton onClick={onBack} />
       <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-3">Backup &amp; Restore</h2>
 
       <Card className="p-3 max-w-md mb-4">
