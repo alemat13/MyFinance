@@ -31,7 +31,7 @@ class Category(Base):
     icon = Column(String(50), nullable=True)
     # Self-referential FK for a strict 2-level hierarchy: a category with
     # parent_id set is a subcategory, and its parent must itself have no
-    # parent (enforced in main.py, not at the DB level).
+    # parent (enforced in rules.py, not at the DB level).
     parent_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
 
     transactions = relationship("Transaction", back_populates="category")
