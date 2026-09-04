@@ -61,11 +61,22 @@ const describeSplitsChange = (change: { old: SplitSnapshotEntry[] | null; new: S
   return `splits: ${userIds.map(id => `${nameFor(id)} ${oldWeights.get(id) ?? 0}→${newWeights.get(id) ?? 0}`).join(', ')}`
 }
 
-const describeHistoryChanges = (changes: TransactionHistoryEntry['changes'], users: User[]) =>
+const describeCategoryChange = (change: { old: unknown; new: unknown }, categories: Category[]) => {
+  const nameFor = (id: unknown) => {
+    if (id === null || id === undefined) return '—'
+    const category = categories.find(c => c.id === id)
+    return category?.name ?? `Category ${id}`
+  }
+  return `category: ${nameFor(change.old)} → ${nameFor(change.new)}`
+}
+
+const describeHistoryChanges = (changes: TransactionHistoryEntry['changes'], users: User[], categories: Category[]) =>
   changes
     ? Object.entries(changes).map(([field, value]) =>
         field === 'splits'
           ? describeSplitsChange(value as { old: SplitSnapshotEntry[] | null; new: SplitSnapshotEntry[] | null }, users)
+          : field === 'category_id'
+          ? describeCategoryChange(value, categories)
           : `${field}: ${value.old ?? '—'} → ${value.new ?? '—'}`
       ).join(', ')
     : ''
@@ -240,7 +251,7 @@ export default function TransactionDetail({
                       <span className="text-slate-500 dark:text-slate-400">{new Date(h.changed_at).toLocaleString()}</span>
                       <span className="text-slate-500 dark:text-slate-400">by {h.changed_by_user_name ?? 'Unknown user'}</span>
                       {h.changes && (
-                        <span className="text-slate-700 dark:text-slate-200">{describeHistoryChanges(h.changes, allUsers)}</span>
+                        <span className="text-slate-700 dark:text-slate-200">{describeHistoryChanges(h.changes, allUsers, categories)}</span>
                       )}
                     </div>
                   ))}
