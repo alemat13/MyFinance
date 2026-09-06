@@ -325,6 +325,22 @@ test('shows split-weight changes in history using user names, not raw arrays', a
   expect(await screen.findByText(/splits: Alex 1→1, Sam 0→1/)).toBeInTheDocument()
 })
 
+test('shows "Uncategorized" (not a blank/em-dash) for a null category_id in history', async () => {
+  mockFetchTransaction.mockResolvedValue(baseTxn)
+  mockFetchTransactionHistory.mockResolvedValue([
+    {
+      id: 1, transaction_id: 1, action: 'updated', source: null, changed_at: '2026-01-16T10:00:00',
+      changed_by_user_id: 1, changed_by_user_name: 'Alex',
+      date: '2026-01-15', payee: 'Test', memo: null, amount: 50, account_id: 1, category_id: 1,
+      changes: { category_id: { old: null, new: 1 } },
+    },
+  ])
+
+  renderWithProviders(<TransactionDetail {...baseProps} />)
+
+  expect(await screen.findByText(/category: Uncategorized → Salary/)).toBeInTheDocument()
+})
+
 test('shows empty state when there is no recorded history', async () => {
   mockFetchTransaction.mockResolvedValue(baseTxn)
   mockFetchTransactionHistory.mockResolvedValue([])
