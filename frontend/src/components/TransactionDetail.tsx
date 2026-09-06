@@ -167,7 +167,10 @@ export default function TransactionDetail({
   }
 
   const currency = accounts.find(a => a.id === formData.account_id)?.currency ?? 'EUR'
-  const acctOptions = accounts.map(a => ({ value: a.id, label: a.name }))
+  // Archived accounts are hidden from the picker when creating a new transaction, but
+  // an existing transaction already on one must keep showing/saving its own account.
+  const acctOptions = (transactionId === null ? accounts.filter(a => !a.archived) : accounts)
+    .map(a => ({ value: a.id, label: a.name }))
 
   return (
     <Modal isOpen size="lg" onClose={onClose} title={transactionId === null ? 'New Transaction' : (transaction?.payee ?? 'Transaction')}>

@@ -79,6 +79,7 @@ export default function AccountsList({ onBack, selectedUserId }: Props) {
   const [allUsers, setAllUsers] = useState<User[]>([])
   const [editSplitWeights, setEditSplitWeights] = useState<SplitRow[]>([])
   const [newSplitWeights, setNewSplitWeights] = useState<SplitRow[]>([])
+  const [showArchived, setShowArchived] = useState(false)
   const { showToast } = useToast()
 
   const {
@@ -162,6 +163,12 @@ export default function AccountsList({ onBack, selectedUserId }: Props) {
     return a.users.map(u => `${u.user_name} (${u.ownership_percentage}%)`).join(', ')
   }
 
+  const toggleArchived = (a: Account) => {
+    updateAccount(a.id, { archived: !a.archived }).then(load).catch(err => showToast(err.message))
+  }
+
+  const visibleAccounts = accounts.filter(a => showArchived || !a.archived)
+
   if (error) {
     return <StatusMessage error={error} />
   }
@@ -171,7 +178,13 @@ export default function AccountsList({ onBack, selectedUserId }: Props) {
       <BackButton onClick={onBack} />
       <div className="flex justify-between items-center mb-3">
         <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Accounts</h2>
-        <Button onClick={() => setShowNew(true)}>+ New Account</Button>
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-1.5 text-sm text-slate-600 dark:text-slate-300">
+            <input type="checkbox" checked={showArchived} onChange={e => setShowArchived(e.target.checked)} />
+            Show archived
+          </label>
+          <Button onClick={() => setShowNew(true)}>+ New Account</Button>
+        </div>
       </div>
 
       {showNew && (
@@ -217,10 +230,10 @@ export default function AccountsList({ onBack, selectedUserId }: Props) {
             </Tr>
           </Thead>
           <Tbody>
-            {accounts.length === 0 && (
+            {visibleAccounts.length === 0 && (
               <Tr><Td colSpan={6} className="text-center py-5 text-slate-400">No accounts yet</Td></Tr>
             )}
-            {accounts.map(a => (
+            {visibleAccounts.map(a => (
               <Tr key={a.id}>
                 {editingId === a.id ? (
                   <>
@@ -252,7 +265,14 @@ export default function AccountsList({ onBack, selectedUserId }: Props) {
                   </>
                 ) : (
                   <>
-                    <Td>{a.name}</Td>
+                    <Td>
+                      {a.name}
+                      {a.archived && (
+                        <span className="ml-1.5 text-xs px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400">
+                          Archived
+                        </span>
+                      )}
+                    </Td>
                     <Td>{a.type}</Td>
                     <Td className={`text-right ${a.balance >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                       {formatMoney(a.balance, a.currency)}
@@ -261,6 +281,9 @@ export default function AccountsList({ onBack, selectedUserId }: Props) {
                     <Td className="text-xs">{ownersDisplay(a)}</Td>
                     <Td className="text-center">
                       <Button size="sm" variant="secondary" onClick={() => startEdit(a)} className="mr-1">Edit</Button>
+                      <Button size="sm" variant="secondary" onClick={() => toggleArchived(a)} className="mr-1">
+                        {a.archived ? 'Unarchive' : 'Archive'}
+                      </Button>
                       <Button size="sm" variant="danger" onClick={() => setDeletingAccount(a)}>Delete</Button>
                     </Td>
                   </>

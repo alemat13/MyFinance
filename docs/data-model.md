@@ -52,6 +52,7 @@ erDiagram
         float balance
         string currency "ISO 4217 code, e.g. EUR, USD"
         datetime created_at
+        boolean archived "default false; hides account from dashboard/new-tx picker, history unaffected"
     }
 
     categories {
@@ -133,6 +134,7 @@ Financial accounts (checking, savings, credit card, etc.).
 | `balance` | Float | Default: 0.0 |
 | `currency` | String(3) | ISO 4217 code, e.g. `EUR`, `USD`. Default: `EUR` |
 | `created_at` | DateTime | Default: current UTC time |
+| `archived` | Boolean | Default: `false`. Hides the account from the dashboard and the new-transaction account picker; doesn't affect existing transactions, balances, or charts |
 
 ### `categories`
 Transaction categories (income, expense, transfer).

@@ -98,6 +98,11 @@ The **Owners** column shows each owner as "Name (percentage%)".
   confirmation first.
 - You can't delete an account that still has transactions on it — remove or reassign
   its transactions first.
+- **Archive** (once an account is closed) hides it from the Dashboard and from the
+  account dropdown when creating a new transaction, without deleting anything — its
+  existing transactions, balances, and charts are unaffected. Archived accounts are
+  hidden from this list by default; check **Show archived** to see them again and
+  click **Unarchive** to bring one back into active use.
 
 ## Categories
 
@@ -330,6 +335,7 @@ A quick reference for the rules the app enforces:
 | Split weights must be ≥ 0, with at least one > 0 — no sum requirement | Category, Account, and Global split weights; a transaction's own split |
 | Currency must be a 3-letter code (e.g. `EUR`, `USD`) | Accounts |
 | Can't delete an account with existing transactions | Accounts |
+| Can't create a new transaction on an archived account | Accounts, Transactions |
 | Can't delete a category with existing transactions | Categories |
 | Can't delete a category with existing subcategories | Categories |
 | A subcategory's type must match its parent's, and only 2 levels of categories are allowed | Categories |

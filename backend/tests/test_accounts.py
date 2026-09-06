@@ -15,6 +15,7 @@ def test_create_account(client):
     assert data["type"] == "Checking"
     assert data["balance"] == 100.0
     assert data["currency"] == "EUR"
+    assert data["archived"] is False
     assert "id" in data
 
 
@@ -193,3 +194,28 @@ def test_get_accounts_filtered_by_user_no_match(client, sample_user):
     response = client.get(f"/api/accounts?user_id={sample_user.id}")
     assert response.status_code == 200
     assert response.json() == []
+
+
+def test_update_account_archived(client, sample_account):
+    response = client.put(
+        f"/api/accounts/{sample_account.id}",
+        json={"archived": True},
+    )
+    assert response.status_code == 200
+    assert response.json()["archived"] is True
+
+    response = client.put(
+        f"/api/accounts/{sample_account.id}",
+        json={"archived": False},
+    )
+    assert response.status_code == 200
+    assert response.json()["archived"] is False
+
+
+def test_get_accounts_includes_archived(client, sample_account):
+    client.put(f"/api/accounts/{sample_account.id}", json={"archived": True})
+    response = client.get("/api/accounts")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 1
+    assert data[0]["archived"] is True

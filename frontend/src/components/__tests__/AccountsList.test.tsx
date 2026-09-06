@@ -21,7 +21,7 @@ vi.mock('../../api/client', () => ({
   updateAccountSplitWeights: mockUpdateAccountSplitWeights,
 }))
 
-const baseAccount = { id: 1, name: 'Checking', type: 'Checking', balance: 100, currency: 'EUR', created_at: '2026-01-01', users: [], split_weights: [] }
+const baseAccount = { id: 1, name: 'Checking', type: 'Checking', balance: 100, currency: 'EUR', created_at: '2026-01-01', archived: false, users: [], split_weights: [] }
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -205,6 +205,47 @@ test('cancels delete when cancel is clicked', async () => {
 
   expect(mockDeleteAccount).not.toHaveBeenCalled()
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+})
+
+test('can archive an account', async () => {
+  mockFetchAccounts.mockResolvedValue([baseAccount])
+  mockUpdateAccount.mockResolvedValue({ ...baseAccount, archived: true })
+
+  renderWithProviders(<AccountsList onBack={() => {}} selectedUserId={null} />)
+
+  await waitFor(() => {
+    expect(screen.getByText(/\$?100/)).toBeInTheDocument()
+  })
+
+  fireEvent.click(screen.getByText('Archive'))
+
+  await waitFor(() => {
+    expect(mockUpdateAccount).toHaveBeenCalledWith(1, { archived: true })
+  })
+})
+
+test('hides archived accounts by default, and "Show archived" reveals them with an Unarchive action', async () => {
+  const archivedAccount = { ...baseAccount, id: 2, name: 'Closed Account', archived: true }
+  mockFetchAccounts.mockResolvedValue([baseAccount, archivedAccount])
+  mockUpdateAccount.mockResolvedValue({ ...archivedAccount, archived: false })
+
+  renderWithProviders(<AccountsList onBack={() => {}} selectedUserId={null} />)
+
+  await waitFor(() => {
+    expect(screen.getByText(/\$?100/)).toBeInTheDocument()
+  })
+  expect(screen.queryByText('Closed Account')).not.toBeInTheDocument()
+
+  fireEvent.click(screen.getByRole('checkbox', { name: /show archived/i }))
+
+  expect(await screen.findByText('Closed Account')).toBeInTheDocument()
+  expect(screen.getByText('Archived')).toBeInTheDocument()
+
+  fireEvent.click(screen.getByText('Unarchive'))
+
+  await waitFor(() => {
+    expect(mockUpdateAccount).toHaveBeenCalledWith(2, { archived: false })
+  })
 })
 
 test('shows error state on fetch failure', async () => {
