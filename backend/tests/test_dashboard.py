@@ -88,3 +88,16 @@ def test_dashboard_balances_filtered_to_selected_user(client, sample_account, sa
 
     response_all = client.get("/api/dashboard")
     assert len(response_all.json()["balances"]) == 2
+
+
+def test_dashboard_excludes_archived_accounts(client, sample_transaction, db):
+    from models import Account
+    db.query(Account).filter(Account.id == sample_transaction.account_id).update({"archived": True})
+    db.commit()
+
+    response = client.get("/api/dashboard")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["accounts"] == []
+    # Historical data on the archived account is unaffected.
+    assert len(data["recent_transactions"]) == 1

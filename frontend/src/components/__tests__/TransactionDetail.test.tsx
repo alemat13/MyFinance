@@ -28,7 +28,8 @@ vi.mock('../../api/client', () => ({
   fetchTransactionHistory: mockFetchTransactionHistory,
 }))
 
-const baseAccount = { id: 1, name: 'Checking', type: 'Checking', balance: 100, currency: 'USD', created_at: '2026-01-01', users: [], split_weights: [] }
+const baseAccount = { id: 1, name: 'Checking', type: 'Checking', balance: 100, currency: 'USD', created_at: '2026-01-01', archived: false, users: [], split_weights: [] }
+const archivedAccount = { id: 2, name: 'Closed Account', type: 'Checking', balance: 0, currency: 'USD', created_at: '2026-01-01', archived: true, users: [], split_weights: [] }
 const baseCategory = { id: 1, name: 'Salary', type: 'Income', splits: [] }
 const baseTxn = {
   id: 1, date: '2026-01-15', payee: 'Test', memo: null, amount: 50,
@@ -347,6 +348,34 @@ test('opens in create mode with an empty form, no Delete button, and no history 
   expect(mockFetchTransactionHistory).not.toHaveBeenCalled()
   expect(screen.queryByText('Delete')).not.toBeInTheDocument()
   expect(screen.queryByText('History')).not.toBeInTheDocument()
+})
+
+test('excludes archived accounts from the account picker when creating a new transaction', () => {
+  renderWithProviders(<TransactionDetail
+    {...baseProps}
+    transactionId={null}
+    accounts={[baseAccount, archivedAccount]}
+  />)
+
+  const selects = screen.getAllByRole('combobox')
+  const accountSelect = selects[1]
+  expect(within(accountSelect).getByText('Checking')).toBeInTheDocument()
+  expect(within(accountSelect).queryByText('Closed Account')).not.toBeInTheDocument()
+})
+
+test('still shows an existing transaction\'s own archived account when editing it', async () => {
+  mockFetchTransaction.mockResolvedValue({ ...baseTxn, account_id: 2, account_name: 'Closed Account' })
+
+  renderWithProviders(<TransactionDetail
+    {...baseProps}
+    accounts={[baseAccount, archivedAccount]}
+  />)
+
+  await screen.findByDisplayValue('Test')
+  const selects = screen.getAllByRole('combobox')
+  const accountSelect = selects.find(el => within(el).queryByText('Closed Account'))!
+  expect(accountSelect).toBeTruthy()
+  expect(within(accountSelect).getByText('Checking')).toBeInTheDocument()
 })
 
 test('creates a new transaction', async () => {

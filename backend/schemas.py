@@ -69,6 +69,7 @@ class AccountOut(BaseModel):
     balance: float
     currency: str
     created_at: datetime
+    archived: bool = False
     users: list[AccountUserOut] = []
     split_weights: list[AccountSplitWeightOut] = []
 
@@ -91,6 +92,7 @@ class AccountUpdate(BaseModel):
     type: Optional[str] = None
     balance: Optional[float] = None
     currency: Optional[str] = None
+    archived: Optional[bool] = None
     users: list[AccountUserCreate] | None = None
 
     @field_validator("currency")
@@ -483,6 +485,7 @@ class AccountExport(BaseModel):
     balance: float
     currency: str
     created_at: datetime
+    archived: bool = False
 
 
 class CategoryExport(BaseModel):

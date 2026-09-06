@@ -13,7 +13,7 @@ router = APIRouter(prefix="/api/dashboard")
 
 @router.get("", response_model=DashboardResponse)
 def get_dashboard(user_id: int | None = Query(None), db: Session = Depends(get_db)):
-    accounts_query = db.query(Account).options(
+    accounts_query = db.query(Account).filter(Account.archived.is_(False)).options(
         selectinload(Account.user_associations).joinedload(AccountUser.user),
         selectinload(Account.split_weight_associations).joinedload(AccountSplitWeight.user),
     )

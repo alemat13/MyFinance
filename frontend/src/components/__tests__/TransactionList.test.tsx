@@ -85,7 +85,7 @@ test('does not show a Shared badge for a transaction on an account the selected 
     <TransactionList
       transactions={transactions}
       selectedUserId={2}
-      accounts={[{ id: 1, name: 'My Checking', type: 'Checking', balance: 0, currency: 'USD', created_at: '2026-01-01', users: [], split_weights: [] }]}
+      accounts={[{ id: 1, name: 'My Checking', type: 'Checking', balance: 0, currency: 'USD', created_at: '2026-01-01', archived: false, users: [], split_weights: [] }]}
     />
   )
 

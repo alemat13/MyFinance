@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 
-from models import Category, User
+from models import Account, Category, User
 from schemas import AccountUserCreate
 
 
@@ -32,6 +32,11 @@ def validate_users_exist(db: Session, users: list[AccountUserCreate]) -> None:
     missing = sorted(requested_ids - existing_ids)
     if missing:
         raise RuleViolation(f"Unknown user_id(s): {missing}")
+
+
+def validate_account_not_archived(account: Account | None) -> None:
+    if account is not None and account.archived:
+        raise RuleViolation(f"Cannot create a transaction on archived account '{account.name}'")
 
 
 def validate_weights(items: list) -> None:

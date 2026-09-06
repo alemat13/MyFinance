@@ -28,7 +28,7 @@ const user1 = { user_id: 1, user_name: 'Alex' }
 const user2 = { user_id: 2, user_name: 'Olivia' }
 
 const baseCategory: Category = { id: 1, name: 'Groceries', type: 'Expense', splits: [] }
-const baseAccount: Account = { id: 1, name: 'Checking', type: 'Checking', balance: 0, currency: 'EUR', created_at: '', users: [], split_weights: [] }
+const baseAccount: Account = { id: 1, name: 'Checking', type: 'Checking', balance: 0, currency: 'EUR', created_at: '', archived: false, users: [], split_weights: [] }
 const noGlobalWeights: GlobalSplitWeight[] = []
 
 test('resolveDefaultSplitRows returns none when nothing configured', () => {

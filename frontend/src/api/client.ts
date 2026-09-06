@@ -22,6 +22,7 @@ export interface Account {
   balance: number
   currency: string
   created_at: string
+  archived: boolean
   users: AccountUser[]
   split_weights: AccountSplitWeight[]
 }
@@ -44,6 +45,7 @@ export interface AccountUpdate {
   type?: string
   balance?: number
   currency?: string
+  archived?: boolean
   users?: AccountUserCreate[]
 }
 
