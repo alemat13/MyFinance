@@ -7,7 +7,7 @@ from audit import TRACKED_FIELDS, _jsonify, diff_splits, record_transaction_hist
 from database import get_db
 from filtering import build_where_clause, visible_transaction_filter
 from models import Account, Category, Transaction, TransactionHistory, TransactionSplit, User
-from rules import validate_weights
+from rules import validate_account_not_archived, validate_weights
 from schemas import (
     BulkUpdateTransactionsRequest,
     BulkUpdateTransactionsResponse,
@@ -110,6 +110,11 @@ def search_transactions(req: TransactionSearchRequest, db: Session = Depends(get
 
 @router.post("", response_model=TransactionOut, status_code=201)
 def create_transaction(data: TransactionCreate, actor_user_id: int | None = Query(None), db: Session = Depends(get_db)):
+    account = db.query(Account).filter(Account.id == data.account_id).first()
+    if account is None:
+        raise HTTPException(404, "Account not found")
+    validate_account_not_archived(account)
+
     weights = {w.user_id: w.weight for w in data.split_weights} if data.split_weights else None
     if data.split_weights:
         validate_weights(data.split_weights)

@@ -112,6 +112,34 @@ def test_update_transaction(client, sample_transaction):
     assert response.json()["amount"] == 999.0
 
 
+def test_create_transaction_on_archived_account_422(client, sample_account, sample_category):
+    client.put(f"/api/accounts/{sample_account.id}", json={"archived": True})
+    response = client.post(
+        "/api/transactions",
+        json={
+            "account_id": sample_account.id,
+            "category_id": sample_category.id,
+            "date": "2026-01-15",
+            "payee": "Test",
+            "amount": 100.0,
+        },
+    )
+    assert response.status_code == 422
+
+
+def test_update_transaction_on_archived_account_still_succeeds(client, sample_transaction, db):
+    from models import Account
+    db.query(Account).filter(Account.id == sample_transaction.account_id).update({"archived": True})
+    db.commit()
+
+    response = client.put(
+        f"/api/transactions/{sample_transaction.id}",
+        json={"amount": 999.0},
+    )
+    assert response.status_code == 200
+    assert response.json()["amount"] == 999.0
+
+
 def test_delete_transaction(client, sample_transaction):
     response = client.delete(f"/api/transactions/{sample_transaction.id}")
     assert response.status_code == 204

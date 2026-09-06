@@ -1,6 +1,6 @@
 from datetime import datetime, date
 
-from sqlalchemy import Column, Integer, String, Float, DateTime, Date, Text, ForeignKey, JSON
+from sqlalchemy import Column, Integer, String, Float, DateTime, Date, Text, ForeignKey, JSON, Boolean
 from sqlalchemy.orm import relationship
 
 from database import Base
@@ -15,6 +15,7 @@ class Account(Base):
     balance = Column(Float, default=0.0)
     currency = Column(String(3), nullable=False, default="EUR")
     created_at = Column(DateTime, default=datetime.utcnow)
+    archived = Column(Boolean, nullable=False, default=False)
 
     transactions = relationship("Transaction", back_populates="account")
     user_associations = relationship("AccountUser", back_populates="account", cascade="all, delete-orphan")

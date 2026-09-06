@@ -17,6 +17,7 @@ def build_account_out(account: Account) -> AccountOut:
         balance=account.balance,
         currency=account.currency,
         created_at=account.created_at,
+        archived=account.archived,
         users=[
             AccountUserOut(
                 user_id=au.user_id,
