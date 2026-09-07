@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from models import Account, AccountSplitWeight, GlobalSplitWeight, User
-from rules import validate_weights
+from rules import validate_global_weights_present, validate_weights
 from schemas import AccountSplitWeightOut, AccountSplitWeightUpdateItem, GlobalSplitWeightOut, GlobalSplitWeightUpdateItem
 from serializers import build_split_weight_rows
 
@@ -29,6 +29,7 @@ def get_split_weights(db: Session = Depends(get_db)):
 @router.put("/api/split-weights", response_model=list[GlobalSplitWeightOut])
 def update_split_weights(data: list[GlobalSplitWeightUpdateItem], db: Session = Depends(get_db)):
     validate_weights(data)
+    validate_global_weights_present(data)
     db.query(GlobalSplitWeight).delete()
     for w in data:
         db.add(GlobalSplitWeight(user_id=w.user_id, weight=w.weight))

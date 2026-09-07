@@ -6,7 +6,7 @@ from audit import record_transaction_history, splits_created_changes
 from database import get_db
 from import_csv import detect_import_settings, preview_import
 from models import Transaction
-from rules import validate_weights
+from rules import validate_resolved_weights_present, validate_transaction_weights_present, validate_weights
 from schemas import (
     ImportCommitRequest,
     ImportCommitResponse,
@@ -55,7 +55,8 @@ async def import_preview(
 @router.post("/commit", response_model=ImportCommitResponse)
 def import_commit(data: ImportCommitRequest, actor_user_id: int | None = Query(None), db: Session = Depends(get_db)):
     for row in data.rows:
-        if row.split_weights:
+        if row.split_weights is not None:
+            validate_transaction_weights_present(row.split_weights)
             validate_weights(row.split_weights)
 
     transaction_ids = []
@@ -65,6 +66,7 @@ def import_commit(data: ImportCommitRequest, actor_user_id: int | None = Query(N
             source = row.split_source or "custom"
         else:
             source, weights = split_engine.resolve_default_weights(db, row.category_id, row.account_id)
+            validate_resolved_weights_present(weights)
             source = source or "custom"
         transaction = Transaction(
             date=row.date, payee=row.payee, memo=row.memo, amount=row.amount,

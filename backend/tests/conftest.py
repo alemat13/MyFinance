@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 
 from database import Base, get_db
 from main import app
-from models import Account, Category, Transaction, User, AccountUser
+from models import Account, AccountUser, Category, Transaction, TransactionSplit, User
 
 
 engine = create_engine(
@@ -90,7 +90,10 @@ def sample_account_with_user(db, sample_account, sample_user):
 
 
 @pytest.fixture()
-def sample_transaction(db, sample_account, sample_category):
+def sample_transaction(db, sample_account, sample_category, sample_user):
+    # Splits are mandatory, so this fixture carries a real one (matching
+    # what the API would produce) rather than leaving transaction_splits
+    # empty, which is no longer a state a normal transaction can be in.
     transaction = Transaction(
         date=date(2026, 1, 15),
         payee="Test Payee",
@@ -99,6 +102,8 @@ def sample_transaction(db, sample_account, sample_category):
         category_id=sample_category.id,
     )
     db.add(transaction)
+    db.flush()
+    db.add(TransactionSplit(transaction_id=transaction.id, user_id=sample_user.id, weight=1, share_amount=500.0, source="custom"))
     db.commit()
     db.refresh(transaction)
     return transaction

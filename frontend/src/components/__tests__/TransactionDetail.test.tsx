@@ -67,11 +67,31 @@ test('loads and displays the transaction fields', async () => {
   expect(screen.getByDisplayValue('50')).toBeInTheDocument()
 })
 
-test('edits a field and saves, submitting the transaction\'s existing (empty) split weights', async () => {
+test('save is rejected when the transaction\'s split is empty, without calling the API', async () => {
+  // Splits are mandatory: a transaction loaded with no stored splits (e.g.
+  // legacy data) can't be saved as-is until a split is added.
   mockFetchTransaction.mockResolvedValue(baseTxn)
-  mockUpdateTransaction.mockResolvedValue({ ...baseTxn, payee: 'Updated' })
 
   renderWithProviders(<TransactionDetail {...baseProps} />)
+
+  const payeeInput = await screen.findByDisplayValue('Test')
+  fireEvent.change(payeeInput, { target: { value: 'Updated' } })
+
+  fireEvent.click(screen.getByText('Save'))
+
+  expect(await screen.findByText('Add at least one person to the split')).toBeInTheDocument()
+  expect(mockUpdateTransaction).not.toHaveBeenCalled()
+})
+
+test('edits a field and saves an existing split', async () => {
+  const alex = { id: 1, name: 'Alex', email: null, created_at: '' }
+  mockFetchTransaction.mockResolvedValue({
+    ...baseTxn,
+    splits: [{ user_id: 1, user_name: 'Alex', weight: 1, share_amount: 50, source: 'custom' }],
+  })
+  mockUpdateTransaction.mockResolvedValue({ ...baseTxn, payee: 'Updated' })
+
+  renderWithProviders(<TransactionDetail {...baseProps} allUsers={[alex]} />)
 
   const payeeInput = await screen.findByDisplayValue('Test')
   fireEvent.change(payeeInput, { target: { value: 'Updated' } })
@@ -81,7 +101,11 @@ test('edits a field and saves, submitting the transaction\'s existing (empty) sp
   await waitFor(() => {
     expect(mockUpdateTransaction).toHaveBeenCalledWith(
       1,
-      expect.objectContaining({ payee: 'Updated', split_weights: [], split_source: 'custom' }),
+      expect.objectContaining({
+        payee: 'Updated',
+        split_weights: [{ user_id: 1, weight: 1 }],
+        split_source: 'custom',
+      }),
       null,
     )
   })
@@ -394,10 +418,13 @@ test('still shows an existing transaction\'s own archived account when editing i
   expect(within(accountSelect).getByText('Checking')).toBeInTheDocument()
 })
 
+const alex = { id: 1, name: 'Alex', email: null, created_at: '' }
+const defaultGlobalWeights = [{ user_id: 1, user_name: 'Alex', weight: 1 }]
+
 test('creates a new transaction', async () => {
   mockCreateTransaction.mockResolvedValue({ id: 1, date: '2026-01-15', payee: 'New Payee', memo: '', amount: 100, account_id: 1, account_name: 'Checking', category_id: 1, category_name: 'Salary', splits: [] })
 
-  renderWithProviders(<TransactionDetail {...baseProps} transactionId={null} />)
+  renderWithProviders(<TransactionDetail {...baseProps} transactionId={null} allUsers={[alex]} globalWeights={defaultGlobalWeights} />)
 
   fireEvent.change(screen.getByPlaceholderText('Payee'), { target: { value: 'New Payee' } })
   fireEvent.change(screen.getByPlaceholderText('Amount'), { target: { value: '100' } })
@@ -419,7 +446,7 @@ test('creates a new transaction', async () => {
 test('can save a new transaction without picking a category', async () => {
   mockCreateTransaction.mockResolvedValue({ id: 1, date: '2026-01-15', payee: 'New Payee', memo: '', amount: 100, account_id: 1, account_name: 'Checking', category_id: null, category_name: null, splits: [] })
 
-  renderWithProviders(<TransactionDetail {...baseProps} transactionId={null} />)
+  renderWithProviders(<TransactionDetail {...baseProps} transactionId={null} allUsers={[alex]} globalWeights={defaultGlobalWeights} />)
 
   fireEvent.change(screen.getByPlaceholderText('Payee'), { target: { value: 'New Payee' } })
   fireEvent.change(screen.getByPlaceholderText('Amount'), { target: { value: '100' } })
@@ -441,7 +468,7 @@ test('can save a new transaction without picking a category', async () => {
 test('can select a non-default accounting month offset when creating a transaction', async () => {
   mockCreateTransaction.mockResolvedValue({ id: 1, date: '2026-01-15', payee: 'New Payee', memo: '', amount: 100, account_id: 1, account_name: 'Checking', category_id: 1, category_name: 'Salary', accounting_month_offset: 1, accounting_month: '2026-02', splits: [] })
 
-  renderWithProviders(<TransactionDetail {...baseProps} transactionId={null} />)
+  renderWithProviders(<TransactionDetail {...baseProps} transactionId={null} allUsers={[alex]} globalWeights={defaultGlobalWeights} />)
 
   fireEvent.change(screen.getByPlaceholderText('Payee'), { target: { value: 'New Payee' } })
   fireEvent.change(screen.getByPlaceholderText('Amount'), { target: { value: '100' } })

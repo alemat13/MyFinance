@@ -16,8 +16,14 @@ export function formatDateGroupHeader(isoDate: string): string {
 
 // Shared by the "new transaction" inline form and TransactionDetail's edit
 // form. account_id is falsy both when unset and when left at the select's
-// placeholder value (0).
-export function validateTransactionForm(payee: string | null | undefined, accountId: number | null | undefined): string | null {
+// placeholder value (0). split is optional so callers that don't manage a
+// split (e.g. bulk edit) can keep using this without passing one.
+export function validateTransactionForm(
+  payee: string | null | undefined,
+  accountId: number | null | undefined,
+  split?: { user_id: number, value: number }[],
+): string | null {
   if (!payee || !accountId) return 'Payee and account are required'
+  if (split && split.length === 0) return 'Add at least one person to the split'
   return null
 }

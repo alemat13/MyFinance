@@ -1,4 +1,4 @@
-def test_create_transaction(client, sample_account, sample_category):
+def test_create_transaction(client, sample_account, sample_category, sample_user):
     response = client.post(
         "/api/transactions",
         json={
@@ -7,12 +7,13 @@ def test_create_transaction(client, sample_account, sample_category):
             "date": "2026-01-15",
             "payee": "Test",
             "amount": 100.0,
+            "split_weights": [{"user_id": sample_user.id, "weight": 1}],
         },
     )
     assert response.status_code == 201
 
 
-def test_create_transaction_without_category(client, sample_account):
+def test_create_transaction_without_category(client, sample_account, sample_user):
     response = client.post(
         "/api/transactions",
         json={
@@ -20,6 +21,7 @@ def test_create_transaction_without_category(client, sample_account):
             "date": "2026-01-15",
             "payee": "Test",
             "amount": 100.0,
+            "split_weights": [{"user_id": sample_user.id, "weight": 1}],
         },
     )
     assert response.status_code == 201
@@ -61,10 +63,11 @@ def test_get_single_transaction_not_found(client):
     assert response.status_code == 404
 
 
-def test_get_single_transaction_filtered_by_user_no_match(client, sample_transaction, sample_user):
-    # sample_transaction's account has no AccountUser row for sample_user and
-    # no split share for them, so it must not be visible via user_id scoping.
-    response = client.get(f"/api/transactions/{sample_transaction.id}?user_id={sample_user.id}")
+def test_get_single_transaction_filtered_by_user_no_match(client, sample_transaction, sample_user2):
+    # sample_transaction's account has no AccountUser row for sample_user2 and
+    # no split share for them (its own split goes to sample_user, per the
+    # fixture), so it must not be visible via user_id scoping.
+    response = client.get(f"/api/transactions/{sample_transaction.id}?user_id={sample_user2.id}")
     assert response.status_code == 404
 
 
@@ -83,7 +86,7 @@ def test_get_single_transaction_filtered_by_user_visible(client, sample_account_
     assert response.json()["payee"] == "User Specific"
 
 
-def test_transaction_currency_reflects_account(client, db, sample_category):
+def test_transaction_currency_reflects_account(client, db, sample_category, sample_user):
     from models import Account
     account = Account(name="USD Checking", type="Checking", balance=0.0, currency="USD")
     db.add(account)
@@ -97,6 +100,7 @@ def test_transaction_currency_reflects_account(client, db, sample_category):
             "date": "2026-01-15",
             "payee": "Test",
             "amount": 100.0,
+            "split_weights": [{"user_id": sample_user.id, "weight": 1}],
         },
     )
     assert response.status_code == 201
@@ -157,7 +161,7 @@ def test_delete_transaction_404(client):
     assert response.status_code == 404
 
 
-def test_create_transaction_defaults_accounting_month_offset_to_zero(client, sample_account, sample_category):
+def test_create_transaction_defaults_accounting_month_offset_to_zero(client, sample_account, sample_category, sample_user):
     response = client.post(
         "/api/transactions",
         json={
@@ -166,6 +170,7 @@ def test_create_transaction_defaults_accounting_month_offset_to_zero(client, sam
             "date": "2026-03-15",
             "payee": "Test",
             "amount": 100.0,
+            "split_weights": [{"user_id": sample_user.id, "weight": 1}],
         },
     )
     assert response.status_code == 201
@@ -174,7 +179,7 @@ def test_create_transaction_defaults_accounting_month_offset_to_zero(client, sam
     assert data["accounting_month"] == "2026-03"
 
 
-def test_create_transaction_with_explicit_accounting_month_offset(client, sample_account, sample_category):
+def test_create_transaction_with_explicit_accounting_month_offset(client, sample_account, sample_category, sample_user):
     response = client.post(
         "/api/transactions",
         json={
@@ -184,6 +189,7 @@ def test_create_transaction_with_explicit_accounting_month_offset(client, sample
             "payee": "Test",
             "amount": 100.0,
             "accounting_month_offset": 1,
+            "split_weights": [{"user_id": sample_user.id, "weight": 1}],
         },
     )
     assert response.status_code == 201
@@ -192,7 +198,7 @@ def test_create_transaction_with_explicit_accounting_month_offset(client, sample
     assert data["accounting_month"] == "2026-04"
 
 
-def test_create_transaction_accounting_month_offset_year_rollover(client, sample_account, sample_category):
+def test_create_transaction_accounting_month_offset_year_rollover(client, sample_account, sample_category, sample_user):
     response = client.post(
         "/api/transactions",
         json={
@@ -202,6 +208,7 @@ def test_create_transaction_accounting_month_offset_year_rollover(client, sample
             "payee": "Test",
             "amount": 100.0,
             "accounting_month_offset": 1,
+            "split_weights": [{"user_id": sample_user.id, "weight": 1}],
         },
     )
     assert response.status_code == 201
@@ -217,6 +224,7 @@ def test_create_transaction_accounting_month_offset_year_rollover(client, sample
             "payee": "Test",
             "amount": 100.0,
             "accounting_month_offset": -1,
+            "split_weights": [{"user_id": sample_user.id, "weight": 1}],
         },
     )
     assert response.status_code == 201
@@ -319,7 +327,10 @@ def test_get_transactions_visible_via_split_without_ownership(client, sample_acc
     assert data[0]["payee"] == "Shared Bill"
 
 
-def test_create_transaction_no_split_config_has_no_splits(client, sample_account, sample_category):
+def test_create_transaction_no_users_configured_rejected(client, sample_account, sample_category):
+    """Splits are mandatory. With zero users in the system there's nothing
+    for the category > account > global cascade to resolve, so creation is
+    rejected rather than silently producing an unsplit transaction."""
     response = client.post(
         "/api/transactions",
         json={
@@ -330,14 +341,13 @@ def test_create_transaction_no_split_config_has_no_splits(client, sample_account
             "amount": 100.0,
         },
     )
-    assert response.status_code == 201
-    assert response.json()["splits"] == []
+    assert response.status_code == 422
 
 
-def test_create_transaction_omitted_split_weights_has_no_splits_even_with_tiers_configured(client, sample_account, sample_category, sample_user, db):
-    """Creating without split_weights never auto-resolves from tier config —
-    only the interactive client's own client-side prefill (or CSV import)
-    does that. The server-side create/update route is opt-in only."""
+def test_create_transaction_omitted_split_weights_auto_resolves_from_tier_config(client, sample_account, sample_category, sample_user, db):
+    """Omitting split_weights falls back through the category > account >
+    global cascade (same as CSV import already does) rather than leaving the
+    transaction unsplit."""
     from models import GlobalSplitWeight
     db.add(GlobalSplitWeight(user_id=sample_user.id, weight=100))
     db.commit()
@@ -353,7 +363,10 @@ def test_create_transaction_omitted_split_weights_has_no_splits_even_with_tiers_
         },
     )
     assert response.status_code == 201
-    assert response.json()["splits"] == []
+    data = response.json()
+    assert data["splits"] == [
+        {"user_id": sample_user.id, "user_name": sample_user.name, "weight": 100, "share_amount": 100.0, "source": "global"},
+    ]
 
 
 def test_create_transaction_with_explicit_split_weights_prorates(client, sample_account, sample_category, sample_user, sample_user2):
@@ -498,7 +511,9 @@ def test_update_transaction_explicit_split_weights_replaces_existing(client, sam
     assert splits[0]["share_amount"] == 100.0
 
 
-def test_update_transaction_explicit_empty_split_weights_clears_split(client, sample_account, sample_category, sample_user):
+def test_update_transaction_explicit_empty_split_weights_rejected(client, sample_account, sample_category, sample_user):
+    """Splits are mandatory: an explicit empty list can no longer be used to
+    clear a transaction's split. Omit the field instead to leave it as-is."""
     create_response = client.post(
         "/api/transactions",
         json={
@@ -516,8 +531,60 @@ def test_update_transaction_explicit_empty_split_weights_clears_split(client, sa
         f"/api/transactions/{transaction_id}",
         json={"split_weights": []},
     )
+    assert response.status_code == 422
+
+
+def test_update_transaction_heals_pre_existing_empty_split_via_cascade(client, db, sample_account, sample_category, sample_user):
+    """A transaction that somehow has zero split rows (a data artefact
+    predating mandatory splits) gets healed via the category > account >
+    global cascade on the next edit that omits split_weights, rather than
+    staying unsplit forever."""
+    from models import GlobalSplitWeight, TransactionSplit
+
+    create_response = client.post(
+        "/api/transactions",
+        json={
+            "account_id": sample_account.id,
+            "category_id": sample_category.id,
+            "date": "2026-01-15",
+            "payee": "Test",
+            "amount": 100.0,
+            "split_weights": [{"user_id": sample_user.id, "weight": 1}],
+        },
+    )
+    transaction_id = create_response.json()["id"]
+
+    # Simulate the split having been emptied out from under the transaction.
+    db.query(TransactionSplit).filter(TransactionSplit.transaction_id == transaction_id).delete()
+    db.add(GlobalSplitWeight(user_id=sample_user.id, weight=1))
+    db.commit()
+
+    response = client.put(f"/api/transactions/{transaction_id}", json={"payee": "Renamed"})
     assert response.status_code == 200
-    assert response.json()["splits"] == []
+    data = response.json()
+    assert data["payee"] == "Renamed"
+    assert data["splits"] == [
+        {"user_id": sample_user.id, "user_name": sample_user.name, "weight": 1, "share_amount": 100.0, "source": "global"},
+    ]
+
+
+def test_update_transaction_with_empty_split_and_no_fallback_rejected(client, db, sample_account, sample_category):
+    """If a transaction's split is empty and there's genuinely no fallback
+    to resolve (no users at all), a normal edit 422s rather than silently
+    leaving it unsplit."""
+    from datetime import date as date_type
+    from models import Transaction
+
+    transaction = Transaction(
+        date=date_type(2026, 1, 15), payee="Test", amount=100.0,
+        account_id=sample_account.id, category_id=sample_category.id,
+    )
+    db.add(transaction)
+    db.commit()
+    transaction_id = transaction.id
+
+    response = client.put(f"/api/transactions/{transaction_id}", json={"payee": "Renamed"})
+    assert response.status_code == 422
 
 
 # ── Transaction search ────────────────────────────────────────────

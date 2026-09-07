@@ -81,10 +81,15 @@ def apply_split(
 ) -> None:
     """(Re)computes and persists TransactionSplit rows for a transaction.
 
-    Always deletes any existing rows first. If `weights` is falsy, the
-    transaction ends up with no split rows (opt-in, same as today). Every
-    call recomputes share_amount from the transaction's *current* amount —
-    there is no freeze/protection against recomputation.
+    Always deletes any existing rows first. Splits are mandatory: every call
+    site is expected to pass non-empty `weights` (validated up front via
+    rules.validate_transaction_weights_present / validate_resolved_weights_present
+    before this is ever called) — passing falsy `weights` still leaves the
+    transaction with zero split rows at this low level, but that outcome
+    should be unreachable from any router; treat it as a bug upstream, not a
+    supported "opt-in" state. Every call recomputes share_amount from the
+    transaction's *current* amount — there is no freeze/protection against
+    recomputation.
     """
     db.query(TransactionSplit).filter(TransactionSplit.transaction_id == transaction.id).delete()
     if not weights:

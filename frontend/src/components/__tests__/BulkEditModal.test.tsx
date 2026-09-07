@@ -90,6 +90,16 @@ test('toggling only the split section sends split_weights and split_source custo
   )
 })
 
+test('submitting the split section with no split rows is rejected, without calling the API', async () => {
+  renderWithProviders(<BulkEditModal {...baseProps} />)
+
+  fireEvent.click(screen.getByText('Apply new split'))
+  fireEvent.click(submitButton())
+
+  expect(await screen.findByText('Add at least one person to the split')).toBeInTheDocument()
+  expect(mockBulkUpdateTransactions).not.toHaveBeenCalled()
+})
+
 test('toggling all three sections sends all three fields together', async () => {
   mockBulkUpdateTransactions.mockResolvedValue({ updated_count: 2, transaction_ids: [1, 2] })
   renderWithProviders(<BulkEditModal {...baseProps} />)
