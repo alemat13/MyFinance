@@ -139,7 +139,7 @@ export default function TransactionDetail({
   }, [transactionId, formData.category_id, formData.account_id])
 
   const save = () => {
-    const validationError = validateTransactionForm(formData.payee, formData.account_id)
+    const validationError = validateTransactionForm(formData.payee, formData.account_id, split)
     if (validationError) {
       showToast(validationError); return
     }
@@ -152,8 +152,8 @@ export default function TransactionDetail({
           account_id: formData.account_id ?? 0,
           category_id: formData.category_id || null,
           accounting_month_offset: formData.accounting_month_offset,
-          split_weights: split.length > 0 ? split.map(r => ({ user_id: r.user_id, weight: r.value })) : undefined,
-          split_source: split.length > 0 ? (splitSource ?? 'custom') : undefined,
+          split_weights: split.map(r => ({ user_id: r.user_id, weight: r.value })),
+          split_source: splitSource ?? 'custom',
         }, selectedUserId)
       : updateTransaction(transactionId, {
           ...formData,

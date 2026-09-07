@@ -17,6 +17,11 @@ def get_users(db: Session = Depends(get_db)):
 def create_user(data: UserCreate, db: Session = Depends(get_db)):
     user = User(**data.model_dump())
     db.add(user)
+    db.flush()
+    # Every user gets a positive global split weight out of the box, so the
+    # global tier can never be empty and every transaction always has a
+    # fallback to resolve its split from.
+    db.add(GlobalSplitWeight(user_id=user.id, weight=1))
     db.commit()
     db.refresh(user)
     return user

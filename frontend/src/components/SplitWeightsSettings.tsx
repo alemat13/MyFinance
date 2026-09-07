@@ -30,6 +30,10 @@ export default function SplitWeightsSettings({ onBack }: Props) {
 
   const save = () => {
     if (weights.some(w => w.weight < 0)) { showToast('Weights must be >= 0'); return }
+    // The global tier is the household's mandatory floor — every
+    // transaction that doesn't resolve a category/account tier falls back
+    // to it, so it can never be saved with every weight at 0.
+    if (weights.every(w => w.weight <= 0)) { showToast('At least one weight must be greater than 0'); return }
     setSaving(true)
     updateSplitWeights(weights.map(w => ({ user_id: w.user_id, weight: w.weight })))
       .then(setWeights)
@@ -48,7 +52,9 @@ export default function SplitWeightsSettings({ onBack }: Props) {
       <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-0 mb-4">
         The lowest-priority default: used only to prefill a transaction's own split weights
         when no account- or category-specific weight is configured. Integer, relative weights
-        (e.g. income-proportional) — no need to sum to any particular total.
+        (e.g. income-proportional) — no need to sum to any particular total. Every transaction
+        must always have a split, so unlike the account and category tiers, this one can't be
+        left with every weight at 0 — new users default to a weight of 1 here automatically.
       </p>
 
       <StatusMessage loading={loading} />

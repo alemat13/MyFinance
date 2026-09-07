@@ -144,7 +144,11 @@ test('clicking a transaction row opens the detail view and updates the URL', asy
 })
 
 test('saving from the detail view refreshes the transaction list without refetching accounts/categories/users', async () => {
-  const txn = { id: 1, date: '2026-01-15', payee: 'Test', memo: null, amount: 50, account_id: 1, account_name: 'Checking', category_id: 1, category_name: 'Salary', accounting_month_offset: 0, accounting_month: '2026-01', currency: 'USD', splits: [] }
+  const txn = {
+    id: 1, date: '2026-01-15', payee: 'Test', memo: null, amount: 50, account_id: 1, account_name: 'Checking',
+    category_id: 1, category_name: 'Salary', accounting_month_offset: 0, accounting_month: '2026-01', currency: 'USD',
+    splits: [{ user_id: 1, user_name: 'Alex', weight: 1, share_amount: 50, source: 'custom' }],
+  }
   mockSearchTransactions.mockResolvedValue(searchResult([txn]))
   mockFetchAccounts.mockResolvedValue([baseAccount])
   mockFetchCategories.mockResolvedValue([baseCategory])

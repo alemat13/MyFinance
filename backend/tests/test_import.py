@@ -136,7 +136,7 @@ def test_import_preview_matches_commit_for_single_owner_account(client, sample_a
     assert committed["splits"][0]["share_amount"] == -42.50
 
 
-def test_import_commit_allows_rows_without_category(client, sample_account):
+def test_import_commit_allows_rows_without_category(client, sample_account, sample_user):
     # category_id is optional everywhere else post-categorization refactor
     # (transaction form, backend model); CSV import must match rather than
     # be the one place that still requires it.
@@ -145,6 +145,7 @@ def test_import_commit_allows_rows_without_category(client, sample_account):
         json={"rows": [{
             "date": "2026-01-15", "payee": "Whole Foods", "amount": -42.50,
             "account_id": sample_account.id, "category_id": None,
+            "split_weights": [{"user_id": sample_user.id, "weight": 1}],
         }]},
     )
     assert response.status_code == 200
@@ -170,17 +171,19 @@ def test_import_commit_rejects_negative_split_weight(client, sample_account, sam
     assert response.json() == []
 
 
-def test_import_commit_creates_transactions(client, sample_account, sample_category):
+def test_import_commit_creates_transactions(client, sample_account, sample_category, sample_user):
     response = client.post(
         "/api/import/commit",
         json={"rows": [
             {
                 "date": "2026-01-15", "payee": "Whole Foods", "amount": -42.50,
                 "account_id": sample_account.id, "category_id": sample_category.id,
+                "split_weights": [{"user_id": sample_user.id, "weight": 1}],
             },
             {
                 "date": "2026-01-16", "payee": "Trader Joe's", "amount": -20.00,
                 "account_id": sample_account.id, "category_id": sample_category.id,
+                "split_weights": [{"user_id": sample_user.id, "weight": 1}],
             },
         ]},
     )

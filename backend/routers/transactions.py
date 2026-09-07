@@ -7,7 +7,7 @@ from audit import TRACKED_FIELDS, _jsonify, diff_splits, record_transaction_hist
 from database import get_db
 from filtering import build_where_clause, visible_transaction_filter
 from models import Account, Category, Transaction, TransactionHistory, TransactionSplit, User
-from rules import validate_account_not_archived, validate_weights
+from rules import RuleViolation, validate_account_not_archived, validate_transaction_weights_present, validate_weights
 from schemas import (
     BulkUpdateTransactionsRequest,
     BulkUpdateTransactionsResponse,
@@ -115,9 +115,23 @@ def create_transaction(data: TransactionCreate, actor_user_id: int | None = Quer
         raise HTTPException(404, "Account not found")
     validate_account_not_archived(account)
 
-    weights = {w.user_id: w.weight for w in data.split_weights} if data.split_weights else None
-    if data.split_weights:
+    if data.split_weights is None:
+        # Not provided: fall back through the category > account > global
+        # cascade, same as CSV import already does. Splits are mandatory, and
+        # the global tier is a guaranteed non-empty floor, so this only comes
+        # up empty if literally no user exists yet.
+        source, weights = split_engine.resolve_default_weights(db, data.category_id, data.account_id)
+        if not weights:
+            raise RuleViolation(
+                "No split weights are configured for any user — configure the global split-weight tier before creating transactions"
+            )
+        split_source = data.split_source or source or "global"
+    else:
+        validate_transaction_weights_present(data.split_weights)
         validate_weights(data.split_weights)
+        weights = {w.user_id: w.weight for w in data.split_weights}
+        split_source = data.split_source or "custom"
+
     transaction = Transaction(
         date=data.date, payee=data.payee, memo=data.memo, amount=data.amount,
         account_id=data.account_id, category_id=data.category_id,
@@ -125,7 +139,6 @@ def create_transaction(data: TransactionCreate, actor_user_id: int | None = Quer
     )
     db.add(transaction)
     db.flush()
-    split_source = data.split_source or "custom"
     split_engine.apply_split(db, transaction, weights, source=split_source)
     record_transaction_history(db, transaction, "created", actor_user_id, source="manual",
                                 changes=splits_created_changes(weights, split_source))
@@ -158,7 +171,8 @@ def bulk_update_transactions(data: BulkUpdateTransactionsRequest, actor_user_id:
         raise HTTPException(404, f"Transaction(s) not found: {missing_ids}")
 
     weights = None
-    if split_weights_provided and data.update.split_weights:
+    if split_weights_provided:
+        validate_transaction_weights_present(data.update.split_weights)
         validate_weights(data.update.split_weights)
         weights = {w.user_id: w.weight for w in data.update.split_weights}
     source = data.update.split_source or "custom"
@@ -221,9 +235,9 @@ def update_transaction(transaction_id: int, data: TransactionUpdate, actor_user_
     }
 
     if split_weights_provided:
-        weights = {w.user_id: w.weight for w in data.split_weights} if data.split_weights else None
-        if data.split_weights:
-            validate_weights(data.split_weights)
+        validate_transaction_weights_present(data.split_weights)
+        validate_weights(data.split_weights)
+        weights = {w.user_id: w.weight for w in data.split_weights}
         source = data.split_source or "custom"
     else:
         # Client didn't touch the split editor: keep the existing weights,

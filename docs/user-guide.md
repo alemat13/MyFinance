@@ -185,22 +185,26 @@ captures:
   indented under their parent, the parent itself is also selectable, and typing in the
   search box filters the list by category or parent name. The same picker is used for
   the Transactions screen's category filters.
-- A **Split** section, always visible — no separate "customize" step. It shows one
-  integer **weight** per involved person, with a read-only euro amount next to each
-  that updates live as you type (each person's share is that person's weight divided
-  by the total weight, times the transaction amount, rounded to the cent — any
-  rounding remainder goes to the last person so the shares always add up exactly).
+- A **Split** section, always visible — no separate "customize" step, and **required**:
+  a transaction can't be saved with nobody in the split. It shows one integer
+  **weight** per involved person, with a read-only euro amount next to each that
+  updates live as you type (each person's share is that person's weight divided by
+  the total weight, times the transaction amount, rounded to the cent — any rounding
+  remainder goes to the last person so the shares always add up exactly).
   - When you pick a category and account, the weights are prefilled automatically
     from whichever tier applies first: the **category's** default split weight, then
     the **account's**, then the household's **global** weight (see
-    [Split Weights](#split-weights)).
+    [Split Weights](#split-weights)) — the global tier always has at least one
+    person in it by default, so a brand-new transaction is never left with an empty
+    split even before you configure anything.
   - **Quick-fill buttons** let you pull in weights at any time, overwriting
     whatever's currently in the fields: Global, Account, and Category pull in a
     specific tier's weights (disabled if that tier has nothing configured);
     **Split Evenly** sets weight 1 for every user; and a button per user (named
     after them) assigns weight 1 to that user alone, with no one else in the split.
   - You can also just type your own weight for anyone directly — there's no
-    requirement that the numbers add up to anything in particular, or match any tier.
+    requirement that the numbers add up to anything in particular, or match any tier —
+    but you can't remove every row and save; at least one person must remain.
   - Editing an **existing** transaction always starts from its own previously-saved
     weights, never re-prefilled from the category/account/global config as it
     currently stands — the quick-fill buttons are the only way to pull a tier's
@@ -267,11 +271,16 @@ tiers that prefill sensible defaults, checked in this order (first match wins):
 3. **Global** — set on this screen, and used whenever neither the category nor the
    account has a weight configured. For example, weights proportional to each person's
    income can be used so shared expenses default to splitting proportionally rather
-   than 50/50.
+   than 50/50. Unlike the other two tiers, the global one is **mandatory**: every new
+   person you add starts with a weight of 1 here automatically, and this screen won't
+   let you save a state where everyone is at 0 — it's the guaranteed fallback that
+   makes every transaction's split possible in the first place.
 
-All three are just relative weights, zero or greater, with at least one greater than
-zero — there's no requirement that they add up to 100 or any other total, since it's a
-ratio (e.g. 2:1), not a percentage.
+All three are just relative weights, zero or greater — there's no requirement that they
+add up to 100 or any other total, since it's a ratio (e.g. 2:1), not a percentage. The
+category and account tiers may legitimately be left unconfigured (in which case they're
+simply skipped in favor of the next tier down); the global tier may not — it always
+needs at least one person with a weight greater than zero.
 
 **These tiers only ever prefill.** Once a transaction is saved, its own weights are
 what's used going forward — editing a tier later never reaches back and changes an
@@ -296,7 +305,10 @@ hand. It's a four-step wizard:
 4. **Commit** — imports everything that isn't skipped or erroring, and confirms when done.
 
 Imported transactions are tagged as such, and show up in a transaction's
-[History](#adding-or-editing-a-transaction) panel later.
+[History](#adding-or-editing-a-transaction) panel later. Their split is resolved the
+same way as a manually-entered transaction's: the category > account > global cascade
+described in [Split Weights](#split-weights), since imported transactions must be
+split too.
 
 ## Backup & Restore
 
@@ -333,6 +345,7 @@ A quick reference for the rules the app enforces:
 |------|-------------------|
 | Ownership percentages must sum to exactly 100% | Account owners |
 | Split weights must be ≥ 0, with at least one > 0 — no sum requirement | Category, Account, and Global split weights; a transaction's own split |
+| A transaction's split can't be empty, and the Global split-weight tier can't be left with every weight at 0 | Global split weights; a transaction's own split |
 | Currency must be a 3-letter code (e.g. `EUR`, `USD`) | Accounts |
 | Can't delete an account with existing transactions | Accounts |
 | Can't create a new transaction on an archived account | Accounts, Transactions |
@@ -342,8 +355,10 @@ A quick reference for the rules the app enforces:
 | Can't delete a user who still owns a share of an account | Users |
 
 Split-weight prefill priority, from highest to lowest: a transaction's **category**
-weight beats its **account** weight, which beats the household's **global** weight. If
-none of these apply and you don't type your own weights, the transaction simply isn't
-split. Ownership is a separate concept entirely — it never determines a split, only who
-an account is visible to and who's on the hook for the "paid" side of the household
-balance.
+weight beats its **account** weight, which beats the household's **global** weight.
+Every transaction is always split — the global tier is a guaranteed fallback (every
+person defaults to a weight of 1 there), so even with no category or account weight
+configured and no custom weights typed in, a transaction still resolves a split rather
+than being left unsplit. Ownership is a separate concept entirely — it never determines
+a split, only who an account is visible to and who's on the hook for the "paid" side of
+the household balance.

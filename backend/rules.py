@@ -49,6 +49,25 @@ def validate_weights(items: list) -> None:
         raise RuleViolation("Duplicate user_id in weights")
 
 
+def validate_transaction_weights_present(items: list) -> None:
+    """A transaction's own split, whenever the client chooses to set it
+    explicitly (create, or explicit split_weights on an update/bulk-update/
+    import row), must be non-empty — splits are mandatory, so omitting the
+    field entirely (falling back to the category/account/global cascade) is
+    the only way to end up with no explicit weights of your own."""
+    if not items:
+        raise RuleViolation("A transaction's split cannot be empty; omit split_weights to use the default tiers")
+
+
+def validate_global_weights_present(items: list) -> None:
+    """The global split-weight tier is the household's mandatory floor: every
+    transaction that doesn't resolve a category/account tier falls back to
+    it, so unlike those two (which may legitimately be left unconfigured),
+    the global tier can never be saved empty or entirely zeroed out."""
+    if not items or sum(item.weight for item in items) <= 0:
+        raise RuleViolation("Global split weights cannot be left empty or all zero — every transaction relies on this as its fallback")
+
+
 def validate_category_hierarchy(db: Session, category: Category | None, parent_id: int | None, type_: str) -> None:
     """Enforces the 2-level category hierarchy: a category may have a parent,
     but that parent must itself be top-level, and a subcategory's type must
