@@ -10,6 +10,7 @@ import CategoryPicker from './CategoryPicker'
 import { useToast } from '../context/ToastContext'
 import { validateTransactionForm } from '../utils/transactions'
 import { resolveDefaultSplitRows } from '../utils/splitWeights'
+import { categoryNameFor } from '../utils/categoryDisplay'
 import { Modal, Button, Input, Select, StatusMessage, ConfirmDialog, Badge } from './ui'
 
 interface Props {
@@ -61,14 +62,8 @@ const describeSplitsChange = (change: { old: SplitSnapshotEntry[] | null; new: S
   return `splits: ${userIds.map(id => `${nameFor(id)} ${oldWeights.get(id) ?? 0}→${newWeights.get(id) ?? 0}`).join(', ')}`
 }
 
-const describeCategoryChange = (change: { old: unknown; new: unknown }, categories: Category[]) => {
-  const nameFor = (id: unknown) => {
-    if (id === null || id === undefined) return '—'
-    const category = categories.find(c => c.id === id)
-    return category?.name ?? `Category ${id}`
-  }
-  return `category: ${nameFor(change.old)} → ${nameFor(change.new)}`
-}
+const describeCategoryChange = (change: { old: unknown; new: unknown }, categories: Category[]) =>
+  `category: ${categoryNameFor(change.old as number | null, categories)} → ${categoryNameFor(change.new as number | null, categories)}`
 
 const describeHistoryChanges = (changes: TransactionHistoryEntry['changes'], users: User[], categories: Category[]) =>
   changes
