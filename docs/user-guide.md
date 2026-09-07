@@ -252,7 +252,10 @@ them as the currently selected user (same effect as picking them from the header
 dropdown).
 
 You can't delete a user who still owns a share of any account — remove their ownership
-from those accounts first (or delete the accounts).
+from those accounts first (or delete the accounts). If the user you're deleting is the
+only person in some transaction's split, deleting them re-splits that transaction using
+the same category/account/global fallback described in [Split Weights](#split-weights)
+— you'll only be blocked if no other user has a usable weight to fall back to.
 
 ## Split Weights
 
@@ -353,6 +356,7 @@ A quick reference for the rules the app enforces:
 | Can't delete a category with existing subcategories | Categories |
 | A subcategory's type must match its parent's, and only 2 levels of categories are allowed | Categories |
 | Can't delete a user who still owns a share of an account | Users |
+| Can't delete a user who's the only person in some transaction's split, unless another user has a fallback weight to re-split it with | Users |
 
 Split-weight prefill priority, from highest to lowest: a transaction's **category**
 weight beats its **account** weight, which beats the household's **global** weight.

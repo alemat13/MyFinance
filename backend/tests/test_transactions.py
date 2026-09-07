@@ -63,10 +63,11 @@ def test_get_single_transaction_not_found(client):
     assert response.status_code == 404
 
 
-def test_get_single_transaction_filtered_by_user_no_match(client, sample_transaction, sample_user):
-    # sample_transaction's account has no AccountUser row for sample_user and
-    # no split share for them, so it must not be visible via user_id scoping.
-    response = client.get(f"/api/transactions/{sample_transaction.id}?user_id={sample_user.id}")
+def test_get_single_transaction_filtered_by_user_no_match(client, sample_transaction, sample_user2):
+    # sample_transaction's account has no AccountUser row for sample_user2 and
+    # no split share for them (its own split goes to sample_user, per the
+    # fixture), so it must not be visible via user_id scoping.
+    response = client.get(f"/api/transactions/{sample_transaction.id}?user_id={sample_user2.id}")
     assert response.status_code == 404
 
 
@@ -530,6 +531,59 @@ def test_update_transaction_explicit_empty_split_weights_rejected(client, sample
         f"/api/transactions/{transaction_id}",
         json={"split_weights": []},
     )
+    assert response.status_code == 422
+
+
+def test_update_transaction_heals_pre_existing_empty_split_via_cascade(client, db, sample_account, sample_category, sample_user):
+    """A transaction that somehow has zero split rows (a data artefact
+    predating mandatory splits) gets healed via the category > account >
+    global cascade on the next edit that omits split_weights, rather than
+    staying unsplit forever."""
+    from models import GlobalSplitWeight, TransactionSplit
+
+    create_response = client.post(
+        "/api/transactions",
+        json={
+            "account_id": sample_account.id,
+            "category_id": sample_category.id,
+            "date": "2026-01-15",
+            "payee": "Test",
+            "amount": 100.0,
+            "split_weights": [{"user_id": sample_user.id, "weight": 1}],
+        },
+    )
+    transaction_id = create_response.json()["id"]
+
+    # Simulate the split having been emptied out from under the transaction.
+    db.query(TransactionSplit).filter(TransactionSplit.transaction_id == transaction_id).delete()
+    db.add(GlobalSplitWeight(user_id=sample_user.id, weight=1))
+    db.commit()
+
+    response = client.put(f"/api/transactions/{transaction_id}", json={"payee": "Renamed"})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["payee"] == "Renamed"
+    assert data["splits"] == [
+        {"user_id": sample_user.id, "user_name": sample_user.name, "weight": 1, "share_amount": 100.0, "source": "global"},
+    ]
+
+
+def test_update_transaction_with_empty_split_and_no_fallback_rejected(client, db, sample_account, sample_category):
+    """If a transaction's split is empty and there's genuinely no fallback
+    to resolve (no users at all), a normal edit 422s rather than silently
+    leaving it unsplit."""
+    from datetime import date as date_type
+    from models import Transaction
+
+    transaction = Transaction(
+        date=date_type(2026, 1, 15), payee="Test", amount=100.0,
+        account_id=sample_account.id, category_id=sample_category.id,
+    )
+    db.add(transaction)
+    db.commit()
+    transaction_id = transaction.id
+
+    response = client.put(f"/api/transactions/{transaction_id}", json={"payee": "Renamed"})
     assert response.status_code == 422
 
 

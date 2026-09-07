@@ -41,9 +41,14 @@ def compute_chart_data(
     accounting_month_offset via compute_accounting_month), excluding
     Transfer-type categories entirely.
 
-    Like split_engine.compute_balances, this only counts transactions that
-    have a resolved TransactionSplit row for user_id (opt-in split) and never
-    sums across currencies - each currency is aggregated independently.
+    Like split_engine.compute_balances, this only counts transactions where
+    user_id has their own TransactionSplit row - splits are mandatory, so
+    every transaction has *some* split, but a given user only shows up in it
+    (and therefore here) if they have a positive weight in it; a user with
+    weight 0 or no row at all in an otherwise-valid split is normal and
+    simply excludes that transaction from their own chart data, distinct
+    from the transaction being unsplit (which shouldn't happen). Never sums
+    across currencies - each currency is aggregated independently.
     Aggregation happens in Python after fetching rows, since the month-shift
     isn't expressible as a plain SQL GROUP BY key.
     """

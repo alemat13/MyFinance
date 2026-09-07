@@ -59,6 +59,19 @@ def validate_transaction_weights_present(items: list) -> None:
         raise RuleViolation("A transaction's split cannot be empty; omit split_weights to use the default tiers")
 
 
+def validate_resolved_weights_present(weights: dict) -> None:
+    """After falling back through the category/account/global cascade
+    (split_engine.resolve_default_weights) because the client didn't supply
+    its own split_weights, the result must still be non-empty - otherwise
+    there's truly no one configured to attribute the transaction to. Shared
+    by every call site that auto-resolves a split (create, the update
+    healing path, CSV import) so they 422 with one consistent message."""
+    if not weights:
+        raise RuleViolation(
+            "No split weights are configured for any user — configure the global split-weight tier before creating transactions"
+        )
+
+
 def validate_global_weights_present(items: list) -> None:
     """The global split-weight tier is the household's mandatory floor: every
     transaction that doesn't resolve a category/account tier falls back to

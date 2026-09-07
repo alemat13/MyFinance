@@ -82,6 +82,8 @@ def test_update_transaction_date_change_is_json_serializable(client, sample_tran
 
 
 def test_update_transaction_split_only_change_writes_splits_diff(client, sample_transaction, sample_user):
+    # sample_transaction's fixture-baked split is weight=1 for sample_user;
+    # use a different weight here so there's a genuine diff to record.
     response = client.put(
         f"/api/transactions/{sample_transaction.id}",
         json={"split_weights": [{"user_id": sample_user.id, "weight": 2}]},
@@ -93,16 +95,18 @@ def test_update_transaction_split_only_change_writes_splits_diff(client, sample_
     assert history[0]["action"] == "updated"
     assert history[0]["changes"] == {
         "splits": {
-            "old": [],
+            "old": [{"user_id": sample_user.id, "weight": 1, "source": "custom"}],
             "new": [{"user_id": sample_user.id, "weight": 2, "source": "custom"}],
         },
     }
 
 
 def test_update_transaction_non_split_field_leaves_splits_untouched_in_history(client, sample_transaction, sample_user):
+    # A different weight than the fixture's baked-in 1, so this first PUT
+    # actually records a history row to set up the scenario.
     client.put(
         f"/api/transactions/{sample_transaction.id}",
-        json={"split_weights": [{"user_id": sample_user.id, "weight": 1}]},
+        json={"split_weights": [{"user_id": sample_user.id, "weight": 2}]},
     )
 
     response = client.put(
@@ -122,7 +126,7 @@ def test_update_transaction_clearing_split_weights_rejected(client, sample_trans
     clear a transaction's split (see test_transactions.py's equivalent)."""
     client.put(
         f"/api/transactions/{sample_transaction.id}",
-        json={"split_weights": [{"user_id": sample_user.id, "weight": 1}]},
+        json={"split_weights": [{"user_id": sample_user.id, "weight": 2}]},
     )
 
     response = client.put(

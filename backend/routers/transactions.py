@@ -7,7 +7,12 @@ from audit import TRACKED_FIELDS, _jsonify, diff_splits, record_transaction_hist
 from database import get_db
 from filtering import build_where_clause, visible_transaction_filter
 from models import Account, Category, Transaction, TransactionHistory, TransactionSplit, User
-from rules import RuleViolation, validate_account_not_archived, validate_transaction_weights_present, validate_weights
+from rules import (
+    validate_account_not_archived,
+    validate_resolved_weights_present,
+    validate_transaction_weights_present,
+    validate_weights,
+)
 from schemas import (
     BulkUpdateTransactionsRequest,
     BulkUpdateTransactionsResponse,
@@ -121,10 +126,7 @@ def create_transaction(data: TransactionCreate, actor_user_id: int | None = Quer
         # the global tier is a guaranteed non-empty floor, so this only comes
         # up empty if literally no user exists yet.
         source, weights = split_engine.resolve_default_weights(db, data.category_id, data.account_id)
-        if not weights:
-            raise RuleViolation(
-                "No split weights are configured for any user — configure the global split-weight tier before creating transactions"
-            )
+        validate_resolved_weights_present(weights)
         split_source = data.split_source or source or "global"
     else:
         validate_transaction_weights_present(data.split_weights)
@@ -239,12 +241,20 @@ def update_transaction(transaction_id: int, data: TransactionUpdate, actor_user_
         validate_weights(data.split_weights)
         weights = {w.user_id: w.weight for w in data.split_weights}
         source = data.split_source or "custom"
-    else:
+    elif existing_splits:
         # Client didn't touch the split editor: keep the existing weights,
         # but still recompute share_amount against whatever else changed
         # (e.g. a new amount) — this is what removes the old manual-freeze 422.
-        weights = {uid: w for uid, (w, _) in existing_splits.items()} or None
-        source = next((s for _, s in existing_splits.values()), "custom")
+        weights = {uid: w for uid, (w, _) in existing_splits.items()}
+        source = next(s for _, s in existing_splits.values())
+    else:
+        # The transaction somehow has no split at all (e.g. a data artefact
+        # predating mandatory splits) — heal it via the same category >
+        # account > global cascade used on create, rather than silently
+        # leaving it unsplit forever.
+        resolved_source, weights = split_engine.resolve_default_weights(db, transaction.category_id, transaction.account_id)
+        validate_resolved_weights_present(weights)
+        source = resolved_source or "global"
 
     new_splits = {uid: (w, source) for uid, w in (weights or {}).items()}
     splits_diff = diff_splits(existing_splits, new_splits)

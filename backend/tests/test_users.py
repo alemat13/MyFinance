@@ -83,7 +83,10 @@ def test_delete_user_with_account_split_weight_succeeds(client, sample_account, 
     assert response.json() == []
 
 
-def test_delete_user_with_transaction_split_succeeds(client, sample_account, sample_category, sample_user):
+def test_delete_sole_split_participant_with_no_fallback_rejected(client, sample_account, sample_category, sample_user):
+    """Splits are mandatory: deleting the only person on a transaction's
+    split is refused when there's no other user to fall back to, rather
+    than silently leaving the transaction with zero splits."""
     response = client.post(
         "/api/transactions",
         json={
@@ -96,9 +99,46 @@ def test_delete_user_with_transaction_split_succeeds(client, sample_account, sam
         },
     )
     assert response.status_code == 201
+    transaction_id = response.json()["id"]
+
+    response = client.delete(f"/api/users/{sample_user.id}")
+    assert response.status_code == 409
+
+    # Neither the user nor the transaction's split were touched.
+    assert client.get("/api/users").json() != []
+    response = client.get(f"/api/transactions/{transaction_id}")
+    assert len(response.json()["splits"]) == 1
+
+
+def test_delete_sole_split_participant_heals_via_fallback(client, sample_account, sample_category, sample_user, sample_user2):
+    """When another user has a usable global weight, deleting the sole
+    split participant re-resolves the transaction's split via the cascade
+    instead of leaving it empty."""
+    response = client.put(
+        "/api/split-weights",
+        json=[{"user_id": sample_user.id, "weight": 1}, {"user_id": sample_user2.id, "weight": 1}],
+    )
+    assert response.status_code == 200
+
+    response = client.post(
+        "/api/transactions",
+        json={
+            "account_id": sample_account.id,
+            "category_id": sample_category.id,
+            "date": "2026-01-15",
+            "payee": "Test",
+            "amount": 100.0,
+            "split_weights": [{"user_id": sample_user.id, "weight": 1}],
+        },
+    )
+    assert response.status_code == 201
+    transaction_id = response.json()["id"]
 
     response = client.delete(f"/api/users/{sample_user.id}")
     assert response.status_code == 204
 
-    response = client.get("/api/users")
-    assert response.json() == []
+    response = client.get(f"/api/transactions/{transaction_id}")
+    data = response.json()
+    assert data["splits"] == [
+        {"user_id": sample_user2.id, "user_name": sample_user2.name, "weight": 1, "share_amount": 100.0, "source": "global"},
+    ]

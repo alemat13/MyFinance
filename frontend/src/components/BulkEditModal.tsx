@@ -52,6 +52,9 @@ export default function BulkEditModal({
   const canSave = categoryEnabled || offsetEnabled || splitEnabled
 
   const handleSave = () => {
+    if (splitEnabled && splitRows.length === 0) {
+      showToast('Add at least one person to the split'); return
+    }
     const update: BulkTransactionUpdate = {
       ...(categoryEnabled ? { category_id: categoryId } : {}),
       ...(offsetEnabled ? { accounting_month_offset: offset } : {}),
