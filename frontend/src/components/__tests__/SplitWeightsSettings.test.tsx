@@ -57,6 +57,22 @@ test('can edit and save weights', async () => {
   })
 })
 
+test('rejects saving with every weight at 0, without calling the API', async () => {
+  mockFetchSplitWeights.mockResolvedValue([{ user_id: 1, user_name: 'Alex', weight: 100 }])
+
+  renderWithProviders(<SplitWeightsSettings onBack={() => {}} />)
+
+  await waitFor(() => {
+    expect(screen.getByDisplayValue('100')).toBeInTheDocument()
+  })
+
+  fireEvent.change(screen.getByDisplayValue('100'), { target: { value: '0' } })
+  fireEvent.click(screen.getByText('Save'))
+
+  expect(await screen.findByText('At least one weight must be greater than 0')).toBeInTheDocument()
+  expect(mockUpdateSplitWeights).not.toHaveBeenCalled()
+})
+
 test('shows empty message when no users', async () => {
   mockFetchSplitWeights.mockResolvedValue([])
 
