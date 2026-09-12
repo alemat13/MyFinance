@@ -74,6 +74,8 @@ def search_transactions(req: TransactionSearchRequest, db: Session = Depends(get
         query = query.filter(Transaction.amount >= req.amount_min)
     if req.amount_max is not None:
         query = query.filter(Transaction.amount <= req.amount_max)
+    if req.reconciled is not None:
+        query = query.filter(Transaction.reconciled == req.reconciled)
 
     if req.conditions:
         try:

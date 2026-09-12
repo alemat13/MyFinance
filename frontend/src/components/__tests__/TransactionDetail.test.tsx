@@ -34,7 +34,7 @@ const baseCategory = { id: 1, name: 'Salary', type: 'Income', splits: [] }
 const baseTxn = {
   id: 1, date: '2026-01-15', payee: 'Test', memo: null, amount: 50,
   account_id: 1, account_name: 'Checking', currency: 'USD',
-  category_id: 1, category_name: 'Salary', accounting_month_offset: 0, accounting_month: '2026-01',
+  category_id: 1, category_name: 'Salary', accounting_month_offset: 0, accounting_month: '2026-01', reconciled: false,
   splits: [],
 }
 
@@ -110,6 +110,32 @@ test('edits a field and saves an existing split', async () => {
     )
   })
   expect(baseProps.onSaved).toHaveBeenCalled()
+})
+
+test('toggles the Reconciled checkbox and saves it', async () => {
+  const alex = { id: 1, name: 'Alex', email: null, created_at: '' }
+  mockFetchTransaction.mockResolvedValue({
+    ...baseTxn,
+    splits: [{ user_id: 1, user_name: 'Alex', weight: 1, share_amount: 50, source: 'custom' }],
+  })
+  mockUpdateTransaction.mockResolvedValue({ ...baseTxn, reconciled: true })
+
+  renderWithProviders(<TransactionDetail {...baseProps} allUsers={[alex]} />)
+
+  const checkbox = await screen.findByLabelText('Reconciled')
+  expect(checkbox).not.toBeChecked()
+  fireEvent.click(checkbox)
+  expect(checkbox).toBeChecked()
+
+  fireEvent.click(screen.getByText('Save'))
+
+  await waitFor(() => {
+    expect(mockUpdateTransaction).toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({ reconciled: true }),
+      null,
+    )
+  })
 })
 
 test('shows the transaction\'s own stored weights, not re-prefilled from the category\'s current weight', async () => {
@@ -388,6 +414,7 @@ test('opens in create mode with an empty form, no Delete button, and no history 
   expect(mockFetchTransactionHistory).not.toHaveBeenCalled()
   expect(screen.queryByText('Delete')).not.toBeInTheDocument()
   expect(screen.queryByText('History')).not.toBeInTheDocument()
+  expect(screen.queryByLabelText('Reconciled')).not.toBeInTheDocument()
 })
 
 test('excludes archived accounts from the account picker when creating a new transaction', () => {
@@ -466,7 +493,7 @@ test('can save a new transaction without picking a category', async () => {
 })
 
 test('can select a non-default accounting month offset when creating a transaction', async () => {
-  mockCreateTransaction.mockResolvedValue({ id: 1, date: '2026-01-15', payee: 'New Payee', memo: '', amount: 100, account_id: 1, account_name: 'Checking', category_id: 1, category_name: 'Salary', accounting_month_offset: 1, accounting_month: '2026-02', splits: [] })
+  mockCreateTransaction.mockResolvedValue({ id: 1, date: '2026-01-15', payee: 'New Payee', memo: '', amount: 100, account_id: 1, account_name: 'Checking', category_id: 1, category_name: 'Salary', accounting_month_offset: 1, accounting_month: '2026-02', reconciled: false, splits: [] })
 
   renderWithProviders(<TransactionDetail {...baseProps} transactionId={null} allUsers={[alex]} globalWeights={defaultGlobalWeights} />)
 

@@ -17,8 +17,8 @@ const baseUsers = [
   { id: 2, name: 'Bob', email: null, created_at: '2026-01-01' },
 ]
 const baseTxns = [
-  { id: 1, date: '2026-01-15', payee: 'Coffee', memo: null, amount: 50, account_id: 1, account_name: 'Checking', currency: 'USD', category_id: 1, category_name: 'Salary', accounting_month_offset: 0, accounting_month: '2026-01', splits: [] },
-  { id: 2, date: '2026-01-16', payee: 'Lunch', memo: null, amount: 75, account_id: 1, account_name: 'Checking', currency: 'USD', category_id: 1, category_name: 'Salary', accounting_month_offset: 0, accounting_month: '2026-01', splits: [] },
+  { id: 1, date: '2026-01-15', payee: 'Coffee', memo: null, amount: 50, account_id: 1, account_name: 'Checking', currency: 'USD', category_id: 1, category_name: 'Salary', accounting_month_offset: 0, accounting_month: '2026-01', reconciled: false, splits: [] },
+  { id: 2, date: '2026-01-16', payee: 'Lunch', memo: null, amount: 75, account_id: 1, account_name: 'Checking', currency: 'USD', category_id: 1, category_name: 'Salary', accounting_month_offset: 0, accounting_month: '2026-01', reconciled: false, splits: [] },
 ]
 
 const baseProps = {
@@ -88,6 +88,29 @@ test('toggling only the split section sends split_weights and split_source custo
     },
     null,
   )
+})
+
+test('toggling only the reconciled section sends reconciled, defaulting to true', async () => {
+  mockBulkUpdateTransactions.mockResolvedValue({ updated_count: 2, transaction_ids: [1, 2] })
+  renderWithProviders(<BulkEditModal {...baseProps} />)
+
+  fireEvent.click(screen.getByText('Mark as reconciled / unreconciled'))
+  fireEvent.click(submitButton())
+
+  await waitFor(() => expect(mockBulkUpdateTransactions).toHaveBeenCalled())
+  expect(mockBulkUpdateTransactions).toHaveBeenCalledWith([1, 2], { reconciled: true }, null)
+})
+
+test('switching the reconciled section to "Not reconciled" sends reconciled: false', async () => {
+  mockBulkUpdateTransactions.mockResolvedValue({ updated_count: 2, transaction_ids: [1, 2] })
+  renderWithProviders(<BulkEditModal {...baseProps} />)
+
+  fireEvent.click(screen.getByText('Mark as reconciled / unreconciled'))
+  fireEvent.change(screen.getByText('Reconciled').closest('select')!, { target: { value: 'false' } })
+  fireEvent.click(submitButton())
+
+  await waitFor(() => expect(mockBulkUpdateTransactions).toHaveBeenCalled())
+  expect(mockBulkUpdateTransactions).toHaveBeenCalledWith([1, 2], { reconciled: false }, null)
 })
 
 test('submitting the split section with no split rows is rejected, without calling the API', async () => {
