@@ -244,6 +244,7 @@ class TransactionOut(BaseModel):
     category_icon: Optional[str] = None
     accounting_month_offset: int
     accounting_month: str
+    reconciled: bool
     splits: list[TransactionSplitOut] = []
 
 
@@ -267,6 +268,7 @@ class TransactionUpdate(BaseModel):
     account_id: Optional[int] = None
     category_id: Optional[int] = None
     accounting_month_offset: Optional[int] = Field(None, ge=-3, le=3)
+    reconciled: Optional[bool] = None
     split_weights: list[SplitWeightCreate] | None = None
     split_source: Literal["global", "account", "category", "custom"] | None = None
 
@@ -275,9 +277,12 @@ class BulkTransactionUpdate(BaseModel):
     """Same "field omitted vs explicitly null" contract as TransactionUpdate,
     via exclude_unset: only include a key here when its section is meant to be
     applied to every selected transaction. An omitted key leaves that field
-    untouched on all of them; category_id explicitly set to null clears it."""
+    untouched on all of them; category_id explicitly set to null clears it.
+    reconciled has no null-clearing semantics (it's a plain bool, not nullable
+    on the model) — omit it to leave reconciled status untouched."""
     category_id: Optional[int] = None
     accounting_month_offset: Optional[int] = Field(None, ge=-3, le=3)
+    reconciled: Optional[bool] = None
     split_weights: list[SplitWeightCreate] | None = None
     split_source: Literal["global", "account", "category", "custom"] | None = None
 
@@ -331,6 +336,7 @@ class TransactionSearchRequest(BaseModel):
     category_id: int | None = None
     amount_min: float | None = None
     amount_max: float | None = None
+    reconciled: bool | None = None
 
     # advanced mode
     conditions: list[FilterCondition] = []
@@ -541,6 +547,7 @@ class TransactionExport(BaseModel):
     account_id: int
     category_id: int | None
     accounting_month_offset: int = 0
+    reconciled: bool = False
     created_at: datetime
 
 

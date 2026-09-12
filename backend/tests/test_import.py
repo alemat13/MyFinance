@@ -194,3 +194,20 @@ def test_import_commit_creates_transactions(client, sample_account, sample_categ
 
     response = client.get("/api/transactions")
     assert len(response.json()) == 2
+
+
+def test_import_commit_creates_unreconciled_transactions(client, sample_account, sample_category, sample_user):
+    response = client.post(
+        "/api/import/commit",
+        json={"rows": [{
+            "date": "2026-01-15", "payee": "Whole Foods", "amount": -42.50,
+            "account_id": sample_account.id, "category_id": sample_category.id,
+            "split_weights": [{"user_id": sample_user.id, "weight": 1}],
+        }]},
+    )
+    assert response.status_code == 200
+
+    response = client.get("/api/transactions")
+    data = response.json()
+    assert len(data) == 1
+    assert data[0]["reconciled"] is False

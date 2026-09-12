@@ -90,6 +90,7 @@ erDiagram
         int account_id FK
         int category_id FK "nullable"
         int accounting_month_offset "months from date's month, -3..+3, default 0"
+        boolean reconciled "manually set, default false"
         datetime created_at
     }
 
@@ -161,6 +162,7 @@ Individual financial transactions.
 | `account_id` | Integer | Foreign key → `accounts.id` |
 | `category_id` | Integer | Foreign key → `categories.id`, nullable — an uncategorized transaction is shown as "Uncategorized" |
 | `accounting_month_offset` | Integer | Months relative to `date`'s month this transaction should be accounted in. Range -3..+3, default 0 (same month as `date`) |
+| `reconciled` | Boolean | Default: `false`. Manually set by the user once they've reviewed/validated the transaction — never inferred. Always `false` on creation and on CSV import |
 | `created_at` | DateTime | Default: current UTC time |
 
 ### `category_splits`

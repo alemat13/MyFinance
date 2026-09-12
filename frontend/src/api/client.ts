@@ -132,6 +132,7 @@ export interface Transaction {
   category_icon?: string | null
   accounting_month_offset: number
   accounting_month: string
+  reconciled: boolean
   splits: TransactionSplit[]
 }
 
@@ -155,6 +156,7 @@ export interface TransactionUpdate {
   account_id?: number
   category_id?: number | null
   accounting_month_offset?: number
+  reconciled?: boolean
   split_weights?: SplitWeightCreate[] | null
   split_source?: SplitSource | null
 }
@@ -165,6 +167,7 @@ export interface TransactionUpdate {
 export interface BulkTransactionUpdate {
   category_id?: number | null
   accounting_month_offset?: number
+  reconciled?: boolean
   split_weights?: SplitWeightCreate[] | null
   split_source?: SplitSource | null
 }
@@ -192,6 +195,7 @@ export interface TransactionSearchRequest {
   category_id?: number
   amount_min?: number
   amount_max?: number
+  reconciled?: boolean
   conditions?: FilterCondition[]
   match_mode?: 'all' | 'any'
   page?: number

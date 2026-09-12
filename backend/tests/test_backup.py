@@ -97,8 +97,25 @@ def test_export_with_data(client, db, sample_account, sample_category, sample_us
     assert len(data["global_split_weights"]) == 1
     assert len(data["account_split_weights"]) == 1
     assert [t["id"] for t in data["transactions"]] == [transaction.id]
+    assert data["transactions"][0]["reconciled"] is False
     assert len(data["transaction_splits"]) == 1
     assert len(data["transaction_history"]) == 1
+
+
+def test_export_import_round_trip_preserves_reconciled(client, db, sample_account, sample_category, sample_user, sample_user2):
+    transaction = _seed_full_graph(db, sample_account, sample_category, sample_user, sample_user2)
+    db.query(Transaction).filter(Transaction.id == transaction.id).update({"reconciled": True})
+    db.commit()
+
+    export_response = client.get("/api/backup/export")
+    data = _unzip_payload(export_response.content)
+    assert data["transactions"][0]["reconciled"] is True
+
+    response = _post_import(client, export_response.content, mode="overwrite")
+    assert response.status_code == 200
+
+    restored = client.get(f"/api/transactions/{transaction.id}").json()
+    assert restored["reconciled"] is True
 
 
 def test_import_overwrite_replaces_data(client, db, sample_account, sample_category, sample_user, sample_user2):

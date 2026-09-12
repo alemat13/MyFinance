@@ -151,11 +151,14 @@ transactions.
 Two filtering modes are available:
 
 - **Simple filters**: free-text search over payee/memo, a date range, account and
-  category dropdowns, and a min/max amount range. **Clear** resets all of these.
+  category dropdowns, a min/max amount range, and a **Reconciled** filter (Any /
+  Reconciled only / Unreconciled only — see [Reconciling transactions](#reconciling-transactions)
+  below). **Clear** resets all of these.
 - **Advanced filters**: build arbitrary AND/OR conditions across payee, memo, amount,
   date, account, or category, each with its own operator (contains, equals, between,
   greater/less than, etc.) — useful for more precise or compound searches than the
-  simple filters allow.
+  simple filters allow. Reconciled status isn't available as an advanced-mode
+  condition; use the simple filter for that.
 
 Results can be sorted by any column and paginated (25, 50, or 100 rows per page).
 Your filters, sort order, and page are all kept in the page URL, so you can bookmark
@@ -165,7 +168,8 @@ The results table groups transactions by date and can be expanded per-row to sho
 **History** panel: a full audit trail of who created or edited the transaction and
 when, what fields changed, and whether it originated from a CSV import. Changes to
 the transaction's own split weights — set on creation or edited later — are tracked
-here too, shown as each involved user's weight before and after the change.
+here too, shown as each involved user's weight before and after the change, and the
+same applies to reconciled status changes.
 
 ### Adding or editing a transaction
 
@@ -214,6 +218,31 @@ The **Delete** button and the **History** panel only appear once the transaction
 already exists — there's nothing to delete or show history for while you're still
 filling in a new one. Deleting a transaction asks for confirmation first.
 
+Editing an existing transaction also shows a **Reconciled** checkbox next to the
+category field — see the next section for what it means. It's not shown while
+creating a new transaction, since a transaction is always created unreconciled.
+
+### Reconciling transactions
+
+"Reconciled" marks a transaction as reviewed and validated by you — for example,
+after checking it against your bank statement. It's purely manual: MyFinance never
+sets or clears it on its own. Every new transaction, whether entered by hand or
+brought in via [CSV import](#import-csv), starts out **unreconciled**.
+
+There are three ways to mark a transaction reconciled (or un-reconciled again):
+
+- Click the small circle icon next to a transaction's payee in the results table —
+  a filled green check means reconciled, an empty outline means not. Clicking it
+  toggles that one transaction immediately, without opening its detail panel.
+  Reconciled rows are also shown slightly dimmed, so the transactions still needing
+  review stand out.
+- Open the transaction and check/uncheck **Reconciled**, alongside its other fields.
+- Use **Bulk Edit** (below) to mark many transactions at once.
+
+Tip: if your filter is set to "Unreconciled only" and you mark the matching
+transactions as reconciled (via the inline icon or Bulk Edit), they'll disappear
+from the list as soon as the change applies, since they no longer match the filter.
+
 ### Bulk editing transactions
 
 Select multiple transactions using the checkboxes in the results table — a checkbox
@@ -222,7 +251,7 @@ in the header selects or deselects every transaction currently shown on the page
 at least one row is selected, a bar appears above the table showing how many are
 selected, with **Bulk Edit** and **Clear selection** buttons.
 
-**Bulk Edit** opens a dialog with three independent, optional changes you can apply
+**Bulk Edit** opens a dialog with four independent, optional changes you can apply
 together in a single save:
 
 - **Category** — leave this off to keep each transaction's own category unchanged;
@@ -238,9 +267,17 @@ together in a single save:
   every selected transaction. Each transaction still gets its own share amounts,
   proportioned against its own amount — the weights are shared, but the euro amounts
   are not.
+- **Mark as reconciled / unreconciled** — leave this off to keep each transaction's
+  own reconciled status unchanged; turn it on and choose "Reconciled" or "Not
+  reconciled" to apply that status to every selected transaction in one action —
+  the quickest way to point a whole batch of imported or reviewed transactions at
+  once.
 
-At least one of the three must be turned on to save. After saving, you'll see a
-confirmation, the list refreshes, and the selection is cleared.
+At least one of the four must be turned on to save. After saving, you'll see a
+confirmation, the list refreshes, and the selection is cleared. If your current
+filter is "Unreconciled only" and you bulk-mark the selection as reconciled, those
+rows will no longer match the filter and will disappear from the list once the
+change applies.
 
 ## Users
 
@@ -311,7 +348,8 @@ Imported transactions are tagged as such, and show up in a transaction's
 [History](#adding-or-editing-a-transaction) panel later. Their split is resolved the
 same way as a manually-entered transaction's: the category > account > global cascade
 described in [Split Weights](#split-weights), since imported transactions must be
-split too.
+split too. Like any newly-created transaction, every imported row starts out
+**unreconciled** — see [Reconciling transactions](#reconciling-transactions).
 
 ## Backup & Restore
 
