@@ -94,6 +94,41 @@ def test_bulk_update_two_fields_at_once(client, db, sample_account, sample_categ
     assert data["accounting_month_offset"] == 2
 
 
+def test_bulk_update_reconciled_applies_to_all_selected(client, db, sample_account, sample_category):
+    t1 = _make_transaction(db, sample_account, sample_category)
+    t2 = _make_transaction(db, sample_account, sample_category)
+
+    response = client.put(
+        "/api/transactions/bulk-update",
+        json={"transaction_ids": [t1.id, t2.id], "update": {"reconciled": True}},
+    )
+    assert response.status_code == 200
+    assert response.json() == {"updated_count": 2, "transaction_ids": [t1.id, t2.id]}
+
+    for tid in (t1.id, t2.id):
+        data = client.get(f"/api/transactions/{tid}").json()
+        assert data["reconciled"] is True
+        history = client.get(f"/api/transactions/{tid}/history").json()
+        updated = [e for e in history if e["action"] == "updated"]
+        assert updated[0]["changes"]["reconciled"] == {"old": False, "new": True}
+
+
+def test_bulk_update_reconciled_and_category_at_once(client, db, sample_account, sample_category, sample_category2):
+    t1 = _make_transaction(db, sample_account, sample_category)
+
+    response = client.put(
+        "/api/transactions/bulk-update",
+        json={
+            "transaction_ids": [t1.id],
+            "update": {"reconciled": True, "category_id": sample_category2.id},
+        },
+    )
+    assert response.status_code == 200
+    data = client.get(f"/api/transactions/{t1.id}").json()
+    assert data["reconciled"] is True
+    assert data["category_id"] == sample_category2.id
+
+
 def test_bulk_update_missing_transaction_id_404_and_no_mutation(client, db, sample_account, sample_category, sample_category2):
     t1 = _make_transaction(db, sample_account, sample_category)
 

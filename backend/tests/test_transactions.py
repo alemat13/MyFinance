@@ -279,6 +279,51 @@ def test_update_transaction_accounting_month_offset_recorded_in_history(client, 
     assert updated[0]["changes"]["accounting_month_offset"] == {"old": 0, "new": 1}
 
 
+def test_create_transaction_defaults_reconciled_to_false(client, sample_account, sample_category, sample_user):
+    response = client.post(
+        "/api/transactions",
+        json={
+            "account_id": sample_account.id,
+            "category_id": sample_category.id,
+            "date": "2026-01-15",
+            "payee": "Test",
+            "amount": 100.0,
+            "split_weights": [{"user_id": sample_user.id, "weight": 1}],
+        },
+    )
+    assert response.status_code == 201
+    assert response.json()["reconciled"] is False
+
+
+def test_update_transaction_reconciled(client, sample_transaction):
+    response = client.put(
+        f"/api/transactions/{sample_transaction.id}",
+        json={"reconciled": True},
+    )
+    assert response.status_code == 200
+    assert response.json()["reconciled"] is True
+
+    response = client.put(
+        f"/api/transactions/{sample_transaction.id}",
+        json={"reconciled": False},
+    )
+    assert response.status_code == 200
+    assert response.json()["reconciled"] is False
+
+
+def test_update_transaction_reconciled_recorded_in_history(client, sample_transaction):
+    client.put(
+        f"/api/transactions/{sample_transaction.id}",
+        json={"reconciled": True},
+    )
+    response = client.get(f"/api/transactions/{sample_transaction.id}/history")
+    assert response.status_code == 200
+    entries = response.json()
+    updated = [e for e in entries if e["action"] == "updated"]
+    assert len(updated) == 1
+    assert updated[0]["changes"]["reconciled"] == {"old": False, "new": True}
+
+
 def test_get_transactions_filtered_by_user(client, sample_account_with_user, sample_user, sample_category, db):
     from datetime import date
     from models import Transaction
@@ -663,6 +708,24 @@ def test_search_simple_amount_range(client, db, sample_account, sample_category)
     data = response.json()
     assert data["total"] == 1
     assert data["items"][0]["amount"] == 50.0
+
+
+def test_search_simple_reconciled_filter(client, db, sample_account, sample_category):
+    _make_transaction(db, sample_account, sample_category, payee="Checked", reconciled=True)
+    _make_transaction(db, sample_account, sample_category, payee="Unchecked", reconciled=False)
+
+    response = client.post("/api/transactions/search", json={"reconciled": True})
+    data = response.json()
+    assert data["total"] == 1
+    assert data["items"][0]["payee"] == "Checked"
+
+    response = client.post("/api/transactions/search", json={"reconciled": False})
+    data = response.json()
+    assert data["total"] == 1
+    assert data["items"][0]["payee"] == "Unchecked"
+
+    response = client.post("/api/transactions/search", json={})
+    assert response.json()["total"] == 2
 
 
 def test_search_simple_filters_combine_with_and(client, db, sample_account, sample_category):

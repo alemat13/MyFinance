@@ -65,6 +65,9 @@ const describeSplitsChange = (change: { old: SplitSnapshotEntry[] | null; new: S
 const describeCategoryChange = (change: { old: unknown; new: unknown }, categories: Category[]) =>
   `category: ${categoryNameFor(change.old as number | null, categories)} → ${categoryNameFor(change.new as number | null, categories)}`
 
+const describeReconciledChange = (change: { old: unknown; new: unknown }) =>
+  `Reconciled: ${change.old ? 'Yes' : 'No'} → ${change.new ? 'Yes' : 'No'}`
+
 const describeHistoryChanges = (changes: TransactionHistoryEntry['changes'], users: User[], categories: Category[]) =>
   changes
     ? Object.entries(changes).map(([field, value]) =>
@@ -72,6 +75,8 @@ const describeHistoryChanges = (changes: TransactionHistoryEntry['changes'], use
           ? describeSplitsChange(value as { old: SplitSnapshotEntry[] | null; new: SplitSnapshotEntry[] | null }, users)
           : field === 'category_id'
           ? describeCategoryChange(value, categories)
+          : field === 'reconciled'
+          ? describeReconciledChange(value)
           : `${field}: ${value.old ?? '—'} → ${value.new ?? '—'}`
       ).join(', ')
     : ''
@@ -107,6 +112,7 @@ export default function TransactionDetail({
           account_id: t.account_id,
           category_id: t.category_id,
           accounting_month_offset: t.accounting_month_offset,
+          reconciled: t.reconciled,
         })
         // Always populated from the transaction's own stored weights — never
         // re-prefilled from current tier config while editing. The 3 quick
@@ -208,6 +214,16 @@ export default function TransactionDetail({
               onChange={id => setFormData({ ...formData, category_id: id })}
               className="min-w-[140px]"
             />
+            {transactionId !== null && (
+              <label className="flex items-center gap-1.5 text-sm px-1">
+                <input
+                  type="checkbox"
+                  checked={formData.reconciled ?? false}
+                  onChange={e => setFormData({ ...formData, reconciled: e.target.checked })}
+                />
+                Reconciled
+              </label>
+            )}
           </div>
 
           <TransactionSplitFields

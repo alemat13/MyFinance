@@ -122,7 +122,7 @@ test('clicking + New Transaction opens the detail panel in create mode', async (
 })
 
 test('clicking a transaction row opens the detail view and updates the URL', async () => {
-  const txn = { id: 1, date: '2026-01-15', payee: 'Test', memo: null, amount: 50, account_id: 1, account_name: 'Checking', category_id: 1, category_name: 'Salary', accounting_month_offset: 0, accounting_month: '2026-01', currency: 'USD', splits: [] }
+  const txn = { id: 1, date: '2026-01-15', payee: 'Test', memo: null, amount: 50, account_id: 1, account_name: 'Checking', category_id: 1, category_name: 'Salary', accounting_month_offset: 0, accounting_month: '2026-01', reconciled: false, currency: 'USD', splits: [] }
   mockSearchTransactions.mockResolvedValue(searchResult([txn]))
   mockFetchAccounts.mockResolvedValue([baseAccount])
   mockFetchCategories.mockResolvedValue([baseCategory])
@@ -146,7 +146,7 @@ test('clicking a transaction row opens the detail view and updates the URL', asy
 test('saving from the detail view refreshes the transaction list without refetching accounts/categories/users', async () => {
   const txn = {
     id: 1, date: '2026-01-15', payee: 'Test', memo: null, amount: 50, account_id: 1, account_name: 'Checking',
-    category_id: 1, category_name: 'Salary', accounting_month_offset: 0, accounting_month: '2026-01', currency: 'USD',
+    category_id: 1, category_name: 'Salary', accounting_month_offset: 0, accounting_month: '2026-01', reconciled: false, currency: 'USD',
     splits: [{ user_id: 1, user_name: 'Alex', weight: 1, share_amount: 50, source: 'custom' }],
   }
   mockSearchTransactions.mockResolvedValue(searchResult([txn]))
@@ -182,7 +182,7 @@ test('saving from the detail view refreshes the transaction list without refetch
 })
 
 test('pressing Enter on a focused transaction row opens the detail view', async () => {
-  const txn = { id: 1, date: '2026-01-15', payee: 'Test', memo: null, amount: 50, account_id: 1, account_name: 'Checking', category_id: 1, category_name: 'Salary', accounting_month_offset: 0, accounting_month: '2026-01', currency: 'USD', splits: [] }
+  const txn = { id: 1, date: '2026-01-15', payee: 'Test', memo: null, amount: 50, account_id: 1, account_name: 'Checking', category_id: 1, category_name: 'Salary', accounting_month_offset: 0, accounting_month: '2026-01', reconciled: false, currency: 'USD', splits: [] }
   mockSearchTransactions.mockResolvedValue(searchResult([txn]))
   mockFetchAccounts.mockResolvedValue([baseAccount])
   mockFetchCategories.mockResolvedValue([baseCategory])
@@ -314,9 +314,26 @@ test('advanced mode conditions round-trip through the conditions URL param', asy
   ])
 })
 
+test('changing the Reconciled filter sends it in the search request and updates the URL', async () => {
+  mockSearchTransactions.mockResolvedValue(searchResult([]))
+  mockFetchAccounts.mockResolvedValue([baseAccount])
+  mockFetchCategories.mockResolvedValue([baseCategory])
+
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+
+  await waitFor(() => expect(mockSearchTransactions).toHaveBeenCalled())
+
+  fireEvent.change(screen.getByText('Reconciled: any').closest('select')!, { target: { value: 'false' } })
+
+  await waitFor(() => {
+    expect(mockSearchTransactions).toHaveBeenCalledWith(expect.objectContaining({ reconciled: false }))
+    expect(window.location.search).toContain('reconciled=false')
+  })
+})
+
 const twoTxns = [
-  { id: 1, date: '2026-01-15', payee: 'Coffee', memo: null, amount: -5, account_id: 1, account_name: 'Checking', category_id: 1, category_name: 'Salary', accounting_month_offset: 0, accounting_month: '2026-01', currency: 'USD', splits: [] },
-  { id: 2, date: '2026-01-14', payee: 'Lunch', memo: null, amount: -12, account_id: 1, account_name: 'Checking', category_id: 1, category_name: 'Salary', accounting_month_offset: 0, accounting_month: '2026-01', currency: 'USD', splits: [] },
+  { id: 1, date: '2026-01-15', payee: 'Coffee', memo: null, amount: -5, account_id: 1, account_name: 'Checking', category_id: 1, category_name: 'Salary', accounting_month_offset: 0, accounting_month: '2026-01', reconciled: false, currency: 'USD', splits: [] },
+  { id: 2, date: '2026-01-14', payee: 'Lunch', memo: null, amount: -12, account_id: 1, account_name: 'Checking', category_id: 1, category_name: 'Salary', accounting_month_offset: 0, accounting_month: '2026-01', reconciled: false, currency: 'USD', splits: [] },
 ]
 
 test('selecting rows shows the bulk-actions bar with correct count, and Clear selection empties it', async () => {
@@ -369,6 +386,25 @@ test('clicking a row checkbox does not open the transaction detail modal', async
 
   fireEvent.click(screen.getByLabelText('Select transaction Coffee'))
 
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  expect(mockFetchTransaction).not.toHaveBeenCalled()
+})
+
+test('clicking the reconciled icon toggles it without opening the transaction detail modal', async () => {
+  mockSearchTransactions.mockResolvedValue(searchResult(twoTxns))
+  mockFetchAccounts.mockResolvedValue([baseAccount])
+  mockFetchCategories.mockResolvedValue([baseCategory])
+  mockUpdateTransaction.mockResolvedValue({ ...twoTxns[0], reconciled: true })
+
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+
+  await waitFor(() => expect(screen.getByText('Coffee')).toBeInTheDocument())
+
+  fireEvent.click(screen.getByLabelText('Mark Coffee as reconciled'))
+
+  await waitFor(() => {
+    expect(mockUpdateTransaction).toHaveBeenCalledWith(1, { reconciled: true }, null)
+  })
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   expect(mockFetchTransaction).not.toHaveBeenCalled()
 })

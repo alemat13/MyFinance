@@ -1,16 +1,18 @@
 import { Fragment, useEffect, useState } from 'react'
+import { CheckCircle2, Circle } from 'lucide-react'
 import {
   Transaction, TransactionSplit, GlobalSplitWeight,
   Account, Category, User, FilterField, TransactionSearchRequest,
-  fetchAccounts, fetchCategories, fetchUsers, fetchSplitWeights, searchTransactions,
+  fetchAccounts, fetchCategories, fetchUsers, fetchSplitWeights, searchTransactions, updateTransaction,
 } from '../api/client'
 import TransactionDetail from './TransactionDetail'
 import BulkEditModal from './BulkEditModal'
 import CategoryPicker from './CategoryPicker'
-import { Button, Input, Select, Table, Thead, Tbody, Tr, Th, Td, StatusMessage, Badge, CategoryBadge, BackButton } from './ui'
+import { Button, IconButton, Input, Select, Table, Thead, Tbody, Tr, Th, Td, StatusMessage, Badge, CategoryBadge, BackButton } from './ui'
 import { formatMoney } from '../utils/currency'
 import { getParam, patchQueryParams } from '../utils/urlState'
 import { sharedShareFor, formatDateGroupHeader } from '../utils/transactions'
+import { useToast } from '../context/ToastContext'
 
 interface Props {
   onBack: () => void
@@ -140,6 +142,7 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
   const [filterCategoryId, setFilterCategoryId] = useState(() => loadInitialInt('category_id', 0))
   const [amountMin, setAmountMin] = useState(() => getParam('amount_min') ?? '')
   const [amountMax, setAmountMax] = useState(() => getParam('amount_max') ?? '')
+  const [filterReconciled, setFilterReconciled] = useState(() => getParam('reconciled') ?? '')
   const [conditions, setConditions] = useState<ConditionRow[]>(loadInitialConditions)
   const [debouncedConditions, setDebouncedConditions] = useState<ConditionRow[]>(loadInitialConditions)
   const [matchMode, setMatchMode] = useState<'all' | 'any'>(() => (getParam('match') === 'any' ? 'any' : 'all'))
@@ -149,6 +152,7 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>(loadInitialSortDir)
   const [total, setTotal] = useState(0)
   const [totalPages, setTotalPages] = useState(1)
+  const { showToast } = useToast()
 
   const loadMeta = () => {
     Promise.all([
@@ -201,6 +205,7 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
       category_id: filterCategoryId || undefined,
       amount_min: amountMin !== '' ? parseFloat(amountMin) : undefined,
       amount_max: amountMax !== '' ? parseFloat(amountMax) : undefined,
+      reconciled: filterReconciled === '' ? undefined : filterReconciled === 'true',
     }
   }
 
@@ -219,7 +224,7 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
 
   useEffect(loadTransactions, [
     selectedUserId, mode, debouncedSearch, dateFrom, dateTo, filterAccountId, filterCategoryId,
-    amountMin, amountMax, JSON.stringify(debouncedConditions), matchMode, page, pageSize, sortBy, sortDir,
+    amountMin, amountMax, filterReconciled, JSON.stringify(debouncedConditions), matchMode, page, pageSize, sortBy, sortDir,
   ])
 
   useEffect(() => {
@@ -235,6 +240,7 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
         ...common,
         q: undefined, date_from: undefined, date_to: undefined,
         account_id: undefined, category_id: undefined, amount_min: undefined, amount_max: undefined,
+        reconciled: undefined,
         match: matchMode === 'all' ? undefined : matchMode,
         conditions: debouncedConditions.length === 0 ? undefined : encodeURIComponent(JSON.stringify(debouncedConditions)),
       })
@@ -249,11 +255,12 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
         category_id: filterCategoryId ? String(filterCategoryId) : undefined,
         amount_min: amountMin || undefined,
         amount_max: amountMax || undefined,
+        reconciled: filterReconciled || undefined,
       })
     }
   }, [
     mode, debouncedSearch, dateFrom, dateTo, filterAccountId, filterCategoryId,
-    amountMin, amountMax, JSON.stringify(debouncedConditions), matchMode, page, pageSize, sortBy, sortDir,
+    amountMin, amountMax, filterReconciled, JSON.stringify(debouncedConditions), matchMode, page, pageSize, sortBy, sortDir,
   ])
 
   useEffect(() => {
@@ -275,6 +282,7 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
     setFilterCategoryId(0)
     setAmountMin('')
     setAmountMax('')
+    setFilterReconciled('')
     setPage(1)
   }
 
@@ -311,6 +319,12 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
   const allSelected = transactions.length > 0 && transactions.every(t => selectedIds.has(t.id))
   const toggleSelectAll = () => {
     setSelectedIds(allSelected ? new Set() : new Set(transactions.map(t => t.id)))
+  }
+
+  const toggleReconciled = (t: Transaction) => {
+    updateTransaction(t.id, { reconciled: !t.reconciled }, selectedUserId)
+      .then(loadTransactions)
+      .catch(err => showToast(err.message))
   }
 
   const closeDetail = () => {
@@ -358,6 +372,11 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
             />
             <Input placeholder="Min amount" type="number" step="0.01" value={amountMin} onChange={e => { setAmountMin(e.target.value); setPage(1) }} className="w-[110px]" />
             <Input placeholder="Max amount" type="number" step="0.01" value={amountMax} onChange={e => { setAmountMax(e.target.value); setPage(1) }} className="w-[110px]" />
+            <Select value={filterReconciled} onChange={e => { setFilterReconciled(e.target.value); setPage(1) }} className="min-w-[150px]">
+              <option value="">Reconciled: any</option>
+              <option value="true">Reconciled only</option>
+              <option value="false">Unreconciled only</option>
+            </Select>
             <Button size="sm" variant="secondary" onClick={clearSimpleFilters}>Clear</Button>
           </div>
         ) : (
@@ -463,7 +482,7 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
                 onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDetail(t.id) } }}
                 role="button"
                 tabIndex={0}
-                className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                className={`cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50 ${t.reconciled ? 'opacity-60' : ''}`}
               >
                 <Td onClick={e => e.stopPropagation()}>
                   <input
@@ -473,7 +492,20 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
                     aria-label={`Select transaction ${t.payee}`}
                   />
                 </Td>
-                <Td>{t.payee}</Td>
+                <Td>
+                  <span className="inline-flex items-center gap-1.5">
+                    <IconButton
+                      aria-label={t.reconciled ? `Mark ${t.payee} as unreconciled` : `Mark ${t.payee} as reconciled`}
+                      onClick={e => { e.stopPropagation(); toggleReconciled(t) }}
+                      className="p-0.5"
+                    >
+                      {t.reconciled
+                        ? <CheckCircle2 size={16} className="text-positive" />
+                        : <Circle size={16} className="text-slate-300 dark:text-slate-600" />}
+                    </IconButton>
+                    {t.payee}
+                  </span>
+                </Td>
                 <Td><CategoryBadge name={t.category_name} color={t.category_color} icon={t.category_icon} /></Td>
                 <Td>{t.account_name}</Td>
                 <Td className={`text-right ${t.amount >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>

@@ -43,13 +43,16 @@ export default function BulkEditModal({
   const [splitRows, setSplitRows] = useState<SplitRow[]>([])
   const [splitSource, setSplitSource] = useState<'global' | 'account' | 'category' | 'custom' | null>(null)
 
+  const [reconciledEnabled, setReconciledEnabled] = useState(false)
+  const [reconciledValue, setReconciledValue] = useState(true)
+
   const [saving, setSaving] = useState(false)
   const { showToast } = useToast()
 
   const currencies = [...new Set(transactions.map(t => t.currency))]
   const previewTransaction = transactions[0]
 
-  const canSave = categoryEnabled || offsetEnabled || splitEnabled
+  const canSave = categoryEnabled || offsetEnabled || splitEnabled || reconciledEnabled
 
   const handleSave = () => {
     if (splitEnabled && splitRows.length === 0) {
@@ -62,6 +65,7 @@ export default function BulkEditModal({
         split_weights: splitRows.map(r => ({ user_id: r.user_id, weight: r.value })),
         split_source: (splitSource ?? 'custom') as 'custom',
       } : {}),
+      ...(reconciledEnabled ? { reconciled: reconciledValue } : {}),
     }
     setSaving(true)
     bulkUpdateTransactions(transactionIds, update, selectedUserId)
@@ -129,6 +133,19 @@ export default function BulkEditModal({
                 {' '}each transaction is proportioned against its own amount when applied.
               </div>
             </div>
+          )}
+        </div>
+
+        <div className="border border-slate-200 dark:border-slate-700 rounded-md p-3">
+          <label className="flex items-center gap-2 text-sm font-medium mb-2">
+            <input type="checkbox" checked={reconciledEnabled} onChange={e => setReconciledEnabled(e.target.checked)} />
+            Mark as reconciled / unreconciled
+          </label>
+          {reconciledEnabled && (
+            <Select value={reconciledValue ? 'true' : 'false'} onChange={e => setReconciledValue(e.target.value === 'true')} className="min-w-[160px]">
+              <option value="true">Reconciled</option>
+              <option value="false">Not reconciled</option>
+            </Select>
           )}
         </div>
 

@@ -54,6 +54,9 @@ class Transaction(Base):
     # Months relative to `date` this transaction should be accounted in, e.g.
     # -1 = the month before date's month. 0 (default) = same month as date.
     accounting_month_offset = Column(Integer, nullable=False, default=0)
+    # Manually set by the user once they've reviewed the transaction; never
+    # set by create/import — those always default to unreconciled.
+    reconciled = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     account = relationship("Account", back_populates="transactions")
