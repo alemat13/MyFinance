@@ -1,6 +1,6 @@
 from datetime import datetime, date
 
-from sqlalchemy import Column, Integer, String, Float, DateTime, Date, Text, ForeignKey, JSON, Boolean
+from sqlalchemy import Column, Integer, String, Float, DateTime, Date, Text, ForeignKey, JSON, Boolean, Index
 from sqlalchemy.orm import relationship
 
 from database import Base
@@ -33,7 +33,7 @@ class Category(Base):
     # Self-referential FK for a strict 2-level hierarchy: a category with
     # parent_id set is a subcategory, and its parent must itself have no
     # parent (enforced in rules.py, not at the DB level).
-    parent_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
+    parent_id = Column(Integer, ForeignKey("categories.id"), nullable=True, index=True)
 
     transactions = relationship("Transaction", back_populates="category")
     splits = relationship("CategorySplit", back_populates="category", cascade="all, delete-orphan")
@@ -45,12 +45,12 @@ class Transaction(Base):
     __tablename__ = "transactions"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    date = Column(Date, nullable=False)
+    date = Column(Date, nullable=False, index=True)
     payee = Column(String(200), nullable=False)
     memo = Column(Text, nullable=True)
     amount = Column(Float, nullable=False)
-    account_id = Column(Integer, ForeignKey("accounts.id"))
-    category_id = Column(Integer, ForeignKey("categories.id"))
+    account_id = Column(Integer, ForeignKey("accounts.id"), index=True)
+    category_id = Column(Integer, ForeignKey("categories.id"), index=True)
     # Months relative to `date` this transaction should be accounted in, e.g.
     # -1 = the month before date's month. 0 (default) = same month as date.
     accounting_month_offset = Column(Integer, nullable=False, default=0)
@@ -62,6 +62,10 @@ class Transaction(Base):
     account = relationship("Account", back_populates="transactions")
     category = relationship("Category", back_populates="transactions")
     splits = relationship("TransactionSplit", back_populates="transaction", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        Index("ix_transactions_account_id_date", "account_id", "date"),
+    )
 
 
 class User(Base):
@@ -79,18 +83,22 @@ class AccountUser(Base):
     __tablename__ = "account_users"
 
     account_id = Column(Integer, ForeignKey("accounts.id"), primary_key=True)
-    user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), primary_key=True, index=True)
     ownership_percentage = Column(Float, nullable=False, default=0.0)
 
     account = relationship("Account", back_populates="user_associations")
     user = relationship("User", back_populates="account_associations")
+
+    __table_args__ = (
+        Index("ix_account_users_user_id_ownership_percentage", "user_id", "ownership_percentage"),
+    )
 
 
 class CategorySplit(Base):
     __tablename__ = "category_splits"
 
     category_id = Column(Integer, ForeignKey("categories.id"), primary_key=True)
-    user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), primary_key=True, index=True)
     # Relative integer weight, not a percentage — no sum-to-100 requirement.
     # Highest-priority tier: used only to prefill a transaction's own weights.
     weight = Column(Integer, nullable=False, default=0)
@@ -113,7 +121,7 @@ class AccountSplitWeight(Base):
     __tablename__ = "account_split_weights"
 
     account_id = Column(Integer, ForeignKey("accounts.id"), primary_key=True)
-    user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), primary_key=True, index=True)
     # Middle-priority tier: used only to prefill a transaction's own weights.
     # Entirely separate from AccountUser.ownership_percentage.
     weight = Column(Integer, nullable=False, default=0)
@@ -126,7 +134,7 @@ class TransactionSplit(Base):
     __tablename__ = "transaction_splits"
 
     transaction_id = Column(Integer, ForeignKey("transactions.id"), primary_key=True)
-    user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), primary_key=True, index=True)
     # The integer weight this transaction stores for this user — freely
     # typed by the client, or bulk-filled from a tier via a quick-access
     # button. Never re-resolved from current tier config after the fact.
