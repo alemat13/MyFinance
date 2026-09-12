@@ -41,6 +41,7 @@ Revises: 0005
 Create Date: 2026-09-07 00:00:00.000000
 
 """
+from types import SimpleNamespace
 from typing import Sequence, Union
 
 from alembic import op
@@ -75,11 +76,21 @@ def upgrade() -> None:
     # Pass 2: backfill any transaction with zero split rows via the classic
     # category > account > global cascade - now guaranteed to resolve, since
     # every user has a positive global weight from pass 1.
-    unsplit_transactions = session.query(Transaction).filter(~Transaction.splits.any()).all()
-    for transaction in unsplit_transactions:
-        source, weights = resolve_default_weights(session, transaction.category_id, transaction.account_id)
+    #
+    # Selects only the columns this pass needs, rather than
+    # `session.query(Transaction)` - the latter SELECTs every column the
+    # live `models.py` maps, including ones added by later migrations (e.g.
+    # `reconciled`, added by 0007), which don't exist yet at this point when
+    # upgrading a database from scratch.
+    unsplit_transactions = (
+        session.query(Transaction.id, Transaction.category_id, Transaction.account_id, Transaction.amount)
+        .filter(~Transaction.splits.any())
+        .all()
+    )
+    for txn_id, category_id, account_id, amount in unsplit_transactions:
+        source, weights = resolve_default_weights(session, category_id, account_id)
         if weights:
-            apply_split(session, transaction, weights, source=source or "global")
+            apply_split(session, SimpleNamespace(id=txn_id, amount=amount), weights, source=source or "global")
 
     session.commit()
 
