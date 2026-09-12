@@ -409,6 +409,91 @@ test('clicking the reconciled icon toggles it without opening the transaction de
   expect(mockFetchTransaction).not.toHaveBeenCalled()
 })
 
+test('toggling the reconciled icon updates the row in place without a full list reload', async () => {
+  mockSearchTransactions.mockResolvedValue(searchResult(twoTxns))
+  mockFetchAccounts.mockResolvedValue([baseAccount])
+  mockFetchCategories.mockResolvedValue([baseCategory])
+  mockUpdateTransaction.mockResolvedValue({ ...twoTxns[0], reconciled: true })
+
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+
+  await waitFor(() => expect(screen.getByText('Coffee')).toBeInTheDocument())
+  mockSearchTransactions.mockClear()
+
+  fireEvent.click(screen.getByLabelText('Mark Coffee as reconciled'))
+
+  await waitFor(() => {
+    expect(screen.getByLabelText('Mark Coffee as unreconciled')).toBeInTheDocument()
+  })
+  expect(mockSearchTransactions).not.toHaveBeenCalled()
+})
+
+test('toggling the reconciled icon preserves the current row selection', async () => {
+  mockSearchTransactions.mockResolvedValue(searchResult(twoTxns))
+  mockFetchAccounts.mockResolvedValue([baseAccount])
+  mockFetchCategories.mockResolvedValue([baseCategory])
+  mockUpdateTransaction.mockResolvedValue({ ...twoTxns[0], reconciled: true })
+
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+
+  await waitFor(() => expect(screen.getByText('Coffee')).toBeInTheDocument())
+
+  fireEvent.click(screen.getByLabelText('Select transaction Lunch'))
+  expect(screen.getByText('1 selected')).toBeInTheDocument()
+
+  fireEvent.click(screen.getByLabelText('Mark Coffee as reconciled'))
+
+  await waitFor(() => {
+    expect(screen.getByLabelText('Mark Coffee as unreconciled')).toBeInTheDocument()
+  })
+  expect(screen.getByText('1 selected')).toBeInTheDocument()
+  expect(screen.getByLabelText('Select transaction Lunch')).toBeChecked()
+})
+
+test('reverts the reconciled icon and reloads if the toggle PATCH fails', async () => {
+  mockSearchTransactions.mockResolvedValue(searchResult(twoTxns))
+  mockFetchAccounts.mockResolvedValue([baseAccount])
+  mockFetchCategories.mockResolvedValue([baseCategory])
+  mockUpdateTransaction.mockRejectedValue(new Error('Update failed'))
+
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+
+  await waitFor(() => expect(screen.getByText('Coffee')).toBeInTheDocument())
+  mockSearchTransactions.mockClear()
+  mockSearchTransactions.mockResolvedValue(searchResult(twoTxns))
+
+  fireEvent.click(screen.getByLabelText('Mark Coffee as reconciled'))
+
+  await waitFor(() => {
+    expect(mockSearchTransactions).toHaveBeenCalled()
+  })
+  await waitFor(() => {
+    expect(screen.getByLabelText('Mark Coffee as reconciled')).toBeInTheDocument()
+  })
+})
+
+test('toggling a row to match the opposite of the active Reconciled filter removes it from view', async () => {
+  window.history.replaceState(null, '', '/?reconciled=false')
+  mockSearchTransactions.mockResolvedValue(searchResult(twoTxns))
+  mockFetchAccounts.mockResolvedValue([baseAccount])
+  mockFetchCategories.mockResolvedValue([baseCategory])
+  mockUpdateTransaction.mockResolvedValue({ ...twoTxns[0], reconciled: true })
+
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+
+  await waitFor(() => expect(screen.getByText('Coffee')).toBeInTheDocument())
+  expect(screen.getByText('2 results')).toBeInTheDocument()
+  mockSearchTransactions.mockClear()
+
+  fireEvent.click(screen.getByLabelText('Mark Coffee as reconciled'))
+
+  await waitFor(() => {
+    expect(screen.queryByText('Coffee')).not.toBeInTheDocument()
+  })
+  expect(screen.getByText('1 result')).toBeInTheDocument()
+  expect(mockSearchTransactions).not.toHaveBeenCalled()
+})
+
 test('clicking Bulk Edit with N selected opens BulkEditModal with the right transaction ids', async () => {
   mockSearchTransactions.mockResolvedValue(searchResult(twoTxns))
   mockFetchAccounts.mockResolvedValue([baseAccount])
