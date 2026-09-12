@@ -322,9 +322,21 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
   }
 
   const toggleReconciled = (t: Transaction) => {
-    updateTransaction(t.id, { reconciled: !t.reconciled }, selectedUserId)
-      .then(loadTransactions)
-      .catch(err => showToast(err.message))
+    const next = !t.reconciled
+    // Optimistic: flip it locally so the icon/row dim instantly with no
+    // full-table reload. If the active filter would now exclude this row,
+    // drop it from view immediately too, same as a reload would end up
+    // doing. Revert (via a real reload) only if the PATCH fails.
+    const stillMatchesFilter = filterReconciled === '' || filterReconciled === String(next)
+    setTransactions(current => stillMatchesFilter
+      ? current.map(row => row.id === t.id ? { ...row, reconciled: next } : row)
+      : current.filter(row => row.id !== t.id))
+    if (!stillMatchesFilter) setTotal(tot => Math.max(0, tot - 1))
+    updateTransaction(t.id, { reconciled: next }, selectedUserId)
+      .catch(err => {
+        loadTransactions()
+        showToast(err.message)
+      })
   }
 
   const closeDetail = () => {
