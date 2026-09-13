@@ -55,6 +55,21 @@ def test_import_detect_handles_cp1252_encoding(client):
     assert body["sample_rows"][0]["Libelle"] == "Café Central"
 
 
+def test_import_detect_handles_utf16_encoding(client):
+    text = "Date\tLibellé\tCatégorie\tMontant\n15/09/2026\tAUX OURS\tRestaurants\t-25\n"
+    response = client.post(
+        "/api/import/detect",
+        files={"file": ("transactions.csv", text.encode("utf-16"), "text/csv")},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["encoding"] == "utf-16"
+    assert body["delimiter"] == "\t"
+    assert body["column_mapping"]["payee"] == "Libellé"
+    assert body["column_mapping"]["category"] == "Catégorie"
+    assert body["sample_rows"][0]["Libellé"] == "AUX OURS"
+
+
 def test_import_detect_leaves_unknown_columns_unmapped(client):
     text = "Foo,Bar,Baz\n1,2,3\n"
     response = client.post("/api/import/detect", files=_csv_file(text))
