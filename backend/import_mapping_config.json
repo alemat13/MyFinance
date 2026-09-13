@@ -3,5 +3,6 @@
   "payee": ["payee", "libelle", "libelle operation", "description", "beneficiary", "tiers", "label", "wording"],
   "amount": ["amount", "montant", "montant eur", "montant operation", "value"],
   "memo": ["memo", "note", "notes", "commentaire", "details"],
-  "category": ["category", "categorie", "type operation"]
+  "category": ["category", "categorie", "type operation"],
+  "account": ["account", "account name", "compte", "nom du compte"]
 }

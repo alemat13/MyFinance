@@ -7,7 +7,7 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
-from models import Category, Transaction
+from models import Account, Category, Transaction
 from schemas import ImportDetectResponse, ImportPreviewRequest, ImportPreviewRow, ImportPreviewSplitShare
 from split_engine import prorate, resolve_default_weights
 
@@ -124,18 +124,38 @@ def _parse_amount(raw: str, decimal_separator: str) -> float:
     return float(cleaned)
 
 
+def _resolve_account(raw_row: dict, data: ImportPreviewRequest, accounts_by_name: dict) -> tuple[int, str | None, bool]:
+    if data.account_col:
+        raw_value = (raw_row.get(data.account_col) or "").strip()
+        if raw_value:
+            matched = accounts_by_name.get(raw_value.lower())
+            if matched:
+                return matched.id, raw_value, True
+        return data.account_id, (raw_value or None), False
+    return data.account_id, None, True
+
+
 def preview_import(db: Session, raw: bytes, data: ImportPreviewRequest) -> list[ImportPreviewRow]:
     text = raw.decode(data.encoding)
     reader = csv.DictReader(io.StringIO(text), delimiter=data.delimiter)
+    raw_rows = list(reader)
 
     categories_by_name = {c.name.lower(): c for c in db.query(Category).all()}
+    accounts_by_name = {a.name.strip().lower(): a for a in db.query(Account).all()}
+
+    resolved_account_ids = {data.account_id}
+    for raw_row in raw_rows:
+        resolved_account_ids.add(_resolve_account(raw_row, data, accounts_by_name)[0])
+
     existing_keys = {
         (t.account_id, t.date, round(t.amount, 2), t.payee)
-        for t in db.query(Transaction).filter(Transaction.account_id == data.account_id).all()
+        for t in db.query(Transaction).filter(Transaction.account_id.in_(resolved_account_ids)).all()
     }
 
     rows: list[ImportPreviewRow] = []
-    for i, raw_row in enumerate(reader, start=1):
+    for i, raw_row in enumerate(raw_rows, start=1):
+        account_id, account_name, account_matched = _resolve_account(raw_row, data, accounts_by_name)
+
         try:
             row_date = _parse_date(raw_row[data.date_col], data.date_format)
             payee = raw_row[data.payee_col].strip()
@@ -143,7 +163,7 @@ def preview_import(db: Session, raw: bytes, data: ImportPreviewRequest) -> list[
             memo = raw_row[data.memo_col].strip() if data.memo_col and raw_row.get(data.memo_col) else None
         except (KeyError, ValueError) as exc:
             rows.append(ImportPreviewRow(
-                row_number=i, account_id=data.account_id,
+                row_number=i, account_id=account_id, account_name=account_name, account_matched=account_matched,
                 status="error", error_message=str(exc),
             ))
             continue
@@ -156,12 +176,12 @@ def preview_import(db: Session, raw: bytes, data: ImportPreviewRequest) -> list[
         status = "ok"
         if category is None:
             status = "needs_category"
-        elif (data.account_id, row_date, round(amount, 2), payee) in existing_keys:
+        elif (account_id, row_date, round(amount, 2), payee) in existing_keys:
             status = "possible_duplicate"
 
         preview_split = []
         if category is not None:
-            source, weights = resolve_default_weights(db, category.id, data.account_id)
+            source, weights = resolve_default_weights(db, category.id, account_id)
             shares = prorate(amount, weights) if weights else []
             preview_split = [
                 ImportPreviewSplitShare(user_id=s.user_id, weight=s.weight, share_amount=s.share_amount, source=source or "custom")
@@ -174,7 +194,9 @@ def preview_import(db: Session, raw: bytes, data: ImportPreviewRequest) -> list[
             payee=payee,
             memo=memo,
             amount=amount,
-            account_id=data.account_id,
+            account_id=account_id,
+            account_name=account_name,
+            account_matched=account_matched,
             category_id=category.id if category else None,
             category_name=category.name if category else None,
             status=status,

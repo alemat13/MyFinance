@@ -333,15 +333,22 @@ transaction.
 Bulk-load transactions from a bank or credit card export instead of entering them by
 hand. It's a four-step wizard:
 
-1. **Upload & account** — choose the CSV file and the account its transactions belong to.
+1. **Upload & account** — choose the CSV file and a default account. This account is used
+   for every row unless the file has its own account-name column (see below), in which
+   case it's only the fallback for rows whose account name doesn't match one of yours.
 2. **Format detection** — MyFinance auto-detects the file's encoding, delimiter, date
-   format, decimal separator, and which column maps to which field (date, payee,
-   amount, etc.), showing a preview of a few sample rows. You can correct any of these
-   before continuing.
+   format, decimal separator, and which column maps to which field (date, payee, amount,
+   category, etc.), showing a preview of a few sample rows. You can correct any of these
+   before continuing. If the file has a column naming an account per row (e.g. Linxo
+   exports' "Nom du compte"), it's auto-detected too — rows are then routed to the
+   matching account instead of the single default one.
 3. **Review** — every row is shown with a status badge: **OK**, **Needs category**
-   (you must assign one before it can be imported), **Possible duplicate** (looks like
-   a transaction that already exists), or **Error**. You can override the category per
-   row, or check a box to skip importing that row entirely.
+   (non-blocking — it can still be imported without one), **Possible duplicate** (looks
+   like a transaction that already exists), or **Error**. A row whose account name didn't
+   match any existing account additionally shows an **Account not matched** notice — it
+   falls back to the default account but you can pick the right one from a dropdown. You
+   can override the category or account per row, or check a box to skip importing that
+   row entirely.
 4. **Commit** — imports everything that isn't skipped or erroring, and confirms when done.
 
 Imported transactions are tagged as such, and show up in a transaction's

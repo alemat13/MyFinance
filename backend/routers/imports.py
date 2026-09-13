@@ -37,6 +37,7 @@ async def import_preview(
     amount_col: str = Form(...),
     memo_col: str | None = Form(None),
     category_col: str | None = Form(None),
+    account_col: str | None = Form(None),
     db: Session = Depends(get_db),
 ):
     contents = await file.read()
@@ -44,7 +45,7 @@ async def import_preview(
         account_id=account_id, encoding=encoding, delimiter=delimiter,
         date_format=date_format, decimal_separator=decimal_separator,
         date_col=date_col, payee_col=payee_col, amount_col=amount_col,
-        memo_col=memo_col, category_col=category_col,
+        memo_col=memo_col, category_col=category_col, account_col=account_col,
     )
     try:
         return preview_import(db, contents, data)

@@ -426,7 +426,7 @@ class ImportDetectResponse(BaseModel):
 
 
 class ImportPreviewRequest(BaseModel):
-    account_id: int
+    account_id: int  # default/fallback account, used when account_col is absent or a row's value doesn't match
     encoding: str
     delimiter: str
     date_format: str  # Python strptime format, confirmed by the user
@@ -436,6 +436,7 @@ class ImportPreviewRequest(BaseModel):
     amount_col: str
     memo_col: str | None = None
     category_col: str | None = None
+    account_col: str | None = None
 
 
 class ImportPreviewSplitShare(BaseModel):
@@ -452,6 +453,8 @@ class ImportPreviewRow(BaseModel):
     memo: str | None = None
     amount: float | None = None
     account_id: int
+    account_name: str | None = None  # raw value from the CSV's account column, if any
+    account_matched: bool = True  # False when account_id fell back to the request's default account
     category_id: int | None = None
     category_name: str | None = None
     status: str  # 'ok' | 'needs_category' | 'possible_duplicate' | 'error'
