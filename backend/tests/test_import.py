@@ -24,6 +24,14 @@ def _preview(client, account_id, **overrides):
     return client.post("/api/import/preview", files=_csv_file(), data=data)
 
 
+MULTI_ACCOUNT_CSV = """Date,Label,Amount,Category,Account
+2026-01-15,Whole Foods,-42.50,Test Salary,Test Checking
+2026-01-16,Book Store,-15.00,Test Salary,Test Savings
+2026-01-17,Unknown Merchant,-5.00,Test Salary,Nonexistent Account
+2026-01-18,Blank Account Row,-3.00,Test Salary,
+"""
+
+
 def test_import_detect_maps_columns_and_formats(client):
     response = client.post("/api/import/detect", files=_csv_file())
     assert response.status_code == 200
@@ -34,7 +42,7 @@ def test_import_detect_maps_columns_and_formats(client):
     assert body["decimal_separator"] == "."
     assert body["column_mapping"] == {
         "date": "Date", "payee": "Label", "amount": "Amount",
-        "memo": None, "category": "Category",
+        "memo": None, "category": "Category", "account": None,
     }
     assert body["headers"] == ["Date", "Label", "Amount", "Category"]
     assert len(body["sample_rows"]) == 2
@@ -70,12 +78,19 @@ def test_import_detect_handles_utf16_encoding(client):
     assert body["sample_rows"][0]["Libellé"] == "AUX OURS"
 
 
+def test_import_detect_maps_account_column(client):
+    text = "Date,Label,Amount,Category,Nom du compte\n2026-01-15,Whole Foods,-42.50,Test Salary,Compte Courant\n"
+    response = client.post("/api/import/detect", files=_csv_file(text))
+    assert response.status_code == 200
+    assert response.json()["column_mapping"]["account"] == "Nom du compte"
+
+
 def test_import_detect_leaves_unknown_columns_unmapped(client):
     text = "Foo,Bar,Baz\n1,2,3\n"
     response = client.post("/api/import/detect", files=_csv_file(text))
     assert response.status_code == 200
     mapping = response.json()["column_mapping"]
-    assert mapping == {"date": None, "payee": None, "amount": None, "memo": None, "category": None}
+    assert mapping == {"date": None, "payee": None, "amount": None, "memo": None, "category": None, "account": None}
 
 
 def test_import_preview_resolves_category_and_flags_unknown(client, sample_account, sample_category):
@@ -102,6 +117,61 @@ def test_import_preview_flags_possible_duplicate(client, sample_account, sample_
     assert response.status_code == 200
     rows = response.json()
     assert rows[0]["status"] == "possible_duplicate"
+
+
+def test_import_preview_resolves_account_by_name(client, sample_account, sample_account_2, sample_category):
+    response = client.post(
+        "/api/import/preview",
+        files=_csv_file(MULTI_ACCOUNT_CSV),
+        data={**PREVIEW_FORM, "account_id": sample_account.id, "account_col": "Account"},
+    )
+    assert response.status_code == 200
+    rows = response.json()
+    assert rows[0]["account_id"] == sample_account.id
+    assert rows[0]["account_matched"] is True
+    assert rows[1]["account_id"] == sample_account_2.id
+    assert rows[1]["account_matched"] is True
+
+
+def test_import_preview_falls_back_to_default_account_when_unmatched(client, sample_account, sample_account_2, sample_category):
+    response = client.post(
+        "/api/import/preview",
+        files=_csv_file(MULTI_ACCOUNT_CSV),
+        data={**PREVIEW_FORM, "account_id": sample_account.id, "account_col": "Account"},
+    )
+    assert response.status_code == 200
+    rows = response.json()
+    assert rows[2]["account_id"] == sample_account.id
+    assert rows[2]["account_matched"] is False
+    assert rows[2]["account_name"] == "Nonexistent Account"
+    assert rows[3]["account_id"] == sample_account.id
+    assert rows[3]["account_matched"] is False
+    assert rows[3]["account_name"] is None
+
+
+def test_import_preview_duplicate_detection_scoped_per_account(client, sample_account, sample_account_2, sample_category, db):
+    from datetime import date
+    from models import Transaction
+    db.add(Transaction(
+        date=date(2026, 1, 15), payee="Whole Foods", amount=-42.50,
+        account_id=sample_account.id, category_id=sample_category.id,
+    ))
+    db.commit()
+
+    text = (
+        "Date,Label,Amount,Category,Account\n"
+        "2026-01-15,Whole Foods,-42.50,Test Salary,Test Checking\n"
+        "2026-01-15,Whole Foods,-42.50,Test Salary,Test Savings\n"
+    )
+    response = client.post(
+        "/api/import/preview",
+        files=_csv_file(text),
+        data={**PREVIEW_FORM, "account_id": sample_account.id, "account_col": "Account"},
+    )
+    assert response.status_code == 200
+    rows = response.json()
+    assert rows[0]["status"] == "possible_duplicate"
+    assert rows[1]["status"] == "ok"
 
 
 def test_import_preview_european_number_format(client, sample_account, sample_category):
@@ -209,6 +279,30 @@ def test_import_commit_creates_transactions(client, sample_account, sample_categ
 
     response = client.get("/api/transactions")
     assert len(response.json()) == 2
+
+
+def test_import_commit_creates_transactions_in_distinct_accounts(client, sample_account, sample_account_2, sample_category, sample_user):
+    response = client.post(
+        "/api/import/commit",
+        json={"rows": [
+            {
+                "date": "2026-01-15", "payee": "Whole Foods", "amount": -42.50,
+                "account_id": sample_account.id, "category_id": sample_category.id,
+                "split_weights": [{"user_id": sample_user.id, "weight": 1}],
+            },
+            {
+                "date": "2026-01-16", "payee": "Book Store", "amount": -15.00,
+                "account_id": sample_account_2.id, "category_id": sample_category.id,
+                "split_weights": [{"user_id": sample_user.id, "weight": 1}],
+            },
+        ]},
+    )
+    assert response.status_code == 200
+
+    response = client.get("/api/transactions")
+    by_payee = {t["payee"]: t for t in response.json()}
+    assert by_payee["Whole Foods"]["account_id"] == sample_account.id
+    assert by_payee["Book Store"]["account_id"] == sample_account_2.id
 
 
 def test_import_commit_creates_unreconciled_transactions(client, sample_account, sample_category, sample_user):
