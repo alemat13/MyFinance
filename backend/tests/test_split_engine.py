@@ -36,6 +36,21 @@ def test_prorate_rounding_remainder_absorbed_by_last_user_id():
     assert by_user[3].share_amount == 33.34
 
 
+def test_prorate_negative_amount_near_cent_boundary():
+    """Regression test: pins the exact rounding for amounts whose per-share
+    value lands very close to a cent boundary, so the TS mirror in
+    frontend/src/utils/splitWeights.ts (prorateWeights) can be checked
+    against the same expected values and never silently drifts again."""
+    by_user = {s.user_id: s.share_amount for s in prorate(-100.01, {1: 1, 2: 1})}
+    assert by_user == {1: -50.01, 2: -50.0}
+
+    by_user = {s.user_id: s.share_amount for s in prorate(-120.51, {1: 1, 2: 1})}
+    assert by_user == {1: -60.26, 2: -60.25}
+
+    by_user = {s.user_id: s.share_amount for s in prorate(-0.01, {1: 1, 2: 1})}
+    assert by_user == {1: -0.01, 2: 0.0}
+
+
 # ── resolve_default_weights() ─────────────────────────────────────
 
 def test_resolve_default_weights_nothing_configured(db, sample_category):
