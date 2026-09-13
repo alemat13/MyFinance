@@ -19,7 +19,7 @@ export function prorateWeights(
     return ordered.map(r => ({ user_id: r.user_id, share_amount: 0 }))
   }
 
-  const round2 = (n: number) => Math.round(n * 100) / 100
+  const round2 = (n: number) => Number(n.toFixed(2))
 
   let running = 0
   const shares: { user_id: number; share_amount: number }[] = []

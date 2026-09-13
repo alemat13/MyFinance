@@ -24,6 +24,20 @@ test('prorateWeights all-zero weights returns explicit zero shares, not dropped'
   expect(shares).toEqual([{ user_id: 1, share_amount: 0 }, { user_id: 2, share_amount: 0 }])
 })
 
+test('prorateWeights matches backend rounding on amounts near a cent boundary', () => {
+  const cases: [number, number, number][] = [
+    [-100.01, -50.01, -50.0],
+    [-120.51, -60.26, -60.25],
+    [-0.01, -0.01, 0],
+  ]
+  for (const [amount, expectedLow, expectedHigh] of cases) {
+    const shares = prorateWeights(amount, [{ user_id: 1, weight: 1 }, { user_id: 2, weight: 1 }])
+    const byUser = Object.fromEntries(shares.map(s => [s.user_id, s.share_amount]))
+    expect(byUser[1]).toBe(expectedLow)
+    expect(byUser[2]).toBe(expectedHigh)
+  }
+})
+
 const user1 = { user_id: 1, user_name: 'Alex' }
 const user2 = { user_id: 2, user_name: 'Olivia' }
 
