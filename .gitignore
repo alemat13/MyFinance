@@ -6,3 +6,8 @@ __pycache__/
 *.db
 .vite/
 docs/Comptes famille.xlsm
+
+# Playwright
+test-results/
+playwright-report/
+blob-report/

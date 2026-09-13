@@ -44,7 +44,7 @@ export default function SplitEditor({ rows, allUsers, total, unit, currency, lab
   const fmtTotal = (n: number) => unit === 'currency' && currency ? formatMoney(n, currency) : `${n}${suffix}`
 
   return (
-    <div className="mt-2 p-2 rounded-md bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
+    <div data-testid="split-editor" className="mt-2 p-2 rounded-md bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
       <div className="flex justify-between items-center mb-1.5">
         <span className="text-[13px] font-semibold text-slate-700 dark:text-slate-200">{label}</span>
         <IconButton aria-label="Add user" onClick={addRow}>
@@ -53,7 +53,7 @@ export default function SplitEditor({ rows, allUsers, total, unit, currency, lab
       </div>
       {rows.length === 0 && <span className="text-xs text-slate-400">None assigned</span>}
       {rows.map((r, i) => (
-        <div key={i} className="flex gap-1.5 items-center mb-1">
+        <div key={i} data-testid="split-row" className="flex gap-1.5 items-center mb-1">
           <Select
             value={r.user_id}
             onChange={e => updateRow(i, 'user_id', parseInt(e.target.value, 10) || 0)}

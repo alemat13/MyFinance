@@ -142,6 +142,22 @@ npm test
 
 Uses `vitest` with `@testing-library/react` and `jsdom`. Component tests mock the API client module.
 
+### End-to-end
+
+```sh
+cd frontend
+npm run test:e2e            # full suite
+npm run test:e2e -- splits  # one spec file
+npm run test:e2e:ui         # UI mode, for debugging
+```
+
+Uses Playwright (Chromium) against the **real** stack: the config starts `uvicorn` on `:8010`
+and the Vite dev server on `:5273` itself, so nothing needs to be running first. The backend
+points at a throwaway `backend/e2e-test.db`, re-seeded from `seed.py` before every test — your
+own `finance.db` is never touched. Specs live in `frontend/e2e/`.
+
+The first run needs the browser: `npx playwright install --with-deps chromium`.
+
 ## Project Structure
 
 ```
@@ -178,6 +194,23 @@ backend/
     └── test_database.py               sync_schema() tests
 
 frontend/
+├── playwright.config.ts         Playwright config (starts uvicorn + Vite itself)
+├── tsconfig.e2e.json            Typecheck config for e2e/ (outside the app build)
+├── e2e/                         Playwright end-to-end specs
+│   ├── fixtures.ts              Per-test DB reseed + a page past the first-launch prompt
+│   ├── helpers.ts               Shared locators (nav, dialogs, toasts, split editor, picker)
+│   ├── paths.ts                 Throwaway-DB and backend paths shared with the config
+│   ├── global-setup.ts          Warms the Vite dev server's transform cache
+│   ├── data/                    CSV fixtures for the import flow
+│   ├── navigation.spec.ts       First launch, the 10 views, user filter, theme
+│   ├── accounts.spec.ts         Accounts CRUD, ownership, archival, delete protection
+│   ├── categories.spec.ts       Category tree, subcategories, split tier, delete protection
+│   ├── users.spec.ts            Users CRUD, global filter, auto global split weight
+│   ├── transactions.spec.ts     Transaction CRUD, detail modal, history, bulk edit
+│   ├── transaction-filters.spec.ts  Simple + advanced filters, URL round-trip
+│   ├── splits.spec.ts           Weight tiers, quick fill, prorating, balance impact
+│   ├── csv-import.spec.ts       detect → preview → commit flow
+│   └── backup.spec.ts           Export/import round-trip (serial — overwrite wipes the DB)
 ├── src/
 │   ├── main.tsx                 App entrypoint
 │   ├── App.tsx                  Root component (view switching, user selection)

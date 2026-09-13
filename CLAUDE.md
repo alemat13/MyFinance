@@ -15,7 +15,7 @@ No monorepo tool, no workspaces. No linters/formatters/type-checking configured 
 
 ## Git workflow
 
-- `main` is the production/deploy branch — pushing to it (via merged PR) triggers `.github/workflows/ci-cd.yml`'s `deploy` job, which redeploys both Cloud Run services. **`main` is branch-protected: direct pushes are rejected, merges require an open PR with passing `test-backend`/`test-frontend` checks.**
+- `main` is the production/deploy branch — pushing to it (via merged PR) triggers `.github/workflows/ci-cd.yml`'s `deploy` job, which redeploys both Cloud Run services. **`main` is branch-protected: direct pushes are rejected, merges require an open PR with passing `test-backend`/`test-frontend`/`test-e2e` checks.**
 - `develop` is the default branch and where all feature work happens. Branch off `develop` for new work, open PRs back into `develop`. Pushes/PRs to `develop` run the test jobs but never deploy.
 - To ship, open a PR from `develop` into `main`. Once merged, CI deploys automatically.
 - Always create a feature branch off `develop` — never commit directly to `main`, and avoid committing directly to `develop` for anything non-trivial.
@@ -59,7 +59,14 @@ npm run build                   # tsc && vite build
 npm test                        # vitest, run once
 npm test -- --watch             # vitest, watch mode
 npm test -- AccountsList        # run tests matching a name/file
+npm run test:e2e                # Playwright end-to-end suite (starts its own servers)
+npm run test:e2e -- splits      # run one e2e spec file
+npm run test:e2e:ui             # Playwright UI mode, for debugging a spec
+npm run typecheck:e2e           # tsc over e2e/ (not covered by `npm run build`)
 ```
+
+`npm run test:e2e` starts both servers itself — no need to have `uvicorn` or `npm run dev`
+already running. See "End-to-end tests" below.
 
 ## Architecture
 
@@ -79,6 +86,18 @@ npm test -- AccountsList        # run tests matching a name/file
 - **Shared frontend infra**: `components/ui/` holds the design-system primitives (`Button`, `Card`, `Modal`, `Table`, `Toast`, etc.), `context/` holds `ThemeContext` (dark mode) and `ToastContext`, `utils/` holds `currency.ts`, `download.ts`, `splitWeights.ts` (client-side `prorateWeights()`/`resolveDefaultSplitRows()`, mirroring `split_engine.py`), `categoryHierarchy.ts` (client-side mirror of the backend's 2-level category grouping/parent-validation rules, used by `CategoriesList` and `CategoryPicker`), `transactions.ts`, `urlState.ts`. Styling is Tailwind CSS v4 utility classes (`index.css`), not a hand-rolled stylesheet.
 - **API client**: `frontend/src/api/client.ts`, fetch-based. Base URL is `` `http://${window.location.hostname}:8000/api` `` unless overridden by the `VITE_API_URL` build-time env var — not hardcoded to `localhost`.
 
+## End-to-end tests
+
+`frontend/playwright.config.ts` + `frontend/e2e/` hold a Playwright suite that drives a real browser against a **real backend** — the only tests in the repo that exercise the React↔FastAPI contract (every Vitest component test mocks `src/api/client`).
+
+- **Servers**: the config's two `webServer` entries start `python seed.py && uvicorn main:app` on **:8010** and the Vite dev server on **:5273** — both offset from the documented dev ports so a running dev server is neither killed nor reused. `VITE_API_URL` is injected into the dev server so the client never falls back to `:8000`.
+- **Database**: `DATABASE_URL` points at `backend/e2e-test.db`, a throwaway file (covered by the repo-wide `*.db` gitignore). `seed.py` is destructive, so it must never be pointed anywhere else — that's why the backend `webServer` sets `reuseExistingServer: false`.
+- **Isolation**: one backend and one SQLite file are shared by every test, so `workers: 1` / `fullyParallel: false` are mandatory, and the auto `resetDb` fixture in `e2e/fixtures.ts` re-runs `seed.py` before **every** test (~0.5s). `backup.spec.ts` additionally runs `mode: 'serial'` because its overwrite import wipes the database.
+- **First launch**: `e2e/fixtures.ts`'s `app` fixture seeds `userChoiceMade`/`selectedUserId`/`theme` into `localStorage` via `addInitScript` (seed-if-absent, so a test can still change them and reload). Without it `FirstLaunchUserPrompt` blocks everything — it has no close button and it disables the nav menu. The `freshApp` fixture skips the seeding, for testing first launch itself.
+- **Locators** (`e2e/helpers.ts`): prefer role / `aria-label` / placeholder / text. `getByRole(..., { name })` matches accessible names as a *substring*, so short labels always pass `exact: true`. Modal content is scoped through `dialog()`. Toasts self-dismiss after 4s, so `expectToast()` must be the next statement after the action. Never `waitForTimeout` the 300ms search debounce — assert the outcome instead.
+- **`data-testid`**: only on role-less composite widgets that render more than once per screen — `split-editor`/`split-row` (`SplitEditor.tsx`) and `category-picker`/`category-picker-menu` (`CategoryPicker.tsx`). Everything else is reachable without one; don't add more by reflex.
+- **CI**: the `test-e2e` job in `.github/workflows/ci-cd.yml` is blocking (it's in `deploy`'s `needs`) and uploads `playwright-report/` as an artifact on failure. `@playwright/test` is pinned to `~1.56.0`, the minor whose bundled Chromium revision (1194) matches the one preinstalled in the Claude Code sandbox, so local runs need no `playwright install`.
+
 ## Documentation
 
 - User-facing behavior changes (new/changed views, forms, buttons, flows) **must** be reflected in `docs/user-guide.md` in the same PR — don't leave it stale. Schema/entity changes likewise require updating `docs/data-model.md`. When editing `models.py`, `main.py` routes, or `frontend/src/` in ways that change what a user sees or does, check whether `docs/user-guide.md` needs a matching update before considering the task done, and do the same for this file (`CLAUDE.md`) when architecture, commands, or workflow change.
@@ -92,3 +111,5 @@ npm test -- AccountsList        # run tests matching a name/file
 - Backend tests use `sqlite:///:memory:` with `dependency_overrides[get_db]`; tables are created/dropped per test session (see `backend/tests/conftest.py`).
 - Frontend component tests mock `src/api/client` via `vi.mock`; API-client tests mock `global.fetch` directly instead.
 - Components using `alert()`/`confirm()` need those mocked with `vi.spyOn` in their tests.
+- Vitest has no `include`, so its default `**/*.{test,spec}.*` glob would sweep up the Playwright specs — `vite.config.ts` keeps `exclude: [...configDefaults.exclude, 'e2e/**']` for exactly that reason. Likewise `tsconfig.json` still only includes `src`, so `e2e/` is typechecked by `tsconfig.e2e.json` instead of by `npm run build`.
+- `prorateWeights()` (`utils/splitWeights.ts`) rounds with `Math.round(n * 100) / 100` while `prorate()` (`split_engine.py`) uses Python's `round(x, 2)`. The two disagree on exact half-cent ties (e.g. -100.01 split 1:1 → client -50.00/-50.01, server -50.01/-50.00), so the live preview can be a cent off from what is persisted. `splits.spec.ts` deliberately asserts an amount where they agree; fixing the divergence is a separate change.

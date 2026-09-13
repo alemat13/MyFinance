@@ -69,13 +69,13 @@ export default function CategoryPicker({
   }
 
   return (
-    <div className={`relative ${className}`} ref={ref}>
+    <div data-testid="category-picker" className={`relative ${className}`} ref={ref}>
       <button type="button" className={`${triggerClasses} min-w-[160px] w-full`} onClick={() => setOpen(o => !o)}>
         {selected ? <CategoryBadge name={selected.name} color={selected.color} icon={selected.icon} /> : <CategoryBadge name={null} />}
         <ChevronDown size={14} className="text-slate-400 shrink-0" />
       </button>
       {open && (
-        <div className="absolute z-10 mt-1 w-72 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-lg">
+        <div data-testid="category-picker-menu" className="absolute z-10 mt-1 w-72 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-lg">
           <div className="p-2 border-b border-slate-100 dark:border-slate-700">
             <input
               autoFocus
