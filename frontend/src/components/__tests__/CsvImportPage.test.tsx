@@ -28,7 +28,7 @@ const fullyDetected: ImportDetectResponse = {
   delimiter: ',',
   date_format: '%Y-%m-%d',
   decimal_separator: '.',
-  column_mapping: { date: 'Date', payee: 'Label', amount: 'Amount', memo: null, category: null },
+  column_mapping: { date: 'Date', payee: 'Label', amount: 'Amount', memo: null, category: null, account: null },
   sample_rows: [{ Date: '2026-01-15', Label: 'Whole Foods', Amount: '-42.50' }],
 }
 
@@ -79,7 +79,7 @@ test('analyzing a file pre-fills the confirmation form from detected settings', 
 test('preview stays disabled until required columns are chosen when detection fails to map them', async () => {
   await goToConfirm({
     ...fullyDetected,
-    column_mapping: { date: 'Date', payee: 'Label', amount: null, memo: null, category: null },
+    column_mapping: { date: 'Date', payee: 'Label', amount: null, memo: null, category: null, account: null },
   })
 
   expect(screen.getByText('Preview')).toBeDisabled()
@@ -94,8 +94,8 @@ test('preview stays disabled until required columns are chosen when detection fa
 
 test('previews a CSV and shows row statuses', async () => {
   mockPreviewImport.mockResolvedValue([
-    { row_number: 1, transaction_date: '2026-01-15', payee: 'Whole Foods', memo: null, amount: -42.5, account_id: 1, category_id: 1, category_name: 'Groceries', status: 'ok', error_message: null, preview_split: [] },
-    { row_number: 2, transaction_date: '2026-01-16', payee: 'Unknown', memo: null, amount: -10, account_id: 1, category_id: null, category_name: null, status: 'needs_category', error_message: null, preview_split: [] },
+    { row_number: 1, transaction_date: '2026-01-15', payee: 'Whole Foods', memo: null, amount: -42.5, account_id: 1, account_name: null, account_matched: true, category_id: 1, category_name: 'Groceries', status: 'ok', error_message: null, preview_split: [] },
+    { row_number: 2, transaction_date: '2026-01-16', payee: 'Unknown', memo: null, amount: -10, account_id: 1, account_name: null, account_matched: true, category_id: null, category_name: null, status: 'needs_category', error_message: null, preview_split: [] },
   ])
 
   await goToConfirm()
@@ -118,12 +118,54 @@ test('previews a CSV and shows row statuses', async () => {
     amount_col: 'Amount',
     memo_col: null,
     category_col: null,
+    account_col: null,
+  })
+})
+
+test('detecting a file with an account column pre-fills the account column picker', async () => {
+  await goToConfirm({
+    ...fullyDetected,
+    headers: ['Date', 'Label', 'Amount', 'Account'],
+    column_mapping: { ...fullyDetected.column_mapping, account: 'Account' },
+  })
+
+  expect(screen.getByDisplayValue('Account')).toBeInTheDocument()
+})
+
+test('flags a row whose account name did not match, and lets the user override it before commit', async () => {
+  const secondAccount = { id: 2, name: 'Savings', type: 'Savings', balance: 0, created_at: '', users: [] }
+  mockFetchAccounts.mockResolvedValue([account, secondAccount])
+  mockPreviewImport.mockResolvedValue([
+    { row_number: 1, transaction_date: '2026-01-15', payee: 'Whole Foods', memo: null, amount: -42.5, account_id: 1, account_name: 'Unknown Account', account_matched: false, category_id: 1, category_name: 'Groceries', status: 'ok', error_message: null, preview_split: [] },
+  ])
+  mockCommitImport.mockResolvedValue({ created_count: 1, transaction_ids: [5] })
+
+  await goToConfirm()
+  fireEvent.click(screen.getByText('Preview'))
+
+  await waitFor(() => {
+    expect(screen.getByText('Account not matched — using default')).toBeInTheDocument()
+  })
+
+  const commitButton = screen.getByText(/Commit 1 transaction/)
+  expect(commitButton).not.toBeDisabled()
+
+  const accountSelect = screen.getAllByRole('combobox').find(el => el.innerHTML.includes('Savings'))!
+  fireEvent.change(accountSelect, { target: { value: '2' } })
+
+  fireEvent.click(commitButton)
+
+  await waitFor(() => {
+    expect(mockCommitImport).toHaveBeenCalledWith(
+      [expect.objectContaining({ account_id: 2 })],
+      null,
+    )
   })
 })
 
 test('commit is allowed for rows still flagged as needing a category, and imports them uncategorized', async () => {
   mockPreviewImport.mockResolvedValue([
-    { row_number: 1, transaction_date: '2026-01-16', payee: 'Unknown', memo: null, amount: -10, account_id: 1, category_id: null, category_name: null, status: 'needs_category', error_message: null, preview_split: [] },
+    { row_number: 1, transaction_date: '2026-01-16', payee: 'Unknown', memo: null, amount: -10, account_id: 1, account_name: null, account_matched: true, category_id: null, category_name: null, status: 'needs_category', error_message: null, preview_split: [] },
   ])
   mockCommitImport.mockResolvedValue({ created_count: 1, transaction_ids: [5] })
 
@@ -149,7 +191,7 @@ test('commit is allowed for rows still flagged as needing a category, and import
 
 test('commits active rows and shows a success message with a way back', async () => {
   mockPreviewImport.mockResolvedValue([
-    { row_number: 1, transaction_date: '2026-01-15', payee: 'Whole Foods', memo: null, amount: -42.5, account_id: 1, category_id: 1, category_name: 'Groceries', status: 'ok', error_message: null, preview_split: [] },
+    { row_number: 1, transaction_date: '2026-01-15', payee: 'Whole Foods', memo: null, amount: -42.5, account_id: 1, account_name: null, account_matched: true, category_id: 1, category_name: 'Groceries', status: 'ok', error_message: null, preview_split: [] },
   ])
   mockCommitImport.mockResolvedValue({ created_count: 1, transaction_ids: [5] })
   const onBack = vi.fn()

@@ -34,10 +34,12 @@ export default function CsvImportPage({ onBack, selectedUserId }: Props) {
   const [amountCol, setAmountCol] = useState('')
   const [memoCol, setMemoCol] = useState('')
   const [categoryCol, setCategoryCol] = useState('')
+  const [accountCol, setAccountCol] = useState('')
 
   const [rows, setRows] = useState<ImportPreviewRow[]>([])
   const [skipped, setSkipped] = useState<Set<number>>(new Set())
   const [rowCategoryOverride, setRowCategoryOverride] = useState<Record<number, number>>({})
+  const [rowAccountOverride, setRowAccountOverride] = useState<Record<number, number>>({})
   const [committing, setCommitting] = useState(false)
 
   useEffect(() => {
@@ -64,6 +66,7 @@ export default function CsvImportPage({ onBack, selectedUserId }: Props) {
         setAmountCol(result.column_mapping.amount ?? '')
         setMemoCol(result.column_mapping.memo ?? '')
         setCategoryCol(result.column_mapping.category ?? '')
+        setAccountCol(result.column_mapping.account ?? '')
         setStep('confirm')
       })
       .catch(err => setFormError(err.message))
@@ -86,17 +89,20 @@ export default function CsvImportPage({ onBack, selectedUserId }: Props) {
       amount_col: amountCol,
       memo_col: memoCol || null,
       category_col: categoryCol || null,
+      account_col: accountCol || null,
     })
       .then(previewRows => {
         setRows(previewRows)
         setSkipped(new Set())
         setRowCategoryOverride({})
+        setRowAccountOverride({})
         setStep('review')
       })
       .catch(err => setFormError(err.message))
   }
 
   const resolvedCategoryId = (row: ImportPreviewRow) => rowCategoryOverride[row.row_number] ?? row.category_id
+  const resolvedAccountId = (row: ImportPreviewRow) => rowAccountOverride[row.row_number] ?? row.account_id
 
   const effectiveStatus = (row: ImportPreviewRow) => {
     if (row.status === 'error') return 'error'
@@ -115,7 +121,7 @@ export default function CsvImportPage({ onBack, selectedUserId }: Props) {
       payee: r.payee as string,
       memo: r.memo,
       amount: r.amount as number,
-      account_id: r.account_id,
+      account_id: resolvedAccountId(r),
       category_id: resolvedCategoryId(r) ?? null,
     }))
     setCommitting(true)
@@ -162,7 +168,7 @@ export default function CsvImportPage({ onBack, selectedUserId }: Props) {
               onChange={e => setFile(e.target.files?.[0] ?? null)}
             />
             <Select value={accountId} onChange={e => setAccountId(parseInt(e.target.value) || 0)}>
-              <option value={0}>Account</option>
+              <option value={0}>Default account</option>
               {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
             </Select>
           </div>
@@ -245,6 +251,13 @@ export default function CsvImportPage({ onBack, selectedUserId }: Props) {
                 {detected.headers.map(h => <option key={h} value={h}>{h}</option>)}
               </Select>
             </label>
+            <label className="flex flex-col gap-1 text-[13px] text-slate-600 dark:text-slate-300">
+              Account column (optional)
+              <Select value={accountCol} onChange={e => setAccountCol(e.target.value)}>
+                <option value="">None</option>
+                {detected.headers.map(h => <option key={h} value={h}>{h}</option>)}
+              </Select>
+            </label>
           </div>
 
           {detected.sample_rows.length > 0 && (
@@ -285,6 +298,7 @@ export default function CsvImportPage({ onBack, selectedUserId }: Props) {
                   <Th>Date</Th>
                   <Th>Payee</Th>
                   <Th className="text-right">Amount</Th>
+                  <Th>Account</Th>
                   <Th>Category</Th>
                   <Th>Status</Th>
                 </Tr>
@@ -310,6 +324,23 @@ export default function CsvImportPage({ onBack, selectedUserId }: Props) {
                       <Td>{r.transaction_date ?? '—'}</Td>
                       <Td>{r.payee ?? '—'}</Td>
                       <Td className="text-right">{r.amount ?? '—'}</Td>
+                      <Td>
+                        {status === 'error' ? (
+                          <span className="text-slate-400">—</span>
+                        ) : (
+                          <Select
+                            value={resolvedAccountId(r) ?? 0}
+                            onChange={e => setRowAccountOverride({ ...rowAccountOverride, [r.row_number]: parseInt(e.target.value) || 0 })}
+                          >
+                            {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                          </Select>
+                        )}
+                        {!r.account_matched && (
+                          <div className="mt-1">
+                            <Badge variant="warning">Account not matched — using default</Badge>
+                          </div>
+                        )}
+                      </Td>
                       <Td>
                         {status === 'error' ? (
                           <span className="text-slate-400">—</span>

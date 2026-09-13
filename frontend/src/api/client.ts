@@ -241,7 +241,7 @@ export interface ImportDetectResponse {
   delimiter: string
   date_format: string | null
   decimal_separator: string
-  column_mapping: Record<'date' | 'payee' | 'amount' | 'memo' | 'category', string | null>
+  column_mapping: Record<'date' | 'payee' | 'amount' | 'memo' | 'category' | 'account', string | null>
   sample_rows: Record<string, string>[]
 }
 
@@ -286,6 +286,7 @@ export interface ImportPreviewRequest {
   amount_col: string
   memo_col?: string | null
   category_col?: string | null
+  account_col?: string | null
 }
 
 export interface ImportPreviewRow {
@@ -295,6 +296,8 @@ export interface ImportPreviewRow {
   memo: string | null
   amount: number | null
   account_id: number
+  account_name: string | null
+  account_matched: boolean
   category_id: number | null
   category_name: string | null
   status: 'ok' | 'needs_category' | 'possible_duplicate' | 'error'
