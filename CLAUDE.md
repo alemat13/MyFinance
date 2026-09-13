@@ -61,6 +61,25 @@ npm test -- --watch             # vitest, watch mode
 npm test -- AccountsList        # run tests matching a name/file
 ```
 
+### End-to-end tests
+```sh
+cd e2e
+npm install
+npx playwright install --with-deps chromium   # one-time browser install
+npx playwright test                           # runs against a real backend + frontend + finance.db
+npx playwright test tests/01-crud.spec.ts     # run a single spec file
+npx playwright show-report                    # view the HTML report from the last run
+```
+A real full-stack suite (Playwright + Chromium) — no mocked API. `playwright.config.ts`'s
+`webServer` entries start the real `uvicorn` backend and `vite` dev server (ports
+8000/5173) and wait for both to be healthy; its `globalSetup` then runs `backend/seed.py`
+once to reset `finance.db` to a deterministic state before any test file runs. Runs sequentially
+(`workers: 1`) against the same SQLite file, so specs are numbered (`01-crud`,
+`02-transactions-splits`, `03-import-csv`, `04-backup-restore`) to guarantee order — the
+last one exercises "Overwrite all data" backup restore, which must run after everything
+else. Wired into CI as the `test-e2e` job (`.github/workflows/ci-cd.yml`), gating `deploy`
+alongside `test-backend`/`test-frontend`.
+
 ## Architecture
 
 - **Entities**: `User`, `Account`, `Category`, `Transaction`, `AccountUser` (junction table for account ownership), plus `CategorySplit`, `GlobalSplitWeight`, `AccountSplitWeight` (the three split-weight prefill tiers), `TransactionSplit` (a transaction's own stored weight + derived share) and `TransactionHistory` (audit trail). Full ERD and column details in `docs/data-model.md`.
