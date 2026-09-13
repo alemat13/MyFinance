@@ -181,7 +181,7 @@ export default function CsvImportPage({ onBack, selectedUserId }: Props) {
             <label className="flex flex-col gap-1 text-[13px] text-slate-600 dark:text-slate-300">
               Encoding
               <Select value={encoding} onChange={e => setEncoding(e.target.value)}>
-                {[encoding, 'utf-8-sig', 'utf-8', 'cp1252', 'latin-1']
+                {[encoding, 'utf-8-sig', 'utf-8', 'utf-16', 'cp1252', 'latin-1']
                   .filter((v, i, arr) => v && arr.indexOf(v) === i)
                   .map(v => <option key={v} value={v}>{v}</option>)}
               </Select>

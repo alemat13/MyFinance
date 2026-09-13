@@ -25,6 +25,8 @@ def normalize_header(raw: str) -> str:
 
 
 def detect_encoding(raw: bytes) -> tuple[str, str]:
+    if raw.startswith(b"\xff\xfe") or raw.startswith(b"\xfe\xff"):
+        return raw.decode("utf-16"), "utf-16"
     for encoding in _ENCODINGS:
         try:
             return raw.decode(encoding), encoding
