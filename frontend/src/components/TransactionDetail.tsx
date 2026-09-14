@@ -3,12 +3,14 @@ import {
   Transaction, TransactionUpdate, TransactionHistoryEntry, GlobalSplitWeight, SplitSource,
   Account, Category, User,
   fetchTransaction, createTransaction, updateTransaction, deleteTransaction, fetchTransactionHistory,
+  fetchDivideSiblings,
 } from '../api/client'
 import { SplitRow } from './SplitEditor'
 import TransactionSplitFields from './TransactionSplitFields'
+import TransactionDivideModal from './TransactionDivideModal'
 import CategoryPicker from './CategoryPicker'
 import { useToast } from '../context/ToastContext'
-import { validateTransactionForm } from '../utils/transactions'
+import { validateTransactionForm, ACCOUNTING_MONTH_OFFSETS, accountingMonthLabel } from '../utils/transactions'
 import { resolveDefaultSplitRows } from '../utils/splitWeights'
 import { categoryNameFor } from '../utils/categoryDisplay'
 import { Modal, Button, Input, Select, StatusMessage, ConfirmDialog, Badge } from './ui'
@@ -23,9 +25,8 @@ interface Props {
   onClose: () => void
   onSaved: () => void
   onDeleted: () => void
+  onNavigateToTransaction?: (id: number) => void
 }
-
-const ACCOUNTING_MONTH_OFFSETS = [-3, -2, -1, 0, 1, 2, 3] as const
 
 const emptyFormData: TransactionUpdate = {
   date: new Date().toISOString().slice(0, 10),
@@ -35,13 +36,6 @@ const emptyFormData: TransactionUpdate = {
   account_id: 0,
   category_id: 0,
   accounting_month_offset: 0,
-}
-
-function accountingMonthLabel(dateStr: string, offset: number): string {
-  const base = dateStr ? new Date(`${dateStr}T00:00:00`) : new Date()
-  const target = new Date(base.getFullYear(), base.getMonth() + offset, 1)
-  const name = target.toLocaleString('default', { month: 'long' })
-  return offset === 0 ? name : `${name} (${offset > 0 ? '+' : ''}${offset})`
 }
 
 const historyBadgeVariant = (action: TransactionHistoryEntry['action']) =>
@@ -83,6 +77,7 @@ const describeHistoryChanges = (changes: TransactionHistoryEntry['changes'], use
 
 export default function TransactionDetail({
   transactionId, accounts, categories, allUsers, globalWeights, selectedUserId, onClose, onSaved, onDeleted,
+  onNavigateToTransaction,
 }: Props) {
   const [transaction, setTransaction] = useState<Transaction | null>(null)
   const [loading, setLoading] = useState(transactionId !== null)
@@ -91,9 +86,11 @@ export default function TransactionDetail({
   const [split, setSplit] = useState<SplitRow[]>([])
   const [splitSource, setSplitSource] = useState<SplitSource | null>(null)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [dividing, setDividing] = useState(false)
   const [historyEntries, setHistoryEntries] = useState<TransactionHistoryEntry[]>([])
   const [historyLoading, setHistoryLoading] = useState(transactionId !== null)
   const [historyError, setHistoryError] = useState<string | null>(null)
+  const [divideSiblings, setDivideSiblings] = useState<Transaction[]>([])
   const { showToast } = useToast()
 
   useEffect(() => {
@@ -129,6 +126,9 @@ export default function TransactionDetail({
       .then(setHistoryEntries)
       .catch(err => setHistoryError(err.message))
       .finally(() => setHistoryLoading(false))
+
+    setDivideSiblings([])
+    fetchDivideSiblings(transactionId).then(setDivideSiblings).catch(() => {})
   }, [transactionId, selectedUserId])
 
   // Prefill a new transaction's split from category > account > global priority
@@ -177,6 +177,17 @@ export default function TransactionDetail({
       .catch(err => showToast(err.message))
       .finally(() => setConfirmingDelete(false))
   }
+
+  const handleDivided = () => {
+    setDividing(false)
+    onSaved()
+  }
+
+  // A non-anchor sibling (divide_group_id set to a different transaction's
+  // id) can't be divided again directly — divide the group's anchor instead.
+  const isNonAnchorDivideSibling = transaction != null
+    && transaction.divide_group_id != null
+    && transaction.divide_group_id !== transaction.id
 
   const currency = accounts.find(a => a.id === formData.account_id)?.currency ?? 'EUR'
   // Archived accounts are hidden from the picker when creating a new transaction, but
@@ -241,11 +252,35 @@ export default function TransactionDetail({
 
           <div className="flex gap-2">
             <Button onClick={save}>Save</Button>
+            {transactionId !== null && !isNonAnchorDivideSibling && (
+              <Button variant="secondary" onClick={() => setDividing(true)}>Divide</Button>
+            )}
             {transactionId !== null && (
               <Button variant="danger" onClick={() => setConfirmingDelete(true)}>Delete</Button>
             )}
             <Button variant="secondary" onClick={onClose}>Cancel</Button>
           </div>
+
+          {transactionId !== null && divideSiblings.length > 0 && (
+            <div className="pt-2 border-t border-slate-200 dark:border-slate-700">
+              <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1.5">
+                Divided transaction — {divideSiblings.length} other part{divideSiblings.length === 1 ? '' : 's'}
+              </h4>
+              <div className="flex flex-col gap-1">
+                {divideSiblings.map(s => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => onNavigateToTransaction?.(s.id)}
+                    disabled={!onNavigateToTransaction}
+                    className="text-left text-xs px-1 py-0.5 rounded text-accent hover:underline disabled:no-underline disabled:cursor-default disabled:text-slate-500"
+                  >
+                    {s.payee} — {s.amount.toFixed(2)} {s.currency} ({s.date})
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {transactionId !== null && (
             <div className="pt-2 border-t border-slate-200 dark:border-slate-700">
@@ -283,6 +318,16 @@ export default function TransactionDetail({
           message={`Delete transaction "${transaction?.payee}"?`}
           onConfirm={confirmDelete}
           onCancel={() => setConfirmingDelete(false)}
+        />
+      )}
+
+      {dividing && transaction && (
+        <TransactionDivideModal
+          transaction={transaction}
+          categories={categories}
+          selectedUserId={selectedUserId}
+          onClose={() => setDividing(false)}
+          onDivided={handleDivided}
         />
       )}
     </Modal>

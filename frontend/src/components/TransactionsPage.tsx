@@ -565,6 +565,7 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
           onClose={closeDetail}
           onSaved={() => { closeDetail(); loadTransactions() }}
           onDeleted={() => { closeDetail(); loadTransactions() }}
+          onNavigateToTransaction={openDetail}
         />
       )}
 

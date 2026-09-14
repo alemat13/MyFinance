@@ -133,6 +133,7 @@ export interface Transaction {
   accounting_month_offset: number
   accounting_month: string
   reconciled: boolean
+  divide_group_id: number | null
   splits: TransactionSplit[]
 }
 
@@ -175,6 +176,29 @@ export interface BulkTransactionUpdate {
 export interface BulkUpdateTransactionsResponse {
   updated_count: number
   transaction_ids: number[]
+}
+
+// A "Divide" splits one transaction's amount into several new transactions
+// by category/date — unrelated to split_weights/SplitSource above, which
+// divide a transaction's amount among users. No account_id: every part
+// stays on the original transaction's account.
+export interface TransactionDividePart {
+  date: string
+  payee: string
+  memo?: string | null
+  amount: number
+  category_id?: number | null
+  accounting_month_offset?: number
+  split_weights?: SplitWeightCreate[] | null
+  split_source?: SplitSource | null
+}
+
+export interface TransactionDivideRequest {
+  parts: TransactionDividePart[]
+}
+
+export interface TransactionDivideResponse {
+  transactions: Transaction[]
 }
 
 export type FilterField = 'payee' | 'memo' | 'amount' | 'date' | 'account_id' | 'category_id'
@@ -330,7 +354,7 @@ export interface TransactionHistoryEntry {
   id: number
   transaction_id: number
   action: 'created' | 'updated' | 'deleted'
-  source: 'manual' | 'csv_import' | null
+  source: 'manual' | 'csv_import' | 'divide' | null
   changed_at: string
   changed_by_user_id: number | null
   changed_by_user_name: string | null
@@ -456,6 +480,22 @@ export function bulkUpdateTransactions(
 
 export function fetchTransactionHistory(transactionId: number): Promise<TransactionHistoryEntry[]> {
   return request<TransactionHistoryEntry[]>(`/transactions/${transactionId}/history`)
+}
+
+export function divideTransaction(
+  id: number,
+  data: TransactionDivideRequest,
+  actorUserId?: number | null,
+): Promise<TransactionDivideResponse> {
+  const params = actorUserId ? `?actor_user_id=${actorUserId}` : ''
+  return request<TransactionDivideResponse>(`/transactions/${id}/divide${params}`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
+}
+
+export function fetchDivideSiblings(transactionId: number): Promise<Transaction[]> {
+  return request<Transaction[]>(`/transactions/${transactionId}/divide-siblings`)
 }
 
 export function fetchUsers(): Promise<User[]> {

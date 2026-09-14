@@ -1,5 +1,14 @@
 import { Transaction, Account } from '../api/client'
 
+export const ACCOUNTING_MONTH_OFFSETS = [-3, -2, -1, 0, 1, 2, 3] as const
+
+export function accountingMonthLabel(dateStr: string, offset: number): string {
+  const base = dateStr ? new Date(`${dateStr}T00:00:00`) : new Date()
+  const target = new Date(base.getFullYear(), base.getMonth() + offset, 1)
+  const name = target.toLocaleString('default', { month: 'long' })
+  return offset === 0 ? name : `${name} (${offset > 0 ? '+' : ''}${offset})`
+}
+
 // Not owned by the selected user, but visible because it has a split share for them.
 export function sharedShareFor(t: Transaction, selectedUserId: number | null | undefined, accounts: Account[]): number | null {
   if (!selectedUserId) return null

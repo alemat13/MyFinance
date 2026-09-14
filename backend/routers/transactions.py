@@ -9,6 +9,8 @@ from filtering import build_where_clause, visible_transaction_filter
 from models import Account, Category, Transaction, TransactionHistory, TransactionSplit, User
 from rules import (
     validate_account_not_archived,
+    validate_divide_parts,
+    validate_not_divide_sibling,
     validate_resolved_weights_present,
     validate_transaction_weights_present,
     validate_weights,
@@ -17,6 +19,8 @@ from schemas import (
     BulkUpdateTransactionsRequest,
     BulkUpdateTransactionsResponse,
     TransactionCreate,
+    TransactionDivideRequest,
+    TransactionDivideResponse,
     TransactionHistoryOut,
     TransactionOut,
     TransactionSearchRequest,
@@ -278,6 +282,95 @@ def delete_transaction(transaction_id: int, actor_user_id: int | None = Query(No
     record_transaction_history(db, transaction, "deleted", actor_user_id)
     db.delete(transaction)
     db.commit()
+
+
+@router.post("/{transaction_id}/divide", response_model=TransactionDivideResponse)
+def divide_transaction(transaction_id: int, data: TransactionDivideRequest, actor_user_id: int | None = Query(None), db: Session = Depends(get_db)):
+    # Divides one transaction's amount into several new transactions (by
+    # category/date) — unrelated to split_weights, which divides a
+    # transaction's amount among users. The original row is reused as part 1
+    # (keeps its id and history trail); parts 2..N are new rows on the same
+    # account, all tagged with the anchor's id as divide_group_id.
+    transaction = db.query(Transaction).filter(Transaction.id == transaction_id).first()
+    if not transaction:
+        raise HTTPException(404, "Transaction not found")
+    validate_not_divide_sibling(transaction)
+    validate_account_not_archived(transaction.account)
+    validate_divide_parts(data.parts, transaction.amount)
+
+    # Resolve/validate every part's split weights before mutating anything,
+    # same "validate everything before mutating anything" discipline as
+    # bulk_update_transactions above.
+    resolved = []
+    for part in data.parts:
+        if part.split_weights is None:
+            source, weights = split_engine.resolve_default_weights(db, part.category_id, transaction.account_id)
+            validate_resolved_weights_present(weights)
+            split_source = part.split_source or source or "global"
+        else:
+            validate_transaction_weights_present(part.split_weights)
+            validate_weights(part.split_weights)
+            weights = {w.user_id: w.weight for w in part.split_weights}
+            split_source = part.split_source or "custom"
+        resolved.append((weights, split_source))
+
+    first_part = data.parts[0]
+    first_weights, first_source = resolved[0]
+
+    existing_splits = {s.user_id: (s.weight, s.source) for s in transaction.splits}
+    old_values = {f: getattr(transaction, f) for f in TRACKED_FIELDS}
+    transaction.date = first_part.date
+    transaction.payee = first_part.payee
+    transaction.memo = first_part.memo
+    transaction.amount = first_part.amount
+    transaction.category_id = first_part.category_id
+    transaction.accounting_month_offset = first_part.accounting_month_offset
+    transaction.divide_group_id = transaction.id
+    changes = {
+        f: {"old": _jsonify(old), "new": _jsonify(getattr(transaction, f))}
+        for f, old in old_values.items() if old != getattr(transaction, f)
+    }
+    new_splits = {uid: (w, first_source) for uid, w in first_weights.items()}
+    splits_diff = diff_splits(existing_splits, new_splits)
+    if splits_diff:
+        changes["splits"] = splits_diff
+    split_engine.apply_split(db, transaction, first_weights, first_source)
+    if changes:
+        record_transaction_history(db, transaction, "updated", actor_user_id, source="divide", changes=changes)
+
+    created = [transaction]
+    for part, (weights, split_source) in zip(data.parts[1:], resolved[1:]):
+        new_transaction = Transaction(
+            date=part.date, payee=part.payee, memo=part.memo, amount=part.amount,
+            account_id=transaction.account_id, category_id=part.category_id,
+            accounting_month_offset=part.accounting_month_offset,
+            divide_group_id=transaction.id,
+        )
+        db.add(new_transaction)
+        db.flush()
+        split_engine.apply_split(db, new_transaction, weights, split_source)
+        record_transaction_history(db, new_transaction, "created", actor_user_id, source="divide",
+                                    changes=splits_created_changes(weights, split_source))
+        created.append(new_transaction)
+
+    db.commit()
+    return TransactionDivideResponse(transactions=[get_transaction_out(db, t.id) for t in created])
+
+
+@router.get("/{transaction_id}/divide-siblings", response_model=list[TransactionOut])
+def get_divide_siblings(transaction_id: int, db: Session = Depends(get_db)):
+    transaction = db.query(Transaction).filter(Transaction.id == transaction_id).first()
+    if not transaction:
+        raise HTTPException(404, "Transaction not found")
+    if transaction.divide_group_id is None:
+        return []
+    siblings = (
+        db.query(Transaction)
+        .filter(Transaction.divide_group_id == transaction.divide_group_id, Transaction.id != transaction_id)
+        .order_by(Transaction.date.asc())
+        .all()
+    )
+    return [get_transaction_out(db, t.id) for t in siblings]
 
 
 @router.get("/{transaction_id}/history", response_model=list[TransactionHistoryOut])

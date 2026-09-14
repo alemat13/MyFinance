@@ -58,6 +58,14 @@ class Transaction(Base):
     # set by create/import — those always default to unreconciled.
     reconciled = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+    # Groups the transactions produced by "dividing" one transaction into
+    # several (by category/date/amount — unrelated to TransactionSplit, which
+    # divides a transaction's amount among users). Set to the anchor part's
+    # own id on every row in the group, including the anchor itself. A plain
+    # Integer, NOT a ForeignKey: unlike TransactionHistory's similar fields,
+    # this is about avoiding delete failures when a sibling is deleted while
+    # others in the group still reference the anchor's id.
+    divide_group_id = Column(Integer, nullable=True, index=True)
 
     account = relationship("Account", back_populates="transactions")
     category = relationship("Category", back_populates="transactions")
@@ -161,7 +169,7 @@ class TransactionHistory(Base):
     # changed_by_user_id (DELETE /api/users/{id} is a real hard delete too).
     transaction_id = Column(Integer, nullable=False, index=True)
     action = Column(String(20), nullable=False)  # 'created' | 'updated' | 'deleted'
-    source = Column(String(20), nullable=True)  # 'manual' | 'csv_import' (created only)
+    source = Column(String(20), nullable=True)  # 'manual' | 'csv_import' (created only) | 'divide' (created or updated)
     changed_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     changed_by_user_id = Column(Integer, nullable=True)
 
