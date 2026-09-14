@@ -320,3 +320,63 @@ def test_import_commit_creates_unreconciled_transactions(client, sample_account,
     data = response.json()
     assert len(data) == 1
     assert data[0]["reconciled"] is False
+
+
+def test_import_preview_rejects_oversized_file(client, sample_account):
+    from import_csv import MAX_IMPORT_ROWS
+    lines = ["Date,Label,Amount,Category"]
+    lines += [f"2026-01-15,Payee {i},-1.00,Test Salary" for i in range(MAX_IMPORT_ROWS + 1)]
+    text = "\n".join(lines) + "\n"
+
+    response = client.post(
+        "/api/import/preview",
+        files=_csv_file(text),
+        data={**PREVIEW_FORM, "account_id": sample_account.id},
+    )
+    assert response.status_code == 422
+    assert str(MAX_IMPORT_ROWS) in response.json()["detail"]
+
+
+def test_import_commit_rejects_oversized_payload(client, sample_account, sample_category, sample_user):
+    from import_csv import MAX_IMPORT_ROWS
+    rows = [
+        {
+            "date": "2026-01-15", "payee": f"Payee {i}", "amount": -1.00,
+            "account_id": sample_account.id, "category_id": sample_category.id,
+            "split_weights": [{"user_id": sample_user.id, "weight": 1}],
+        }
+        for i in range(MAX_IMPORT_ROWS + 1)
+    ]
+
+    response = client.post("/api/import/commit", json={"rows": rows})
+    assert response.status_code == 422
+    assert str(MAX_IMPORT_ROWS) in response.json()["detail"]
+
+    response = client.get("/api/transactions")
+    assert response.json() == []
+
+
+def test_import_commit_batches_flush_across_partial_batch(client, sample_account, sample_category, sample_user, monkeypatch):
+    import routers.imports as imports_router
+    monkeypatch.setattr(imports_router, "_IMPORT_FLUSH_BATCH_SIZE", 2)
+
+    rows = [
+        {
+            "date": "2026-01-15", "payee": f"Payee {i}", "amount": -1.00 * (i + 1),
+            "account_id": sample_account.id, "category_id": sample_category.id,
+            "split_weights": [{"user_id": sample_user.id, "weight": 1}],
+        }
+        for i in range(5)
+    ]
+
+    response = client.post("/api/import/commit", json={"rows": rows})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["created_count"] == 5
+    assert len(set(data["transaction_ids"])) == 5
+
+    response = client.get("/api/transactions")
+    committed = response.json()
+    assert len(committed) == 5
+    for transaction in committed:
+        assert len(transaction["splits"]) == 1

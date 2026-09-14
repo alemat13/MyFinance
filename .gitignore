@@ -5,7 +5,7 @@ dist/
 __pycache__/
 *.db
 .vite/
-docs/Comptes famille.xlsm
 test-results/
 playwright-report/
 blob-report/
+.claude/skills/finance-xlsm-migration/
