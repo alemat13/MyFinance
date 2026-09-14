@@ -1,0 +1,3 @@
+Date,Payee,Amount,Memo
+2026-07-05,E2E Bad Row,notanumber,Bad amount test
+2026-07-06,E2E Good Row,10.00,Good amount test
