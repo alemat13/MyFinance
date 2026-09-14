@@ -78,7 +78,13 @@ once to reset `finance.db` to a deterministic state before any test file runs. R
 `02-transactions-splits`, `03-import-csv`, `04-backup-restore`) to guarantee order — the
 last one exercises "Overwrite all data" backup restore, which must run after everything
 else. Wired into CI as the `test-e2e` job (`.github/workflows/ci-cd.yml`), gating `deploy`
-alongside `test-backend`/`test-frontend`.
+alongside `test-backend`/`test-frontend`. `@playwright/test` is pinned to an exact version
+in `e2e/package.json` (not a range) because Playwright requires its installed package
+version and bundled browser binaries to stay in lockstep — installing a browser for a
+different version than what's pinned will fetch the wrong revision. To bump it: `npm
+install @playwright/test@<version> --save-exact` in `e2e/`, then `npx playwright install
+--with-deps chromium` to fetch the matching browser revision, then re-run the suite before
+committing the version bump.
 
 ## Architecture
 
