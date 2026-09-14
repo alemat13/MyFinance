@@ -12,12 +12,14 @@ function selectCategoryInForm(categoryName: string) {
   fireEvent.click(within(formContainer).getByText(categoryName))
 }
 
-const { mockFetchTransaction, mockCreateTransaction, mockUpdateTransaction, mockDeleteTransaction, mockFetchTransactionHistory } = vi.hoisted(() => ({
+const { mockFetchTransaction, mockCreateTransaction, mockUpdateTransaction, mockDeleteTransaction, mockFetchTransactionHistory, mockFetchDivideSiblings, mockDivideTransaction } = vi.hoisted(() => ({
   mockFetchTransaction: vi.fn(),
   mockCreateTransaction: vi.fn(),
   mockUpdateTransaction: vi.fn(),
   mockDeleteTransaction: vi.fn(),
   mockFetchTransactionHistory: vi.fn(),
+  mockFetchDivideSiblings: vi.fn(),
+  mockDivideTransaction: vi.fn(),
 }))
 
 vi.mock('../../api/client', () => ({
@@ -26,6 +28,8 @@ vi.mock('../../api/client', () => ({
   updateTransaction: mockUpdateTransaction,
   deleteTransaction: mockDeleteTransaction,
   fetchTransactionHistory: mockFetchTransactionHistory,
+  fetchDivideSiblings: mockFetchDivideSiblings,
+  divideTransaction: mockDivideTransaction,
 }))
 
 const baseAccount = { id: 1, name: 'Checking', type: 'Checking', balance: 100, currency: 'USD', created_at: '2026-01-01', archived: false, users: [], split_weights: [] }
@@ -35,6 +39,7 @@ const baseTxn = {
   id: 1, date: '2026-01-15', payee: 'Test', memo: null, amount: 50,
   account_id: 1, account_name: 'Checking', currency: 'USD',
   category_id: 1, category_name: 'Salary', accounting_month_offset: 0, accounting_month: '2026-01', reconciled: false,
+  divide_group_id: null,
   splits: [],
 }
 
@@ -53,6 +58,7 @@ const baseProps = {
 beforeEach(() => {
   vi.clearAllMocks()
   mockFetchTransactionHistory.mockResolvedValue([])
+  mockFetchDivideSiblings.mockResolvedValue([])
 })
 
 test('loads and displays the transaction fields', async () => {
@@ -413,6 +419,7 @@ test('opens in create mode with an empty form, no Delete button, and no history 
   expect(mockFetchTransaction).not.toHaveBeenCalled()
   expect(mockFetchTransactionHistory).not.toHaveBeenCalled()
   expect(screen.queryByText('Delete')).not.toBeInTheDocument()
+  expect(screen.queryByText('Divide')).not.toBeInTheDocument()
   expect(screen.queryByText('History')).not.toBeInTheDocument()
   expect(screen.queryByLabelText('Reconciled')).not.toBeInTheDocument()
 })
@@ -443,6 +450,47 @@ test('still shows an existing transaction\'s own archived account when editing i
   const accountSelect = selects.find(el => within(el).queryByText('Closed Account'))!
   expect(accountSelect).toBeTruthy()
   expect(within(accountSelect).getByText('Checking')).toBeInTheDocument()
+})
+
+// --- Divide ---
+
+test('clicking Divide opens the divide-transaction modal', async () => {
+  mockFetchTransaction.mockResolvedValue(baseTxn)
+
+  renderWithProviders(<TransactionDetail {...baseProps} />)
+
+  await screen.findByDisplayValue('Test')
+  fireEvent.click(screen.getByText('Divide'))
+
+  expect(await screen.findByRole('dialog', { name: 'Divide transaction' })).toBeInTheDocument()
+})
+
+test('shows a "Divided transaction" section with links to other parts, and navigating calls onNavigateToTransaction', async () => {
+  mockFetchTransaction.mockResolvedValue({ ...baseTxn, divide_group_id: 1 })
+  mockFetchDivideSiblings.mockResolvedValue([
+    { ...baseTxn, id: 2, payee: 'Party', amount: 20 },
+  ])
+  const onNavigateToTransaction = vi.fn()
+
+  renderWithProviders(<TransactionDetail {...baseProps} onNavigateToTransaction={onNavigateToTransaction} />)
+
+  expect(await screen.findByText(/Divided transaction/)).toBeInTheDocument()
+  const link = screen.getByText(/Party/)
+  fireEvent.click(link)
+
+  expect(onNavigateToTransaction).toHaveBeenCalledWith(2)
+})
+
+test('hides the Divide button for a non-anchor divide sibling', async () => {
+  // divide_group_id set to a different transaction's id than this one's own —
+  // this transaction is a sibling produced by a divide, not the group's anchor.
+  mockFetchTransaction.mockResolvedValue({ ...baseTxn, id: 2, divide_group_id: 1 })
+  mockFetchDivideSiblings.mockResolvedValue([baseTxn])
+
+  renderWithProviders(<TransactionDetail {...baseProps} transactionId={2} />)
+
+  await screen.findByDisplayValue('Test')
+  expect(screen.queryByText('Divide')).not.toBeInTheDocument()
 })
 
 const alex = { id: 1, name: 'Alex', email: null, created_at: '' }

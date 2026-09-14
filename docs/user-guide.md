@@ -222,6 +222,44 @@ Editing an existing transaction also shows a **Reconciled** checkbox next to the
 category field — see the next section for what it means. It's not shown while
 creating a new transaction, since a transaction is always created unreconciled.
 
+### Dividing a transaction
+
+**Divide** is a different feature from the **Split** section above, even though both
+involve dividing up an amount — don't confuse them:
+
+- **Split** divides a transaction's amount *among the people in your household*. The
+  transaction itself still stays as one row, one category, one date.
+- **Divide** breaks *one transaction* into *several separate transactions*, each with
+  its own amount, category, date, and memo. Use it when a single purchase actually
+  covers more than one thing — e.g. a 50€ shopping trip that was really 20€ of party
+  supplies and 30€ of groceries — or when part of a transaction's amount should
+  really be accounted in a different month.
+
+Open an existing transaction and click **Divide** (next to Delete — it's only
+available once the transaction has been saved) to open the Divide panel. It starts
+with two parts, pre-filled from the transaction you're dividing: the first part
+keeps the full original amount, the second starts at 0. Each part has its own date,
+accounting-month offset, payee, memo, amount, and category, editable independently
+— so parts can differ by category, by date, by both, or (with matching category and
+date) simply peel an amount off into its own row.
+
+- **Add part** appends another row; each row (once there are more than two) can be
+  removed again, down to a minimum of two.
+- A running **Remaining to allocate** total shows the gap between what's currently
+  assigned across all parts and the original transaction's amount, turning red until
+  it reaches zero — the parts' amounts must add up exactly to the original amount,
+  and every part needs a non-zero amount and a payee before **Divide** is enabled.
+- Confirming replaces the original transaction with the parts: the first part reuses
+  the original transaction's own id (so its History trail and any bookmarked link to
+  it keep working), and the rest become new transactions. Each part's own
+  person-split (see [Split Weights](#split-weights)) is filled in automatically from
+  the usual category/account/global cascade — open any part afterward to fine-tune it
+  like any other transaction.
+- Once divided, every part shows a **Divided transaction** section linking to its
+  sibling parts, so you can jump between them. A part can be divided again to add
+  more siblings to the same group; but if you open one of the *other* parts, its
+  Divide button won't appear — divide the original part instead.
+
 ### Reconciling transactions
 
 "Reconciled" marks a transaction as reviewed and validated by you — for example,

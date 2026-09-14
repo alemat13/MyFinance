@@ -3,7 +3,7 @@ import {
   fetchAccounts, createAccount, updateAccount, deleteAccount,
   fetchCategories, createCategory, updateCategory, deleteCategory,
   fetchTransactions, createTransaction, updateTransaction, deleteTransaction, searchTransactions,
-  fetchTransactionHistory,
+  fetchTransactionHistory, divideTransaction, fetchDivideSiblings,
   fetchDashboard,
   fetchSplitWeights, updateSplitWeights, fetchAccountSplitWeights, updateAccountSplitWeights, fetchBalances,
   detectImport, previewImport, commitImport,
@@ -340,6 +340,65 @@ test('fetchTransactionHistory makes GET request', async () => {
 
   expect(globalThis.fetch).toHaveBeenCalledWith(
     'http://localhost:8000/api/transactions/1/history',
+    expect.objectContaining({ headers: { 'Content-Type': 'application/json' } }),
+  )
+  expect(result).toEqual(mockData)
+})
+
+test('divideTransaction makes POST request to /divide', async () => {
+  const mockData = { transactions: [{ id: 1 }, { id: 2 }] }
+  vi.mocked(globalThis.fetch).mockResolvedValue({
+    ok: true,
+    status: 200,
+    json: () => Promise.resolve(mockData),
+    text: () => Promise.resolve(''),
+  } as Response)
+
+  const parts = [
+    { date: '2026-01-15', payee: 'Groceries', amount: 30, category_id: 1 },
+    { date: '2026-01-15', payee: 'Party', amount: 20, category_id: 2 },
+  ]
+  const result = await divideTransaction(1, { parts })
+
+  expect(globalThis.fetch).toHaveBeenCalledWith(
+    'http://localhost:8000/api/transactions/1/divide',
+    expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ parts }),
+    }),
+  )
+  expect(result).toEqual(mockData)
+})
+
+test('divideTransaction appends actor_user_id only when provided', async () => {
+  vi.mocked(globalThis.fetch).mockResolvedValue({
+    ok: true,
+    status: 200,
+    json: () => Promise.resolve({ transactions: [] }),
+    text: () => Promise.resolve(''),
+  } as Response)
+
+  await divideTransaction(1, { parts: [] }, 7)
+
+  expect(globalThis.fetch).toHaveBeenCalledWith(
+    'http://localhost:8000/api/transactions/1/divide?actor_user_id=7',
+    expect.objectContaining({ method: 'POST' }),
+  )
+})
+
+test('fetchDivideSiblings makes GET request', async () => {
+  const mockData = [{ id: 2, payee: 'Party' }]
+  vi.mocked(globalThis.fetch).mockResolvedValue({
+    ok: true,
+    status: 200,
+    json: () => Promise.resolve(mockData),
+    text: () => Promise.resolve(''),
+  } as Response)
+
+  const result = await fetchDivideSiblings(1)
+
+  expect(globalThis.fetch).toHaveBeenCalledWith(
+    'http://localhost:8000/api/transactions/1/divide-siblings',
     expect.objectContaining({ headers: { 'Content-Type': 'application/json' } }),
   )
   expect(result).toEqual(mockData)

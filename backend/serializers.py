@@ -74,6 +74,7 @@ def build_transaction_out_from_row(
         accounting_month_offset=t.accounting_month_offset,
         accounting_month=compute_accounting_month(t.date, t.accounting_month_offset),
         reconciled=t.reconciled,
+        divide_group_id=t.divide_group_id,
         splits=build_transaction_splits_out(t),
     )
 
