@@ -9,7 +9,7 @@ test('happy path: auto-detected column mapping imports two transactions', async 
   await page.goto('/?view=import')
 
   await page.getByLabel('CSV file').setInputFiles(fixture('sample-import.csv'))
-  await page.getByRole('combobox').selectOption({ label: 'Joint Checking' })
+  await page.getByRole('combobox').filter({ hasText: 'Default account' }).selectOption({ label: 'Joint Checking' })
   await page.getByRole('button', { name: 'Analyze file' }).click()
 
   // Column mapping auto-detected from headers Date/Payee/Amount/Memo/Category
@@ -37,7 +37,7 @@ test('duplicate detection: re-importing the same file flags possible duplicates'
   await page.goto('/?view=import')
 
   await page.getByLabel('CSV file').setInputFiles(fixture('sample-import.csv'))
-  await page.getByRole('combobox').selectOption({ label: 'Joint Checking' })
+  await page.getByRole('combobox').filter({ hasText: 'Default account' }).selectOption({ label: 'Joint Checking' })
   await page.getByRole('button', { name: 'Analyze file' }).click()
   await page.getByRole('button', { name: 'Preview' }).click()
 
@@ -51,7 +51,7 @@ test('manual column mapping override for unrecognized headers', async ({ page })
   await page.goto('/?view=import')
 
   await page.getByLabel('CSV file').setInputFiles(fixture('sample-import-custom-headers.csv'))
-  await page.getByRole('combobox').selectOption({ label: 'Joint Checking' })
+  await page.getByRole('combobox').filter({ hasText: 'Default account' }).selectOption({ label: 'Joint Checking' })
   await page.getByRole('button', { name: 'Analyze file' }).click()
 
   // Headers "Fecha/Concepto/Importe" don't match any known alias — nothing auto-detected
@@ -81,7 +81,7 @@ test('row-level parse error blocks commit until unchecked', async ({ page }) => 
   await page.goto('/?view=import')
 
   await page.getByLabel('CSV file').setInputFiles(fixture('sample-import-error-row.csv'))
-  await page.getByRole('combobox').selectOption({ label: 'Joint Checking' })
+  await page.getByRole('combobox').filter({ hasText: 'Default account' }).selectOption({ label: 'Joint Checking' })
   await page.getByRole('button', { name: 'Analyze file' }).click()
   await page.getByRole('button', { name: 'Preview' }).click()
 

@@ -69,7 +69,9 @@ test.describe('Categories CRUD', () => {
     // Create a subcategory under it via the "Parent category" selector on the new-category form
     await page.getByRole('button', { name: '+ New Category' }).click()
     await page.getByPlaceholder('Name').fill(childName)
-    await page.getByRole('combobox').selectOption({ label: parentName })
+    // Scoped by its default option text: the page also has an always-present
+    // nav "Filtering by user" <select>, which is a combobox too.
+    await page.getByRole('combobox').filter({ hasText: 'None (top-level category)' }).selectOption({ label: parentName })
     await page.getByRole('button', { name: 'Save', exact: true }).click()
 
     // Parent row now has children — expand it to see the subcategory
