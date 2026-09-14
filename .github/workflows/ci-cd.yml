@@ -135,6 +135,9 @@ jobs:
             --no-allow-unauthenticated \
             --ingress=internal-and-cloud-load-balancing \
             --max-instances=2 \
+            --concurrency=10 \
+            --timeout=120 \
+            --memory=1Gi \
             --quiet
 
       - name: Deploy frontend

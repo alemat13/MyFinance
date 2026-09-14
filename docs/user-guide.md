@@ -336,6 +336,8 @@ hand. It's a four-step wizard:
 1. **Upload & account** — choose the CSV file and a default account. This account is used
    for every row unless the file has its own account-name column (see below), in which
    case it's only the fallback for rows whose account name doesn't match one of yours.
+   Files are capped at 5,000 rows per import; for larger exports, split the file and
+   import it in batches.
 2. **Format detection** — MyFinance auto-detects the file's encoding, delimiter, date
    format, decimal separator, and which column maps to which field (date, payee, amount,
    category, etc.), showing a preview of a few sample rows. You can correct any of these
