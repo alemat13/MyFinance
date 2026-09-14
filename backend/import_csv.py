@@ -8,12 +8,15 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from models import Account, Category, Transaction
+from rules import RuleViolation
 from schemas import ImportDetectResponse, ImportPreviewRequest, ImportPreviewRow, ImportPreviewSplitShare
 from split_engine import prorate, resolve_default_weights
 
 _ENCODINGS = ["utf-8-sig", "utf-8", "cp1252", "latin-1"]
 _DATE_FORMATS = ["%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%d-%m-%Y", "%d.%m.%Y", "%Y/%m/%d"]
 _SAMPLE_SIZE = 20
+# No leading underscore: also imported by routers/imports.py to cap import_commit's payload.
+MAX_IMPORT_ROWS = 5000
 
 _MAPPING_CONFIG_PATH = Path(__file__).parent / "import_mapping_config.json"
 _MAPPING_CONFIG: dict[str, list[str]] = json.loads(_MAPPING_CONFIG_PATH.read_text())
@@ -140,6 +143,12 @@ def preview_import(db: Session, raw: bytes, data: ImportPreviewRequest) -> list[
     reader = csv.DictReader(io.StringIO(text), delimiter=data.delimiter)
     raw_rows = list(reader)
 
+    if len(raw_rows) > MAX_IMPORT_ROWS:
+        raise RuleViolation(
+            f"This file has {len(raw_rows)} rows, which is more than the "
+            f"{MAX_IMPORT_ROWS}-row import limit. Split it into smaller files and import them separately."
+        )
+
     categories_by_name = {c.name.lower(): c for c in db.query(Category).all()}
     accounts_by_name = {a.name.strip().lower(): a for a in db.query(Account).all()}
 
@@ -151,6 +160,8 @@ def preview_import(db: Session, raw: bytes, data: ImportPreviewRequest) -> list[
         (t.account_id, t.date, round(t.amount, 2), t.payee)
         for t in db.query(Transaction).filter(Transaction.account_id.in_(resolved_account_ids)).all()
     }
+
+    weights_cache: dict[tuple[int | None, int | None], tuple[str | None, dict[int, int]]] = {}
 
     rows: list[ImportPreviewRow] = []
     for i, raw_row in enumerate(raw_rows, start=1):
@@ -181,7 +192,10 @@ def preview_import(db: Session, raw: bytes, data: ImportPreviewRequest) -> list[
 
         preview_split = []
         if category is not None:
-            source, weights = resolve_default_weights(db, category.id, account_id)
+            weights_key = (category.id, account_id)
+            if weights_key not in weights_cache:
+                weights_cache[weights_key] = resolve_default_weights(db, category.id, account_id)
+            source, weights = weights_cache[weights_key]
             shares = prorate(amount, weights) if weights else []
             preview_split = [
                 ImportPreviewSplitShare(user_id=s.user_id, weight=s.weight, share_amount=s.share_amount, source=source or "custom")
