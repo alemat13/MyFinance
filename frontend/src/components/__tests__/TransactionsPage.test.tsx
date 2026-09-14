@@ -4,7 +4,7 @@ import { renderWithProviders } from '../../test-utils'
 import TransactionsPage from '../TransactionsPage'
 import { formatDateGroupHeader } from '../../utils/transactions'
 
-const { mockSearchTransactions, mockFetchAccounts, mockFetchCategories, mockCreateTransaction, mockUpdateTransaction, mockDeleteTransaction, mockFetchUsers, mockFetchSplitWeights, mockFetchTransaction, mockFetchTransactionHistory, mockBulkUpdateTransactions } = vi.hoisted(() => ({
+const { mockSearchTransactions, mockFetchAccounts, mockFetchCategories, mockCreateTransaction, mockUpdateTransaction, mockDeleteTransaction, mockFetchUsers, mockFetchSplitWeights, mockFetchTransaction, mockFetchTransactionHistory, mockBulkUpdateTransactions, mockFetchDivideSiblings } = vi.hoisted(() => ({
   mockSearchTransactions: vi.fn(),
   mockFetchAccounts: vi.fn(),
   mockFetchCategories: vi.fn(),
@@ -16,6 +16,7 @@ const { mockSearchTransactions, mockFetchAccounts, mockFetchCategories, mockCrea
   mockFetchTransaction: vi.fn(),
   mockFetchTransactionHistory: vi.fn().mockResolvedValue([]),
   mockBulkUpdateTransactions: vi.fn(),
+  mockFetchDivideSiblings: vi.fn().mockResolvedValue([]),
 }))
 
 vi.mock('../../api/client', () => ({
@@ -30,6 +31,7 @@ vi.mock('../../api/client', () => ({
   fetchTransaction: mockFetchTransaction,
   fetchTransactionHistory: mockFetchTransactionHistory,
   bulkUpdateTransactions: mockBulkUpdateTransactions,
+  fetchDivideSiblings: mockFetchDivideSiblings,
 }))
 
 const baseAccount = { id: 1, name: 'Checking', type: 'Checking', balance: 100, currency: 'USD', created_at: '2026-01-01', users: [], split_weights: [] }
@@ -42,6 +44,7 @@ beforeEach(() => {
   mockFetchUsers.mockResolvedValue([])
   mockFetchSplitWeights.mockResolvedValue([])
   mockFetchTransactionHistory.mockResolvedValue([])
+  mockFetchDivideSiblings.mockResolvedValue([])
   window.history.replaceState(null, '', '/')
 })
 

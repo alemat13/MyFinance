@@ -81,6 +81,29 @@ def validate_global_weights_present(items: list) -> None:
         raise RuleViolation("Global split weights cannot be left empty or all zero — every transaction relies on this as its fallback")
 
 
+def validate_divide_parts(parts: list, original_amount: float) -> None:
+    """A "divide" splits one transaction's amount into several new
+    transactions (by category/date) — unrelated to validate_weights/
+    validate_transaction_weights_present above, which govern how a single
+    transaction's amount is divided among users."""
+    if len(parts) < 2:
+        raise RuleViolation("Divide into at least 2 parts")
+    if any(part.amount == 0 for part in parts):
+        raise RuleViolation("Each part's amount must be non-zero")
+    total = sum(part.amount for part in parts)
+    if abs(total - original_amount) > 0.01:
+        raise RuleViolation(f"Part amounts must sum to the original transaction's amount ({original_amount}), got {total}")
+
+
+def validate_not_divide_sibling(transaction) -> None:
+    """A non-anchor transaction (divide_group_id set to some other
+    transaction's id) can't be divided again directly — that would leave its
+    new parts in a different group than its existing siblings. Divide the
+    group's anchor instead (divide_group_id == id, or unset)."""
+    if transaction.divide_group_id is not None and transaction.divide_group_id != transaction.id:
+        raise RuleViolation("This transaction is already part of a divided transaction; edit or divide the original part instead")
+
+
 def validate_category_hierarchy(db: Session, category: Category | None, parent_id: int | None, type_: str) -> None:
     """Enforces the 2-level category hierarchy: a category may have a parent,
     but that parent must itself be top-level, and a subcategory's type must

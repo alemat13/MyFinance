@@ -245,6 +245,7 @@ class TransactionOut(BaseModel):
     accounting_month_offset: int
     accounting_month: str
     reconciled: bool
+    divide_group_id: Optional[int] = None
     splits: list[TransactionSplitOut] = []
 
 
@@ -295,6 +296,30 @@ class BulkUpdateTransactionsRequest(BaseModel):
 class BulkUpdateTransactionsResponse(BaseModel):
     updated_count: int
     transaction_ids: list[int]
+
+
+class TransactionDividePart(BaseModel):
+    """One resulting part of a "divide" operation (splitting a transaction's
+    amount into several new transactions by category/date — unrelated to
+    TransactionSplit/split_weights, which divides a transaction's amount
+    among users). No account_id: every part stays on the original
+    transaction's account."""
+    date: date
+    payee: str
+    memo: Optional[str] = None
+    amount: float
+    category_id: Optional[int] = None
+    accounting_month_offset: int = Field(0, ge=-3, le=3)
+    split_weights: list[SplitWeightCreate] | None = None
+    split_source: Literal["global", "account", "category", "custom"] | None = None
+
+
+class TransactionDivideRequest(BaseModel):
+    parts: list[TransactionDividePart]
+
+
+class TransactionDivideResponse(BaseModel):
+    transactions: list[TransactionOut]
 
 
 TEXT_OPERATORS = {"contains", "equals", "not_equals", "starts_with", "ends_with"}
@@ -551,6 +576,7 @@ class TransactionExport(BaseModel):
     category_id: int | None
     accounting_month_offset: int = 0
     reconciled: bool = False
+    divide_group_id: int | None = None
     created_at: datetime
 
 

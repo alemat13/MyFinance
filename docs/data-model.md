@@ -19,7 +19,7 @@ erDiagram
         int id PK
         int transaction_id "indexed, NOT a FK"
         string action "created | updated | deleted"
-        string source "nullable; manual | csv_import, set only for created"
+        string source "nullable; manual | csv_import | divide, set only for created (divide can also appear on updated)"
         datetime changed_at
         int changed_by_user_id "nullable, NOT a FK"
         date date "nullable snapshot"
@@ -92,6 +92,7 @@ erDiagram
         int accounting_month_offset "months from date's month, -3..+3, default 0"
         boolean reconciled "manually set, default false"
         datetime created_at
+        int divide_group_id "nullable, NOT a FK; anchor transaction's own id, shared by every part of a divide"
     }
 
     transaction_splits {
@@ -164,6 +165,7 @@ Individual financial transactions.
 | `accounting_month_offset` | Integer | Months relative to `date`'s month this transaction should be accounted in. Range -3..+3, default 0 (same month as `date`) |
 | `reconciled` | Boolean | Default: `false`. Manually set by the user once they've reviewed/validated the transaction — never inferred. Always `false` on creation and on CSV import |
 | `created_at` | DateTime | Default: current UTC time |
+| `divide_group_id` | Integer | Nullable, indexed, **not** a foreign key (same reasoning as `transaction_history` below — a real FK would block deleting one part of a divide while siblings still reference it). Set by "Dividing a transaction" (see below) to the group's anchor transaction's own `id`, on every part including the anchor itself (`divide_group_id == id` for the anchor). `NULL` for a transaction that's never been divided |
 
 ### `category_splits`
 The **highest-priority** weight tier: an optional default split-weight for a category — e.g. "Mortgage" always prefills 1:1 regardless of the account or global default. Purely a prefill source for new/edited transactions' own weights; never live-resolved.
@@ -210,7 +212,7 @@ Audit trail: one row per transaction create/update/delete, with a snapshot of th
 | `id` | Integer | Primary key, autoincrement |
 | `transaction_id` | Integer | Indexed, but not a foreign key |
 | `action` | String(20) | `created`, `updated`, or `deleted` |
-| `source` | String(20) | Optional; `manual` or `csv_import`, set only on `created` rows |
+| `source` | String(20) | Optional; `manual`, `csv_import`, or `divide` (set only on `created` rows), or `divide` again on the `updated` row recorded when a transaction becomes a divide's anchor part |
 | `changed_at` | DateTime | Default: current UTC time |
 | `changed_by_user_id` | Integer | Optional, not a foreign key |
 | `date` / `payee` / `memo` / `amount` / `account_id` / `category_id` / `accounting_month_offset` | (matches `transactions`) | Nullable snapshot of the transaction's fields at the time of the change |
@@ -231,4 +233,5 @@ Audit trail: one row per transaction create/update/delete, with a snapshot of th
 - **Ownership and split weight are independent, coexisting concepts**: `account_users.ownership_percentage` is unrelated to `account_split_weights` — the former drives account/dashboard visibility filtering, the sum-to-100 ownership validation, and the "paid" side of balance math (below); the latter is purely one of the three split-weight prefill tiers. A single-owner account can have a configured `account_split_weights` row just like a joint one.
 - **Splits are frozen, ownership is live**: `transaction_splits.share_amount` (what a user is *liable* for) is recomputed from the transaction's own stored `weight` and persisted on every write that touches either the weight or the amount — but never re-derived from the *tiers'* current configuration. What a user *paid* is instead derived live from the account's *current* `account_users.ownership_percentage` — so historical liability stays stable even if account ownership changes later, but the settlement report always reflects today's ownership. The household balance report (`GET /api/balances`, also embedded in `GET /api/dashboard`) is `sum(paid) − sum(share_amount)` per user — positive means the household owes them, negative means they owe the household.
 - **Multi-currency accounts, no conversion**: each account has its own `currency`; transactions and splits inherit it from their account rather than storing it themselves. Amounts are never converted or summed across currencies — `compute_balances()` (`backend/split_engine.py`) partitions by `(user_id, currency)`, so `GET /api/balances` returns one net position per user *per currency*, and a household with mixed-currency accounts gets a separate settlement line for each currency instead of a single blended total.
+- **Dividing a transaction** (`POST /api/transactions/{id}/divide`) is unrelated to `transaction_splits`/`split_weights` above — that divides one transaction's amount among *users*, while this divides one transaction into *several new transactions*, by category/date/amount, each keeping its own independently-resolved `transaction_splits`. The original transaction becomes the group's anchor: it's updated in place to become the first part (keeping its `id` and `transaction_history` trail), and the remaining parts are new `transactions` rows on the same `account_id`, each user-split resolved via the usual `resolve_default_weights()` cascade unless the request specifies its own. Every part, anchor included, gets `divide_group_id` set to the anchor's `id`. A part amounts must sum exactly to the original transaction's amount (`rules.validate_divide_parts`); a transaction that's already a non-anchor part of a group (`divide_group_id` set to some other transaction's `id`) can't be divided again directly — only its group's anchor can, which simply adds more parts to the same group rather than starting a new one.
 - **Audit trail is intentionally unlinked**: `transaction_history.transaction_id` and `changed_by_user_id` are plain (indexed) integers, not foreign keys. SQLite runs with `PRAGMA foreign_keys=ON`, so a real FK to `transactions.id` would either block a hard delete or be cascaded away with it — defeating the point of an audit log that must outlive the row it describes. History rows are written by `backend/audit.py` on every transaction create/update/delete and read via `GET /api/transactions/{id}/history`. Split-weight changes are part of this trail too: `changes.splits` captures a transaction's `transaction_splits` state whenever it's set on creation or changed on an update (see `transaction_history` above) — deletion doesn't snapshot splits separately, since the cascade-deleted `transaction_splits` rows are implied by the transaction's own `deleted` row.
