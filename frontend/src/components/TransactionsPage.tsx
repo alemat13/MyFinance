@@ -8,10 +8,10 @@ import {
 import TransactionDetail from './TransactionDetail'
 import BulkEditModal from './BulkEditModal'
 import CategoryPicker from './CategoryPicker'
-import { Button, IconButton, Input, Select, Table, Thead, Tbody, Tr, Th, Td, StatusMessage, Badge, CategoryBadge, BackButton } from './ui'
+import { Button, IconButton, Input, Select, Table, Thead, Tbody, Tr, Th, Td, StatusMessage, CategoryBadge, BackButton } from './ui'
 import { formatMoney } from '../utils/currency'
 import { getParam, patchQueryParams } from '../utils/urlState'
-import { sharedShareFor, formatDateGroupHeader } from '../utils/transactions'
+import { myShareFor, balanceFor, formatDateGroupHeader } from '../utils/transactions'
 import { useToast } from '../context/ToastContext'
 
 interface Props {
@@ -124,6 +124,7 @@ const splitsDisplay = (splits: TransactionSplit[], currency: string) => {
 export default function TransactionsPage({ onBack, selectedUserId }: Props) {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
+  const [allAccounts, setAllAccounts] = useState<Account[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [allUsers, setAllUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
@@ -157,12 +158,14 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
   const loadMeta = () => {
     Promise.all([
       fetchAccounts(selectedUserId ?? undefined),
+      fetchAccounts(),
       fetchCategories(),
       fetchUsers(),
       fetchSplitWeights(),
     ])
-      .then(([accts, cats, users, weights]) => {
+      .then(([accts, allAccts, cats, users, weights]) => {
         setAccounts(accts)
+        setAllAccounts(allAccts)
         setCategories(cats)
         setAllUsers(users)
         setGlobalWeights(weights)
@@ -345,8 +348,16 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
   }
 
   const groupByDate = sortBy === 'date'
+  const showMyColumns = selectedUserId != null
+  const columnCount = showMyColumns ? 8 : 6
 
   const acctOptions = accounts.map(a => ({ value: a.id, label: a.name }))
+
+  const sumByCurrency = (values: (t: Transaction) => number) => {
+    const totals = new Map<string, number>()
+    transactions.forEach(t => totals.set(t.currency, (totals.get(t.currency) ?? 0) + values(t)))
+    return [...totals.entries()].map(([cur, v]) => formatMoney(v, cur)).join(' / ')
+  }
 
   if (error) {
     return <StatusMessage error={error} />
@@ -471,12 +482,14 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
               <Th>Category</Th>
               <Th>Account</Th>
               <Th className="text-right">Amount</Th>
+              {showMyColumns && <Th className="text-right">My share</Th>}
+              {showMyColumns && <Th className="text-right">Balance</Th>}
               <Th>Split</Th>
             </Tr>
           </Thead>
           <Tbody>
             {transactions.length === 0 && (
-              <Tr><Td colSpan={6} className="text-center py-5 text-slate-400">No transactions match your filters</Td></Tr>
+              <Tr><Td colSpan={columnCount} className="text-center py-5 text-slate-400">No transactions match your filters</Td></Tr>
             )}
             {transactions.map((t, idx) => {
               const showDateHeader = groupByDate && (idx === 0 || transactions[idx - 1].date !== t.date)
@@ -484,7 +497,7 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
               <Fragment key={t.id}>
               {showDateHeader && (
                 <Tr className="hover:bg-transparent bg-slate-100 dark:bg-slate-800/70">
-                  <Td colSpan={6} className="py-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  <Td colSpan={columnCount} className="py-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400">
                     {formatDateGroupHeader(t.date)}
                   </Td>
                 </Tr>
@@ -522,17 +535,39 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
                 <Td>{t.account_name}</Td>
                 <Td className={`text-right ${t.amount >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                   {formatMoney(t.amount, t.currency)}
-                  {sharedShareFor(t, selectedUserId, accounts) !== null && (
-                    <div className="mt-0.5">
-                      <Badge variant="info">Shared · your share: {formatMoney(sharedShareFor(t, selectedUserId, accounts)!, t.currency)}</Badge>
-                    </div>
-                  )}
                 </Td>
+                {showMyColumns && (() => {
+                  const myShare = myShareFor(t, selectedUserId!)
+                  const balance = balanceFor(t, selectedUserId!, allAccounts)
+                  return (
+                    <>
+                      <Td className={`text-right ${myShare >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                        {formatMoney(myShare, t.currency)}
+                      </Td>
+                      <Td className={`text-right ${balance >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                        {formatMoney(balance, t.currency)}
+                      </Td>
+                    </>
+                  )
+                })()}
                 <Td className="text-xs">{splitsDisplay(t.splits, t.currency)}</Td>
               </Tr>
               </Fragment>
               )
             })}
+            {transactions.length > 0 && (
+              <Tr className="hover:bg-transparent font-semibold border-t-2 border-slate-300 dark:border-slate-600">
+                <Td colSpan={4}>Total</Td>
+                <Td className="text-right">{sumByCurrency(t => t.amount)}</Td>
+                {showMyColumns && (
+                  <>
+                    <Td className="text-right">{sumByCurrency(t => myShareFor(t, selectedUserId!))}</Td>
+                    <Td className="text-right">{sumByCurrency(t => balanceFor(t, selectedUserId!, allAccounts))}</Td>
+                  </>
+                )}
+                <Td />
+              </Tr>
+            )}
           </Tbody>
         </Table>
       )}

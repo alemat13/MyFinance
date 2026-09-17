@@ -48,8 +48,8 @@ to "All Users" without opening the dropdown. When a specific user is selected:
 
 - **Accounts** and **Dashboard** only show accounts that person has an ownership share in.
 - **Transactions** only shows transactions on an account they own, or where they're
-  entitled to a split share.
-- Amounts on shared transactions show that person's own share, not the full amount.
+  entitled to a split share, and adds **My share** and **Balance** columns for that
+  person (see [Finding transactions](#finding-transactions)).
 
 Every other screen (except Dashboard, which *is* the home screen) has a **Back** link
 to return to the Dashboard, and the current screen is reflected in the page URL — so
@@ -170,6 +170,22 @@ when, what fields changed, and whether it originated from a CSV import. Changes 
 the transaction's own split weights — set on creation or edited later — are tracked
 here too, shown as each involved user's weight before and after the change, and the
 same applies to reconciled status changes.
+
+When a specific user is selected (not "All Users"), the table adds two columns after
+**Amount**:
+
+- **My share** — that person's own share of the transaction, from its split.
+- **Balance** — what they actually owe (shown negative) or are owed (shown positive)
+  on that one transaction, once account ownership is factored in: their share minus
+  the portion of the amount their ownership percentage on that account already covers.
+  For example, a €100 joint purchase split 55/45 on an account owned 50/50 leaves a
+  Balance of −€5 (they owe €5 to their co-owner); the same purchase paid from an
+  account they own 100% leaves a Balance of +€45 (they're owed that back).
+
+These two columns are hidden when "All Users" is selected, since "my share" has no
+meaning without a specific person chosen. A bold **Total** row at the bottom of the
+table sums Amount, My share, and Balance for the rows currently displayed — it reflects
+only the current page, not every result matching your filters across all pages.
 
 ### Adding or editing a transaction
 

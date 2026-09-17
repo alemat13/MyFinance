@@ -1,5 +1,5 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
-import { screen, fireEvent, waitFor } from '@testing-library/react'
+import { screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { renderWithProviders } from '../../test-utils'
 import TransactionsPage from '../TransactionsPage'
 import { formatDateGroupHeader } from '../../utils/transactions'
@@ -531,4 +531,86 @@ test('changing page clears the existing selection', async () => {
 
   await waitFor(() => expect(screen.getByText('Page 2 / 2')).toBeInTheDocument())
   expect(screen.queryByText('Bulk Edit')).not.toBeInTheDocument()
+})
+
+const jointAccount = {
+  id: 1, name: 'Joint', type: 'Checking', balance: 100, currency: 'USD', created_at: '2026-01-01',
+  users: [{ user_id: 1, user_name: 'Bob', ownership_percentage: 50 }, { user_id: 2, user_name: 'Alice', ownership_percentage: 50 }],
+  split_weights: [],
+}
+
+const personalAccount = {
+  id: 2, name: 'Bob Personal', type: 'Checking', balance: 100, currency: 'USD', created_at: '2026-01-01',
+  users: [{ user_id: 1, user_name: 'Bob', ownership_percentage: 100 }],
+  split_weights: [],
+}
+
+const groceryOnJoint = {
+  id: 1, date: '2026-01-15', payee: 'Grocery', memo: null, amount: -100, account_id: 1, account_name: 'Joint',
+  category_id: 1, category_name: 'Salary', accounting_month_offset: 0, accounting_month: '2026-01', reconciled: false, currency: 'USD',
+  splits: [{ user_id: 1, user_name: 'Bob', weight: 55, share_amount: -55, source: 'custom' }, { user_id: 2, user_name: 'Alice', weight: 45, share_amount: -45, source: 'custom' }],
+}
+
+const groceryOnPersonal = {
+  ...groceryOnJoint, id: 2, account_id: 2, account_name: 'Bob Personal',
+}
+
+test('shows My share and Balance columns for a jointly-owned account, computed from ownership and split share', async () => {
+  mockSearchTransactions.mockResolvedValue(searchResult([groceryOnJoint]))
+  mockFetchAccounts.mockResolvedValue([jointAccount])
+  mockFetchCategories.mockResolvedValue([baseCategory])
+
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={1} />)
+
+  await waitFor(() => expect(screen.getByText('Grocery')).toBeInTheDocument())
+
+  expect(screen.getByText('My share')).toBeInTheDocument()
+  expect(screen.getByText('Balance')).toBeInTheDocument()
+  const row = screen.getByText('Grocery').closest('tr')!
+  expect(within(row).getByText('-$55.00')).toBeInTheDocument()
+  expect(within(row).getByText('-$5.00')).toBeInTheDocument()
+})
+
+test('Balance is positive when the user paid a shared expense from their own fully-owned account', async () => {
+  mockSearchTransactions.mockResolvedValue(searchResult([groceryOnPersonal]))
+  mockFetchAccounts.mockResolvedValue([personalAccount])
+  mockFetchCategories.mockResolvedValue([baseCategory])
+
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={1} />)
+
+  await waitFor(() => expect(screen.getByText('Grocery')).toBeInTheDocument())
+
+  const row = screen.getByText('Grocery').closest('tr')!
+  expect(within(row).getByText('-$55.00')).toBeInTheDocument()
+  expect(within(row).getByText('$45.00')).toBeInTheDocument()
+})
+
+test('hides My share and Balance columns when no specific user is selected', async () => {
+  mockSearchTransactions.mockResolvedValue(searchResult([groceryOnJoint]))
+  mockFetchAccounts.mockResolvedValue([jointAccount])
+  mockFetchCategories.mockResolvedValue([baseCategory])
+
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+
+  await waitFor(() => expect(screen.getByText('Grocery')).toBeInTheDocument())
+
+  expect(screen.queryByText('My share')).not.toBeInTheDocument()
+  expect(screen.queryByText('Balance')).not.toBeInTheDocument()
+})
+
+test('Total row sums Amount, My share, and Balance across the displayed rows', async () => {
+  const txnA = { ...groceryOnJoint, id: 1, payee: 'Grocery', amount: -100, splits: [{ user_id: 1, user_name: 'Bob', weight: 60, share_amount: -60, source: 'custom' }, { user_id: 2, user_name: 'Alice', weight: 40, share_amount: -40, source: 'custom' }] }
+  const txnB = { ...groceryOnJoint, id: 2, payee: 'Rent', amount: -50, splits: [{ user_id: 1, user_name: 'Bob', weight: 40, share_amount: -20, source: 'custom' }, { user_id: 2, user_name: 'Alice', weight: 60, share_amount: -30, source: 'custom' }] }
+  mockSearchTransactions.mockResolvedValue(searchResult([txnA, txnB]))
+  mockFetchAccounts.mockResolvedValue([jointAccount])
+  mockFetchCategories.mockResolvedValue([baseCategory])
+
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={1} />)
+
+  await waitFor(() => expect(screen.getByText('Rent')).toBeInTheDocument())
+
+  const totalRow = screen.getByText('Total').closest('tr')!
+  expect(within(totalRow).getByText('-$150.00')).toBeInTheDocument()
+  expect(within(totalRow).getByText('-$80.00')).toBeInTheDocument()
+  expect(within(totalRow).getByText('-$5.00')).toBeInTheDocument()
 })

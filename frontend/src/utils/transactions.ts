@@ -17,6 +17,24 @@ export function sharedShareFor(t: Transaction, selectedUserId: number | null | u
   return mine ? mine.share_amount : null
 }
 
+// accounts must be the unfiltered account list, so this also works for accounts the
+// user has 0% (or no row at all) in.
+export function ownershipPercentFor(accountId: number, userId: number, accounts: Account[]): number {
+  const account = accounts.find(a => a.id === accountId)
+  return account?.users.find(u => u.user_id === userId)?.ownership_percentage ?? 0
+}
+
+export function myShareFor(t: Transaction, userId: number): number {
+  return t.splits.find(s => s.user_id === userId)?.share_amount ?? 0
+}
+
+// What the user actually owes (negative) or is owed (positive) on this transaction:
+// their split share minus the portion of the amount their account ownership already
+// covers.
+export function balanceFor(t: Transaction, userId: number, accounts: Account[]): number {
+  return myShareFor(t, userId) - t.amount * ownershipPercentFor(t.account_id, userId, accounts) / 100
+}
+
 export function formatDateGroupHeader(isoDate: string): string {
   return new Date(`${isoDate}T00:00:00`).toLocaleDateString('en-US', {
     weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
