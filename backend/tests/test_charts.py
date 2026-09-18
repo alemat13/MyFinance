@@ -256,6 +256,53 @@ def test_charts_uncategorized_transactions_not_mixed_into_income_or_expense_by_s
     assert net_by_month[0]["net"] == 50.0
 
 
+def test_charts_cache_invalidated_by_new_transaction(client, sample_account, sample_category, sample_user):
+    warm = client.get(f"/api/charts?user_id={sample_user.id}")
+    assert warm.json()["by_category"] == []
+
+    response = client.post(
+        "/api/transactions",
+        json={
+            "account_id": sample_account.id,
+            "category_id": sample_category.id,
+            "date": "2026-02-01",
+            "payee": "Groceries",
+            "amount": -80.0,
+            "split_weights": [{"user_id": sample_user.id, "weight": 1}],
+        },
+    )
+    assert response.status_code == 201
+
+    after = client.get(f"/api/charts?user_id={sample_user.id}")
+    by_category = after.json()["by_category"]
+    assert len(by_category) == 1
+    assert by_category[0]["amount"] == -80.0
+
+
+def test_charts_cache_invalidated_by_deleted_transaction(client, sample_account, sample_category, sample_user):
+    create_response = client.post(
+        "/api/transactions",
+        json={
+            "account_id": sample_account.id,
+            "category_id": sample_category.id,
+            "date": "2026-02-01",
+            "payee": "Groceries",
+            "amount": -80.0,
+            "split_weights": [{"user_id": sample_user.id, "weight": 1}],
+        },
+    )
+    transaction_id = create_response.json()["id"]
+
+    warm = client.get(f"/api/charts?user_id={sample_user.id}")
+    assert len(warm.json()["by_category"]) == 1
+
+    delete_response = client.delete(f"/api/transactions/{transaction_id}")
+    assert delete_response.status_code == 204
+
+    after = client.get(f"/api/charts?user_id={sample_user.id}")
+    assert after.json()["by_category"] == []
+
+
 def test_compute_chart_data_signed_vs_magnitude(db, sample_account, sample_user):
     income_cat = Category(name="Freelance Cat", type="Income")
     expense_cat = Category(name="Groceries Cat", type="Expense")

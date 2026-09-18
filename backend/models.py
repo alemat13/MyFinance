@@ -157,6 +157,22 @@ class TransactionSplit(Base):
     user = relationship("User")
 
 
+class AggregateCache(Base):
+    """Generic store for precomputed aggregate results (see cache_service.py).
+
+    cache_key encodes both namespace and params ("balances:user_id=3"), so a
+    lookup is a single PK read; namespace is duplicated into its own indexed
+    column purely so invalidation can target every key in a namespace without
+    a LIKE scan.
+    """
+    __tablename__ = "aggregate_cache"
+
+    cache_key = Column(String, primary_key=True)
+    namespace = Column(String, nullable=False, index=True)
+    payload = Column(Text, nullable=False)
+    computed_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class TransactionHistory(Base):
     __tablename__ = "transaction_history"
 

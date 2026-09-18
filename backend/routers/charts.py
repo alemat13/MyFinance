@@ -14,7 +14,7 @@ def get_charts(
     currency: str | None = Query(None),
     db: Session = Depends(get_db),
 ):
-    by_category, by_month, net_by_month = charts_module.compute_chart_data(db, user_id, currency)
+    by_category, by_month, net_by_month = charts_module.compute_chart_data_cached(db, user_id, currency)
     currencies = sorted({c.currency for c in by_category} | {m.currency for m in by_month})
     return ChartsResponse(
         currencies=currencies,

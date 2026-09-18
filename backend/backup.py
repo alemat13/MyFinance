@@ -8,6 +8,7 @@ from pydantic import ValidationError
 from sqlalchemy import text
 from sqlalchemy.orm import Session, sessionmaker
 
+import cache_service
 from database import Base
 from models import (
     Account, Category, Transaction, User, AccountUser,
@@ -163,6 +164,10 @@ def import_database(db: Session, data: DatabaseExport, mode: Literal["overwrite"
 
         session.add_all(TransactionSplit(**s.model_dump()) for s in data.transaction_splits)
         session.add_all(TransactionHistory(**h.model_dump()) for h in data.transaction_history)
+        # Bulk restore bypasses every per-site invalidation above by design -
+        # a full reset is the only thing that can be correct here. A no-op in
+        # "overwrite" mode (drop_all/create_all already emptied the table).
+        cache_service.invalidate_all(session)
         session.commit()
     except Exception:
         session.rollback()
