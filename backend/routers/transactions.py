@@ -16,6 +16,8 @@ from rules import (
     validate_weights,
 )
 from schemas import (
+    BulkDeleteTransactionsRequest,
+    BulkDeleteTransactionsResponse,
     BulkUpdateTransactionsRequest,
     BulkUpdateTransactionsResponse,
     TransactionCreate,
@@ -209,6 +211,34 @@ def bulk_update_transactions(data: BulkUpdateTransactionsRequest, actor_user_id:
 
     db.commit()
     return BulkUpdateTransactionsResponse(updated_count=len(updated_ids), transaction_ids=updated_ids)
+
+
+@router.delete("/bulk-delete", response_model=BulkDeleteTransactionsResponse)
+def bulk_delete_transactions(data: BulkDeleteTransactionsRequest, actor_user_id: int | None = Query(None), db: Session = Depends(get_db)):
+    # Registered before the /{transaction_id} DELETE route below, for the same
+    # route-registration-order reason documented on bulk_update_transactions
+    # above: {transaction_id} would otherwise greedily match "bulk-delete" and
+    # 422 on int conversion before this route is ever tried.
+    if not data.transaction_ids:
+        raise HTTPException(422, "transaction_ids must not be empty")
+
+    # Validate everything before mutating anything, same discipline as
+    # bulk_update_transactions: a missing id 404s without partially deleting
+    # the batch.
+    transactions = db.query(Transaction).filter(Transaction.id.in_(data.transaction_ids)).all()
+    found_ids = {t.id for t in transactions}
+    missing_ids = sorted(set(data.transaction_ids) - found_ids)
+    if missing_ids:
+        raise HTTPException(404, f"Transaction(s) not found: {missing_ids}")
+
+    deleted_ids = []
+    for transaction in transactions:
+        record_transaction_history(db, transaction, "deleted", actor_user_id)
+        db.delete(transaction)
+        deleted_ids.append(transaction.id)
+
+    db.commit()
+    return BulkDeleteTransactionsResponse(deleted_count=len(deleted_ids), transaction_ids=deleted_ids)
 
 
 @router.get("/{transaction_id}", response_model=TransactionOut)

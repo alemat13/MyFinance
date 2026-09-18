@@ -298,6 +298,15 @@ class BulkUpdateTransactionsResponse(BaseModel):
     transaction_ids: list[int]
 
 
+class BulkDeleteTransactionsRequest(BaseModel):
+    transaction_ids: list[int]
+
+
+class BulkDeleteTransactionsResponse(BaseModel):
+    deleted_count: int
+    transaction_ids: list[int]
+
+
 class TransactionDividePart(BaseModel):
     """One resulting part of a "divide" operation (splitting a transaction's
     amount into several new transactions by category/date — unrelated to
