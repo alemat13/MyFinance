@@ -97,6 +97,59 @@ def test_balances_kept_separate_per_currency(client, db):
     assert balances[(olivia.id, "USD")] == -30.0
 
 
+def test_balances_cache_invalidated_by_transaction_update(client, db):
+    alex = User(name="Alex")
+    olivia = User(name="Olivia")
+    db.add_all([alex, olivia])
+    db.flush()
+
+    joint = Account(name="Joint Checking", type="Checking", balance=0.0)
+    db.add(joint)
+    db.flush()
+    db.add_all([
+        AccountUser(account_id=joint.id, user_id=alex.id, ownership_percentage=100.0),
+        AccountUser(account_id=joint.id, user_id=olivia.id, ownership_percentage=0.0),
+    ])
+    db.commit()
+
+    create_response = client.post(
+        "/api/transactions",
+        json={
+            "account_id": joint.id,
+            "category_id": _make_category(db).id,
+            "date": "2026-01-15",
+            "payee": "Groceries",
+            "amount": -100.0,
+            "split_weights": [
+                {"user_id": alex.id, "weight": 1},
+                {"user_id": olivia.id, "weight": 1},
+            ],
+        },
+    )
+    transaction_id = create_response.json()["id"]
+
+    # Prime the balances cache with the 50/50 split above.
+    warm = client.get("/api/balances")
+    warm_balances = {b["user_id"]: b["net_position"] for b in warm.json()}
+    assert warm_balances[alex.id] == 50.0
+
+    # Update to a lopsided 3:1 split - if the cache weren't invalidated, this
+    # GET would still return the stale 50/50 numbers above.
+    update_response = client.put(
+        f"/api/transactions/{transaction_id}",
+        json={"split_weights": [
+            {"user_id": alex.id, "weight": 3},
+            {"user_id": olivia.id, "weight": 1},
+        ]},
+    )
+    assert update_response.status_code == 200
+
+    response = client.get("/api/balances")
+    balances = {b["user_id"]: b["net_position"] for b in response.json()}
+    assert balances[alex.id] == 25.0
+    assert balances[olivia.id] == -25.0
+
+
 def _make_category(db):
     from models import Category
     category = Category(name="Balances Test Category", type="Expense")

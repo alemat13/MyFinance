@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+import cache_service
 import split_engine
 from database import get_db
 from models import AccountSplitWeight, CategorySplit, GlobalSplitWeight, Transaction, TransactionSplit, User
@@ -86,5 +87,8 @@ def delete_user(user_id: int, db: Session = Depends(get_db)):
                 )
             split_engine.apply_split(db, transaction, weights, source=source or "global")
 
+    # Re-resolving another user's transactions above can change
+    # share_amount rows even when this user themself had no split anywhere.
+    cache_service.invalidate(db, "balances", "charts")
     db.delete(user)
     db.commit()

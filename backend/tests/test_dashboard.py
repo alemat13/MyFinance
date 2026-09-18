@@ -90,6 +90,34 @@ def test_dashboard_balances_filtered_to_selected_user(client, sample_account, sa
     assert len(response_all.json()["balances"]) == 2
 
 
+def test_dashboard_balances_reflect_new_transaction_after_cache_warm(client, sample_account, sample_category, sample_user, db):
+    """Regression test for the balances cache: a GET that primes the cache
+    with an empty/stale result must not keep serving it after a mutation."""
+    from models import AccountUser
+    db.add(AccountUser(account_id=sample_account.id, user_id=sample_user.id, ownership_percentage=100.0))
+    db.commit()
+
+    warm = client.get("/api/dashboard")
+    assert warm.json()["balances"] == []
+
+    response = client.post(
+        "/api/transactions",
+        json={
+            "account_id": sample_account.id,
+            "category_id": sample_category.id,
+            "date": "2026-01-15",
+            "payee": "Groceries",
+            "amount": -100.0,
+            "split_weights": [{"user_id": sample_user.id, "weight": 1}],
+        },
+    )
+    assert response.status_code == 201
+
+    after = client.get("/api/dashboard")
+    balances = {b["user_id"]: b["net_position"] for b in after.json()["balances"]}
+    assert balances[sample_user.id] == 0.0
+
+
 def test_dashboard_excludes_archived_accounts(client, sample_transaction, db):
     from models import Account
     db.query(Account).filter(Account.id == sample_transaction.account_id).update({"archived": True})

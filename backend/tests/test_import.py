@@ -221,6 +221,26 @@ def test_import_preview_matches_commit_for_single_owner_account(client, sample_a
     assert committed["splits"][0]["share_amount"] == -42.50
 
 
+def test_import_commit_invalidates_charts_cache(client, sample_account, sample_category, sample_user):
+    warm = client.get(f"/api/charts?user_id={sample_user.id}")
+    assert warm.json()["by_category"] == []
+
+    response = client.post(
+        "/api/import/commit",
+        json={"rows": [{
+            "date": "2026-01-15", "payee": "Whole Foods", "amount": -42.50,
+            "account_id": sample_account.id, "category_id": sample_category.id,
+            "split_weights": [{"user_id": sample_user.id, "weight": 1}],
+        }]},
+    )
+    assert response.status_code == 200
+
+    after = client.get(f"/api/charts?user_id={sample_user.id}")
+    by_category = after.json()["by_category"]
+    assert len(by_category) == 1
+    assert by_category[0]["amount"] == -42.50
+
+
 def test_import_commit_allows_rows_without_category(client, sample_account, sample_user):
     # category_id is optional everywhere else post-categorization refactor
     # (transaction form, backend model); CSV import must match rather than

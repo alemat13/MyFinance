@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload, selectinload
 
+import cache_service
 from database import get_db
 from models import Category, CategorySplit
 from rules import validate_category_hierarchy, validate_category_update, validate_weights
@@ -58,6 +59,9 @@ def update_category(category_id: int, data: CategoryUpdate, db: Session = Depend
         _sync_category_splits(db, category, data.splits)
     for field, value in update_data.items():
         setattr(category, field, value)
+    # A category's type can move it in/out of charts' Income/Expense/Transfer
+    # grouping without any Transaction row changing.
+    cache_service.invalidate(db, "charts")
     db.commit()
     db.refresh(category)
     return build_category_out(category)

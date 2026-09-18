@@ -236,6 +236,55 @@ def test_export_includes_category_parent_id(client, db, sample_category):
     assert by_name[sample_category.name]["parent_id"] is None
 
 
+def test_import_overwrite_invalidates_balances_cache(client, db, sample_account, sample_category, sample_user, sample_user2):
+    _seed_full_graph(db, sample_account, sample_category, sample_user, sample_user2)
+
+    warm = client.get("/api/balances")
+    warm_balances = {b["user_id"]: b["net_position"] for b in warm.json()}
+    assert warm_balances[sample_user.id] == 0.0  # share 100 - paid (100% of 100) = 0
+
+    export_response = client.get("/api/backup/export")
+    payload = _unzip_payload(export_response.content)
+    payload["transaction_splits"][0]["share_amount"] = 40.0
+    zip_bytes = _zip_payload(payload)
+
+    response = _post_import(client, zip_bytes, mode="overwrite")
+    assert response.status_code == 200
+
+    after = client.get("/api/balances")
+    balances = {b["user_id"]: b["net_position"] for b in after.json()}
+    assert balances[sample_user.id] == -60.0  # share 40 - paid 100 = -60, not the stale 0.0
+
+
+def test_import_append_invalidates_balances_cache(client):
+    warm = client.get("/api/balances")
+    assert warm.json() == []
+
+    payload = _minimal_payload(
+        users=[{"id": 601, "name": "Appended User", "email": None, "created_at": datetime.utcnow().isoformat()}],
+        accounts=[{
+            "id": 602, "name": "Appended Account", "type": "Checking", "balance": 0.0,
+            "currency": "EUR", "created_at": datetime.utcnow().isoformat(),
+        }],
+        account_users=[{"account_id": 602, "user_id": 601, "ownership_percentage": 50.0}],
+        transactions=[{
+            "id": 603, "date": "2026-01-15", "payee": "Appended Payee", "memo": None, "amount": 50.0,
+            "account_id": 602, "category_id": None, "created_at": datetime.utcnow().isoformat(),
+        }],
+        transaction_splits=[{
+            "transaction_id": 603, "user_id": 601, "weight": 1, "share_amount": 50.0, "source": "custom",
+        }],
+    )
+    zip_bytes = _zip_payload(payload)
+
+    response = _post_import(client, zip_bytes, mode="append")
+    assert response.status_code == 200
+
+    after = client.get("/api/balances")
+    balances = {b["user_id"]: b["net_position"] for b in after.json()}
+    assert balances[601] == 25.0  # share 50 - paid (50% of 50 = 25) = 25, not the stale []
+
+
 def test_import_overwrite_reorders_out_of_order_category_hierarchy(client):
     # Child listed before its parent in the payload - import must still
     # succeed, since categories are inserted top-level-first regardless of

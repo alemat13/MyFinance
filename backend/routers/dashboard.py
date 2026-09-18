@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session, selectinload
 
+import cache_service
 import split_engine
 from database import get_db
 from filtering import visible_transaction_filter
@@ -39,9 +40,13 @@ def get_dashboard(user_id: int | None = Query(None), db: Session = Depends(get_d
         for t, account_name, currency, category_name, category_color, category_icon in recent_results
     ]
 
+    balances_rows = cache_service.get_or_compute(
+        db, "balances", {"user_id": user_id},
+        lambda: split_engine.compute_balances(db, user_id=user_id),
+    )
     balances = [
         UserBalanceOut(user_id=uid, user_name=user_name, currency=currency, net_position=net_position)
-        for uid, user_name, currency, net_position in split_engine.compute_balances(db, user_id=user_id)
+        for uid, user_name, currency, net_position in balances_rows
     ]
 
     return DashboardResponse(
