@@ -478,6 +478,22 @@ export function bulkUpdateTransactions(
   })
 }
 
+export interface BulkDeleteTransactionsResponse {
+  deleted_count: number
+  transaction_ids: number[]
+}
+
+export function bulkDeleteTransactions(
+  ids: number[],
+  actorUserId?: number | null,
+): Promise<BulkDeleteTransactionsResponse> {
+  const params = actorUserId ? `?actor_user_id=${actorUserId}` : ''
+  return request<BulkDeleteTransactionsResponse>(`/transactions/bulk-delete${params}`, {
+    method: 'DELETE',
+    body: JSON.stringify({ transaction_ids: ids }),
+  })
+}
+
 export function fetchTransactionHistory(transactionId: number): Promise<TransactionHistoryEntry[]> {
   return request<TransactionHistoryEntry[]>(`/transactions/${transactionId}/history`)
 }

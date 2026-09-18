@@ -303,7 +303,7 @@ Select multiple transactions using the checkboxes in the results table — a che
 in the header selects or deselects every transaction currently shown on the page
 (selection is per-page; it doesn't carry over when you change page or filters). Once
 at least one row is selected, a bar appears above the table showing how many are
-selected, with **Bulk Edit** and **Clear selection** buttons.
+selected, with **Bulk Edit**, **Delete selected**, and **Clear selection** buttons.
 
 **Bulk Edit** opens a dialog with four independent, optional changes you can apply
 together in a single save:
@@ -332,6 +332,12 @@ confirmation, the list refreshes, and the selection is cleared. If your current
 filter is "Unreconciled only" and you bulk-mark the selection as reconciled, those
 rows will no longer match the filter and will disappear from the list once the
 change applies.
+
+**Delete selected** permanently removes every selected transaction (and its
+splits) after a confirmation prompt — there's no undo. Unlike Bulk Edit, it's a
+single action with no options to configure: click it, confirm, and the selected
+transactions are gone. After confirming, the list refreshes and the selection is
+cleared, same as after a Bulk Edit save.
 
 ## Users
 
