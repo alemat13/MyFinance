@@ -4,11 +4,12 @@ import {
   Transaction, TransactionSplit, GlobalSplitWeight,
   Account, Category, User, FilterField, TransactionSearchRequest,
   fetchAccounts, fetchCategories, fetchUsers, fetchSplitWeights, searchTransactions, updateTransaction,
+  bulkDeleteTransactions,
 } from '../api/client'
 import TransactionDetail from './TransactionDetail'
 import BulkEditModal from './BulkEditModal'
 import CategoryPicker from './CategoryPicker'
-import { Button, IconButton, Input, Select, Table, Thead, Tbody, Tr, Th, Td, StatusMessage, CategoryBadge, BackButton } from './ui'
+import { Button, IconButton, Input, Select, Table, Thead, Tbody, Tr, Th, Td, StatusMessage, CategoryBadge, BackButton, ConfirmDialog } from './ui'
 import { formatMoney } from '../utils/currency'
 import { getParam, patchQueryParams } from '../utils/urlState'
 import { myShareFor, balanceFor, formatDateGroupHeader } from '../utils/transactions'
@@ -133,6 +134,7 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
   const [detailTarget, setDetailTarget] = useState<number | 'new' | null>(() => loadInitialInt('transaction', 0) || null)
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [bulkEditOpen, setBulkEditOpen] = useState(false)
+  const [bulkDeleteConfirming, setBulkDeleteConfirming] = useState(false)
 
   const [mode, setMode] = useState<FilterMode>(loadInitialMode)
   const [searchText, setSearchText] = useState(() => getParam('q') ?? '')
@@ -223,6 +225,16 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
       })
       .catch(err => { console.error(err); setError(err.message) })
       .finally(() => setLoading(false))
+  }
+
+  const confirmBulkDelete = () => {
+    bulkDeleteTransactions([...selectedIds], selectedUserId)
+      .then(res => {
+        showToast(`${res.deleted_count} transaction(s) deleted`, 'success')
+        loadTransactions()
+      })
+      .catch(err => showToast(err.message))
+      .finally(() => setBulkDeleteConfirming(false))
   }
 
   useEffect(loadTransactions, [
@@ -467,6 +479,7 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
         <div className="flex items-center gap-3 mb-2 p-2 rounded-md bg-accent/10 border border-accent/30">
           <span className="text-sm">{selectedIds.size} selected</span>
           <Button size="sm" onClick={() => setBulkEditOpen(true)}>Bulk Edit</Button>
+          <Button size="sm" variant="danger" onClick={() => setBulkDeleteConfirming(true)}>Delete selected</Button>
           <Button size="sm" variant="secondary" onClick={() => setSelectedIds(new Set())}>Clear selection</Button>
         </div>
       )}
@@ -617,6 +630,14 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
           onSaved={() => { setBulkEditOpen(false); loadTransactions() }}
         />
       )}
+
+      <ConfirmDialog
+        isOpen={bulkDeleteConfirming}
+        title="Delete transactions"
+        message={`Delete ${selectedIds.size} selected transaction${selectedIds.size === 1 ? '' : 's'}? This cannot be undone.`}
+        onConfirm={confirmBulkDelete}
+        onCancel={() => setBulkDeleteConfirming(false)}
+      />
     </div>
   )
 }
