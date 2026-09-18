@@ -876,6 +876,31 @@ def test_search_page_size_clamped_to_max(client, db, sample_account, sample_cate
     assert response.json()["page_size"] == 200
 
 
+def test_search_unpaginated_returns_all_matching_rows(client, db, sample_account, sample_category):
+    for i in range(5):
+        _make_transaction(db, sample_account, sample_category, payee=f"Payee {i}", amount=float(i))
+
+    response = client.post("/api/transactions/search", json={
+        "page": 2, "page_size": 2, "unpaginated": True, "sort_by": "amount", "sort_dir": "asc",
+    })
+    data = response.json()
+    assert data["total"] == 5
+    assert data["page"] == 1
+    assert data["page_size"] == 5
+    assert data["total_pages"] == 1
+    assert [item["amount"] for item in data["items"]] == [0.0, 1.0, 2.0, 3.0, 4.0]
+
+
+def test_search_unpaginated_still_applies_filters(client, sample_account_with_user, sample_user, sample_category, db):
+    _make_transaction(db, sample_account_with_user, sample_category, payee="User Specific")
+
+    response = client.post("/api/transactions/search", json={"user_id": sample_user.id, "unpaginated": True})
+    data = response.json()
+    assert data["total"] == 1
+    assert len(data["items"]) == 1
+    assert data["items"][0]["payee"] == "User Specific"
+
+
 def test_search_default_sort_matches_get_transactions(client, db, sample_account, sample_category):
     from datetime import date
     _make_transaction(db, sample_account, sample_category, payee="Old", date=date(2026, 1, 1))

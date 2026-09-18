@@ -379,6 +379,7 @@ class TransactionSearchRequest(BaseModel):
     # pagination
     page: int = 1
     page_size: int = 50
+    unpaginated: bool = False
 
     # sorting
     sort_by: Literal["date", "amount", "payee", "created_at"] = "date"

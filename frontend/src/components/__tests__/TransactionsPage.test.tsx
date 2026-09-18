@@ -36,6 +36,14 @@ vi.mock('../../api/client', () => ({
   fetchDivideSiblings: mockFetchDivideSiblings,
 }))
 
+const { mockDownloadBlob } = vi.hoisted(() => ({
+  mockDownloadBlob: vi.fn(),
+}))
+
+vi.mock('../../utils/download', () => ({
+  downloadBlob: mockDownloadBlob,
+}))
+
 const baseAccount = { id: 1, name: 'Checking', type: 'Checking', balance: 100, currency: 'USD', created_at: '2026-01-01', users: [], split_weights: [] }
 const baseCategory = { id: 1, name: 'Salary', type: 'Income', splits: [] }
 
@@ -686,4 +694,67 @@ test('Total row sums Amount, My share, and Balance across the displayed rows', a
   expect(within(totalRow).getByText('-$150.00')).toBeInTheDocument()
   expect(within(totalRow).getByText('-$80.00')).toBeInTheDocument()
   expect(within(totalRow).getByText('-$5.00')).toBeInTheDocument()
+})
+
+const bobAndAlice = [
+  { id: 1, name: 'Bob', email: null, created_at: '2026-01-01' },
+  { id: 2, name: 'Alice', email: null, created_at: '2026-01-01' },
+]
+
+test('Export CSV re-requests the current filtered view unpaginated', async () => {
+  mockSearchTransactions.mockResolvedValue(searchResult([groceryOnJoint]))
+  mockFetchAccounts.mockResolvedValue([jointAccount])
+  mockFetchCategories.mockResolvedValue([baseCategory])
+  mockFetchUsers.mockResolvedValue(bobAndAlice)
+
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={1} />)
+  await waitFor(() => expect(screen.getByText('Grocery')).toBeInTheDocument())
+
+  mockSearchTransactions.mockClear()
+  fireEvent.click(screen.getByText('Export CSV'))
+
+  await waitFor(() => {
+    expect(mockSearchTransactions).toHaveBeenCalledWith(expect.objectContaining({ unpaginated: true, user_id: 1 }))
+  })
+})
+
+test('downloads a CSV with one Weight/Share/Balance column per household user', async () => {
+  mockSearchTransactions.mockResolvedValue(searchResult([groceryOnJoint]))
+  mockFetchAccounts.mockResolvedValue([jointAccount])
+  mockFetchCategories.mockResolvedValue([baseCategory])
+  mockFetchUsers.mockResolvedValue(bobAndAlice)
+
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={1} />)
+  await waitFor(() => expect(screen.getByText('Grocery')).toBeInTheDocument())
+
+  fireEvent.click(screen.getByText('Export CSV'))
+
+  await waitFor(() => expect(mockDownloadBlob).toHaveBeenCalled())
+  const [blob, filename] = mockDownloadBlob.mock.calls[0]
+  expect(filename).toMatch(/^myfinance-transactions-.*\.csv$/)
+
+  const text: string = await blob.text()
+  expect(text).toContain(
+    'ID,Date,Payee,Memo,Amount,Currency,Account,Category,Accounting Month,Reconciled,Divide Group ID,'
+    + 'Weight Bob,Weight Alice,Share Bob,Share Alice,Balance Bob,Balance Alice',
+  )
+  expect(text).toContain('1,2026-01-15,Grocery,,-100,USD,Joint,Salary,2026-01,No,,55,45,-55,-45,-5,5')
+})
+
+test('shows an error toast when the CSV export request fails', async () => {
+  mockSearchTransactions.mockResolvedValueOnce(searchResult([groceryOnJoint]))
+  mockFetchAccounts.mockResolvedValue([jointAccount])
+  mockFetchCategories.mockResolvedValue([baseCategory])
+  mockFetchUsers.mockResolvedValue(bobAndAlice)
+
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={1} />)
+  await waitFor(() => expect(screen.getByText('Grocery')).toBeInTheDocument())
+
+  mockSearchTransactions.mockRejectedValueOnce(new Error('export exploded'))
+  fireEvent.click(screen.getByText('Export CSV'))
+
+  await waitFor(() => {
+    expect(screen.getByText('export exploded')).toBeInTheDocument()
+  })
+  expect(mockDownloadBlob).not.toHaveBeenCalled()
 })

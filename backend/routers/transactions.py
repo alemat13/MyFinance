@@ -93,9 +93,6 @@ def search_transactions(req: TransactionSearchRequest, db: Session = Depends(get
 
     total = query.count()
 
-    page = max(req.page, 1)
-    page_size = min(max(req.page_size, 1), 200)
-
     sort_columns = {
         "date": Transaction.date,
         "amount": Transaction.amount,
@@ -104,6 +101,19 @@ def search_transactions(req: TransactionSearchRequest, db: Session = Depends(get
     }
     sort_col = sort_columns[req.sort_by]
     sort_col = sort_col.asc() if req.sort_dir == "asc" else sort_col.desc()
+
+    if req.unpaginated:
+        results = query.order_by(sort_col).all()
+        items = [
+            build_transaction_out_from_row(t, account_name, currency, category_name, category_color, category_icon)
+            for t, account_name, currency, category_name, category_color, category_icon in results
+        ]
+        return TransactionSearchResponse(
+            items=items, total=total, page=1, page_size=len(items), total_pages=1,
+        )
+
+    page = max(req.page, 1)
+    page_size = min(max(req.page_size, 1), 200)
 
     results = (
         query.order_by(sort_col)

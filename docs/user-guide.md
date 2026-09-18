@@ -187,6 +187,28 @@ meaning without a specific person chosen. A bold **Total** row at the bottom of 
 table sums Amount, My share, and Balance for the rows currently displayed — it reflects
 only the current page, not every result matching your filters across all pages.
 
+### Exporting to CSV
+
+The **Export CSV** button, next to **+ New Transaction** at the top of the page,
+downloads every transaction matching your **current filters** — simple or advanced —
+across **all pages**, not just the one currently shown (unlike the Total row above).
+There's no separate export dialog: it always exports exactly what your current
+search would return.
+
+The downloaded file (named `myfinance-transactions-<timestamp>.csv`) includes every
+transaction field — ID, Date, Payee, Memo, Amount, Currency, Account, Category,
+Accounting Month, Reconciled, Divide Group ID — plus three columns per household
+user, always present regardless of which user (or "All Users") is currently selected
+in the page's user switcher:
+
+- **Weight `<name>`** — that person's integer split weight on the transaction, blank
+  if they're not part of its split at all.
+- **Share `<name>`** — their euro share of the transaction, same as **My share**
+  above.
+- **Balance `<name>`** — what they owe or are owed on that one transaction, same
+  formula as **Balance** above (their share minus what their account ownership
+  already covers).
+
 ### Adding or editing a transaction
 
 Clicking **+ New Transaction** or an existing row both open the same panel. The form
