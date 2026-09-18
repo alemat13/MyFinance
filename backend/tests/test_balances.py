@@ -15,7 +15,7 @@ def test_balances_reflect_split_vs_ownership(client, db):
     db.add_all([alex, olivia])
     db.flush()
 
-    joint = Account(name="Joint Checking", type="Checking", balance=0.0)
+    joint = Account(name="Joint Checking", type="Checking", balance_offset=0.0)
     db.add(joint)
     db.flush()
     db.add_all([
@@ -58,8 +58,8 @@ def test_balances_kept_separate_per_currency(client, db):
     db.add_all([alex, olivia])
     db.flush()
 
-    eur_account = Account(name="EUR Account", type="Checking", balance=0.0, currency="EUR")
-    usd_account = Account(name="USD Account", type="Checking", balance=0.0, currency="USD")
+    eur_account = Account(name="EUR Account", type="Checking", balance_offset=0.0, currency="EUR")
+    usd_account = Account(name="USD Account", type="Checking", balance_offset=0.0, currency="USD")
     db.add_all([eur_account, usd_account])
     db.flush()
     db.add_all([
@@ -103,7 +103,7 @@ def test_balances_cache_invalidated_by_transaction_update(client, db):
     db.add_all([alex, olivia])
     db.flush()
 
-    joint = Account(name="Joint Checking", type="Checking", balance=0.0)
+    joint = Account(name="Joint Checking", type="Checking", balance_offset=0.0)
     db.add(joint)
     db.flush()
     db.add_all([

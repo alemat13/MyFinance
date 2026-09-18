@@ -88,7 +88,7 @@ def test_get_single_transaction_filtered_by_user_visible(client, sample_account_
 
 def test_transaction_currency_reflects_account(client, db, sample_category, sample_user):
     from models import Account
-    account = Account(name="USD Checking", type="Checking", balance=0.0, currency="USD")
+    account = Account(name="USD Checking", type="Checking", balance_offset=0.0, currency="USD")
     db.add(account)
     db.commit()
 

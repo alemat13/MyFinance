@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, selectinload
 
+import account_totals
 import cache_service
 from database import get_db
 from models import Account, AccountSplitWeight, AccountUser
@@ -33,14 +34,19 @@ def get_accounts(user_id: int | None = Query(None), db: Session = Depends(get_db
             AccountUser.ownership_percentage > 0,
         ).distinct()
     accounts = query.all()
-    return [build_account_out(a) for a in accounts]
+    totals = account_totals.get_transaction_totals(db)
+    return [build_account_out(a, totals.get(a.id, 0.0)) for a in accounts]
 
 
 @router.post("", response_model=AccountOut, status_code=201)
 def create_account(data: AccountCreate, db: Session = Depends(get_db)):
     validate_ownership(data.users)
     validate_users_exist(db, data.users)
-    account = Account(name=data.name, type=data.type, balance=data.balance, currency=data.currency)
+    # A brand-new account has no transactions yet, so the balance the user
+    # entered is the offset outright.
+    account = Account(
+        name=data.name, type=data.type, balance_offset=data.balance, currency=data.currency,
+    )
     db.add(account)
     db.flush()
     for u in data.users:
@@ -51,7 +57,7 @@ def create_account(data: AccountCreate, db: Session = Depends(get_db)):
         ))
     db.commit()
     db.refresh(account)
-    return build_account_out(account)
+    return build_account_out(account, 0.0)
 
 
 @router.put("/{account_id}", response_model=AccountOut)
@@ -61,6 +67,13 @@ def update_account(account_id: int, data: AccountUpdate, db: Session = Depends(g
         raise HTTPException(404, "Account not found")
     update_data = data.model_dump(exclude_unset=True)
     update_data.pop("users", None)
+    # "balance" is what the account is worth right now, not a stored column:
+    # back out the offset that makes the account display exactly that today.
+    entered_balance = update_data.pop("balance", None)
+    if entered_balance is not None:
+        account.balance_offset = account_totals.offset_for_balance(
+            db, account.id, entered_balance,
+        )
     if data.users is not None:
         validate_ownership(data.users)
         validate_users_exist(db, data.users)
@@ -73,7 +86,7 @@ def update_account(account_id: int, data: AccountUpdate, db: Session = Depends(g
     cache_service.invalidate(db, "balances", "charts")
     db.commit()
     db.refresh(account)
-    return build_account_out(account)
+    return build_account_out(account, account_totals.transaction_total(db, account.id))
 
 
 @router.delete("/{account_id}", status_code=204)

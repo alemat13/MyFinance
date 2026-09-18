@@ -12,7 +12,10 @@ class Account(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(100), nullable=False)
     type = Column(String(50), nullable=False)
-    balance = Column(Float, default=0.0)
+    # Internal: the displayed balance is this plus the sum of the account's
+    # transaction amounts (see account_totals.py). Never exposed by the API —
+    # AccountOut.balance is the computed total, not this column.
+    balance_offset = Column(Float, default=0.0)
     currency = Column(String(3), nullable=False, default="EUR")
     created_at = Column(DateTime, default=datetime.utcnow)
     archived = Column(Boolean, nullable=False, default=False)

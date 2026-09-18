@@ -80,9 +80,17 @@ Manage your checking accounts, savings accounts, credit cards, and so on.
 The accounts table lists **Name, Type, Balance, Currency, Owners,** and row actions.
 The **Owners** column shows each owner as "Name (percentage%)".
 
-- **+ New Account** opens an inline form: name, type, starting balance, and currency
+- **+ New Account** opens an inline form: name, type, current balance, and currency
   (pick from a curated list of common currencies, or choose "Other…" to type any
   3-letter code).
+- **Balance is the account's balance right now**, and it moves on its own: it goes up
+  and down as you add, edit, import, or delete transactions on that account. The
+  number you type when creating the account is what it's worth at that moment, not a
+  figure frozen at creation time.
+- If the displayed balance ever drifts from what your bank shows (a missing
+  transaction, an import you didn't reconcile), just **Edit** the account and type the
+  real balance. That restates the account from today onward and leaves every
+  transaction untouched; the balance keeps tracking activity from there.
 - Every account has two independent sub-tables when you add or edit it:
   - An **ownership** sub-table where you add one or more owners and set each one's
     ownership percentage. This is what determines who an account (and its balance)
