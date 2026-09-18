@@ -293,11 +293,33 @@ export interface NetMonthChartItem {
   currency: string
 }
 
+export interface MonthCategoryChartItem {
+  month: string
+  category_id: number | null
+  amount: number
+  currency: string
+}
+
+export interface ChartCategoryOut {
+  category_id: number | null
+  name: string
+  color?: string | null
+  icon?: string | null
+}
+
+export interface ParentCategoryOut {
+  id: number
+  name: string
+}
+
 export interface ChartsData {
   currencies: string[]
   by_category: CategoryChartItem[]
   by_month: MonthChartItem[]
   net_by_month: NetMonthChartItem[]
+  by_month_category: MonthCategoryChartItem[]
+  chart_categories: ChartCategoryOut[]
+  parent_category: ParentCategoryOut | null
 }
 
 export interface ImportPreviewRequest {
@@ -536,9 +558,19 @@ export function fetchDashboard(userId?: number): Promise<DashboardData> {
   return request<DashboardData>(`/dashboard${params}`)
 }
 
-export function fetchCharts(userId: number, currency?: string): Promise<ChartsData> {
+export interface FetchChartsOptions {
+  currency?: string
+  startMonth?: string
+  endMonth?: string
+  parentCategoryId?: number
+}
+
+export function fetchCharts(userId: number, opts: FetchChartsOptions = {}): Promise<ChartsData> {
   const params = new URLSearchParams({ user_id: String(userId) })
-  if (currency) params.set('currency', currency)
+  if (opts.currency) params.set('currency', opts.currency)
+  if (opts.startMonth) params.set('start_month', opts.startMonth)
+  if (opts.endMonth) params.set('end_month', opts.endMonth)
+  if (opts.parentCategoryId != null) params.set('parent_category_id', String(opts.parentCategoryId))
   return request<ChartsData>(`/charts?${params.toString()}`)
 }
 

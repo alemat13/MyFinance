@@ -465,19 +465,25 @@ split too. Like any newly-created transaction, every imported row starts out
 ## Charts
 
 Visual summaries of spending and income. This screen requires a specific user to be
-selected (not "All Users") — it's opt into your own view of the household's finances.
+selected (not "All Users") — it's your own view of the household's finances.
 
-Three charts are shown:
+A "From"/"To" month-range filter at the top of the screen scopes both charts below to a
+period, defaulting to the trailing 12 months on first load. If your accounts span more
+than one currency, a currency selector also appears, letting you switch which currency's
+transactions the charts summarize (amounts across currencies are never combined into one
+number).
 
-- **Amounts by Category** — a bar chart color-coded by Income vs. Expense. Any
-  uncategorized transactions are grouped into their own gray "Uncategorized" bar so
-  they're never silently left out of the totals.
-- **Income vs. Expense by Month** — how the two compare over time.
-- **Net by Month** — the running net (income minus expense) per month.
+Two charts are shown:
 
-If your accounts span more than one currency, a currency selector lets you switch
-which currency's transactions the charts summarize (amounts across currencies are
-never combined into one number).
+- **Spending per month** — a stacked bar chart, one bar per month, with one segment per
+  top-level expense category (plus a gray "Uncategorized" segment for any uncategorized
+  transactions, so they're never silently left out of the totals) and a black line
+  tracing each month's total spend. Income doesn't appear in this chart. Click a
+  category in the legend beneath the chart to drill into that category's own
+  subcategories for the same date range — a breadcrumb appears above the chart, and
+  clicking "Overview" in it returns to the top-level view.
+- **Net income per month** — green income bars and red expense bars per month, plus a
+  black line tracing the net (income minus expense) per month.
 
 ## Appendix: Validation Rules & Tips
 
