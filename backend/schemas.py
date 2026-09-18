@@ -423,11 +423,33 @@ class NetMonthChartItem(BaseModel):
     currency: str
 
 
+class MonthCategoryChartItem(BaseModel):
+    month: str
+    category_id: int | None
+    amount: float
+    currency: str
+
+
+class ChartCategoryOut(BaseModel):
+    category_id: int | None
+    name: str
+    color: str | None = None
+    icon: str | None = None
+
+
+class ParentCategoryOut(BaseModel):
+    id: int
+    name: str
+
+
 class ChartsResponse(BaseModel):
     currencies: List[str]
     by_category: List[CategoryChartItem]
     by_month: List[MonthChartItem]
     net_by_month: List[NetMonthChartItem]
+    by_month_category: List[MonthCategoryChartItem] = []
+    chart_categories: List[ChartCategoryOut] = []
+    parent_category: ParentCategoryOut | None = None
 
 
 class TransactionHistoryOut(BaseModel):
