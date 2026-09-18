@@ -1,8 +1,9 @@
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
+import cache_service
 from models import Account, Category, Transaction, TransactionSplit
 from accounting_month import compute_accounting_month
 
@@ -122,3 +123,29 @@ def compute_chart_data(
     by_month.sort(key=lambda i: (i.currency, i.month))
     net_by_month.sort(key=lambda i: (i.currency, i.month))
     return by_category, by_month, net_by_month
+
+
+def compute_chart_data_cached(
+    db: Session, user_id: int, currency: str | None = None,
+) -> tuple[list[CategoryAmount], list[MonthAmounts], list[NetMonth]]:
+    """Same result as compute_chart_data, cached in the "charts" namespace.
+
+    Invalidated wherever transaction/split/account/category data that could
+    change these sums is mutated - see cache_service.invalidate call sites.
+    """
+    def _compute() -> dict:
+        by_category, by_month, net_by_month = compute_chart_data(db, user_id, currency)
+        return {
+            "by_category": [asdict(c) for c in by_category],
+            "by_month": [asdict(m) for m in by_month],
+            "net_by_month": [asdict(n) for n in net_by_month],
+        }
+
+    payload = cache_service.get_or_compute(
+        db, "charts", {"user_id": user_id, "currency": currency}, _compute,
+    )
+    return (
+        [CategoryAmount(**c) for c in payload["by_category"]],
+        [MonthAmounts(**m) for m in payload["by_month"]],
+        [NetMonth(**n) for n in payload["net_by_month"]],
+    )

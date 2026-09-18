@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, selectinload
 
+import cache_service
 from database import get_db
 from models import Account, AccountSplitWeight, AccountUser
 from rules import validate_ownership, validate_users_exist
@@ -66,6 +67,10 @@ def update_account(account_id: int, data: AccountUpdate, db: Session = Depends(g
         _sync_account_users(db, account, data.users)
     for field, value in update_data.items():
         setattr(account, field, value)
+    # Unconditional rather than diffing which field changed: a currency or
+    # ownership-percentage change here can shift every existing transaction's
+    # currency bucket or "paid" share without touching a Transaction row.
+    cache_service.invalidate(db, "balances", "charts")
     db.commit()
     db.refresh(account)
     return build_account_out(account)
