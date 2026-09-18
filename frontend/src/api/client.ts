@@ -224,6 +224,7 @@ export interface TransactionSearchRequest {
   match_mode?: 'all' | 'any'
   page?: number
   page_size?: number
+  unpaginated?: boolean
   sort_by?: 'date' | 'amount' | 'payee' | 'created_at'
   sort_dir?: 'asc' | 'desc'
 }
