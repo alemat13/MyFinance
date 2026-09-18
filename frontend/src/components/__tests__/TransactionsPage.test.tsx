@@ -711,7 +711,8 @@ test('Export CSV re-requests the current filtered view unpaginated', async () =>
   await waitFor(() => expect(screen.getByText('Grocery')).toBeInTheDocument())
 
   mockSearchTransactions.mockClear()
-  fireEvent.click(screen.getByText('Export CSV'))
+  fireEvent.click(screen.getByText('Export'))
+  fireEvent.click(screen.getByText('CSV'))
 
   await waitFor(() => {
     expect(mockSearchTransactions).toHaveBeenCalledWith(expect.objectContaining({ unpaginated: true, user_id: 1 }))
@@ -727,7 +728,8 @@ test('downloads a CSV with one Weight/Share/Balance column per household user', 
   renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={1} />)
   await waitFor(() => expect(screen.getByText('Grocery')).toBeInTheDocument())
 
-  fireEvent.click(screen.getByText('Export CSV'))
+  fireEvent.click(screen.getByText('Export'))
+  fireEvent.click(screen.getByText('CSV'))
 
   await waitFor(() => expect(mockDownloadBlob).toHaveBeenCalled())
   const [blob, filename] = mockDownloadBlob.mock.calls[0]
@@ -741,7 +743,37 @@ test('downloads a CSV with one Weight/Share/Balance column per household user', 
   expect(text).toContain('1,2026-01-15,Grocery,,-100,USD,Joint,Salary,2026-01,No,,55,45,-55,-45,-5,5')
 })
 
-test('shows an error toast when the CSV export request fails', async () => {
+test('downloads an Excel file with the same data as the CSV export', async () => {
+  mockSearchTransactions.mockResolvedValue(searchResult([groceryOnJoint]))
+  mockFetchAccounts.mockResolvedValue([jointAccount])
+  mockFetchCategories.mockResolvedValue([baseCategory])
+  mockFetchUsers.mockResolvedValue(bobAndAlice)
+
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={1} />)
+  await waitFor(() => expect(screen.getByText('Grocery')).toBeInTheDocument())
+
+  fireEvent.click(screen.getByText('Export'))
+  fireEvent.click(screen.getByText('Excel'))
+
+  await waitFor(() => expect(mockDownloadBlob).toHaveBeenCalled())
+  const [blob, filename] = mockDownloadBlob.mock.calls[0]
+  expect(filename).toMatch(/^myfinance-transactions-.*\.xlsx$/)
+  expect(blob.type).toBe('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+  const { readSheet } = await import('read-excel-file/universal')
+  const rows = await readSheet(blob)
+
+  expect(rows[0]).toEqual([
+    'ID', 'Date', 'Payee', 'Memo', 'Amount', 'Currency', 'Account', 'Category',
+    'Accounting Month', 'Reconciled', 'Divide Group ID',
+    'Weight Bob', 'Weight Alice', 'Share Bob', 'Share Alice', 'Balance Bob', 'Balance Alice',
+  ])
+  expect(rows[1][0]).toBe(1)
+  expect(typeof rows[1][0]).toBe('number')
+  expect(rows[1][4]).toBe(-100)
+})
+
+test('shows an error toast when the export request fails', async () => {
   mockSearchTransactions.mockResolvedValueOnce(searchResult([groceryOnJoint]))
   mockFetchAccounts.mockResolvedValue([jointAccount])
   mockFetchCategories.mockResolvedValue([baseCategory])
@@ -751,7 +783,8 @@ test('shows an error toast when the CSV export request fails', async () => {
   await waitFor(() => expect(screen.getByText('Grocery')).toBeInTheDocument())
 
   mockSearchTransactions.mockRejectedValueOnce(new Error('export exploded'))
-  fireEvent.click(screen.getByText('Export CSV'))
+  fireEvent.click(screen.getByText('Export'))
+  fireEvent.click(screen.getByText('CSV'))
 
   await waitFor(() => {
     expect(screen.getByText('export exploded')).toBeInTheDocument()

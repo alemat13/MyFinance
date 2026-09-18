@@ -9,12 +9,14 @@ import {
 import TransactionDetail from './TransactionDetail'
 import BulkEditModal from './BulkEditModal'
 import CategoryPicker from './CategoryPicker'
+import ExportMenu from './ExportMenu'
 import { Button, IconButton, Input, Select, Table, Thead, Tbody, Tr, Th, Td, StatusMessage, CategoryBadge, BackButton, ConfirmDialog } from './ui'
 import { formatMoney } from '../utils/currency'
 import { getParam, patchQueryParams } from '../utils/urlState'
 import { myShareFor, balanceFor, formatDateGroupHeader } from '../utils/transactions'
 import { useToast } from '../context/ToastContext'
 import { buildCsv } from '../utils/csv'
+import { buildXlsxBlob } from '../utils/xlsx'
 import { downloadBlob } from '../utils/download'
 
 interface Props {
@@ -240,28 +242,37 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
       .finally(() => setBulkDeleteConfirming(false))
   }
 
-  const handleExportCsv = () => {
+  const buildExportData = (items: Transaction[]) => {
+    const headers = [
+      'ID', 'Date', 'Payee', 'Memo', 'Amount', 'Currency', 'Account', 'Category',
+      'Accounting Month', 'Reconciled', 'Divide Group ID',
+      ...allUsers.map(u => `Weight ${u.name}`),
+      ...allUsers.map(u => `Share ${u.name}`),
+      ...allUsers.map(u => `Balance ${u.name}`),
+    ]
+    const rows = items.map(t => [
+      t.id, t.date, t.payee, t.memo ?? '', t.amount, t.currency, t.account_name, t.category_name ?? '',
+      t.accounting_month, t.reconciled ? 'Yes' : 'No', t.divide_group_id ?? '',
+      ...allUsers.map(u => t.splits.find(s => s.user_id === u.id)?.weight ?? ''),
+      ...allUsers.map(u => myShareFor(t, u.id)),
+      ...allUsers.map(u => balanceFor(t, u.id, allAccounts)),
+    ])
+    return { headers, rows }
+  }
+
+  const handleExport = (format: 'csv' | 'xlsx') => {
     setExporting(true)
     searchTransactions({ ...buildSearchRequest(), unpaginated: true })
-      .then(res => {
-        const headers = [
-          'ID', 'Date', 'Payee', 'Memo', 'Amount', 'Currency', 'Account', 'Category',
-          'Accounting Month', 'Reconciled', 'Divide Group ID',
-          ...allUsers.map(u => `Weight ${u.name}`),
-          ...allUsers.map(u => `Share ${u.name}`),
-          ...allUsers.map(u => `Balance ${u.name}`),
-        ]
-        const rows = res.items.map(t => [
-          t.id, t.date, t.payee, t.memo ?? '', t.amount, t.currency, t.account_name, t.category_name ?? '',
-          t.accounting_month, t.reconciled ? 'Yes' : 'No', t.divide_group_id ?? '',
-          ...allUsers.map(u => t.splits.find(s => s.user_id === u.id)?.weight ?? ''),
-          ...allUsers.map(u => myShareFor(t, u.id)),
-          ...allUsers.map(u => balanceFor(t, u.id, allAccounts)),
-        ])
-        const csv = buildCsv(headers, rows)
-        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-        const filename = `myfinance-transactions-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.csv`
-        downloadBlob(blob, filename)
+      .then(async res => {
+        const { headers, rows } = buildExportData(res.items)
+        const timestamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')
+        if (format === 'csv') {
+          const blob = new Blob([buildCsv(headers, rows)], { type: 'text/csv;charset=utf-8;' })
+          downloadBlob(blob, `myfinance-transactions-${timestamp}.csv`)
+        } else {
+          const blob = await buildXlsxBlob(headers, rows)
+          downloadBlob(blob, `myfinance-transactions-${timestamp}.xlsx`)
+        }
       })
       .catch(err => showToast(err.message))
       .finally(() => setExporting(false))
@@ -411,9 +422,7 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
       <div className="flex justify-between items-center mb-3">
         <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Transactions</h2>
         <div className="flex gap-2">
-          <Button variant="secondary" onClick={handleExportCsv} disabled={exporting}>
-            {exporting ? 'Exporting...' : 'Export CSV'}
-          </Button>
+          <ExportMenu onExport={handleExport} exporting={exporting} />
           <Button onClick={openNew}>+ New Transaction</Button>
         </div>
       </div>
