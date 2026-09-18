@@ -21,9 +21,13 @@ def seed():
     session.add_all(users)
     session.flush()
 
+    # The balance a user would have typed for each account, i.e. what the
+    # dashboard should show for it right after seeding. The stored offset is
+    # derived from it once the transactions exist, further down.
+    account_balances = {"Joint Checking": 5420.00, "Personal Savings": 12800.00}
     accounts = [
-        Account(name="Joint Checking", type="Checking", balance=5420.00, currency="EUR"),
-        Account(name="Personal Savings", type="Savings", balance=12800.00, currency="USD"),
+        Account(name="Joint Checking", type="Checking", currency="EUR"),
+        Account(name="Personal Savings", type="Savings", currency="USD"),
     ]
     session.add_all(accounts)
     session.flush()
@@ -243,6 +247,12 @@ def seed():
                 session, transaction.category_id, transaction.account_id,
             )
             split_engine.apply_split(session, transaction, weights or None, source or "custom")
+
+    # Offsets last: each account's displayed balance is offset + its
+    # transaction total, so back the offset out of the balance above.
+    for account in accounts:
+        total = sum(t.amount for t in transactions if t.account_id == account.id)
+        account.balance_offset = round(account_balances[account.name] - total, 2)
 
     session.commit()
     session.close()

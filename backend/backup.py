@@ -8,6 +8,7 @@ from pydantic import ValidationError
 from sqlalchemy import text
 from sqlalchemy.orm import Session, sessionmaker
 
+import account_totals
 import cache_service
 from database import Base
 from models import (
@@ -33,12 +34,32 @@ class BackupFormatError(ValueError):
     """Raised when an uploaded backup file is malformed or incompatible."""
 
 
+def _export_accounts(db: Session) -> list[AccountExport]:
+    """`accounts.balance` in the archive is the account's balance as displayed
+    (offset + transaction total), not the stored offset — so an archive keeps
+    meaning the same thing to a reader, and `import_database` can re-derive
+    the offset against whatever transactions come back with it."""
+    totals = dict(account_totals.compute_transaction_totals(db))
+    return [
+        AccountExport(
+            id=a.id,
+            name=a.name,
+            type=a.type,
+            balance=account_totals.account_balance(a, totals.get(a.id, 0.0)),
+            currency=a.currency,
+            created_at=a.created_at,
+            archived=a.archived,
+        )
+        for a in db.query(Account).all()
+    ]
+
+
 def build_export(db: Session) -> DatabaseExport:
     return DatabaseExport(
         schema_version=SCHEMA_VERSION,
         exported_at=datetime.now(timezone.utc),
         users=[UserExport.model_validate(u) for u in db.query(User).all()],
-        accounts=[AccountExport.model_validate(a) for a in db.query(Account).all()],
+        accounts=_export_accounts(db),
         categories=[CategoryExport.model_validate(c) for c in db.query(Category).all()],
         account_users=[AccountUserExport.model_validate(au) for au in db.query(AccountUser).all()],
         category_splits=[CategorySplitExport.model_validate(cs) for cs in db.query(CategorySplit).all()],
@@ -143,7 +164,16 @@ def import_database(db: Session, data: DatabaseExport, mode: Literal["overwrite"
     session = ImportSession()
     try:
         session.add_all(User(**u.model_dump()) for u in data.users)
-        session.add_all(Account(**a.model_dump()) for a in data.accounts)
+        archived_totals: dict[int, float] = {}
+        for t in data.transactions:
+            archived_totals[t.account_id] = archived_totals.get(t.account_id, 0.0) + t.amount
+        session.add_all(
+            Account(
+                **a.model_dump(exclude={"balance"}),
+                balance_offset=round(a.balance - archived_totals.get(a.id, 0.0), 2),
+            )
+            for a in data.accounts
+        )
         # Top-level categories before subcategories: parent_id is a
         # self-referential FK checked immediately on insert.
         ordered_categories = sorted(data.categories, key=lambda c: c.parent_id is not None)
