@@ -187,15 +187,17 @@ meaning without a specific person chosen. A bold **Total** row at the bottom of 
 table sums Amount, My share, and Balance for the rows currently displayed — it reflects
 only the current page, not every result matching your filters across all pages.
 
-### Exporting to CSV
+### Exporting your transactions
 
-The **Export CSV** button, next to **+ New Transaction** at the top of the page,
-downloads every transaction matching your **current filters** — simple or advanced —
-across **all pages**, not just the one currently shown (unlike the Total row above).
-There's no separate export dialog: it always exports exactly what your current
-search would return.
+The **Export** button, next to **+ New Transaction** at the top of the page, opens a
+menu with **CSV** and **Excel** choices. Either one downloads every transaction
+matching your **current filters** — simple or advanced — across **all pages**, not
+just the one currently shown (unlike the Total row above). There's no separate export
+dialog: it always exports exactly what your current search would return, and both
+formats contain identical data — only the file format differs.
 
-The downloaded file (named `myfinance-transactions-<timestamp>.csv`) includes every
+The downloaded file (named `myfinance-transactions-<timestamp>.csv` or
+`myfinance-transactions-<timestamp>.xlsx` depending on which you pick) includes every
 transaction field — ID, Date, Payee, Memo, Amount, Currency, Account, Category,
 Accounting Month, Reconciled, Divide Group ID — plus three columns per household
 user, always present regardless of which user (or "All Users") is currently selected
