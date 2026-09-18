@@ -216,8 +216,8 @@ def test_bulk_update_split_only_change_writes_history_row(client, db, sample_acc
 
 def test_bulk_update_mixed_accounts_and_currencies_succeeds(client, db, sample_category, sample_user):
     from models import Account
-    eur_account = Account(name="EUR Checking", type="Checking", balance=0.0, currency="EUR")
-    usd_account = Account(name="USD Checking", type="Checking", balance=0.0, currency="USD")
+    eur_account = Account(name="EUR Checking", type="Checking", balance_offset=0.0, currency="EUR")
+    usd_account = Account(name="USD Checking", type="Checking", balance_offset=0.0, currency="USD")
     db.add_all([eur_account, usd_account])
     db.commit()
     db.refresh(eur_account)

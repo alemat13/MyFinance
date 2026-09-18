@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session, selectinload
 
+import account_totals
 import cache_service
 import split_engine
 from database import get_db
@@ -24,6 +25,7 @@ def get_dashboard(user_id: int | None = Query(None), db: Session = Depends(get_d
             AccountUser.ownership_percentage > 0,
         ).distinct()
     accounts = accounts_query.all()
+    totals = account_totals.get_transaction_totals(db)
 
     tx_query = (
         db.query(Transaction, Account.name, Account.currency, Category.name, Category.color, Category.icon)
@@ -50,7 +52,7 @@ def get_dashboard(user_id: int | None = Query(None), db: Session = Depends(get_d
     ]
 
     return DashboardResponse(
-        accounts=[build_account_out(a) for a in accounts],
+        accounts=[build_account_out(a, totals.get(a.id, 0.0)) for a in accounts],
         recent_transactions=recent_transactions,
         balances=balances,
     )

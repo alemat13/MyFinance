@@ -163,7 +163,7 @@ def create_transaction(data: TransactionCreate, actor_user_id: int | None = Quer
     split_engine.apply_split(db, transaction, weights, source=split_source)
     record_transaction_history(db, transaction, "created", actor_user_id, source="manual",
                                 changes=splits_created_changes(weights, split_source))
-    cache_service.invalidate(db, "balances", "charts")
+    cache_service.invalidate(db, "balances", "charts", "account_totals")
     db.commit()
     return get_transaction_out(db, transaction.id)
 
@@ -221,7 +221,7 @@ def bulk_update_transactions(data: BulkUpdateTransactionsRequest, actor_user_id:
             record_transaction_history(db, transaction, "updated", actor_user_id, changes=changes)
         updated_ids.append(transaction.id)
 
-    cache_service.invalidate(db, "balances", "charts")
+    cache_service.invalidate(db, "balances", "charts", "account_totals")
     db.commit()
     return BulkUpdateTransactionsResponse(updated_count=len(updated_ids), transaction_ids=updated_ids)
 
@@ -250,7 +250,7 @@ def bulk_delete_transactions(data: BulkDeleteTransactionsRequest, actor_user_id:
         db.delete(transaction)
         deleted_ids.append(transaction.id)
 
-    cache_service.invalidate(db, "balances", "charts")
+    cache_service.invalidate(db, "balances", "charts", "account_totals")
     db.commit()
     return BulkDeleteTransactionsResponse(deleted_count=len(deleted_ids), transaction_ids=deleted_ids)
 
@@ -314,7 +314,7 @@ def update_transaction(transaction_id: int, data: TransactionUpdate, actor_user_
     split_engine.apply_split(db, transaction, weights, source)
     if changes:
         record_transaction_history(db, transaction, "updated", actor_user_id, changes=changes)
-    cache_service.invalidate(db, "balances", "charts")
+    cache_service.invalidate(db, "balances", "charts", "account_totals")
     db.commit()
     return get_transaction_out(db, transaction.id)
 
@@ -326,7 +326,7 @@ def delete_transaction(transaction_id: int, actor_user_id: int | None = Query(No
         raise HTTPException(404, "Transaction not found")
     record_transaction_history(db, transaction, "deleted", actor_user_id)
     db.delete(transaction)
-    cache_service.invalidate(db, "balances", "charts")
+    cache_service.invalidate(db, "balances", "charts", "account_totals")
     db.commit()
 
 
@@ -399,7 +399,7 @@ def divide_transaction(transaction_id: int, data: TransactionDivideRequest, acto
                                     changes=splits_created_changes(weights, split_source))
         created.append(new_transaction)
 
-    cache_service.invalidate(db, "balances", "charts")
+    cache_service.invalidate(db, "balances", "charts", "account_totals")
     db.commit()
     return TransactionDivideResponse(transactions=[get_transaction_out(db, t.id) for t in created])
 

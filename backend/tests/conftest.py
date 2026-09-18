@@ -47,7 +47,7 @@ def client(db):
 
 @pytest.fixture()
 def sample_account(db):
-    account = Account(name="Test Checking", type="Checking", balance=1000.0)
+    account = Account(name="Test Checking", type="Checking", balance_offset=1000.0)
     db.add(account)
     db.commit()
     db.refresh(account)
@@ -56,7 +56,7 @@ def sample_account(db):
 
 @pytest.fixture()
 def sample_account_2(db):
-    account = Account(name="Test Savings", type="Savings", balance=0.0)
+    account = Account(name="Test Savings", type="Savings", balance_offset=0.0)
     db.add(account)
     db.commit()
     db.refresh(account)

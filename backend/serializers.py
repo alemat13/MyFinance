@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
 
+import account_totals
 from accounting_month import compute_accounting_month
 from models import Account, Category, Transaction, User
 from schemas import (
@@ -9,12 +10,15 @@ from schemas import (
 )
 
 
-def build_account_out(account: Account) -> AccountOut:
+def build_account_out(account: Account, transaction_total: float = 0.0) -> AccountOut:
+    """`transaction_total` is the sum of the account's transaction amounts
+    (account_totals.py); the balance reported to the client is that plus the
+    account's stored offset."""
     return AccountOut(
         id=account.id,
         name=account.name,
         type=account.type,
-        balance=account.balance,
+        balance=account_totals.account_balance(account, transaction_total),
         currency=account.currency,
         created_at=account.created_at,
         archived=account.archived,

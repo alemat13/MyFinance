@@ -111,6 +111,6 @@ def import_commit(data: ImportCommitRequest, actor_user_id: int | None = Query(N
     if pending_batch:
         flush_pending_batch()
 
-    cache_service.invalidate(db, "balances", "charts")
+    cache_service.invalidate(db, "balances", "charts", "account_totals")
     db.commit()
     return ImportCommitResponse(created_count=len(transaction_ids), transaction_ids=transaction_ids)
