@@ -522,8 +522,14 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
       <StatusMessage loading={loading} />
 
       {!loading && selectedIds.size > 0 && (
-        <div className="flex items-center gap-3 mb-2 p-2 rounded-md bg-accent/10 border border-accent/30">
+        <div className="flex flex-wrap items-center gap-2 mb-2 p-2 rounded-md bg-accent/10 border border-accent/30">
           <span className="text-sm">{selectedIds.size} selected</span>
+          {/* The table header carries this checkbox on desktop; the mobile card
+              list has no header, so the selection bar carries it instead — which
+              also keeps it off screen until there's a selection to extend. */}
+          {isMobile && !allSelected && (
+            <Button size="sm" variant="secondary" onClick={toggleSelectAll} aria-label="Select all on this page">Select all</Button>
+          )}
           <Button size="sm" onClick={() => setBulkEditOpen(true)}>Bulk Edit</Button>
           <Button size="sm" variant="danger" onClick={() => setBulkDeleteConfirming(true)}>Delete selected</Button>
           <Button size="sm" variant="secondary" onClick={() => setSelectedIds(new Set())}>Clear selection</Button>
@@ -534,21 +540,6 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
         <div className="space-y-2">
           {transactions.length === 0 && (
             <div className="text-center py-5 text-sm text-slate-400">No transactions match your filters</div>
-          )}
-          {transactions.length > 0 && (
-            // The desktop table puts this in its header row; the card list has no
-            // header, so it gets its own line above the cards.
-            <div className="flex items-center gap-2 px-1">
-              <input
-                id="select-all-on-page"
-                type="checkbox"
-                checked={allSelected}
-                onChange={toggleSelectAll}
-              />
-              <label htmlFor="select-all-on-page" className="text-sm text-slate-600 dark:text-slate-400">
-                Select all on this page
-              </label>
-            </div>
           )}
           {transactions.map((t, idx) => {
             const showDateHeader = groupByDate && (idx === 0 || transactions[idx - 1].date !== t.date)

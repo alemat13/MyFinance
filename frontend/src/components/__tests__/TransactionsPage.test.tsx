@@ -817,7 +817,7 @@ test('renders a card list instead of a table below the mobile breakpoint', async
   }
 })
 
-test('the mobile card list still offers select-all-on-page', async () => {
+test('the mobile selection bar offers select-all-on-page', async () => {
   const originalMatchMedia = window.matchMedia
   window.matchMedia = ((query: string) => ({
     matches: query === '(max-width: 767px)',
@@ -836,10 +836,18 @@ test('the mobile card list still offers select-all-on-page', async () => {
     await waitFor(() => expect(screen.getByText('Coffee')).toBeInTheDocument())
     expect(screen.queryByRole('table')).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByLabelText('Select all on this page'))
-    expect(screen.getByText('2 selected')).toBeInTheDocument()
+    // Nothing selected yet: the bar, and with it select-all, stays out of the way.
+    expect(screen.queryByLabelText('Select all on this page')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByLabelText('Select transaction Coffee'))
+    expect(screen.getByText('1 selected')).toBeInTheDocument()
 
     fireEvent.click(screen.getByLabelText('Select all on this page'))
+    expect(screen.getByText('2 selected')).toBeInTheDocument()
+    // Everything on the page is selected, so there's nothing left to extend to.
+    expect(screen.queryByLabelText('Select all on this page')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByText('Clear selection'))
     expect(screen.queryByText('Bulk Edit')).not.toBeInTheDocument()
   } finally {
     window.matchMedia = originalMatchMedia
