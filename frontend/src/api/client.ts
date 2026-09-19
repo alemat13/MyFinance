@@ -631,3 +631,48 @@ export async function importDatabase(file: File, mode: BackupImportMode): Promis
   if (!res.ok) throw new Error(await parseErrorMessage(res))
   return res.json()
 }
+
+export type OneDriveFrequency = 'daily' | 'weekly' | 'monthly'
+
+export interface OneDriveSettings {
+  connected: boolean
+  account_email: string | null
+  folder_path: string | null
+  frequency: OneDriveFrequency
+  retention_count: number
+  last_backup_at: string | null
+  last_backup_status: 'success' | 'failed' | null
+  last_backup_error: string | null
+}
+
+export interface OneDriveSettingsUpdate {
+  folder_path: string
+  frequency: OneDriveFrequency
+  retention_count: number
+}
+
+export interface OneDriveBackupRunResult {
+  ran: boolean
+  status: 'success' | 'failed' | null
+  error: string | null
+}
+
+export function fetchOneDriveSettings(): Promise<OneDriveSettings> {
+  return request<OneDriveSettings>('/onedrive/settings')
+}
+
+export function updateOneDriveSettings(data: OneDriveSettingsUpdate): Promise<OneDriveSettings> {
+  return request<OneDriveSettings>('/onedrive/settings', { method: 'PUT', body: JSON.stringify(data) })
+}
+
+export function disconnectOneDrive(): Promise<OneDriveSettings> {
+  return request<OneDriveSettings>('/onedrive/disconnect', { method: 'POST' })
+}
+
+export function runOneDriveBackupNow(): Promise<OneDriveBackupRunResult> {
+  return request<OneDriveBackupRunResult>('/onedrive/backup/run-now', { method: 'POST' })
+}
+
+export function getOneDriveConnectUrl(): string {
+  return `${API_BASE}/onedrive/auth/start`
+}
