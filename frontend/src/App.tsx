@@ -101,6 +101,30 @@ export default function App() {
     patchQueryParams({ view: v === 'dashboard' ? undefined : v })
   }
 
+  // Jumps from a Dashboard account tile to the Transactions view filtered on that
+  // account. TransactionsPage reads its filters from the query string on mount, so
+  // we set account_id (and clear every other simple/advanced filter, which may be
+  // left over from an earlier visit) before switching the view.
+  const navigateToAccountTransactions = (accountId: number) => {
+    patchQueryParams({
+      view: 'transactions',
+      account_id: String(accountId),
+      mode: undefined,
+      q: undefined,
+      date_from: undefined,
+      date_to: undefined,
+      category_id: undefined,
+      amount_min: undefined,
+      amount_max: undefined,
+      reconciled: undefined,
+      match: undefined,
+      conditions: undefined,
+      page: undefined,
+      transaction: undefined,
+    })
+    setView('transactions')
+  }
+
   const handleSelectUser = (userId: number | null) => {
     setSelectedUserId(userId)
     saveSelectedUserId(userId)
@@ -179,7 +203,7 @@ export default function App() {
         </div>
       )}
 
-      {view === 'dashboard' && <Dashboard selectedUserId={selectedUserId} />}
+      {view === 'dashboard' && <Dashboard selectedUserId={selectedUserId} onSelectAccount={navigateToAccountTransactions} />}
       {view === 'accounts' && <AccountsList onBack={() => navigateToView('dashboard')} selectedUserId={selectedUserId} />}
       {view === 'categories' && <CategoriesList onBack={() => navigateToView('dashboard')} />}
       {view === 'transactions' && <TransactionsPage onBack={() => navigateToView('dashboard')} selectedUserId={selectedUserId} />}
