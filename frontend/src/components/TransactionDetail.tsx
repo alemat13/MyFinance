@@ -12,6 +12,7 @@ import CategoryPicker from './CategoryPicker'
 import { useToast } from '../context/ToastContext'
 import { validateTransactionForm, ACCOUNTING_MONTH_OFFSETS, accountingMonthLabel } from '../utils/transactions'
 import { resolveDefaultSplitRows } from '../utils/splitWeights'
+import { formatServerTimestamp } from '../utils/datetime'
 import { categoryNameFor } from '../utils/categoryDisplay'
 import { Modal, Button, Input, Select, StatusMessage, ConfirmDialog, Badge } from './ui'
 
@@ -297,7 +298,7 @@ export default function TransactionDetail({
                       <Badge variant={historyBadgeVariant(h.action)}>
                         {h.action}{h.source === 'csv_import' ? ' · CSV' : ''}
                       </Badge>
-                      <span className="text-slate-500 dark:text-slate-400">{new Date(h.changed_at).toLocaleString()}</span>
+                      <span className="text-slate-500 dark:text-slate-400">{formatServerTimestamp(h.changed_at)}</span>
                       <span className="text-slate-500 dark:text-slate-400">by {h.changed_by_user_name ?? 'Unknown user'}</span>
                       {h.changes && (
                         <span className="text-slate-700 dark:text-slate-200">{describeHistoryChanges(h.changes, allUsers, categories)}</span>
