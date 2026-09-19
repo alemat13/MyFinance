@@ -358,7 +358,9 @@ from the list as soon as the change applies, since they no longer match the filt
 
 Select multiple transactions using the checkboxes in the results table — a checkbox
 in the header selects or deselects every transaction currently shown on the page
-(selection is per-page; it doesn't carry over when you change page or filters). Once
+(selection is per-page; it doesn't carry over when you change page or filters). On a
+phone, where the list is a stack of cards rather than a table, that same **Select all
+on this page** checkbox sits on its own line just above the first card. Once
 at least one row is selected, a bar appears above the table showing how many are
 selected, with **Bulk Edit**, **Delete selected**, and **Clear selection** buttons.
 

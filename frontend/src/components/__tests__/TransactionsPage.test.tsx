@@ -816,3 +816,32 @@ test('renders a card list instead of a table below the mobile breakpoint', async
     window.matchMedia = originalMatchMedia
   }
 })
+
+test('the mobile card list still offers select-all-on-page', async () => {
+  const originalMatchMedia = window.matchMedia
+  window.matchMedia = ((query: string) => ({
+    matches: query === '(max-width: 767px)',
+    media: query,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  })) as unknown as typeof window.matchMedia
+
+  try {
+    mockSearchTransactions.mockResolvedValue(searchResult(twoTxns))
+    mockFetchAccounts.mockResolvedValue([baseAccount])
+    mockFetchCategories.mockResolvedValue([baseCategory])
+
+    renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+
+    await waitFor(() => expect(screen.getByText('Coffee')).toBeInTheDocument())
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByLabelText('Select all on this page'))
+    expect(screen.getByText('2 selected')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByLabelText('Select all on this page'))
+    expect(screen.queryByText('Bulk Edit')).not.toBeInTheDocument()
+  } finally {
+    window.matchMedia = originalMatchMedia
+  }
+})

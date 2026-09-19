@@ -535,6 +535,21 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
           {transactions.length === 0 && (
             <div className="text-center py-5 text-sm text-slate-400">No transactions match your filters</div>
           )}
+          {transactions.length > 0 && (
+            // The desktop table puts this in its header row; the card list has no
+            // header, so it gets its own line above the cards.
+            <div className="flex items-center gap-2 px-1">
+              <input
+                id="select-all-on-page"
+                type="checkbox"
+                checked={allSelected}
+                onChange={toggleSelectAll}
+              />
+              <label htmlFor="select-all-on-page" className="text-sm text-slate-600 dark:text-slate-400">
+                Select all on this page
+              </label>
+            </div>
+          )}
           {transactions.map((t, idx) => {
             const showDateHeader = groupByDate && (idx === 0 || transactions[idx - 1].date !== t.date)
             const myShare = showMyColumns ? myShareFor(t, selectedUserId!) : null
