@@ -19,6 +19,7 @@ from routers import (
     charts,
     dashboard,
     imports,
+    onedrive,
     split_weights,
     transactions,
     users,
@@ -99,5 +100,6 @@ app.include_router(split_weights.router)
 app.include_router(balances.router)
 app.include_router(imports.router)
 app.include_router(backup.router)
+app.include_router(onedrive.router)
 app.include_router(dashboard.router)
 app.include_router(charts.router)

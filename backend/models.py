@@ -176,6 +176,28 @@ class AggregateCache(Base):
     computed_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 
+class OneDriveBackupSettings(Base):
+    """Single global connection (one OneDrive account for the whole
+    household DB, not per-user) driving scheduled backup uploads — see
+    onedrive.py. Always exactly one row, id=1 (get_or_create'd there).
+    Token columns are Fernet-encrypted at rest and never serialized by the
+    API (see schemas.OneDriveSettingsOut)."""
+    __tablename__ = "onedrive_backup_settings"
+
+    id = Column(Integer, primary_key=True)
+    connected = Column(Boolean, nullable=False, default=False)
+    account_email = Column(String, nullable=True)
+    folder_path = Column(String, nullable=True)
+    frequency = Column(String(20), nullable=False, default="daily")  # 'daily' | 'weekly' | 'monthly'
+    retention_count = Column(Integer, nullable=False, default=30)
+    access_token_encrypted = Column(Text, nullable=True)
+    refresh_token_encrypted = Column(Text, nullable=True)
+    token_expires_at = Column(DateTime, nullable=True)
+    last_backup_at = Column(DateTime, nullable=True)
+    last_backup_status = Column(String(20), nullable=True)  # 'success' | 'failed'
+    last_backup_error = Column(Text, nullable=True)
+
+
 class TransactionHistory(Base):
     __tablename__ = "transaction_history"
 

@@ -7,3 +7,4 @@ psycopg[binary]==3.3.5
 pytest==9.1.1
 httpx==0.28.1
 python-multipart==0.0.32
+cryptography==44.0.0

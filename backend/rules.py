@@ -104,6 +104,16 @@ def validate_not_divide_sibling(transaction) -> None:
         raise RuleViolation("This transaction is already part of a divided transaction; edit or divide the original part instead")
 
 
+def validate_onedrive_folder_path(folder_path: str) -> None:
+    if not folder_path or not folder_path.strip():
+        raise RuleViolation("Folder path cannot be empty")
+
+
+def validate_onedrive_retention_count(retention_count: int) -> None:
+    if not (1 <= retention_count <= 365):
+        raise RuleViolation("Retention count must be between 1 and 365")
+
+
 def validate_category_hierarchy(db: Session, category: Category | None, parent_id: int | None, type_: str) -> None:
     """Enforces the 2-level category hierarchy: a category may have a parent,
     but that parent must itself be top-level, and a subcategory's type must

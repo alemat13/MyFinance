@@ -3,6 +3,7 @@ import { BackupImportMode, ImportSummary, exportDatabase, importDatabase } from 
 import { useToast } from '../context/ToastContext'
 import { downloadBlob } from '../utils/download'
 import { Button, Card, Input, Select, ConfirmDialog, BackButton } from './ui'
+import OneDriveBackupCard from './OneDriveBackupCard'
 
 interface Props {
   onBack: () => void
@@ -79,6 +80,8 @@ export default function BackupPage({ onBack }: Props) {
           {exporting ? 'Exporting...' : 'Export Backup'}
         </Button>
       </Card>
+
+      <OneDriveBackupCard />
 
       <Card className="p-3 max-w-md">
         <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100 mb-1">Import</h3>

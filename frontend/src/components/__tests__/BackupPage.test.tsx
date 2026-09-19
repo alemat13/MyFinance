@@ -3,14 +3,16 @@ import { screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { renderWithProviders } from '../../test-utils'
 import BackupPage from '../BackupPage'
 
-const { mockExportDatabase, mockImportDatabase } = vi.hoisted(() => ({
+const { mockExportDatabase, mockImportDatabase, mockFetchOneDriveSettings } = vi.hoisted(() => ({
   mockExportDatabase: vi.fn(),
   mockImportDatabase: vi.fn(),
+  mockFetchOneDriveSettings: vi.fn(),
 }))
 
 vi.mock('../../api/client', () => ({
   exportDatabase: mockExportDatabase,
   importDatabase: mockImportDatabase,
+  fetchOneDriveSettings: mockFetchOneDriveSettings,
 }))
 
 const { mockDownloadBlob } = vi.hoisted(() => ({
@@ -36,6 +38,7 @@ function selectFile(name = 'backup.zip') {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mockFetchOneDriveSettings.mockReturnValue(new Promise(() => {}))
 })
 
 test('export downloads a backup blob', async () => {

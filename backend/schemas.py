@@ -656,6 +656,34 @@ class DatabaseExport(BaseModel):
     transaction_history: list[TransactionHistoryExport] = []
 
 
+# ── OneDrive automatic backup connection ──────────────────────────
+# A single global connection (see models.OneDriveBackupSettings); token
+# columns are never exposed here.
+
+class OneDriveSettingsOut(BaseModel):
+    connected: bool
+    account_email: str | None = None
+    folder_path: str | None = None
+    frequency: Literal["daily", "weekly", "monthly"]
+    retention_count: int
+    last_backup_at: datetime | None = None
+    last_backup_status: Literal["success", "failed"] | None = None
+    last_backup_error: str | None = None
+    model_config = ConfigDict(from_attributes=True)
+
+
+class OneDriveSettingsUpdate(BaseModel):
+    folder_path: str
+    frequency: Literal["daily", "weekly", "monthly"]
+    retention_count: int
+
+
+class OneDriveBackupRunResult(BaseModel):
+    ran: bool
+    status: Literal["success", "failed"] | None = None
+    error: str | None = None
+
+
 class ImportSummary(BaseModel):
     mode: Literal["overwrite", "append"]
     users: int

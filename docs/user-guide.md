@@ -466,6 +466,28 @@ split too. Like any newly-created transaction, every imported row starts out
   - **Append** adds the backup's data alongside what's already there, and also asks
     for confirmation first.
 
+### OneDrive Automatic Backup
+
+Connects a OneDrive account so a backup (the same archive **Export Backup** produces) is
+uploaded automatically on a schedule, without you having to remember to export one
+yourself. There's no restore-from-OneDrive feature — if you ever need to restore one of
+these backups, download it from OneDrive yourself and use **Import Backup** above, same
+as any other backup file.
+
+- **Connect OneDrive** starts a Microsoft sign-in flow; once approved, the connected
+  account's email is shown.
+- **Folder path** is where backups are uploaded (e.g. `/MyFinance Backups`) — it's
+  created automatically if it doesn't already exist.
+- **Frequency** is Daily, Weekly, or Monthly.
+- **Keep last** sets how many backup files to retain in the folder — older ones beyond
+  this count are deleted automatically after each successful backup.
+- **Backup Now** runs a backup immediately, without waiting for the schedule — useful to
+  confirm the connection and folder are working.
+- The last backup's time and outcome (success or failed, with an error message) are
+  shown once connected.
+- **Disconnect** stops future scheduled backups and forgets the connection. It doesn't
+  delete any backup files already uploaded to OneDrive.
+
 ## Charts
 
 Visual summaries of spending and income. This screen requires a specific user to be
@@ -506,6 +528,8 @@ A quick reference for the rules the app enforces:
 | A subcategory's type must match its parent's, and only 2 levels of categories are allowed | Categories |
 | Can't delete a user who still owns a share of an account | Users |
 | Can't delete a user who's the only person in some transaction's split, unless another user has a fallback weight to re-split it with | Users |
+| OneDrive backup folder path can't be empty | Backup & Restore (OneDrive) |
+| OneDrive backup "Keep last" count must be between 1 and 365 | Backup & Restore (OneDrive) |
 
 Split-weight prefill priority, from highest to lowest: a transaction's **category**
 weight beats its **account** weight, which beats the household's **global** weight.
