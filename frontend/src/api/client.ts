@@ -676,3 +676,79 @@ export function runOneDriveBackupNow(): Promise<OneDriveBackupRunResult> {
 export function getOneDriveConnectUrl(): string {
   return `${API_BASE}/onedrive/auth/start`
 }
+
+// ── Bank sync (Enable Banking) ────────────────────────────────────────
+
+export interface BankInstitution {
+  name: string
+  country: string
+  logo: string | null
+}
+
+export interface BankAccountLink {
+  id: number
+  connection_id: number
+  iban: string | null
+  remote_name: string | null
+  currency: string | null
+  account_id: number | null
+  account_name: string | null
+  sync_enabled: boolean
+  sync_from_date: string | null
+  last_synced_at: string | null
+  last_sync_status: 'success' | 'failed' | null
+  last_sync_error: string | null
+  last_imported_count: number
+}
+
+export interface BankConnection {
+  id: number
+  aspsp_name: string
+  aspsp_country: string
+  status: 'pending' | 'linked' | 'expired' | 'error'
+  access_valid_until: string | null
+  created_at: string | null
+  last_error: string | null
+  accounts: BankAccountLink[]
+}
+
+export interface BankAccountLinkUpdate {
+  account_id: number | null
+  sync_enabled: boolean
+  sync_from_date?: string | null
+}
+
+export interface BankSyncRunResult {
+  ran: boolean
+  synced_links: number
+  created_count: number
+  status: 'success' | 'failed' | null
+  error: string | null
+}
+
+export function fetchBankInstitutions(country = 'FR'): Promise<BankInstitution[]> {
+  return request<BankInstitution[]>(`/bank-sync/institutions?country=${country}`)
+}
+
+export function fetchBankConnections(): Promise<BankConnection[]> {
+  return request<BankConnection[]>('/bank-sync/connections')
+}
+
+export function createBankConnection(aspspName: string, country = 'FR'): Promise<{ connection_id: number; authorization_url: string }> {
+  return request<{ connection_id: number; authorization_url: string }>('/bank-sync/connections', {
+    method: 'POST',
+    body: JSON.stringify({ aspsp_name: aspspName, aspsp_country: country, language: 'fr' }),
+  })
+}
+
+export function deleteBankConnection(id: number): Promise<void> {
+  return request<void>(`/bank-sync/connections/${id}`, { method: 'DELETE' })
+}
+
+export function updateBankAccountLink(id: number, data: BankAccountLinkUpdate): Promise<BankAccountLink> {
+  return request<BankAccountLink>(`/bank-sync/links/${id}`, { method: 'PUT', body: JSON.stringify(data) })
+}
+
+export function syncBankAccountLink(id: number): Promise<BankSyncRunResult> {
+  return request<BankSyncRunResult>(`/bank-sync/links/${id}/sync`, { method: 'POST' })
+}

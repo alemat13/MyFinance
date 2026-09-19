@@ -14,9 +14,10 @@ people *using* the app to track household finances — for schema/database detai
 6. [Users](#users)
 7. [Split Weights](#split-weights)
 8. [Import CSV](#import-csv)
-9. [Backup & Restore](#backup--restore)
-10. [Charts](#charts)
-11. [Appendix: Validation Rules & Tips](#appendix-validation-rules--tips)
+9. [Bank Sync](#bank-sync)
+10. [Backup & Restore](#backup--restore)
+11. [Charts](#charts)
+12. [Appendix: Validation Rules & Tips](#appendix-validation-rules--tips)
 
 ## Getting Started
 
@@ -41,7 +42,7 @@ Every screen shares the same header:
 
 MyFinance shows four primary destinations — **Dashboard**, **Transactions**,
 **Accounts**, and **Charts** — plus a **More** button for everything else (Categories,
-Users, Split Weights, Import CSV, Backup & Restore, and Help). On a phone, the primary
+Users, Split Weights, Import CSV, Bank Sync, Backup & Restore, and Help). On a phone, the primary
 destinations sit in a tab bar fixed to the bottom of the screen and **More** opens a
 sheet that slides up from the bottom; on a wider screen, the same buttons sit in a bar
 under the header, with **More** opening a panel from the right instead. Either way, the
@@ -479,6 +480,52 @@ same way as a manually-entered transaction's: the category > account > global ca
 described in [Split Weights](#split-weights), since imported transactions must be
 split too. Like any newly-created transaction, every imported row starts out
 **unreconciled** — see [Reconciling transactions](#reconciling-transactions).
+
+## Bank Sync
+
+Connects a bank directly so its transactions arrive on their own, instead of exporting a
+CSV and importing it by hand. It covers any bank reachable through open banking, which in
+practice means current accounts and cards — a life-insurance or brokerage contract is not
+a payment account and can't be connected this way.
+
+**Connecting a bank.** Pick your bank from the list and press **Connect**. You're sent to
+your bank's own site to log in and approve access; MyFinance never sees your banking
+credentials. When you come back, the bank appears on this screen with every account the
+approval covers.
+
+**Linking an account.** A connected bank account does nothing until you tell it which
+MyFinance account it feeds, using the **Feeds MyFinance account** dropdown. Only one bank
+account may feed a given MyFinance account, and archived accounts can't be picked.
+**Import from** sets how far back the first sync reaches — it defaults to the day you
+link the account, so connecting a bank doesn't re-import years of history you already
+entered another way. Move it earlier if you do want older transactions.
+
+**Syncing.** Once linked, an account syncs on its own a few times a day, and **Sync now**
+runs one immediately. Each sync also re-reads the last few days, so a transaction your
+bank posted late still gets picked up. Re-reading never creates duplicates: MyFinance
+remembers the identifier the bank gave each transaction. Transactions that were already
+in MyFinance before you connected the bank are left alone too, matched on their date and
+amount. The last sync's result — how many transactions came in, or what went wrong — is
+shown under each account.
+
+**What an imported transaction looks like.** It arrives with the bank's own date, label
+and amount, **no category**, and a split resolved through the usual account > global
+cascade described in [Split Weights](#split-weights). Categorize it exactly as you would
+a transaction you typed yourself. Like any new transaction it starts out
+**unreconciled** — see [Reconciling transactions](#reconciling-transactions) — and it
+shows up in the [History](#adding-or-editing-a-transaction) panel as having come from a
+bank sync.
+
+**Consent expiry.** Banks grant access for a limited time, typically 90 days. The screen
+shows the expiry date for each bank and warns you in the last week. To renew it, connect
+the same bank again — your account links and sync history are preserved.
+
+**Disconnecting.** **Disconnect** revokes the access at your bank and stops future syncs.
+Transactions already imported stay exactly where they are; they're ordinary MyFinance
+transactions.
+
+Note that restoring a backup in **Overwrite** mode clears bank connections, so you'll
+need to connect your banks again afterwards.
 
 ## Backup & Restore
 
