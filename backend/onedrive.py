@@ -182,16 +182,20 @@ def upload_backup(access_token: str, folder_path: str, filename: str, content: b
 
 
 def apply_retention(access_token: str, folder_path: str, retention_count: int) -> None:
+    # No $orderby here: personal/consumer OneDrive's Graph API (unlike OneDrive
+    # for Business) rejects it on this endpoint with a 400 "notSupported" error
+    # — sort client-side instead.
     path = folder_path.strip("/")
     response = httpx.get(
         f"{GRAPH_BASE}/me/drive/root:/{path}:/children",
         headers=_auth_header(access_token),
-        params={"$orderby": "createdDateTime desc", "$select": "id,name,createdDateTime"},
+        params={"$select": "id,name,createdDateTime"},
         timeout=30.0,
     )
     if response.status_code != 200:
         raise OneDriveError(f"Failed to list OneDrive backup folder ({response.status_code}): {response.text}")
     items = [item for item in response.json().get("value", []) if item.get("name", "").startswith("myfinance-backup-")]
+    items.sort(key=lambda item: item.get("createdDateTime", ""), reverse=True)
     for item in items[retention_count:]:
         delete = httpx.delete(f"{GRAPH_BASE}/me/drive/items/{item['id']}", headers=_auth_header(access_token), timeout=30.0)
         if delete.status_code not in (200, 204, 404):
