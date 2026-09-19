@@ -1,4 +1,5 @@
 import { CheckCircle2, XCircle, X } from 'lucide-react'
+import { cn } from '../../lib/utils'
 
 export type ToastVariant = 'error' | 'success'
 
@@ -22,12 +23,17 @@ export function ToastStack({ toasts, onDismiss }: ToastStackProps) {
   if (toasts.length === 0) return null
 
   return (
-    <div className="fixed bottom-4 right-4 z-[1100] flex flex-col gap-2 w-80 max-w-[calc(100vw-2rem)]">
+    // Top banner on mobile (clear of the fixed bottom nav, and reachable
+    // without a thumb-stretch); bottom-right stack on desktop, as before.
+    <div className="fixed z-[1100] flex flex-col gap-2 inset-x-3 top-3 pt-safe md:inset-x-auto md:top-auto md:pt-0 md:bottom-4 md:right-4 md:w-80 max-w-[calc(100vw-1.5rem)] md:max-w-[calc(100vw-2rem)]">
       {toasts.map(t => (
         <div
           key={t.id}
           role="alert"
-          className={`flex items-start gap-2 rounded-lg border-l-4 px-3 py-2 shadow-lg text-sm ${variantStyles[t.variant]}`}
+          className={cn(
+            'flex items-start gap-2 rounded-lg border-l-4 px-3 py-2 shadow-lg text-sm',
+            variantStyles[t.variant]
+          )}
         >
           {t.variant === 'error' ? (
             <XCircle size={18} className="shrink-0 mt-0.5" />

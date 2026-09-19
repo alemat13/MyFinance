@@ -10,11 +10,12 @@ import TransactionDetail from './TransactionDetail'
 import BulkEditModal from './BulkEditModal'
 import CategoryPicker from './CategoryPicker'
 import ExportMenu from './ExportMenu'
-import { Button, IconButton, Input, Select, Table, Thead, Tbody, Tr, Th, Td, StatusMessage, CategoryBadge, BackButton, ConfirmDialog } from './ui'
+import { Button, IconButton, Input, Select, Table, Thead, Tbody, Tr, Th, Td, StatusMessage, CategoryBadge, BackButton, ConfirmDialog, Card } from './ui'
 import { formatMoney } from '../utils/currency'
 import { getParam, patchQueryParams } from '../utils/urlState'
 import { myShareFor, balanceFor, formatDateGroupHeader } from '../utils/transactions'
 import { useToast } from '../context/ToastContext'
+import { useIsMobile } from '../hooks/useMediaQuery'
 import { buildCsv } from '../utils/csv'
 import { buildXlsxBlob } from '../utils/xlsx'
 import { downloadBlob } from '../utils/download'
@@ -161,6 +162,7 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
   const [total, setTotal] = useState(0)
   const [totalPages, setTotalPages] = useState(1)
   const { showToast } = useToast()
+  const isMobile = useIsMobile()
 
   const loadMeta = () => {
     Promise.all([
@@ -528,7 +530,80 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
         </div>
       )}
 
-      {!loading && (
+      {!loading && isMobile && (
+        <div className="space-y-2">
+          {transactions.length === 0 && (
+            <div className="text-center py-5 text-sm text-slate-400">No transactions match your filters</div>
+          )}
+          {transactions.map((t, idx) => {
+            const showDateHeader = groupByDate && (idx === 0 || transactions[idx - 1].date !== t.date)
+            const myShare = showMyColumns ? myShareFor(t, selectedUserId!) : null
+            const balance = showMyColumns ? balanceFor(t, selectedUserId!, allAccounts) : null
+            return (
+              <Fragment key={t.id}>
+                {showDateHeader && (
+                  <div className="pt-2 pb-0.5 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                    {formatDateGroupHeader(t.date)}
+                  </div>
+                )}
+                <Card
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => openDetail(t.id)}
+                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDetail(t.id) } }}
+                  className={`p-3 cursor-pointer ${t.reconciled ? 'opacity-60' : ''}`}
+                >
+                  <div className="flex items-start gap-2">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(t.id)}
+                      onChange={() => toggleSelected(t.id)}
+                      onClick={e => e.stopPropagation()}
+                      aria-label={`Select transaction ${t.payee}`}
+                      className="mt-1.5 shrink-0"
+                    />
+                    <IconButton
+                      aria-label={t.reconciled ? `Mark ${t.payee} as unreconciled` : `Mark ${t.payee} as reconciled`}
+                      onClick={e => { e.stopPropagation(); toggleReconciled(t) }}
+                      className="p-0.5 mt-0.5 shrink-0"
+                    >
+                      {t.reconciled
+                        ? <CheckCircle2 size={16} className="text-positive" />
+                        : <Circle size={16} className="text-slate-300 dark:text-slate-600" />}
+                    </IconButton>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between gap-2">
+                        <span className="font-medium text-slate-900 dark:text-slate-100 truncate">{t.payee}</span>
+                        <span className={`shrink-0 font-semibold ${t.amount >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                          {formatMoney(t.amount, t.currency)}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-2 mt-1">
+                        <CategoryBadge name={t.category_name} color={t.category_color} icon={t.category_icon} />
+                        <span className="text-xs text-slate-500 dark:text-slate-400 truncate">{t.account_name}</span>
+                      </div>
+                      {showMyColumns && (
+                        <div className="flex justify-between gap-2 text-xs text-slate-500 dark:text-slate-400 mt-1.5">
+                          <span>My share: <span className={myShare! >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}>{formatMoney(myShare!, t.currency)}</span></span>
+                          <span>Balance: <span className={balance! >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}>{formatMoney(balance!, t.currency)}</span></span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </Card>
+              </Fragment>
+            )
+          })}
+          {transactions.length > 0 && (
+            <div className="flex justify-between text-sm font-semibold pt-2 mt-1 border-t-2 border-slate-300 dark:border-slate-600">
+              <span>Total</span>
+              <span>{sumByCurrency(t => t.amount)}</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {!loading && !isMobile && (
         <Table>
           <Thead>
             <Tr>

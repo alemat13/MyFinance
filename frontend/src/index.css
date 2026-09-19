@@ -18,3 +18,17 @@
     font-family: var(--font-sans);
   }
 }
+
+@layer utilities {
+  /* Padding that clears a fixed bottom bar plus the home-indicator/safe-area
+     inset on notched phones, so content never sits under either. */
+  .pb-bottom-nav {
+    padding-bottom: calc(4.25rem + env(safe-area-inset-bottom));
+  }
+  .pt-safe {
+    padding-top: env(safe-area-inset-top);
+  }
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
