@@ -65,7 +65,11 @@ The Dashboard is the home screen and gives an at-a-glance summary:
   (green if the household owes them, red if they owe the household), grouped by
   currency for households with accounts in more than one currency.
 - **Account cards** — one card per visible account, showing its name, type, and current
-  balance (colored green for positive, red for negative).
+  balance (colored green for positive, red for negative). Clicking a card (or focusing
+  it and pressing Enter or Space) jumps to the **Transactions** screen with the account
+  filter already set to that account, so you go straight from a balance to the
+  transactions behind it. Any filter left over from an earlier visit to Transactions is
+  cleared, so you see that account and nothing else.
 - **Recent transactions** — the last 10 transactions across your visible accounts,
   showing date, payee, category, account, amount, and memo if present. Category is
   shown as a colored icon badge (or a gray "Uncategorized" badge if none is set), not

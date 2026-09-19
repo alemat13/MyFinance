@@ -13,7 +13,12 @@ vi.mock('../api/client', () => ({
 }))
 
 vi.mock('../components/Dashboard', () => ({
-  default: () => <div>DashboardStub</div>,
+  default: (props: { onSelectAccount?: (accountId: number) => void }) => (
+    <div>
+      DashboardStub
+      <button onClick={() => props.onSelectAccount?.(7)}>AccountTile</button>
+    </div>
+  ),
 }))
 vi.mock('../components/AccountsList', () => ({
   default: () => <div>AccountsListStub</div>,
@@ -96,6 +101,35 @@ test('navigating back to dashboard removes the view param', async () => {
 
   expect(screen.getByText('DashboardStub')).toBeInTheDocument()
   expect(window.location.search).toBe('')
+})
+
+test('clicking a dashboard account tile opens the transactions view filtered on that account', async () => {
+  localStorage.setItem('userChoiceMade', '1')
+  renderApp()
+  await waitFor(() => expect(screen.getByText('DashboardStub')).toBeInTheDocument())
+
+  fireEvent.click(screen.getByText('AccountTile'))
+
+  expect(screen.getByText('TransactionsPageStub')).toBeInTheDocument()
+  const params = new URLSearchParams(window.location.search)
+  expect(params.get('view')).toBe('transactions')
+  expect(params.get('account_id')).toBe('7')
+})
+
+test('a dashboard account tile clears filters left over from an earlier transactions visit', async () => {
+  localStorage.setItem('userChoiceMade', '1')
+  window.history.replaceState(null, '', '/?q=coffee&category_id=3&mode=advanced&page=4')
+  renderApp()
+  await waitFor(() => expect(screen.getByText('DashboardStub')).toBeInTheDocument())
+
+  fireEvent.click(screen.getByText('AccountTile'))
+
+  const params = new URLSearchParams(window.location.search)
+  expect(params.get('account_id')).toBe('7')
+  expect(params.get('q')).toBeNull()
+  expect(params.get('category_id')).toBeNull()
+  expect(params.get('mode')).toBeNull()
+  expect(params.get('page')).toBeNull()
 })
 
 test('shows a mandatory first-launch prompt when no user has been chosen yet, and picking one dismisses it', async () => {
