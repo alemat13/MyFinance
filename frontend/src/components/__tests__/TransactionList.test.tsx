@@ -71,6 +71,29 @@ test('shows a Shared badge with the user\'s share for a transaction on an accoun
   expect(screen.getByText(/40/)).toBeInTheDocument()
 })
 
+test('renders a card list instead of a table below the mobile breakpoint', () => {
+  const originalMatchMedia = window.matchMedia
+  window.matchMedia = ((query: string) => ({
+    matches: query === '(max-width: 767px)',
+    media: query,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  })) as unknown as typeof window.matchMedia
+
+  try {
+    const transactions = [
+      { id: 1, date: '2026-01-15', payee: 'Coffee', memo: null, amount: -5, account_id: 1, account_name: 'Checking', currency: 'USD', category_id: 1, category_name: 'Salary', accounting_month_offset: 0, accounting_month: '2026-01', reconciled: false, divide_group_id: null, splits: [] },
+    ]
+
+    render(<TransactionList transactions={transactions} />)
+
+    expect(screen.getByText('Coffee')).toBeInTheDocument()
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+  } finally {
+    window.matchMedia = originalMatchMedia
+  }
+})
+
 test('does not show a Shared badge for a transaction on an account the selected user owns', () => {
   const transactions = [
     {

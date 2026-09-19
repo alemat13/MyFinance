@@ -85,11 +85,12 @@ The Dashboard is the home screen and gives an at-a-glance summary:
   transactions behind it. Any filter left over from an earlier visit to Transactions is
   cleared, so you see that account and nothing else.
 - **Recent transactions** — the last 10 transactions across your visible accounts,
-  showing date, payee, category, account, amount, and memo if present. Category is
-  shown as a colored icon badge (or a gray "Uncategorized" badge if none is set), not
-  just a plain label. A transaction split between multiple people shows a "Shared ·
-  your share: $X" badge when a specific user is selected, so you can tell at a glance
-  what your actual liability is versus the transaction's full amount.
+  showing date, payee, category, account, amount, and memo if present, as a table on
+  wider screens or a list of cards on a phone. Category is shown as a colored icon
+  badge (or a gray "Uncategorized" badge if none is set), not just a plain label. A
+  transaction split between multiple people shows a "Shared · your share: $X" badge
+  when a specific user is selected, so you can tell at a glance what your actual
+  liability is versus the transaction's full amount.
 
 ## Accounts
 
