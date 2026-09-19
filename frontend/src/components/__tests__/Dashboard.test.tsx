@@ -1,5 +1,5 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import Dashboard from '../Dashboard'
 
 const { mockFetchDashboard } = vi.hoisted(() => ({
@@ -66,4 +66,20 @@ test('renders the balance widget when balances are present', async () => {
   await waitFor(() => {
     expect(screen.getByText(/Alex owes Olivia/)).toBeInTheDocument()
   })
+})
+
+test('clicking an account tile calls onSelectAccount with that account id', async () => {
+  const onSelectAccount = vi.fn()
+  mockFetchDashboard.mockResolvedValue({
+    accounts: [{ id: 7, name: 'Joint Checking', type: 'Checking', balance: 100, currency: 'EUR', created_at: '2026-01-01', users: [] }],
+    recent_transactions: [],
+    balances: [],
+  })
+
+  render(<Dashboard selectedUserId={null} onSelectAccount={onSelectAccount} />)
+
+  await waitFor(() => expect(screen.getByRole('heading', { name: 'Joint Checking' })).toBeInTheDocument())
+  fireEvent.click(screen.getByRole('button', { name: 'View transactions for Joint Checking' }))
+
+  expect(onSelectAccount).toHaveBeenCalledWith(7)
 })

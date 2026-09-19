@@ -127,3 +127,30 @@ test.describe('Users CRUD', () => {
     await expect(page.locator('tbody tr').filter({ hasText: renamed })).toHaveCount(0)
   })
 })
+
+test.describe('Dashboard account tiles', () => {
+  // Seeded data (backend/seed.py): accounts "Joint Checking" and "Personal Savings",
+  // both with transactions of their own.
+  test('clicking an account tile opens the transactions view filtered on that account', async ({ page }) => {
+    await page.goto('/')
+
+    await page.getByRole('button', { name: 'View transactions for Personal Savings' }).click()
+
+    await expect(page).toHaveURL(/view=transactions/)
+    await expect(page).toHaveURL(/account_id=\d+/)
+    await expect(page.getByRole('heading', { name: 'Transactions' })).toBeVisible()
+
+    // The simple-filter account dropdown reflects the tile that was clicked...
+    const accountFilter = page.getByRole('combobox').filter({ hasText: 'Personal Savings' })
+    await expect(accountFilter).toHaveCount(1)
+
+    // ...and every listed transaction belongs to it.
+    const rows = page.locator('tbody tr[role="button"]')
+    await expect(rows.first()).toBeVisible()
+    const count = await rows.count()
+    for (let i = 0; i < count; i++) {
+      await expect(rows.nth(i)).toContainText('Personal Savings')
+    }
+    await expect(page.locator('tbody tr[role="button"]', { hasText: 'Joint Checking' })).toHaveCount(0)
+  })
+})

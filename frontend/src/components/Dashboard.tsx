@@ -7,9 +7,10 @@ import BalanceWidget from './BalanceWidget'
 
 interface Props {
   selectedUserId: number | null
+  onSelectAccount?: (accountId: number) => void
 }
 
-export default function Dashboard({ selectedUserId }: Props) {
+export default function Dashboard({ selectedUserId, onSelectAccount }: Props) {
   const [data, setData] = useState<DashboardData | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -31,7 +32,7 @@ export default function Dashboard({ selectedUserId }: Props) {
       <BalanceWidget balances={data.balances} />
       <div className="flex flex-wrap mb-8">
         {data.accounts.map(acc => (
-          <AccountCard key={acc.id} account={acc} />
+          <AccountCard key={acc.id} account={acc} onSelect={onSelectAccount} />
         ))}
       </div>
       <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-3">Recent Transactions</h2>
