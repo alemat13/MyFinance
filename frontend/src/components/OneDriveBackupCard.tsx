@@ -9,6 +9,7 @@ import {
   updateOneDriveSettings,
 } from '../api/client'
 import { useToast } from '../context/ToastContext'
+import { formatServerTimestamp } from '../utils/datetime'
 import { getParam, patchQueryParams } from '../utils/urlState'
 import { Button, Card, ConfirmDialog, Input, Select, StatusMessage } from './ui'
 
@@ -155,7 +156,7 @@ export default function OneDriveBackupCard() {
 
           {settings.last_backup_at && (
             <p className="text-[13px] text-slate-500 dark:text-slate-400">
-              Last backup: {new Date(settings.last_backup_at).toLocaleString()} —{' '}
+              Last backup: {formatServerTimestamp(settings.last_backup_at)} —{' '}
               <span className={settings.last_backup_status === 'failed' ? 'text-red-500' : 'text-green-600 dark:text-green-400'}>
                 {settings.last_backup_status}
               </span>
