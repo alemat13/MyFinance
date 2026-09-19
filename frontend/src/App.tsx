@@ -1,12 +1,11 @@
 import { useEffect, useState } from 'react'
-import {
-  LayoutDashboard, Wallet, Tags, ArrowLeftRight, Users as UsersIcon,
-  Scale, Upload, Database, Settings, Sun, Moon, BarChart3, HelpCircle,
-} from 'lucide-react'
+import { Sun, Moon } from 'lucide-react'
 import { fetchUsers, User } from './api/client'
 import { useTheme } from './context/ThemeContext'
 import { getParam, patchQueryParams } from './utils/urlState'
 import { IconButton, Select } from './components/ui'
+import NavShell from './components/NavShell'
+import { View, viewLabels } from './nav'
 import Dashboard from './components/Dashboard'
 import FirstLaunchUserPrompt from './components/FirstLaunchUserPrompt'
 import AccountsList from './components/AccountsList'
@@ -18,34 +17,6 @@ import CsvImportPage from './components/CsvImportPage'
 import BackupPage from './components/BackupPage'
 import ChartsPage from './components/ChartsPage'
 import HelpPage from './components/HelpPage'
-
-type View = 'dashboard' | 'accounts' | 'categories' | 'transactions' | 'users' | 'split-settings' | 'import' | 'backup' | 'charts' | 'help'
-
-const viewLabels: Record<View, string> = {
-  dashboard: 'Dashboard',
-  accounts: 'Accounts',
-  categories: 'Categories',
-  transactions: 'Transactions',
-  users: 'Users',
-  'split-settings': 'Split Weights',
-  import: 'Import CSV',
-  backup: 'Backup & Restore',
-  charts: 'Charts',
-  help: 'Help',
-}
-
-const viewIcons: Record<View, typeof LayoutDashboard> = {
-  dashboard: LayoutDashboard,
-  accounts: Wallet,
-  categories: Tags,
-  transactions: ArrowLeftRight,
-  users: UsersIcon,
-  'split-settings': Scale,
-  import: Upload,
-  backup: Database,
-  charts: BarChart3,
-  help: HelpCircle,
-}
 
 function loadSelectedUserId(): number | null {
   try {
@@ -82,7 +53,6 @@ function loadInitialView(): View {
 
 export default function App() {
   const [view, setView] = useState<View>(loadInitialView)
-  const [menuOpen, setMenuOpen] = useState(false)
   const [selectedUserId, setSelectedUserId] = useState<number | null>(() => loadSelectedUserId())
   const [users, setUsers] = useState<User[]>([])
   const [usersLoaded, setUsersLoaded] = useState(false)
@@ -138,17 +108,17 @@ export default function App() {
   const selectedUser = users.find(u => u.id === selectedUserId)
 
   return (
-    <div className="min-h-screen p-5 max-w-5xl mx-auto">
+    <div className="min-h-screen p-4 pb-bottom-nav md:p-5 md:pb-5 md:max-w-5xl md:mx-auto">
       {needsFirstLaunchChoice && usersLoaded && (
         <FirstLaunchUserPrompt users={users} loadError={usersLoadError} onChoose={handleFirstLaunchChoice} />
       )}
-      <div className="flex justify-between items-center mb-5">
-        <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100">MyFinance</h1>
+      <div className="flex justify-between items-center gap-3 mb-4 md:mb-3">
+        <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100 shrink-0">MyFinance</h1>
         <div className="flex items-center gap-2">
           <Select
             value={selectedUserId ?? ''}
             onChange={e => handleSelectUser(e.target.value ? parseInt(e.target.value, 10) : null)}
-            className="min-w-[120px]"
+            className="min-w-[110px] md:min-w-[120px]"
           >
             <option value="">All Users</option>
             {users.map(u => (
@@ -158,37 +128,11 @@ export default function App() {
           <IconButton aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'} onClick={toggleTheme}>
             {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
           </IconButton>
-          <div className="relative z-[1001]">
-            <IconButton
-              aria-label="Settings"
-              onClick={() => setMenuOpen(o => !o)}
-              disabled={needsFirstLaunchChoice}
-            >
-              <Settings size={18} />
-            </IconButton>
-            {menuOpen && (
-              <div className="absolute top-full right-0 mt-1 min-w-[180px] overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-lg">
-                {(Object.keys(viewLabels) as View[]).map(v => {
-                  const Icon = viewIcons[v]
-                  return (
-                    <button
-                      key={v}
-                      onClick={() => { navigateToView(v); setMenuOpen(false) }}
-                      className={`flex items-center gap-2 w-full px-4 py-2.5 text-left text-sm cursor-pointer ${
-                        view === v
-                          ? 'bg-slate-100 dark:bg-slate-700 text-slate-900 dark:text-slate-100'
-                          : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/60'
-                      }`}
-                    >
-                      <Icon size={16} />
-                      {viewLabels[v]}
-                    </button>
-                  )
-                })}
-              </div>
-            )}
-          </div>
         </div>
+      </div>
+
+      <div className="mb-4 md:mb-5">
+        <NavShell view={view} onNavigate={navigateToView} disabled={needsFirstLaunchChoice} />
       </div>
 
       {selectedUserId && selectedUser && (
@@ -213,10 +157,6 @@ export default function App() {
       {view === 'backup' && <BackupPage onBack={() => navigateToView('dashboard')} />}
       {view === 'charts' && <ChartsPage onBack={() => navigateToView('dashboard')} selectedUserId={selectedUserId} />}
       {view === 'help' && <HelpPage onBack={() => navigateToView('dashboard')} />}
-
-      {menuOpen && (
-        <div className="fixed inset-0 z-[1000]" onClick={() => setMenuOpen(false)} />
-      )}
     </div>
   )
 }

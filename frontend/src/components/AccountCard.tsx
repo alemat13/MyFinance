@@ -33,7 +33,7 @@ export default function AccountCard({ account, onSelect }: Props) {
 
   return (
     <Card
-      className={`p-4 m-2 min-w-[200px] ${onSelect ? 'cursor-pointer transition-shadow hover:shadow-md hover:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent' : ''}`}
+      className={`p-4 ${onSelect ? 'cursor-pointer transition-shadow hover:shadow-md hover:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent' : ''}`}
       {...interactive}
     >
       <h3 className="font-semibold text-slate-900 dark:text-slate-100 mb-1">{account.name}</h3>

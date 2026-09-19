@@ -791,3 +791,28 @@ test('shows an error toast when the export request fails', async () => {
   })
   expect(mockDownloadBlob).not.toHaveBeenCalled()
 })
+
+test('renders a card list instead of a table below the mobile breakpoint', async () => {
+  const originalMatchMedia = window.matchMedia
+  window.matchMedia = ((query: string) => ({
+    matches: query === '(max-width: 767px)',
+    media: query,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  })) as unknown as typeof window.matchMedia
+
+  try {
+    mockSearchTransactions.mockResolvedValue(searchResult([
+      { id: 1, date: '2026-01-15', payee: 'Coffee', memo: null, amount: -5, account_id: 1, account_name: 'Checking', category_id: 1, category_name: 'Salary', splits: [] },
+    ]))
+    mockFetchAccounts.mockResolvedValue([baseAccount])
+    mockFetchCategories.mockResolvedValue([baseCategory])
+
+    renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+
+    await waitFor(() => expect(screen.getByText('Coffee')).toBeInTheDocument())
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+  } finally {
+    window.matchMedia = originalMatchMedia
+  }
+})

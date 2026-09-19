@@ -30,7 +30,7 @@ export default function Dashboard({ selectedUserId, onSelectAccount }: Props) {
   return (
     <div>
       <BalanceWidget balances={data.balances} />
-      <div className="flex flex-wrap mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-8">
         {data.accounts.map(acc => (
           <AccountCard key={acc.id} account={acc} onSelect={onSelectAccount} />
         ))}
