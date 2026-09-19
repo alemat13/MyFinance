@@ -36,9 +36,24 @@ Every screen shares the same header:
   and balances you see everywhere else. Switching users (or back to "All Users") is
   instant and remembered the next time you open the app.
 - **Theme toggle** — switches between light and dark mode.
-- **Settings menu** (gear icon) — navigates between all the other screens: Accounts,
-  Categories, Transactions, Users, Split Weights, Import CSV, Backup & Restore, and
-  Charts.
+
+### Navigation
+
+MyFinance shows four primary destinations — **Dashboard**, **Transactions**,
+**Accounts**, and **Charts** — plus a **More** button for everything else (Categories,
+Users, Split Weights, Import CSV, Backup & Restore, and Help). On a phone, the primary
+destinations sit in a tab bar fixed to the bottom of the screen and **More** opens a
+sheet that slides up from the bottom; on a wider screen, the same buttons sit in a bar
+under the header, with **More** opening a panel from the right instead. Either way, the
+current screen is reflected in the page URL, so you can bookmark or share a link to a
+specific view.
+
+### Installing MyFinance on your phone
+
+MyFinance can be installed like a native app. On iOS Safari, use **Share → Add to Home
+Screen**; on Android Chrome, use the **Install app** prompt (or **⋮ menu → Install
+app**). Once installed, it opens in its own window without browser address bars or
+tabs, using the icon and name set here.
 
 ### The "Filtering by" banner
 
@@ -51,9 +66,8 @@ to "All Users" without opening the dropdown. When a specific user is selected:
   entitled to a split share, and adds **My share** and **Balance** columns for that
   person (see [Finding transactions](#finding-transactions)).
 
-Every other screen (except Dashboard, which *is* the home screen) has a **Back** link
-to return to the Dashboard, and the current screen is reflected in the page URL — so
-you can bookmark or share a link to a specific view.
+Every other screen (except Dashboard, which *is* the home screen) also has a **Back**
+link to return to the Dashboard.
 
 ## Dashboard
 
@@ -176,12 +190,15 @@ Results can be sorted by any column and paginated (25, 50, or 100 rows per page)
 Your filters, sort order, and page are all kept in the page URL, so you can bookmark
 or share a specific search.
 
-The results table groups transactions by date and can be expanded per-row to show a
-**History** panel: a full audit trail of who created or edited the transaction and
-when, what fields changed, and whether it originated from a CSV import. Changes to
-the transaction's own split weights — set on creation or edited later — are tracked
-here too, shown as each involved user's weight before and after the change, and the
-same applies to reconciled status changes.
+The results are grouped by date. On a phone, they're shown as a list of cards (payee,
+amount, category, account, reconciled toggle, and — when a specific user is selected —
+My share/Balance) instead of the table described below, since an eight-column table
+doesn't fit a narrow screen; on wider screens it's the table. Either way, tapping or
+clicking a transaction opens the same **History** panel: a full audit trail of who
+created or edited the transaction and when, what fields changed, and whether it
+originated from a CSV import. Changes to the transaction's own split weights — set on
+creation or edited later — are tracked here too, shown as each involved user's weight
+before and after the change, and the same applies to reconciled status changes.
 
 When a specific user is selected (not "All Users"), the table adds two columns after
 **Amount**:

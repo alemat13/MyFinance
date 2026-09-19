@@ -81,15 +81,26 @@ test('mounting with ?view=transactions renders TransactionsPage directly', async
   await waitFor(() => expect(screen.getByText('TransactionsPageStub')).toBeInTheDocument())
 })
 
-test('clicking a menu item switches view and updates the URL', async () => {
+test('clicking a primary nav item switches view and updates the URL', async () => {
   localStorage.setItem('userChoiceMade', '1')
   renderApp()
   await waitFor(() => expect(mockFetchUsers).toHaveBeenCalled())
-  fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
-  fireEvent.click(screen.getByText('Transactions'))
+  fireEvent.click(screen.getByRole('button', { name: 'Transactions' }))
 
   expect(screen.getByText('TransactionsPageStub')).toBeInTheDocument()
   expect(window.location.search).toContain('view=transactions')
+})
+
+test('clicking More then a secondary view switches view and closes the sheet', async () => {
+  localStorage.setItem('userChoiceMade', '1')
+  renderApp()
+  await waitFor(() => expect(mockFetchUsers).toHaveBeenCalled())
+  fireEvent.click(screen.getByRole('button', { name: 'More' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Backup & Restore' }))
+
+  expect(screen.getByText('BackupPageStub')).toBeInTheDocument()
+  expect(window.location.search).toContain('view=backup')
+  expect(screen.queryByRole('dialog', { name: 'More' })).not.toBeInTheDocument()
 })
 
 test('navigating back to dashboard removes the view param', async () => {
@@ -169,18 +180,20 @@ test('first-launch prompt cannot be dismissed via Escape', async () => {
   expect(screen.getByText("Who's using MyFinance?")).toBeInTheDocument()
 })
 
-test('the Settings button is disabled while the first-launch prompt is active, so it cannot be used to bypass it', async () => {
+test('the nav is disabled (and hidden from assistive tech behind the modal) while the first-launch prompt is active, so it cannot be used to bypass it', async () => {
   mockFetchUsers.mockResolvedValue([
     { id: 1, name: 'Alice', email: null, created_at: '2026-01-01' },
   ])
   renderApp()
 
   await waitFor(() => expect(screen.getByText("Who's using MyFinance?")).toBeInTheDocument())
-  const settingsButton = screen.getByRole('button', { name: 'Settings' })
-  expect(settingsButton).toBeDisabled()
+  // The rest of the app is marked aria-hidden by the modal while it's open (correct,
+  // stricter a11y behavior than before), so these are queried with {hidden: true}.
+  const transactionsTab = screen.getByRole('button', { name: 'Transactions', hidden: true })
+  expect(transactionsTab).toBeDisabled()
 
-  fireEvent.click(settingsButton)
-  expect(screen.queryByText('Transactions')).not.toBeInTheDocument()
+  fireEvent.click(transactionsTab)
+  expect(screen.queryByText('TransactionsPageStub')).not.toBeInTheDocument()
 })
 
 test('does not show "no users yet" while the user list is still loading', async () => {
