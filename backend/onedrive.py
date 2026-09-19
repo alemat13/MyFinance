@@ -20,7 +20,7 @@ from models import OneDriveBackupSettings
 GRAPH_BASE = "https://graph.microsoft.com/v1.0"
 AUTHORIZE_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
 TOKEN_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
-SCOPE = "Files.ReadWrite offline_access"
+SCOPE = "Files.ReadWrite offline_access User.Read"
 
 # Single global connection, always this row.
 SETTINGS_ID = 1
