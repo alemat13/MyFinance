@@ -10,10 +10,19 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
-      // App data lives entirely behind the API; there's no offline mode to build
-      // here. This just makes the app installable (home-screen icon, no browser
-      // chrome) — not an offline-first PWA.
-      workbox: { globPatterns: [] },
+      // Chrome only offers "Install app" once the service worker can answer
+      // start_url with a 200 while offline, so the app shell (HTML, JS, CSS,
+      // icons) is precached and navigations fall back to it. Only the shell:
+      // every figure on screen still comes from the API, so launching offline
+      // gets you the app with no data in it, not an offline-first PWA.
+      workbox: {
+        globPatterns: ['**/*.{js,css,html,svg,png,webmanifest}'],
+        navigateFallback: 'index.html',
+        // /api is same-origin in production; opening e.g. /api/docs must reach
+        // the backend rather than being answered with the app shell.
+        navigateFallbackDenylist: [/^\/api\//],
+        cleanupOutdatedCaches: true,
+      },
       manifest: {
         name: 'MyFinance',
         short_name: 'MyFinance',

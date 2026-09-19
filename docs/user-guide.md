@@ -55,6 +55,9 @@ Screen**; on Android Chrome, use the **Install app** prompt (or **⋮ menu → I
 app**). Once installed, it opens in its own window without browser address bars or
 tabs, using the icon and name set here.
 
+Opening it with no connection loads the app but no data — every figure comes from the
+server, so you get empty screens until you're back online.
+
 ### The "Filtering by" banner
 
 Whenever a specific user (not "All Users") is selected, a banner appears at the top of
