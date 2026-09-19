@@ -816,3 +816,40 @@ test('renders a card list instead of a table below the mobile breakpoint', async
     window.matchMedia = originalMatchMedia
   }
 })
+
+test('the mobile selection bar offers select-all-on-page', async () => {
+  const originalMatchMedia = window.matchMedia
+  window.matchMedia = ((query: string) => ({
+    matches: query === '(max-width: 767px)',
+    media: query,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  })) as unknown as typeof window.matchMedia
+
+  try {
+    mockSearchTransactions.mockResolvedValue(searchResult(twoTxns))
+    mockFetchAccounts.mockResolvedValue([baseAccount])
+    mockFetchCategories.mockResolvedValue([baseCategory])
+
+    renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+
+    await waitFor(() => expect(screen.getByText('Coffee')).toBeInTheDocument())
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+
+    // Nothing selected yet: the bar, and with it select-all, stays out of the way.
+    expect(screen.queryByLabelText('Select all on this page')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByLabelText('Select transaction Coffee'))
+    expect(screen.getByText('1 selected')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByLabelText('Select all on this page'))
+    expect(screen.getByText('2 selected')).toBeInTheDocument()
+    // Everything on the page is selected, so there's nothing left to extend to.
+    expect(screen.queryByLabelText('Select all on this page')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByText('Clear selection'))
+    expect(screen.queryByText('Bulk Edit')).not.toBeInTheDocument()
+  } finally {
+    window.matchMedia = originalMatchMedia
+  }
+})
