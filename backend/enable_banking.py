@@ -575,8 +575,9 @@ def _describe_empty_session(session: dict) -> str:
         f"(accounts: {len(session.get('accounts') or [])}, "
         f"accounts_data: {len(session.get('accounts_data') or [])}, "
         f"session status: {session.get('status') or 'unknown'}). "
-        "Refresh the accounts, or reconnect the bank and make sure an account "
-        "is ticked on its consent screen."
+        "A restricted-mode Enable Banking application only ever sees accounts "
+        "linked to it in its Control Panel, so check this bank has one there, "
+        "then refresh the accounts or reconnect the bank."
     )
 
 
