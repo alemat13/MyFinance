@@ -214,17 +214,29 @@ def _remittance(raw: dict) -> str | None:
     return " ".join(parts) or None
 
 
+def _counterparty_name(raw: dict, credit_debit_indicator: str) -> str | None:
+    """Whoever the bank named on the other side, kept verbatim — unlike
+    _payee(), which falls back to the remittance text and finally to a
+    placeholder so the NOT NULL column is always filled.
+
+    The party is an object per the spec, but a bank that sends the name as a
+    bare string must not take the whole sync down over a field nothing
+    computes from, so that shape is read too."""
+    counterparty = raw.get("creditor") if credit_debit_indicator == "DBIT" else raw.get("debtor")
+    if isinstance(counterparty, dict):
+        name = counterparty.get("name")
+    else:
+        name = counterparty
+    if not isinstance(name, str):
+        return None
+    return name.strip()[:200] or None
+
+
 def _payee(raw: dict, credit_debit_indicator: str, remittance: str | None) -> str:
     """The counterparty: whoever was paid on a debit, whoever paid on a
     credit. Banks fill these inconsistently, so fall back to the remittance
     text and finally to a placeholder — payee is NOT NULL."""
-    counterparty = raw.get("creditor") if credit_debit_indicator == "DBIT" else raw.get("debtor")
-    name = (counterparty or {}).get("name")
-    if name and name.strip():
-        return name.strip()[:200]
-    if remittance:
-        return remittance[:200]
-    return "Unknown"
+    return _counterparty_name(raw, credit_debit_indicator) or (remittance or "Unknown")[:200]
 
 
 def _bank_transaction_code(raw: dict) -> str | None:
@@ -243,15 +255,6 @@ def _bank_transaction_code(raw: dict) -> str | None:
     ]
     joined = "/".join(str(p) for p in parts if p)
     return (joined or str(code.get("description") or ""))[:60] or None
-
-
-def _counterparty_name(raw: dict, credit_debit_indicator: str) -> str | None:
-    """Whoever the bank named on the other side, kept verbatim — unlike
-    _payee(), which falls back to the remittance text and finally to a
-    placeholder so the NOT NULL column is always filled."""
-    counterparty = raw.get("creditor") if credit_debit_indicator == "DBIT" else raw.get("debtor")
-    name = (counterparty or {}).get("name")
-    return name.strip()[:200] if name and name.strip() else None
 
 
 def _initiated_date(raw: dict) -> date | None:

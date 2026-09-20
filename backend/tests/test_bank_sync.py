@@ -613,6 +613,20 @@ def test_normalize_accepts_the_other_bank_transaction_code_shapes():
     assert [r["raw_transaction_code"] for r in rows] == ["PMNT/POSD", "Card payment", "PMNT-CCRD", None]
 
 
+def test_raw_counterparty_survives_a_bank_that_names_the_party_as_a_string():
+    """The spec says the party is an object, so most banks send one. A bank
+    that sends a bare name instead must not take the whole sync down over a
+    field nothing computes from — the same reasoning as the three shapes
+    _bank_transaction_code() folds together."""
+    rows = enable_banking.normalize_transactions([
+        _booked("9.00", "DBIT", "2026-03-04", entry_reference="a", creditor="EDF"),
+        _booked("9.00", "CRDT", "2026-03-04", entry_reference="b", debtor={"name": "  URSSAF  "}),
+        _booked("9.00", "DBIT", "2026-03-04", entry_reference="c", creditor={"name": ""}),
+        _booked("9.00", "DBIT", "2026-03-04", entry_reference="d", creditor={"iban": "FR76"}),
+    ])
+    assert [r["raw_counterparty"] for r in rows] == ["EDF", "URSSAF", None, None]
+
+
 def test_raw_counterparty_stays_empty_when_the_bank_named_nobody():
     """Unlike payee, which falls back to the remittance and then to a
     placeholder: these columns say what the bank said, or nothing."""
