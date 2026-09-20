@@ -9,6 +9,7 @@ import { SplitRow } from './SplitEditor'
 import TransactionSplitFields from './TransactionSplitFields'
 import TransactionDivideModal from './TransactionDivideModal'
 import CategoryPicker from './CategoryPicker'
+import TransactionRawFields from './TransactionRawFields'
 import { useToast } from '../context/ToastContext'
 import { validateTransactionForm, ACCOUNTING_MONTH_OFFSETS, accountingMonthLabel } from '../utils/transactions'
 import { resolveDefaultSplitRows } from '../utils/splitWeights'
@@ -282,6 +283,8 @@ export default function TransactionDetail({
               </div>
             </div>
           )}
+
+          {transaction && <TransactionRawFields transaction={transaction} />}
 
           {transactionId !== null && (
             <div className="pt-2 border-t border-slate-200 dark:border-slate-700">

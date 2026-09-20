@@ -576,3 +576,109 @@ def test_backup_export_import_preserves_external_id(db, linked_connection, globa
 
     export = backup.build_export(db)
     assert export.transactions[0].external_id == "keep-me"
+
+
+# ── Raw, read-only fields ─────────────────────────────────────────────
+
+def test_normalize_captures_the_banks_own_wording():
+    rows = enable_banking.normalize_transactions([
+        _booked(
+            "42.50", "DBIT", "2026-03-04",
+            entry_reference="a",
+            creditor={"name": "CARREFOUR MARKET"},
+            remittance_information=["CB CARREFOUR MARKET 03/03", "PARIS 75"],
+            bank_transaction_code={"domain": "PMNT", "family": "CCRD", "sub_family": "POSD"},
+            merchant_category_code="5411",
+            transaction_date="2026-03-03",
+        ),
+    ])
+    assert rows[0]["raw_source"] == "enable_banking"
+    assert rows[0]["raw_label"] == "CB CARREFOUR MARKET 03/03 PARIS 75"
+    assert rows[0]["raw_counterparty"] == "CARREFOUR MARKET"
+    assert rows[0]["raw_transaction_code"] == "PMNT/CCRD/POSD"
+    assert rows[0]["raw_merchant_category_code"] == "5411"
+    assert rows[0]["raw_initiated_date"] == date(2026, 3, 3)
+
+
+def test_normalize_accepts_the_other_bank_transaction_code_shapes():
+    rows = enable_banking.normalize_transactions([
+        _booked("1.00", "DBIT", "2026-03-04", entry_reference="a",
+                bank_transaction_code={"code": "PMNT", "sub_code": "POSD"}),
+        _booked("2.00", "DBIT", "2026-03-04", entry_reference="b",
+                bank_transaction_code={"description": "Card payment"}),
+        _booked("3.00", "DBIT", "2026-03-04", entry_reference="c",
+                bank_transaction_code="PMNT-CCRD"),
+        _booked("4.00", "DBIT", "2026-03-04", entry_reference="d"),
+    ])
+    assert [r["raw_transaction_code"] for r in rows] == ["PMNT/POSD", "Card payment", "PMNT-CCRD", None]
+
+
+def test_raw_counterparty_stays_empty_when_the_bank_named_nobody():
+    """Unlike payee, which falls back to the remittance and then to a
+    placeholder: these columns say what the bank said, or nothing."""
+    rows = enable_banking.normalize_transactions([
+        _booked("30.00", "DBIT", "2026-03-04", entry_reference="c",
+                remittance_information=["VIR SEPA LOYER"]),
+    ])
+    assert rows[0]["payee"] == "VIR SEPA LOYER"
+    assert rows[0]["raw_counterparty"] is None
+    assert rows[0]["raw_merchant_category_code"] is None
+    assert rows[0]["raw_initiated_date"] is None
+
+
+def test_import_persists_the_raw_fields(db, linked_connection, global_weights):
+    rows = enable_banking.normalize_transactions([
+        _booked("42.50", "DBIT", "2026-03-04", entry_reference="a",
+                creditor={"name": "CARREFOUR MARKET"},
+                remittance_information=["CB CARREFOUR MARKET 03/03"],
+                bank_transaction_code={"domain": "PMNT", "family": "CCRD"},
+                merchant_category_code="5411"),
+    ])
+    enable_banking.import_transactions(db, linked_connection, rows, date(2026, 3, 1), date(2026, 3, 31))
+    transaction = db.query(Transaction).one()
+    assert transaction.raw_source == "enable_banking"
+    assert transaction.raw_label == "CB CARREFOUR MARKET 03/03"
+    assert transaction.raw_counterparty == "CARREFOUR MARKET"
+    assert transaction.raw_transaction_code == "PMNT/CCRD"
+    assert transaction.raw_merchant_category_code == "5411"
+    # Never filled from a bank: only the Linxo export carries a location.
+    assert transaction.raw_merchant_location is None
+
+
+def test_editing_a_synced_transaction_leaves_the_raw_label_alone(client, db, linked_connection, global_weights):
+    rows = enable_banking.normalize_transactions([
+        _booked("42.50", "DBIT", "2026-03-04", entry_reference="a",
+                creditor={"name": "CARREFOUR MARKET"},
+                remittance_information=["CB CARREFOUR MARKET 03/03"]),
+    ])
+    enable_banking.import_transactions(db, linked_connection, rows, date(2026, 3, 1), date(2026, 3, 31))
+    transaction_id = db.query(Transaction).one().id
+
+    response = client.put(f"/api/transactions/{transaction_id}", json={
+        "payee": "Courses de la semaine",
+        "memo": "reecrit",
+        # Read-only: the API has no such field, so this must be ignored
+        # rather than stored.
+        "raw_label": "tentative de reecriture",
+    })
+    assert response.status_code == 200
+    body = response.json()
+    assert body["payee"] == "Courses de la semaine"
+    assert body["raw_label"] == "CB CARREFOUR MARKET 03/03"
+    assert body["raw_counterparty"] == "CARREFOUR MARKET"
+
+    db.expire_all()
+    assert db.query(Transaction).one().raw_label == "CB CARREFOUR MARKET 03/03"
+
+
+def test_manually_created_transactions_have_no_raw_fields(client, sample_account, global_weights):
+    response = client.post("/api/transactions", json={
+        "date": "2026-03-04",
+        "payee": "Saisie manuelle",
+        "amount": -10.0,
+        "account_id": sample_account.id,
+    })
+    assert response.status_code == 201
+    body = response.json()
+    assert body["raw_source"] is None
+    assert body["raw_label"] is None
