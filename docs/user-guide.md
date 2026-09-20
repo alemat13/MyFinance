@@ -513,6 +513,14 @@ your bank's own site to log in and approve access; MyFinance never sees your ban
 credentials. When you come back, the bank appears on this screen with every account the
 approval covers.
 
+**When a bank shows no account.** Occasionally a bank approves the access but doesn't
+name any account with it, and the bank appears here with nothing under it. Press
+**Refresh accounts**: the approval you already gave is still valid, so this just asks
+your bank again and doesn't send you back through its login screen. If it still comes
+back empty, the line under the bank says what the bank actually returned, and connecting
+it again — taking care to tick an account on the bank's own consent screen — is the next
+thing to try.
+
 **Linking an account.** A connected bank account does nothing until you tell it which
 MyFinance account it feeds, using the **Feeds MyFinance account** dropdown. Only one bank
 account may feed a given MyFinance account, and archived accounts can't be picked.
@@ -538,7 +546,8 @@ bank sync.
 
 **Consent expiry.** Banks grant access for a limited time, typically 90 days. The screen
 shows the expiry date for each bank and warns you in the last week. To renew it, connect
-the same bank again — your account links and sync history are preserved.
+the same bank again — your account links and sync history are preserved, and the same is
+true of **Refresh accounts**.
 
 **Disconnecting.** **Disconnect** revokes the access at your bank and stops future syncs.
 Transactions already imported stay exactly where they are; they're ordinary MyFinance

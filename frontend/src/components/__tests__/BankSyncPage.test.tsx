@@ -11,6 +11,7 @@ const {
   mockDeleteBankConnection,
   mockUpdateBankAccountLink,
   mockSyncBankAccountLink,
+  mockRefreshBankConnection,
 } = vi.hoisted(() => ({
   mockFetchBankConnections: vi.fn(),
   mockFetchBankInstitutions: vi.fn(),
@@ -19,6 +20,7 @@ const {
   mockDeleteBankConnection: vi.fn(),
   mockUpdateBankAccountLink: vi.fn(),
   mockSyncBankAccountLink: vi.fn(),
+  mockRefreshBankConnection: vi.fn(),
 }))
 
 vi.mock('../../api/client', () => ({
@@ -29,6 +31,7 @@ vi.mock('../../api/client', () => ({
   deleteBankConnection: mockDeleteBankConnection,
   updateBankAccountLink: mockUpdateBankAccountLink,
   syncBankAccountLink: mockSyncBankAccountLink,
+  refreshBankConnection: mockRefreshBankConnection,
 }))
 
 const accounts = [
@@ -187,6 +190,37 @@ test('surfaces a failed sync', async () => {
   renderWithProviders(<BankSyncPage onBack={() => {}} />)
 
   expect(await screen.findByText('bank is down')).toBeInTheDocument()
+})
+
+test('a consent with no account points at refreshing it', async () => {
+  mockFetchBankConnections.mockResolvedValue([connection({ accounts: [] })])
+
+  renderWithProviders(<BankSyncPage onBack={() => {}} />)
+
+  expect(await screen.findByText(/This consent named no account/)).toBeInTheDocument()
+})
+
+test('refreshing a connection reports the accounts it found', async () => {
+  mockFetchBankConnections.mockResolvedValue([connection({ accounts: [] })])
+  mockRefreshBankConnection.mockResolvedValue(connection())
+
+  renderWithProviders(<BankSyncPage onBack={() => {}} />)
+
+  fireEvent.click(await screen.findByRole('button', { name: 'Refresh accounts' }))
+
+  await waitFor(() => expect(mockRefreshBankConnection).toHaveBeenCalledWith(1))
+  expect(await screen.findByText('1 account(s) found')).toBeInTheDocument()
+})
+
+test('refreshing says so when the bank still names no account', async () => {
+  mockFetchBankConnections.mockResolvedValue([connection({ accounts: [] })])
+  mockRefreshBankConnection.mockResolvedValue(connection({ accounts: [] }))
+
+  renderWithProviders(<BankSyncPage onBack={() => {}} />)
+
+  fireEvent.click(await screen.findByRole('button', { name: 'Refresh accounts' }))
+
+  expect(await screen.findByText('The bank still names no account')).toBeInTheDocument()
 })
 
 test('disconnecting asks for confirmation first', async () => {

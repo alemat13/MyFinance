@@ -753,6 +753,10 @@ export function createBankConnection(aspspName: string, country = 'FR'): Promise
   })
 }
 
+export function refreshBankConnection(id: number): Promise<BankConnection> {
+  return request<BankConnection>(`/bank-sync/connections/${id}/refresh`, { method: 'POST' })
+}
+
 export function deleteBankConnection(id: number): Promise<void> {
   return request<void>(`/bank-sync/connections/${id}`, { method: 'DELETE' })
 }

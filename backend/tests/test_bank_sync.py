@@ -419,6 +419,146 @@ def test_reconsenting_repoints_the_existing_link_by_iban(client, db, linked_conn
     assert linked_connection.account_id is not None
 
 
+def test_callback_reads_accounts_given_as_bare_uids(client, db, monkeypatch):
+    """Some ASPSPs return `accounts` as uid strings rather than objects; the
+    IBAN, name and currency then take their own call."""
+    connection = BankConnection(aspsp_name="BoursoBank", aspsp_country="FR", state="state-11", status="pending")
+    db.add(connection)
+    db.commit()
+
+    monkeypatch.setattr(enable_banking, "create_session", lambda code: {
+        "session_id": "session-11",
+        "access": {"valid_until": "2026-12-19T00:00:00Z"},
+        "accounts": ["uid-11"],
+    })
+    monkeypatch.setattr(enable_banking, "fetch_account_details", lambda uid: {
+        "uid": uid, "name": "Compte Bourso", "currency": "EUR",
+        "account_id": {"iban": "FR7630004"},
+    })
+    client.get("/api/bank-sync/callback?code=c&state=state-11", follow_redirects=False)
+
+    link = db.query(BankAccountLink).one()
+    assert (link.remote_account_uid, link.iban, link.remote_name) == ("uid-11", "FR7630004", "Compte Bourso")
+
+
+def test_callback_falls_back_to_accounts_data(client, db, monkeypatch):
+    """An empty `accounts` doesn't mean an empty consent — the uids can be in
+    `accounts_data` instead, which is what BoursoBank did."""
+    connection = BankConnection(aspsp_name="BoursoBank", aspsp_country="FR", state="state-12", status="pending")
+    db.add(connection)
+    db.commit()
+
+    monkeypatch.setattr(enable_banking, "create_session", lambda code: {
+        "session_id": "session-12",
+        "access": {"valid_until": "2026-12-19T00:00:00Z"},
+        "accounts": [],
+        "accounts_data": [{"uid": "uid-12", "identification_hash": "hash"}],
+    })
+    monkeypatch.setattr(enable_banking, "fetch_account_details", lambda uid: {
+        "uid": uid, "product": "Compte courant", "currency": "EUR",
+        "account_id": {"iban": "FR7630004222"},
+    })
+    client.get("/api/bank-sync/callback?code=c&state=state-12", follow_redirects=False)
+
+    link = db.query(BankAccountLink).one()
+    assert (link.remote_account_uid, link.iban, link.remote_name) == ("uid-12", "FR7630004222", "Compte courant")
+
+
+def test_an_account_whose_details_fail_is_still_listed(client, db, monkeypatch):
+    connection = BankConnection(aspsp_name="BoursoBank", aspsp_country="FR", state="state-13", status="pending")
+    db.add(connection)
+    db.commit()
+
+    monkeypatch.setattr(enable_banking, "create_session", lambda code: {
+        "session_id": "session-13", "accounts": ["uid-13"],
+    })
+
+    def refuse(uid):
+        raise enable_banking.EnableBankingError("403")
+
+    monkeypatch.setattr(enable_banking, "fetch_account_details", refuse)
+    client.get("/api/bank-sync/callback?code=c&state=state-13", follow_redirects=False)
+
+    link = db.query(BankAccountLink).one()
+    assert link.remote_account_uid == "uid-13"
+    assert link.iban is None
+
+
+def test_a_consent_naming_no_account_says_what_came_back(client, db, monkeypatch):
+    connection = BankConnection(aspsp_name="BoursoBank", aspsp_country="FR", state="state-14", status="pending")
+    db.add(connection)
+    db.commit()
+
+    monkeypatch.setattr(enable_banking, "create_session", lambda code: {
+        "session_id": "session-14", "accounts": [], "status": "AUTHORIZED",
+    })
+    response = client.get("/api/bank-sync/callback?code=c&state=state-14", follow_redirects=False)
+
+    assert "bank=connected" in response.headers["location"]
+    db.refresh(connection)
+    assert connection.status == "linked"
+    assert db.query(BankAccountLink).count() == 0
+    assert "named no account" in connection.last_error
+    assert "accounts: 0" in connection.last_error
+    assert "AUTHORIZED" in connection.last_error
+
+
+def test_refreshing_a_connection_records_the_accounts_it_missed(client, db, monkeypatch):
+    connection = BankConnection(
+        aspsp_name="BoursoBank", aspsp_country="FR", state="state-15",
+        status="linked", session_id="session-15", last_error="named no account",
+    )
+    db.add(connection)
+    db.commit()
+
+    monkeypatch.setattr(enable_banking, "fetch_session", lambda session_id: {
+        "session_id": session_id,
+        "access": {"valid_until": "2026-12-19T00:00:00Z"},
+        "accounts": ["uid-15"],
+    })
+    monkeypatch.setattr(enable_banking, "fetch_account_details", lambda uid: {
+        "uid": uid, "name": "Compte Bourso", "currency": "EUR",
+        "account_id": {"iban": "FR7630004333"},
+    })
+    response = client.post(f"/api/bank-sync/connections/{connection.id}/refresh")
+
+    assert response.status_code == 200
+    assert response.json()["accounts"][0]["iban"] == "FR7630004333"
+    db.refresh(connection)
+    assert connection.last_error is None
+
+
+def test_refreshing_keeps_an_existing_mapping(client, db, linked_connection, monkeypatch):
+    mapped_account_id = linked_connection.account_id
+    assert mapped_account_id is not None
+
+    monkeypatch.setattr(enable_banking, "fetch_session", lambda session_id: {
+        "session_id": session_id,
+        "accounts": [{
+            "uid": "remote-uid-1", "name": "Compte Courant", "currency": "EUR",
+            "account_id": {"iban": "FR7612345678901234567890123"},
+        }],
+    })
+    client.post(f"/api/bank-sync/connections/{linked_connection.connection_id}/refresh")
+
+    assert db.query(BankAccountLink).count() == 1
+    db.refresh(linked_connection)
+    assert linked_connection.account_id == mapped_account_id
+
+
+def test_refreshing_a_connection_without_a_session_is_rejected(client, db):
+    connection = BankConnection(aspsp_name="CCF", aspsp_country="FR", state="state-16", status="linked")
+    db.add(connection)
+    db.commit()
+
+    response = client.post(f"/api/bank-sync/connections/{connection.id}/refresh")
+    assert response.status_code == 502
+
+
+def test_refreshing_an_unknown_connection_is_404(client):
+    assert client.post("/api/bank-sync/connections/999/refresh").status_code == 404
+
+
 def test_callback_with_unknown_state_redirects_with_an_error(client):
     response = client.get("/api/bank-sync/callback?code=x&state=nope", follow_redirects=False)
     assert response.status_code == 307
