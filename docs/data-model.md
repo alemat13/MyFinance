@@ -19,7 +19,7 @@ erDiagram
         int id PK
         int transaction_id "indexed, NOT a FK"
         string action "created | updated | deleted"
-        string source "nullable; manual | csv_import | divide, set only for created (divide can also appear on updated)"
+        string source "nullable; manual | csv_import | bank_sync | divide, set only for created (divide can also appear on updated)"
         datetime changed_at
         int changed_by_user_id "nullable, NOT a FK"
         date date "nullable snapshot"
@@ -166,6 +166,7 @@ Individual financial transactions.
 | `reconciled` | Boolean | Default: `false`. Manually set by the user once they've reviewed/validated the transaction — never inferred. Always `false` on creation and on CSV import |
 | `created_at` | DateTime | Default: current UTC time |
 | `divide_group_id` | Integer | Nullable, indexed, **not** a foreign key (same reasoning as `transaction_history` below — a real FK would block deleting one part of a divide while siblings still reference it). Set by "Dividing a transaction" (see below) to the group's anchor transaction's own `id`, on every part including the anchor itself (`divide_group_id == id` for the anchor). `NULL` for a transaction that's never been divided |
+| `external_id` | String(120) | Nullable. The identifier the bank gave a transaction pulled in by [Bank sync](#bank_connections) — the ASPSP's own `entry_reference`/`transaction_id`, or a locally derived `fp:` fingerprint when the bank supplies neither. `NULL` for everything else (manual entry, CSV import, divide parts, migrated history). Covered by a unique index on `(account_id, external_id)`, which is what makes a re-sync of an overlapping window a no-op; NULLs are exempt from uniqueness in both SQLite and Postgres, so pre-existing rows are unaffected |
 
 ### `category_splits`
 The **highest-priority** weight tier: an optional default split-weight for a category — e.g. "Mortgage" always prefills 1:1 regardless of the account or global default. Purely a prefill source for new/edited transactions' own weights; never live-resolved.
@@ -245,6 +246,40 @@ Single global row (`id=1`) driving the OneDrive automatic backup connection (`ba
 | `last_backup_at` | DateTime | Nullable; also doubles as the "claim" timestamp written before a run starts, so an overlapping scheduler call sees it as no longer due |
 | `last_backup_status` | String(20) | Nullable; `success` or `failed` |
 | `last_backup_error` | Text | Nullable; set only when `last_backup_status` is `failed` |
+
+### `bank_connections`
+One consent granted with one bank (ASPSP) through Enable Banking (`backend/enable_banking.py`). Unlike `onedrive_backup_settings` there can be several rows — a consent is granted per bank. Not part of the account/transaction ER diagram above, and not part of `backup`'s export/import archive: a live consent can't be meaningfully restored, so a backup restored in overwrite mode leaves no bank connected. No bank-issued token is stored — Enable Banking authenticates MyFinance with a JWT signed per request from `ENABLE_BANKING_PRIVATE_KEY`, so `session_id` is only an identifier.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | Integer | Primary key, autoincrement |
+| `aspsp_name` | String(100) | The bank's name as Enable Banking's catalogue spells it |
+| `aspsp_country` | String(2) | ISO 3166 country code. Default: `FR` |
+| `state` | String(64) | Indexed. Random nonce round-tripped through the bank's consent screen, so the callback can match the redirect back to its pending connection |
+| `authorization_id` | String(64) | Nullable; Enable Banking's id for the authorization in flight |
+| `session_id` | String(64) | Nullable; set once consent is granted, and what account calls are made against. Never serialized by the API |
+| `status` | String(20) | `pending` (created, awaiting the user's return), `linked`, `expired`, or `error`. A `pending` row isn't listed by the API |
+| `access_valid_until` | DateTime | Nullable; when the bank's consent lapses — 90 days for most French banks. Renewing it is a fresh authorization, not a token refresh |
+| `created_at` | DateTime | Default: current UTC time |
+| `last_error` | Text | Nullable; why the last connection attempt failed |
+
+### `bank_account_links`
+One account a `bank_connections` consent exposes, and the MyFinance account it feeds. Deliberately not columns on `accounts`: a remote account is listed before anyone decides where it goes, and re-consenting to the same bank yields new remote uids for the same real accounts (matched back by IBAN, which is what preserves the mapping across a renewal).
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | Integer | Primary key, autoincrement |
+| `connection_id` | Integer | Foreign key → `bank_connections.id`, indexed |
+| `remote_account_uid` | String(64) | Enable Banking's id for this account; changes on every re-consent |
+| `iban` | String(50) | Nullable; also the key used to re-point an existing link after a re-consent |
+| `remote_name` / `currency` | String | Nullable; as reported by the bank, for display |
+| `account_id` | Integer | Foreign key → `accounts.id`, nullable, indexed. `NULL` until the user maps it; nothing is imported while it is. Enforced unique across links at the app level (`rules.validate_bank_link_account`), and an archived account can't be picked |
+| `sync_enabled` | Boolean | Default: `true` |
+| `sync_from_date` | Date | Nullable. The first sync never reaches back past this; defaults to the day the link is mapped, so connecting a bank doesn't re-import history that already arrived via CSV/migration |
+| `last_synced_at` | DateTime | Nullable; also the "claim" timestamp written before a run starts, so an overlapping scheduler call sees it as no longer due — and written on failure too, since banks cap account calls at 4 a day |
+| `last_sync_status` | String(20) | Nullable; `success` or `failed` |
+| `last_sync_error` | Text | Nullable; set only when `last_sync_status` is `failed` |
+| `last_imported_count` | Integer | Default: 0. How many transactions the last successful run created |
 
 ## Key Relationships
 

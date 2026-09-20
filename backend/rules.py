@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 
-from models import Account, Category, User
+from models import Account, BankAccountLink, Category, User
 from schemas import AccountUserCreate
 
 
@@ -112,6 +112,25 @@ def validate_onedrive_folder_path(folder_path: str) -> None:
 def validate_onedrive_retention_count(retention_count: int) -> None:
     if not (1 <= retention_count <= 365):
         raise RuleViolation("Retention count must be between 1 and 365")
+
+
+def validate_bank_link_account(db: Session, link: BankAccountLink, account_id: int | None) -> None:
+    """A bank account may only feed a real, open MyFinance account, and only
+    one bank account may feed it — two banks pushing into the same account
+    would deduplicate against each other's rows."""
+    if account_id is None:
+        return
+    account = db.get(Account, account_id)
+    if account is None:
+        raise RuleViolation(f"Account {account_id} does not exist")
+    if account.archived:
+        raise RuleViolation(f"'{account.name}' is archived and can't receive synced transactions")
+    clash = db.query(BankAccountLink).filter(
+        BankAccountLink.account_id == account_id,
+        BankAccountLink.id != link.id,
+    ).first()
+    if clash is not None:
+        raise RuleViolation(f"'{account.name}' is already linked to another bank account")
 
 
 def validate_category_hierarchy(db: Session, category: Category | None, parent_id: int | None, type_: str) -> None:

@@ -609,6 +609,10 @@ class TransactionExport(BaseModel):
     accounting_month_offset: int = 0
     reconciled: bool = False
     divide_group_id: int | None = None
+    # Carried through so a restore doesn't strip the bank identifiers that
+    # keep a later sync from re-importing the same transactions. Defaulted,
+    # so archives written before bank sync existed still validate.
+    external_id: str | None = None
     created_at: datetime
 
 
@@ -696,3 +700,65 @@ class ImportSummary(BaseModel):
     transactions: int
     transaction_splits: int
     transaction_history: int
+
+
+# ── Bank sync (Enable Banking) ────────────────────────────────────────
+# See enable_banking.py. Nothing here exposes a session id or any part of
+# the signing key — the frontend only ever needs the consent URL.
+
+class BankInstitutionOut(BaseModel):
+    name: str
+    country: str
+    logo: str | None = None
+
+
+class BankConnectionCreate(BaseModel):
+    aspsp_name: str
+    aspsp_country: str = "FR"
+    language: str = "fr"
+
+
+class BankConnectionCreated(BaseModel):
+    connection_id: int
+    authorization_url: str
+
+
+class BankAccountLinkOut(BaseModel):
+    id: int
+    connection_id: int
+    iban: str | None = None
+    remote_name: str | None = None
+    currency: str | None = None
+    account_id: int | None = None
+    account_name: str | None = None
+    sync_enabled: bool
+    sync_from_date: _DateType | None = None
+    last_synced_at: datetime | None = None
+    last_sync_status: Literal["success", "failed"] | None = None
+    last_sync_error: str | None = None
+    last_imported_count: int
+
+
+class BankConnectionOut(BaseModel):
+    id: int
+    aspsp_name: str
+    aspsp_country: str
+    status: Literal["pending", "linked", "expired", "error"]
+    access_valid_until: datetime | None = None
+    created_at: datetime | None = None
+    last_error: str | None = None
+    accounts: List[BankAccountLinkOut] = []
+
+
+class BankAccountLinkUpdate(BaseModel):
+    account_id: int | None = None
+    sync_enabled: bool = True
+    sync_from_date: _DateType | None = None
+
+
+class BankSyncRunResult(BaseModel):
+    ran: bool
+    synced_links: int = 0
+    created_count: int = 0
+    status: Literal["success", "failed"] | None = None
+    error: str | None = None

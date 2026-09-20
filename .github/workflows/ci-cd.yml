@@ -130,8 +130,8 @@ jobs:
             --region=${{ vars.REGION }} \
             --service-account=${{ vars.BACKEND_SA_EMAIL }} \
             --add-cloudsql-instances=${{ vars.CLOUDSQL_INSTANCE_CONNECTION_NAME }} \
-            --set-secrets=DATABASE_URL=myfinance-database-url:latest,ONEDRIVE_CLIENT_SECRET=myfinance-onedrive-client-secret:latest,ONEDRIVE_TOKEN_ENCRYPTION_KEY=myfinance-onedrive-token-key:latest,ONEDRIVE_SCHEDULER_SECRET=myfinance-onedrive-scheduler-secret:latest \
-            --set-env-vars=CORS_ALLOWED_ORIGINS=https://${{ vars.DOMAIN }},FRONTEND_BASE_URL=https://${{ vars.DOMAIN }},ONEDRIVE_CLIENT_ID=${{ vars.ONEDRIVE_CLIENT_ID }},ONEDRIVE_REDIRECT_URI=https://${{ vars.DOMAIN }}/api/onedrive/auth/callback \
+            --set-secrets=DATABASE_URL=myfinance-database-url:latest,ONEDRIVE_CLIENT_SECRET=myfinance-onedrive-client-secret:latest,ONEDRIVE_TOKEN_ENCRYPTION_KEY=myfinance-onedrive-token-key:latest,ONEDRIVE_SCHEDULER_SECRET=myfinance-onedrive-scheduler-secret:latest,ENABLE_BANKING_PRIVATE_KEY=myfinance-enablebanking-private-key:latest,BANK_SYNC_SCHEDULER_SECRET=myfinance-bank-sync-scheduler-secret:latest \
+            --set-env-vars=CORS_ALLOWED_ORIGINS=https://${{ vars.DOMAIN }},FRONTEND_BASE_URL=https://${{ vars.DOMAIN }},ONEDRIVE_CLIENT_ID=${{ vars.ONEDRIVE_CLIENT_ID }},ONEDRIVE_REDIRECT_URI=https://${{ vars.DOMAIN }}/api/onedrive/auth/callback,ENABLE_BANKING_APPLICATION_ID=${{ vars.ENABLE_BANKING_APPLICATION_ID }},ENABLE_BANKING_REDIRECT_URL=https://${{ vars.DOMAIN }}/api/bank-sync/callback \
             --no-allow-unauthenticated \
             --ingress=internal-and-cloud-load-balancing \
             --max-instances=2 \
