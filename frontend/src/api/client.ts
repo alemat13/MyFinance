@@ -134,6 +134,18 @@ export interface Transaction {
   accounting_month: string
   reconciled: boolean
   divide_group_id: number | null
+  // What the source reported before any renaming. Read-only everywhere:
+  // there is no matching field on TransactionCreate/TransactionUpdate.
+  // Optional like category_color/icon above — the API always sends them, but
+  // declaring them required would force every fixture and every hand-built
+  // Transaction to spell out seven nulls it does not care about.
+  raw_source?: 'enable_banking' | 'linxo_export' | null
+  raw_label?: string | null
+  raw_counterparty?: string | null
+  raw_transaction_code?: string | null
+  raw_merchant_category_code?: string | null
+  raw_merchant_location?: string | null
+  raw_initiated_date?: string | null
   splits: TransactionSplit[]
 }
 
