@@ -332,3 +332,51 @@ def test_import_overwrite_dangling_fk_returns_422_without_wiping_data(client, sa
     accounts = client.get("/api/accounts").json()
     assert len(accounts) == 1
     assert accounts[0]["id"] == sample_account.id
+
+
+def test_round_trip_preserves_the_raw_fields(client, db, sample_account, sample_user):
+    """A restore that dropped these would silently undo a backfill nothing
+    else can redo — the Linxo export is a one-off file, not a feed."""
+    db.add(GlobalSplitWeight(user_id=sample_user.id, weight=1))
+    transaction = Transaction(
+        date=date(2026, 1, 15), payee="Courses", amount=-42.50,
+        account_id=sample_account.id,
+        raw_source="linxo_export",
+        raw_label="CB CARREFOURMARKET 14/01 PARIS 75 CB N° XXXX",
+        raw_counterparty="CARREFOURMARKET",
+        raw_transaction_code="PointOfSale",
+        raw_merchant_location="PARIS 75 FR",
+        raw_initiated_date=date(2026, 1, 14),
+    )
+    db.add(transaction)
+    db.commit()
+
+    exported = _unzip_payload(client.get("/api/backup/export").content)
+    assert exported["transactions"][0]["raw_label"] == "CB CARREFOURMARKET 14/01 PARIS 75 CB N° XXXX"
+
+    assert _post_import(client, _zip_payload(exported)).status_code == 200
+    db.expire_all()
+    restored = db.query(Transaction).one()
+    assert restored.raw_source == "linxo_export"
+    assert restored.raw_label == "CB CARREFOURMARKET 14/01 PARIS 75 CB N° XXXX"
+    assert restored.raw_counterparty == "CARREFOURMARKET"
+    assert restored.raw_transaction_code == "PointOfSale"
+    assert restored.raw_merchant_location == "PARIS 75 FR"
+    assert restored.raw_initiated_date == date(2026, 1, 14)
+
+
+def test_archive_written_before_the_raw_fields_existed_still_imports(client, sample_account):
+    """Older archives have no raw_* keys at all — they must still validate."""
+    payload = _minimal_payload(
+        accounts=[{
+            "id": sample_account.id, "name": sample_account.name, "type": sample_account.type,
+            "balance": 0.0, "currency": "EUR", "archived": False,
+            "created_at": datetime.utcnow().isoformat(),
+        }],
+        transactions=[{
+            "id": 1, "date": "2026-01-15", "payee": "Ancienne archive", "memo": None,
+            "amount": -10.0, "account_id": sample_account.id, "category_id": None,
+            "created_at": datetime.utcnow().isoformat(),
+        }],
+    )
+    assert _post_import(client, _zip_payload(payload)).status_code == 200

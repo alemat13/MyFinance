@@ -9,6 +9,7 @@ import {
   fetchAccounts,
   fetchBankConnections,
   fetchBankInstitutions,
+  refreshBankConnection,
   syncBankAccountLink,
   updateBankAccountLink,
 } from '../api/client'
@@ -45,6 +46,7 @@ export default function BankSyncPage({ onBack }: Props) {
   const [connecting, setConnecting] = useState(false)
   const [syncingLinkId, setSyncingLinkId] = useState<number | null>(null)
   const [savingLinkId, setSavingLinkId] = useState<number | null>(null)
+  const [refreshingId, setRefreshingId] = useState<number | null>(null)
   const [disconnecting, setDisconnecting] = useState<BankConnection | null>(null)
   const { showToast } = useToast()
 
@@ -108,6 +110,18 @@ export default function BankSyncPage({ onBack }: Props) {
       })
       .catch(err => showToast(err.message))
       .finally(() => setSyncingLinkId(null))
+  }
+
+  const refreshAccounts = (connection: BankConnection) => {
+    setRefreshingId(connection.id)
+    refreshBankConnection(connection.id)
+      .then(updated => {
+        if (updated.accounts.length === 0) showToast('The bank still names no account')
+        else showToast(`${updated.accounts.length} account(s) found`, 'success')
+        load()
+      })
+      .catch(err => showToast(err.message))
+      .finally(() => setRefreshingId(null))
   }
 
   const runDisconnect = () => {
@@ -177,9 +191,18 @@ export default function BankSyncPage({ onBack }: Props) {
               <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
                 {connection.aspsp_name}
               </h3>
-              <Button variant="danger" onClick={() => setDisconnecting(connection)}>
-                Disconnect
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="secondary"
+                  onClick={() => refreshAccounts(connection)}
+                  disabled={refreshingId === connection.id}
+                >
+                  {refreshingId === connection.id ? 'Refreshing...' : 'Refresh accounts'}
+                </Button>
+                <Button variant="danger" onClick={() => setDisconnecting(connection)}>
+                  Disconnect
+                </Button>
+              </div>
             </div>
 
             {connection.access_valid_until && (
@@ -193,7 +216,10 @@ export default function BankSyncPage({ onBack }: Props) {
             )}
 
             {connection.accounts.length === 0 && (
-              <p className="text-[13px] text-slate-400">This consent exposed no account.</p>
+              <p className="text-[13px] text-slate-400">
+                This consent named no account. Try "Refresh accounts" — the consent itself is still
+                valid, so this doesn't send you back to the bank.
+              </p>
             )}
 
             {connection.accounts.map(link => (

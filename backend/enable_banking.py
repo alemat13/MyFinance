@@ -58,6 +58,10 @@ MAX_ROWS_PER_SYNC = 2000
 # Banks rate-limit account endpoints down to 4 calls per day, so there is no
 # value in syncing more often than this.
 MIN_SYNC_INTERVAL_HOURS = 6
+# What Transaction.raw_source records for rows this module imports. The other
+# writer of those columns is the Linxo GDPR export backfill, which uses its
+# own value — the two vocabularies don't overlap.
+RAW_SOURCE = "enable_banking"
 
 
 class EnableBankingError(Exception):
@@ -160,6 +164,17 @@ def create_session(code: str) -> dict:
     return _request("POST", "/sessions", json={"code": code})
 
 
+def fetch_session(session_id: str) -> dict:
+    """The same payload POST /sessions returned, re-read for an existing
+    consent. Lets a connection whose accounts never landed be repaired
+    without a fresh authorization the bank would have to prompt for."""
+    return _request("GET", f"/sessions/{session_id}")
+
+
+def fetch_account_details(account_uid: str) -> dict:
+    return _request("GET", f"/accounts/{account_uid}/details")
+
+
 def delete_session(session_id: str) -> None:
     _request("DELETE", f"/sessions/{session_id}")
 
@@ -210,17 +225,59 @@ def _remittance(raw: dict) -> str | None:
     return " ".join(parts) or None
 
 
+def _counterparty_name(raw: dict, credit_debit_indicator: str) -> str | None:
+    """Whoever the bank named on the other side, kept verbatim — unlike
+    _payee(), which falls back to the remittance text and finally to a
+    placeholder so the NOT NULL column is always filled.
+
+    The party is an object per the spec, but a bank that sends the name as a
+    bare string must not take the whole sync down over a field nothing
+    computes from, so that shape is read too."""
+    counterparty = raw.get("creditor") if credit_debit_indicator == "DBIT" else raw.get("debtor")
+    if isinstance(counterparty, dict):
+        name = counterparty.get("name")
+    else:
+        name = counterparty
+    if not isinstance(name, str):
+        return None
+    return name.strip()[:200] or None
+
+
 def _payee(raw: dict, credit_debit_indicator: str, remittance: str | None) -> str:
     """The counterparty: whoever was paid on a debit, whoever paid on a
     credit. Banks fill these inconsistently, so fall back to the remittance
     text and finally to a placeholder — payee is NOT NULL."""
-    counterparty = raw.get("creditor") if credit_debit_indicator == "DBIT" else raw.get("debtor")
-    name = (counterparty or {}).get("name")
-    if name and name.strip():
-        return name.strip()[:200]
-    if remittance:
-        return remittance[:200]
-    return "Unknown"
+    return _counterparty_name(raw, credit_debit_indicator) or (remittance or "Unknown")[:200]
+
+
+def _bank_transaction_code(raw: dict) -> str | None:
+    """The bank's own ISO 20022 classification of the transaction, flattened
+    to one short string. ASPSPs report it either as a domain/family/sub-family
+    triple or as a code/sub-code pair, and a few send only a description, so
+    all three shapes are folded into the same column — raw_source is what says
+    the vocabulary is ISO 20022 rather than the Linxo export's own."""
+    code = raw.get("bank_transaction_code")
+    if not isinstance(code, dict):
+        return str(code)[:60] if code else None
+    parts = [
+        code.get("domain") or code.get("code"),
+        code.get("family"),
+        code.get("sub_family") or code.get("sub_code"),
+    ]
+    joined = "/".join(str(p) for p in parts if p)
+    return (joined or str(code.get("description") or ""))[:60] or None
+
+
+def _initiated_date(raw: dict) -> date | None:
+    """When the purchase happened, when the bank distinguishes it from the
+    day it booked the entry."""
+    value = raw.get("transaction_date")
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(str(value)[:10])
+    except ValueError:
+        return None
 
 
 def _fingerprint(row_date: date, amount: float, payee: str, occurrence: int) -> str:
@@ -263,6 +320,16 @@ def normalize_transactions(raw_transactions: list[dict]) -> list[dict]:
             "memo": remittance,
             "amount": amount,
             "external_id": external_id,
+            # Frozen copies of what the bank said, never edited afterwards.
+            # raw_label deliberately duplicates memo at import time: memo is
+            # the user's to rewrite, this is not.
+            "raw_source": RAW_SOURCE,
+            "raw_label": remittance,
+            "raw_counterparty": _counterparty_name(raw, indicator),
+            "raw_transaction_code": _bank_transaction_code(raw),
+            "raw_merchant_category_code": (str(raw["merchant_category_code"])[:10]
+                                           if raw.get("merchant_category_code") else None),
+            "raw_initiated_date": _initiated_date(raw),
         })
     return normalized
 
@@ -364,6 +431,15 @@ def import_transactions(db: Session, link: BankAccountLink, rows: list[dict], da
             account_id=link.account_id,
             category_id=None,
             external_id=row["external_id"],
+            # .get(), unlike the keys above: these are optional metadata a
+            # caller may legitimately not carry, not part of what makes a
+            # transaction a transaction.
+            raw_source=row.get("raw_source"),
+            raw_label=row.get("raw_label"),
+            raw_counterparty=row.get("raw_counterparty"),
+            raw_transaction_code=row.get("raw_transaction_code"),
+            raw_merchant_category_code=row.get("raw_merchant_category_code"),
+            raw_initiated_date=row.get("raw_initiated_date"),
         )
         db.add(transaction)
         db.flush()
@@ -470,33 +546,92 @@ def _parse_valid_until(value: str | None) -> datetime | None:
         return None
 
 
-def complete_connection(db: Session, connection: BankConnection, code: str) -> None:
-    """Turns the callback's code into a session and records the accounts it
-    covers. Re-consenting to a bank hands back new remote uids for the same
-    real accounts, so an existing link is re-pointed by IBAN where possible —
-    that's what keeps the account mapping and sync history across a renewal."""
-    session = create_session(code)
-    connection.session_id = session.get("session_id")
-    connection.access_valid_until = _parse_valid_until((session.get("access") or {}).get("valid_until"))
+def _session_accounts(session: dict) -> list[dict]:
+    """The accounts a session covers, keyed by uid, whatever shape the bank
+    put them in. Most ASPSPs fill `accounts` with whole account objects, but
+    the field is also specified as a list of bare uid strings, and some put
+    the uids in `accounts_data` instead — BoursoBank returned an empty
+    `accounts` for a consent it had genuinely granted. Both fields are read
+    and merged so one shape never hides the other."""
+    by_uid: dict[str, dict] = {}
+    for entry in list(session.get("accounts") or []) + list(session.get("accounts_data") or []):
+        if isinstance(entry, str):
+            uid, details = entry, {}
+        elif isinstance(entry, dict):
+            uid, details = entry.get("uid"), entry
+        else:
+            continue
+        if not isinstance(uid, str) or not uid:
+            continue
+        by_uid.setdefault(uid, {}).update(details)
+    return [{**details, "uid": uid} for uid, details in by_uid.items()]
+
+
+def _describe_empty_session(session: dict) -> str:
+    """What came back when no account did, so the next look starts from
+    evidence rather than a guess. Counts and status only — no account data."""
+    return (
+        "The bank granted the consent but named no account "
+        f"(accounts: {len(session.get('accounts') or [])}, "
+        f"accounts_data: {len(session.get('accounts_data') or [])}, "
+        f"session status: {session.get('status') or 'unknown'}). "
+        "Refresh the accounts, or reconnect the bank and make sure an account "
+        "is ticked on its consent screen."
+    )
+
+
+def _record_session_accounts(db: Session, connection: BankConnection, session: dict) -> int:
+    """Records the accounts a session covers. Re-consenting to a bank hands
+    back new remote uids for the same real accounts, so an existing link is
+    re-pointed by IBAN where possible — that's what keeps the account mapping
+    and sync history across a renewal."""
+    connection.session_id = session.get("session_id") or connection.session_id
+    valid_until = _parse_valid_until((session.get("access") or {}).get("valid_until"))
+    if valid_until:
+        connection.access_valid_until = valid_until
     connection.status = "linked"
     connection.last_error = None
 
     existing_by_iban = {link.iban: link for link in connection.account_links if link.iban}
     existing_by_uid = {link.remote_account_uid: link for link in connection.account_links}
-    for account in session.get("accounts") or []:
-        uid = account.get("uid")
-        if not uid:
-            continue
+    accounts = _session_accounts(session)
+    for account in accounts:
+        uid = account["uid"]
+        if not account.get("account_id") and not account.get("name"):
+            # A session that names only uids carries no IBAN, holder name or
+            # currency; those take their own call. A bank that refuses it
+            # still leaves a mappable account rather than nothing at all.
+            try:
+                account = {**fetch_account_details(uid), "uid": uid}
+            except EnableBankingError:
+                pass
         iban = (account.get("account_id") or {}).get("iban")
         link = existing_by_uid.get(uid) or (existing_by_iban.get(iban) if iban else None)
         if link is None:
             link = BankAccountLink(connection_id=connection.id, remote_account_uid=uid)
             db.add(link)
         link.remote_account_uid = uid
-        link.iban = iban
-        link.remote_name = account.get("name") or account.get("product")
-        link.currency = account.get("currency")
+        link.iban = iban or link.iban
+        link.remote_name = account.get("name") or account.get("product") or link.remote_name
+        link.currency = account.get("currency") or link.currency
+    if not accounts:
+        connection.last_error = _describe_empty_session(session)
     db.commit()
+    return len(accounts)
+
+
+def complete_connection(db: Session, connection: BankConnection, code: str) -> None:
+    """Turns the callback's code into a session and records its accounts."""
+    _record_session_accounts(db, connection, create_session(code))
+
+
+def refresh_connection_accounts(db: Session, connection: BankConnection) -> int:
+    """Re-reads an existing consent's accounts. The consent itself is
+    untouched, so a connection whose accounts never landed is repaired
+    without sending the user back to their bank."""
+    if not connection.session_id:
+        raise EnableBankingError("This bank connection has no session to refresh")
+    return _record_session_accounts(db, connection, fetch_session(connection.session_id))
 
 
 def disconnect(db: Session, connection: BankConnection) -> None:

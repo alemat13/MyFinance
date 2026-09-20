@@ -296,6 +296,26 @@ Editing an existing transaction also shows a **Reconciled** checkbox next to the
 category field — see the next section for what it means. It's not shown while
 creating a new transaction, since a transaction is always created unreconciled.
 
+#### "As reported by the bank"
+
+Transactions that came in through **Bank Sync** carry a collapsed **As reported by
+the bank** section near the bottom of the panel. Expand it to see what the source
+actually said, before you renamed anything:
+
+- **Original label** — the label the bank sent, word for word. The Payee field is
+  yours to rewrite; this is not, so the original wording is still there months later.
+- **Counterparty** — who the bank named on the other side. Empty when it named nobody.
+- **Bank transaction code** — the bank's own classification of the payment.
+- **Merchant category code** — the merchant's MCC, when the bank supplies one.
+- **Merchant location** and **Purchase date** — where the purchase happened, and the
+  day it happened, which is often a few days before the bank booked it.
+
+None of these can be edited, here or anywhere else: they are a record of what the
+source said, not fields of your own. A row is simply left out when the source didn't
+supply it, and the whole section is hidden for a transaction that has none of them —
+anything you typed in by hand, or imported from a CSV. The badge next to the heading
+says where the values came from.
+
 ### Dividing a transaction
 
 **Divide** is a different feature from the **Split** section above, even though both
@@ -493,6 +513,14 @@ your bank's own site to log in and approve access; MyFinance never sees your ban
 credentials. When you come back, the bank appears on this screen with every account the
 approval covers.
 
+**When a bank shows no account.** Occasionally a bank approves the access but doesn't
+name any account with it, and the bank appears here with nothing under it. Press
+**Refresh accounts**: the approval you already gave is still valid, so this just asks
+your bank again and doesn't send you back through its login screen. If it still comes
+back empty, the line under the bank says what the bank actually returned, and connecting
+it again — taking care to tick an account on the bank's own consent screen — is the next
+thing to try.
+
 **Linking an account.** A connected bank account does nothing until you tell it which
 MyFinance account it feeds, using the **Feeds MyFinance account** dropdown. Only one bank
 account may feed a given MyFinance account, and archived accounts can't be picked.
@@ -518,7 +546,8 @@ bank sync.
 
 **Consent expiry.** Banks grant access for a limited time, typically 90 days. The screen
 shows the expiry date for each bank and warns you in the last week. To renew it, connect
-the same bank again — your account links and sync history are preserved.
+the same bank again — your account links and sync history are preserved, and the same is
+true of **Refresh accounts**.
 
 **Disconnecting.** **Disconnect** revokes the access at your bank and stops future syncs.
 Transactions already imported stay exactly where they are; they're ordinary MyFinance

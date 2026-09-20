@@ -419,6 +419,146 @@ def test_reconsenting_repoints_the_existing_link_by_iban(client, db, linked_conn
     assert linked_connection.account_id is not None
 
 
+def test_callback_reads_accounts_given_as_bare_uids(client, db, monkeypatch):
+    """Some ASPSPs return `accounts` as uid strings rather than objects; the
+    IBAN, name and currency then take their own call."""
+    connection = BankConnection(aspsp_name="BoursoBank", aspsp_country="FR", state="state-11", status="pending")
+    db.add(connection)
+    db.commit()
+
+    monkeypatch.setattr(enable_banking, "create_session", lambda code: {
+        "session_id": "session-11",
+        "access": {"valid_until": "2026-12-19T00:00:00Z"},
+        "accounts": ["uid-11"],
+    })
+    monkeypatch.setattr(enable_banking, "fetch_account_details", lambda uid: {
+        "uid": uid, "name": "Compte Bourso", "currency": "EUR",
+        "account_id": {"iban": "FR7630004"},
+    })
+    client.get("/api/bank-sync/callback?code=c&state=state-11", follow_redirects=False)
+
+    link = db.query(BankAccountLink).one()
+    assert (link.remote_account_uid, link.iban, link.remote_name) == ("uid-11", "FR7630004", "Compte Bourso")
+
+
+def test_callback_falls_back_to_accounts_data(client, db, monkeypatch):
+    """An empty `accounts` doesn't mean an empty consent — the uids can be in
+    `accounts_data` instead, which is what BoursoBank did."""
+    connection = BankConnection(aspsp_name="BoursoBank", aspsp_country="FR", state="state-12", status="pending")
+    db.add(connection)
+    db.commit()
+
+    monkeypatch.setattr(enable_banking, "create_session", lambda code: {
+        "session_id": "session-12",
+        "access": {"valid_until": "2026-12-19T00:00:00Z"},
+        "accounts": [],
+        "accounts_data": [{"uid": "uid-12", "identification_hash": "hash"}],
+    })
+    monkeypatch.setattr(enable_banking, "fetch_account_details", lambda uid: {
+        "uid": uid, "product": "Compte courant", "currency": "EUR",
+        "account_id": {"iban": "FR7630004222"},
+    })
+    client.get("/api/bank-sync/callback?code=c&state=state-12", follow_redirects=False)
+
+    link = db.query(BankAccountLink).one()
+    assert (link.remote_account_uid, link.iban, link.remote_name) == ("uid-12", "FR7630004222", "Compte courant")
+
+
+def test_an_account_whose_details_fail_is_still_listed(client, db, monkeypatch):
+    connection = BankConnection(aspsp_name="BoursoBank", aspsp_country="FR", state="state-13", status="pending")
+    db.add(connection)
+    db.commit()
+
+    monkeypatch.setattr(enable_banking, "create_session", lambda code: {
+        "session_id": "session-13", "accounts": ["uid-13"],
+    })
+
+    def refuse(uid):
+        raise enable_banking.EnableBankingError("403")
+
+    monkeypatch.setattr(enable_banking, "fetch_account_details", refuse)
+    client.get("/api/bank-sync/callback?code=c&state=state-13", follow_redirects=False)
+
+    link = db.query(BankAccountLink).one()
+    assert link.remote_account_uid == "uid-13"
+    assert link.iban is None
+
+
+def test_a_consent_naming_no_account_says_what_came_back(client, db, monkeypatch):
+    connection = BankConnection(aspsp_name="BoursoBank", aspsp_country="FR", state="state-14", status="pending")
+    db.add(connection)
+    db.commit()
+
+    monkeypatch.setattr(enable_banking, "create_session", lambda code: {
+        "session_id": "session-14", "accounts": [], "status": "AUTHORIZED",
+    })
+    response = client.get("/api/bank-sync/callback?code=c&state=state-14", follow_redirects=False)
+
+    assert "bank=connected" in response.headers["location"]
+    db.refresh(connection)
+    assert connection.status == "linked"
+    assert db.query(BankAccountLink).count() == 0
+    assert "named no account" in connection.last_error
+    assert "accounts: 0" in connection.last_error
+    assert "AUTHORIZED" in connection.last_error
+
+
+def test_refreshing_a_connection_records_the_accounts_it_missed(client, db, monkeypatch):
+    connection = BankConnection(
+        aspsp_name="BoursoBank", aspsp_country="FR", state="state-15",
+        status="linked", session_id="session-15", last_error="named no account",
+    )
+    db.add(connection)
+    db.commit()
+
+    monkeypatch.setattr(enable_banking, "fetch_session", lambda session_id: {
+        "session_id": session_id,
+        "access": {"valid_until": "2026-12-19T00:00:00Z"},
+        "accounts": ["uid-15"],
+    })
+    monkeypatch.setattr(enable_banking, "fetch_account_details", lambda uid: {
+        "uid": uid, "name": "Compte Bourso", "currency": "EUR",
+        "account_id": {"iban": "FR7630004333"},
+    })
+    response = client.post(f"/api/bank-sync/connections/{connection.id}/refresh")
+
+    assert response.status_code == 200
+    assert response.json()["accounts"][0]["iban"] == "FR7630004333"
+    db.refresh(connection)
+    assert connection.last_error is None
+
+
+def test_refreshing_keeps_an_existing_mapping(client, db, linked_connection, monkeypatch):
+    mapped_account_id = linked_connection.account_id
+    assert mapped_account_id is not None
+
+    monkeypatch.setattr(enable_banking, "fetch_session", lambda session_id: {
+        "session_id": session_id,
+        "accounts": [{
+            "uid": "remote-uid-1", "name": "Compte Courant", "currency": "EUR",
+            "account_id": {"iban": "FR7612345678901234567890123"},
+        }],
+    })
+    client.post(f"/api/bank-sync/connections/{linked_connection.connection_id}/refresh")
+
+    assert db.query(BankAccountLink).count() == 1
+    db.refresh(linked_connection)
+    assert linked_connection.account_id == mapped_account_id
+
+
+def test_refreshing_a_connection_without_a_session_is_rejected(client, db):
+    connection = BankConnection(aspsp_name="CCF", aspsp_country="FR", state="state-16", status="linked")
+    db.add(connection)
+    db.commit()
+
+    response = client.post(f"/api/bank-sync/connections/{connection.id}/refresh")
+    assert response.status_code == 502
+
+
+def test_refreshing_an_unknown_connection_is_404(client):
+    assert client.post("/api/bank-sync/connections/999/refresh").status_code == 404
+
+
 def test_callback_with_unknown_state_redirects_with_an_error(client):
     response = client.get("/api/bank-sync/callback?code=x&state=nope", follow_redirects=False)
     assert response.status_code == 307
@@ -576,3 +716,123 @@ def test_backup_export_import_preserves_external_id(db, linked_connection, globa
 
     export = backup.build_export(db)
     assert export.transactions[0].external_id == "keep-me"
+
+
+# ── Raw, read-only fields ─────────────────────────────────────────────
+
+def test_normalize_captures_the_banks_own_wording():
+    rows = enable_banking.normalize_transactions([
+        _booked(
+            "42.50", "DBIT", "2026-03-04",
+            entry_reference="a",
+            creditor={"name": "CARREFOUR MARKET"},
+            remittance_information=["CB CARREFOUR MARKET 03/03", "PARIS 75"],
+            bank_transaction_code={"domain": "PMNT", "family": "CCRD", "sub_family": "POSD"},
+            merchant_category_code="5411",
+            transaction_date="2026-03-03",
+        ),
+    ])
+    assert rows[0]["raw_source"] == "enable_banking"
+    assert rows[0]["raw_label"] == "CB CARREFOUR MARKET 03/03 PARIS 75"
+    assert rows[0]["raw_counterparty"] == "CARREFOUR MARKET"
+    assert rows[0]["raw_transaction_code"] == "PMNT/CCRD/POSD"
+    assert rows[0]["raw_merchant_category_code"] == "5411"
+    assert rows[0]["raw_initiated_date"] == date(2026, 3, 3)
+
+
+def test_normalize_accepts_the_other_bank_transaction_code_shapes():
+    rows = enable_banking.normalize_transactions([
+        _booked("1.00", "DBIT", "2026-03-04", entry_reference="a",
+                bank_transaction_code={"code": "PMNT", "sub_code": "POSD"}),
+        _booked("2.00", "DBIT", "2026-03-04", entry_reference="b",
+                bank_transaction_code={"description": "Card payment"}),
+        _booked("3.00", "DBIT", "2026-03-04", entry_reference="c",
+                bank_transaction_code="PMNT-CCRD"),
+        _booked("4.00", "DBIT", "2026-03-04", entry_reference="d"),
+    ])
+    assert [r["raw_transaction_code"] for r in rows] == ["PMNT/POSD", "Card payment", "PMNT-CCRD", None]
+
+
+def test_raw_counterparty_survives_a_bank_that_names_the_party_as_a_string():
+    """The spec says the party is an object, so most banks send one. A bank
+    that sends a bare name instead must not take the whole sync down over a
+    field nothing computes from — the same reasoning as the three shapes
+    _bank_transaction_code() folds together."""
+    rows = enable_banking.normalize_transactions([
+        _booked("9.00", "DBIT", "2026-03-04", entry_reference="a", creditor="EDF"),
+        _booked("9.00", "CRDT", "2026-03-04", entry_reference="b", debtor={"name": "  URSSAF  "}),
+        _booked("9.00", "DBIT", "2026-03-04", entry_reference="c", creditor={"name": ""}),
+        _booked("9.00", "DBIT", "2026-03-04", entry_reference="d", creditor={"iban": "FR76"}),
+    ])
+    assert [r["raw_counterparty"] for r in rows] == ["EDF", "URSSAF", None, None]
+
+
+def test_raw_counterparty_stays_empty_when_the_bank_named_nobody():
+    """Unlike payee, which falls back to the remittance and then to a
+    placeholder: these columns say what the bank said, or nothing."""
+    rows = enable_banking.normalize_transactions([
+        _booked("30.00", "DBIT", "2026-03-04", entry_reference="c",
+                remittance_information=["VIR SEPA LOYER"]),
+    ])
+    assert rows[0]["payee"] == "VIR SEPA LOYER"
+    assert rows[0]["raw_counterparty"] is None
+    assert rows[0]["raw_merchant_category_code"] is None
+    assert rows[0]["raw_initiated_date"] is None
+
+
+def test_import_persists_the_raw_fields(db, linked_connection, global_weights):
+    rows = enable_banking.normalize_transactions([
+        _booked("42.50", "DBIT", "2026-03-04", entry_reference="a",
+                creditor={"name": "CARREFOUR MARKET"},
+                remittance_information=["CB CARREFOUR MARKET 03/03"],
+                bank_transaction_code={"domain": "PMNT", "family": "CCRD"},
+                merchant_category_code="5411"),
+    ])
+    enable_banking.import_transactions(db, linked_connection, rows, date(2026, 3, 1), date(2026, 3, 31))
+    transaction = db.query(Transaction).one()
+    assert transaction.raw_source == "enable_banking"
+    assert transaction.raw_label == "CB CARREFOUR MARKET 03/03"
+    assert transaction.raw_counterparty == "CARREFOUR MARKET"
+    assert transaction.raw_transaction_code == "PMNT/CCRD"
+    assert transaction.raw_merchant_category_code == "5411"
+    # Never filled from a bank: only the Linxo export carries a location.
+    assert transaction.raw_merchant_location is None
+
+
+def test_editing_a_synced_transaction_leaves_the_raw_label_alone(client, db, linked_connection, global_weights):
+    rows = enable_banking.normalize_transactions([
+        _booked("42.50", "DBIT", "2026-03-04", entry_reference="a",
+                creditor={"name": "CARREFOUR MARKET"},
+                remittance_information=["CB CARREFOUR MARKET 03/03"]),
+    ])
+    enable_banking.import_transactions(db, linked_connection, rows, date(2026, 3, 1), date(2026, 3, 31))
+    transaction_id = db.query(Transaction).one().id
+
+    response = client.put(f"/api/transactions/{transaction_id}", json={
+        "payee": "Courses de la semaine",
+        "memo": "reecrit",
+        # Read-only: the API has no such field, so this must be ignored
+        # rather than stored.
+        "raw_label": "tentative de reecriture",
+    })
+    assert response.status_code == 200
+    body = response.json()
+    assert body["payee"] == "Courses de la semaine"
+    assert body["raw_label"] == "CB CARREFOUR MARKET 03/03"
+    assert body["raw_counterparty"] == "CARREFOUR MARKET"
+
+    db.expire_all()
+    assert db.query(Transaction).one().raw_label == "CB CARREFOUR MARKET 03/03"
+
+
+def test_manually_created_transactions_have_no_raw_fields(client, sample_account, global_weights):
+    response = client.post("/api/transactions", json={
+        "date": "2026-03-04",
+        "payee": "Saisie manuelle",
+        "amount": -10.0,
+        "account_id": sample_account.id,
+    })
+    assert response.status_code == 201
+    body = response.json()
+    assert body["raw_source"] is None
+    assert body["raw_label"] is None

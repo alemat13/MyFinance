@@ -121,6 +121,22 @@ def callback(
     return RedirectResponse(f"{frontend_url}/?view=bank-sync&bank=connected")
 
 
+@router.post("/connections/{connection_id}/refresh", response_model=BankConnectionOut)
+def refresh_connection(connection_id: int, db: Session = Depends(get_db)):
+    """Re-reads an existing consent's accounts. For a bank that granted the
+    consent but named no account at the time — the consent stays valid, so
+    this costs no new trip through the bank's authorization screen."""
+    connection = db.get(BankConnection, connection_id)
+    if connection is None:
+        raise HTTPException(404, "Bank connection not found")
+    try:
+        enable_banking.refresh_connection_accounts(db, connection)
+    except enable_banking.EnableBankingError as exc:
+        raise HTTPException(502, str(exc))
+    db.refresh(connection)
+    return _build_connection_out(connection)
+
+
 @router.delete("/connections/{connection_id}", status_code=204)
 def delete_connection(connection_id: int, db: Session = Depends(get_db)):
     connection = db.get(BankConnection, connection_id)

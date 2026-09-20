@@ -79,6 +79,13 @@ def build_transaction_out_from_row(
         accounting_month=compute_accounting_month(t.date, t.accounting_month_offset),
         reconciled=t.reconciled,
         divide_group_id=t.divide_group_id,
+        raw_source=t.raw_source,
+        raw_label=t.raw_label,
+        raw_counterparty=t.raw_counterparty,
+        raw_transaction_code=t.raw_transaction_code,
+        raw_merchant_category_code=t.raw_merchant_category_code,
+        raw_merchant_location=t.raw_merchant_location,
+        raw_initiated_date=t.raw_initiated_date,
         splits=build_transaction_splits_out(t),
     )
 
