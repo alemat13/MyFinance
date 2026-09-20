@@ -69,6 +69,15 @@ class Transaction(Base):
     # this is about avoiding delete failures when a sibling is deleted while
     # others in the group still reference the anchor's id.
     divide_group_id = Column(Integer, nullable=True, index=True)
+    # The identifier the bank gave this transaction, for rows pulled in by
+    # bank sync (see enable_banking.py) — an ASPSP's own entry_reference /
+    # transaction_id, or a locally derived "fp:" fingerprint when the bank
+    # supplies neither. NULL for everything else (manual entry, CSV import,
+    # divide parts, the migrated history), which is why the uniqueness index
+    # below is safe: both SQLite and Postgres allow any number of NULLs in a
+    # unique index. Scoped per account, not globally: two banks are free to
+    # hand out the same reference.
+    external_id = Column(String(120), nullable=True)
 
     account = relationship("Account", back_populates="transactions")
     category = relationship("Category", back_populates="transactions")
@@ -76,6 +85,7 @@ class Transaction(Base):
 
     __table_args__ = (
         Index("ix_transactions_account_id_date", "account_id", "date"),
+        Index("ix_transactions_account_id_external_id", "account_id", "external_id", unique=True),
     )
 
 
@@ -196,6 +206,70 @@ class OneDriveBackupSettings(Base):
     last_backup_at = Column(DateTime, nullable=True)
     last_backup_status = Column(String(20), nullable=True)  # 'success' | 'failed'
     last_backup_error = Column(Text, nullable=True)
+
+
+class BankConnection(Base):
+    """One granted consent with one bank (ASPSP), obtained through Enable
+    Banking — see enable_banking.py. A connection is created in 'pending'
+    state before the user is redirected to their bank, and only becomes
+    'linked' when they come back through the callback with an authorization
+    code. Unlike OneDriveBackupSettings there can be several rows at once:
+    one per bank, since a consent is granted per bank.
+
+    No access/refresh token is stored: Enable Banking authenticates *us* with
+    a JWT signed on the fly from ENABLE_BANKING_PRIVATE_KEY, and session_id
+    is only an identifier, useless to anyone without that key.
+    """
+    __tablename__ = "bank_connections"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    aspsp_name = Column(String(100), nullable=False)
+    aspsp_country = Column(String(2), nullable=False, default="FR")
+    # Random nonce round-tripped through the bank's consent screen, so the
+    # callback can tell which pending connection it is completing.
+    state = Column(String(64), nullable=False, index=True)
+    authorization_id = Column(String(64), nullable=True)
+    session_id = Column(String(64), nullable=True)
+    status = Column(String(20), nullable=False, default="pending")  # 'pending' | 'linked' | 'expired' | 'error'
+    # When the bank's consent lapses (90 days for most French ASPSPs).
+    # Re-consenting is a fresh authorization, not a token refresh.
+    access_valid_until = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    last_error = Column(Text, nullable=True)
+
+    account_links = relationship("BankAccountLink", back_populates="connection", cascade="all, delete-orphan")
+
+
+class BankAccountLink(Base):
+    """One account exposed by a BankConnection, and the MyFinance account it
+    feeds. Kept out of `accounts` on purpose: a remote account exists (and is
+    listed in the UI) before anyone decides where it goes, and re-consenting
+    to the same bank yields brand-new remote uids for the same real accounts,
+    so the mapping has to survive being re-pointed.
+    """
+    __tablename__ = "bank_account_links"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    connection_id = Column(Integer, ForeignKey("bank_connections.id"), nullable=False, index=True)
+    remote_account_uid = Column(String(64), nullable=False)
+    iban = Column(String(50), nullable=True)
+    remote_name = Column(String(200), nullable=True)
+    currency = Column(String(3), nullable=True)
+    # NULL until the user picks which MyFinance account this feeds; nothing
+    # is ever imported while it is NULL or sync_enabled is false.
+    account_id = Column(Integer, ForeignKey("accounts.id"), nullable=True, index=True)
+    sync_enabled = Column(Boolean, nullable=False, default=True)
+    # The first sync never reaches back past this date. Defaults to the day
+    # the link is mapped, so connecting a bank doesn't re-import years of
+    # history that already came in through the CSV/migration path.
+    sync_from_date = Column(Date, nullable=True)
+    last_synced_at = Column(DateTime, nullable=True)
+    last_sync_status = Column(String(20), nullable=True)  # 'success' | 'failed'
+    last_sync_error = Column(Text, nullable=True)
+    last_imported_count = Column(Integer, nullable=False, default=0)
+
+    connection = relationship("BankConnection", back_populates="account_links")
+    account = relationship("Account")
 
 
 class TransactionHistory(Base):
