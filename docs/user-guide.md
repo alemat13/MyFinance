@@ -513,13 +513,16 @@ your bank's own site to log in and approve access; MyFinance never sees your ban
 credentials. When you come back, the bank appears on this screen with every account the
 approval covers.
 
-**When a bank shows no account.** Occasionally a bank approves the access but doesn't
-name any account with it, and the bank appears here with nothing under it. Press
-**Refresh accounts**: the approval you already gave is still valid, so this just asks
-your bank again and doesn't send you back through its login screen. If it still comes
-back empty, the line under the bank says what the bank actually returned, and connecting
-it again — taking care to tick an account on the bank's own consent screen — is the next
-thing to try.
+**When a bank shows no account.** Occasionally a bank approves the access but no account
+appears under it. Press **Refresh accounts** first: the approval you already gave is
+still valid, so this just asks your bank again and doesn't send you back through its
+login screen.
+
+If it still comes back empty, the usual cause isn't the bank at all. An Enable Banking
+application running in restricted mode only ever sees the accounts explicitly linked to
+it in Enable Banking's own Control Panel — every other account is filtered out and the
+list arrives empty. Link an account for this bank there, then refresh again, or
+disconnect the bank here and connect it afresh.
 
 **Linking an account.** A connected bank account does nothing until you tell it which
 MyFinance account it feeds, using the **Feeds MyFinance account** dropdown. Only one bank

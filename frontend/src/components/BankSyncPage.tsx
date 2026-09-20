@@ -217,8 +217,9 @@ export default function BankSyncPage({ onBack }: Props) {
 
             {connection.accounts.length === 0 && (
               <p className="text-[13px] text-slate-400">
-                This consent named no account. Try "Refresh accounts" — the consent itself is still
-                valid, so this doesn't send you back to the bank.
+                This consent named no account. Check your Enable Banking application has an
+                account linked for this bank, then press "Refresh accounts" — the consent
+                itself is still valid, so that doesn't send you back to the bank.
               </p>
             )}
 
