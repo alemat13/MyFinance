@@ -58,6 +58,10 @@ MAX_ROWS_PER_SYNC = 2000
 # Banks rate-limit account endpoints down to 4 calls per day, so there is no
 # value in syncing more often than this.
 MIN_SYNC_INTERVAL_HOURS = 6
+# What Transaction.raw_source records for rows this module imports. The other
+# writer of those columns is the Linxo GDPR export backfill, which uses its
+# own value — the two vocabularies don't overlap.
+RAW_SOURCE = "enable_banking"
 
 
 class EnableBankingError(Exception):
@@ -221,17 +225,59 @@ def _remittance(raw: dict) -> str | None:
     return " ".join(parts) or None
 
 
+def _counterparty_name(raw: dict, credit_debit_indicator: str) -> str | None:
+    """Whoever the bank named on the other side, kept verbatim — unlike
+    _payee(), which falls back to the remittance text and finally to a
+    placeholder so the NOT NULL column is always filled.
+
+    The party is an object per the spec, but a bank that sends the name as a
+    bare string must not take the whole sync down over a field nothing
+    computes from, so that shape is read too."""
+    counterparty = raw.get("creditor") if credit_debit_indicator == "DBIT" else raw.get("debtor")
+    if isinstance(counterparty, dict):
+        name = counterparty.get("name")
+    else:
+        name = counterparty
+    if not isinstance(name, str):
+        return None
+    return name.strip()[:200] or None
+
+
 def _payee(raw: dict, credit_debit_indicator: str, remittance: str | None) -> str:
     """The counterparty: whoever was paid on a debit, whoever paid on a
     credit. Banks fill these inconsistently, so fall back to the remittance
     text and finally to a placeholder — payee is NOT NULL."""
-    counterparty = raw.get("creditor") if credit_debit_indicator == "DBIT" else raw.get("debtor")
-    name = (counterparty or {}).get("name")
-    if name and name.strip():
-        return name.strip()[:200]
-    if remittance:
-        return remittance[:200]
-    return "Unknown"
+    return _counterparty_name(raw, credit_debit_indicator) or (remittance or "Unknown")[:200]
+
+
+def _bank_transaction_code(raw: dict) -> str | None:
+    """The bank's own ISO 20022 classification of the transaction, flattened
+    to one short string. ASPSPs report it either as a domain/family/sub-family
+    triple or as a code/sub-code pair, and a few send only a description, so
+    all three shapes are folded into the same column — raw_source is what says
+    the vocabulary is ISO 20022 rather than the Linxo export's own."""
+    code = raw.get("bank_transaction_code")
+    if not isinstance(code, dict):
+        return str(code)[:60] if code else None
+    parts = [
+        code.get("domain") or code.get("code"),
+        code.get("family"),
+        code.get("sub_family") or code.get("sub_code"),
+    ]
+    joined = "/".join(str(p) for p in parts if p)
+    return (joined or str(code.get("description") or ""))[:60] or None
+
+
+def _initiated_date(raw: dict) -> date | None:
+    """When the purchase happened, when the bank distinguishes it from the
+    day it booked the entry."""
+    value = raw.get("transaction_date")
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(str(value)[:10])
+    except ValueError:
+        return None
 
 
 def _fingerprint(row_date: date, amount: float, payee: str, occurrence: int) -> str:
@@ -274,6 +320,16 @@ def normalize_transactions(raw_transactions: list[dict]) -> list[dict]:
             "memo": remittance,
             "amount": amount,
             "external_id": external_id,
+            # Frozen copies of what the bank said, never edited afterwards.
+            # raw_label deliberately duplicates memo at import time: memo is
+            # the user's to rewrite, this is not.
+            "raw_source": RAW_SOURCE,
+            "raw_label": remittance,
+            "raw_counterparty": _counterparty_name(raw, indicator),
+            "raw_transaction_code": _bank_transaction_code(raw),
+            "raw_merchant_category_code": (str(raw["merchant_category_code"])[:10]
+                                           if raw.get("merchant_category_code") else None),
+            "raw_initiated_date": _initiated_date(raw),
         })
     return normalized
 
@@ -375,6 +431,15 @@ def import_transactions(db: Session, link: BankAccountLink, rows: list[dict], da
             account_id=link.account_id,
             category_id=None,
             external_id=row["external_id"],
+            # .get(), unlike the keys above: these are optional metadata a
+            # caller may legitimately not carry, not part of what makes a
+            # transaction a transaction.
+            raw_source=row.get("raw_source"),
+            raw_label=row.get("raw_label"),
+            raw_counterparty=row.get("raw_counterparty"),
+            raw_transaction_code=row.get("raw_transaction_code"),
+            raw_merchant_category_code=row.get("raw_merchant_category_code"),
+            raw_initiated_date=row.get("raw_initiated_date"),
         )
         db.add(transaction)
         db.flush()

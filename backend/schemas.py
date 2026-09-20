@@ -246,6 +246,16 @@ class TransactionOut(BaseModel):
     accounting_month: str
     reconciled: bool
     divide_group_id: Optional[int] = None
+    # Read-only throughout: present here and absent from TransactionCreate /
+    # TransactionUpdate, so the API can show what the source said without
+    # ever letting a client rewrite it. See models.Transaction.
+    raw_source: Optional[str] = None
+    raw_label: Optional[str] = None
+    raw_counterparty: Optional[str] = None
+    raw_transaction_code: Optional[str] = None
+    raw_merchant_category_code: Optional[str] = None
+    raw_merchant_location: Optional[str] = None
+    raw_initiated_date: Optional[date] = None
     splits: list[TransactionSplitOut] = []
 
 
@@ -613,6 +623,16 @@ class TransactionExport(BaseModel):
     # keep a later sync from re-importing the same transactions. Defaulted,
     # so archives written before bank sync existed still validate.
     external_id: str | None = None
+    # Same reasoning as external_id: a restore that dropped these would
+    # silently undo a backfill nothing else can redo (the Linxo export is a
+    # one-off file, not a feed). Defaulted, so older archives still validate.
+    raw_source: str | None = None
+    raw_label: str | None = None
+    raw_counterparty: str | None = None
+    raw_transaction_code: str | None = None
+    raw_merchant_category_code: str | None = None
+    raw_merchant_location: str | None = None
+    raw_initiated_date: _DateType | None = None
     created_at: datetime
 
 

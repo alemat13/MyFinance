@@ -629,3 +629,29 @@ test('free-form weight entry on a new transaction is submitted with source "cust
     }), null)
   })
 })
+
+test('surfaces the source wording for a synced transaction', async () => {
+  mockFetchTransaction.mockResolvedValue({
+    ...baseTxn,
+    payee: 'Courses de la semaine',
+    raw_source: 'enable_banking',
+    raw_label: 'CB CARREFOUR MARKET 14/01 PARIS 75',
+  })
+
+  renderWithProviders(<TransactionDetail {...baseProps} />)
+
+  const toggle = await screen.findByRole('button', { name: /As reported by the bank/ })
+  // The payee field keeps the renamed value; the raw label is what the bank said.
+  expect(screen.getByPlaceholderText('Payee')).toHaveValue('Courses de la semaine')
+  fireEvent.click(toggle)
+  expect(screen.getByText('CB CARREFOUR MARKET 14/01 PARIS 75')).toBeInTheDocument()
+})
+
+test('hides the source section for a transaction that has no raw fields', async () => {
+  mockFetchTransaction.mockResolvedValue(baseTxn)
+
+  renderWithProviders(<TransactionDetail {...baseProps} />)
+
+  await waitFor(() => expect(mockFetchTransaction).toHaveBeenCalled())
+  expect(screen.queryByRole('button', { name: /As reported by the bank/ })).not.toBeInTheDocument()
+})

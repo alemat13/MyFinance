@@ -79,6 +79,30 @@ class Transaction(Base):
     # hand out the same reference.
     external_id = Column(String(120), nullable=True)
 
+    # ── Raw, read-only fields as the source reported them ──────────────
+    # Never edited through the API (they're absent from TransactionCreate /
+    # TransactionUpdate on purpose) and never used in any computation: they
+    # exist so the original wording survives whatever the user renames the
+    # transaction to, which is what makes categorisation and rename
+    # suggestions trainable on real history rather than on already-cleaned
+    # labels.
+    #
+    # Two sources fill the same columns: Enable Banking for newly synced
+    # rows (enable_banking.py) and the Linxo GDPR export for the migrated
+    # history. raw_source says which, because the vocabularies differ —
+    # raw_transaction_code is an ISO 20022 code from a bank and a Linxo
+    # transaction type from the export, and nothing can tell them apart
+    # from the value alone.
+    raw_source = Column(String(20), nullable=True)  # 'enable_banking' | 'linxo_export'
+    raw_label = Column(Text, nullable=True)
+    raw_counterparty = Column(String(200), nullable=True)
+    raw_transaction_code = Column(String(60), nullable=True)
+    raw_merchant_category_code = Column(String(10), nullable=True)
+    raw_merchant_location = Column(String(120), nullable=True)
+    # When the purchase actually happened, as opposed to when the bank
+    # booked it — a card payment is routinely booked several days later.
+    raw_initiated_date = Column(Date, nullable=True)
+
     account = relationship("Account", back_populates="transactions")
     category = relationship("Category", back_populates="transactions")
     splits = relationship("TransactionSplit", back_populates="transaction", cascade="all, delete-orphan")
