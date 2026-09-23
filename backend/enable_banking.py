@@ -20,10 +20,13 @@ carry an external_id.
 """
 import hashlib
 import hmac
+import json
 import os
+import re
 import time
 import uuid
 from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
 
 import httpx
 import jwt
@@ -62,6 +65,17 @@ MIN_SYNC_INTERVAL_HOURS = 6
 # writer of those columns is the Linxo GDPR export backfill, which uses its
 # own value — the two vocabularies don't overlap.
 RAW_SOURCE = "enable_banking"
+
+# Regexes stripped from a synced row's payee and memo, first match only, in
+# order — e.g. the "CARTE 18/09 " / "CARTE 21/09/26 " prefix card payments
+# carry. Edited in the JSON file rather than here so a new bank wording needs
+# no code change. A pattern that fails to compile fails at import, i.e. at
+# startup, rather than silently on the first sync.
+_CONFIG_PATH = Path(__file__).parent / "bank_sync_config.json"
+_LABEL_CLEANUP_PATTERNS: list[re.Pattern] = [
+    re.compile(pattern)
+    for pattern in json.loads(_CONFIG_PATH.read_text()).get("label_cleanup_patterns", [])
+]
 
 
 class EnableBankingError(Exception):
@@ -250,6 +264,20 @@ def _payee(raw: dict, credit_debit_indicator: str, remittance: str | None) -> st
     return _counterparty_name(raw, credit_debit_indicator) or (remittance or "Unknown")[:200]
 
 
+def clean_label(label: str | None) -> str | None:
+    """A payee/memo with every configured cleanup pattern stripped. A pattern
+    that would leave nothing behind is skipped, so a label is never blanked.
+    Only ever applied to the user-editable fields: raw_label and
+    raw_counterparty keep the bank's wording intact."""
+    if not label:
+        return label
+    for pattern in _LABEL_CLEANUP_PATTERNS:
+        cleaned = pattern.sub("", label, count=1).strip()
+        if cleaned:
+            label = cleaned
+    return label
+
+
 def _bank_transaction_code(raw: dict) -> str | None:
     """The bank's own ISO 20022 classification of the transaction, flattened
     to one short string. ASPSPs report it either as a domain/family/sub-family
@@ -316,8 +344,11 @@ def normalize_transactions(raw_transactions: list[dict]) -> list[dict]:
 
         normalized.append({
             "date": row_date,
-            "payee": payee,
-            "memo": remittance,
+            # Cleaned only now, after the fingerprint: it is computed from the
+            # uncleaned payee so that editing the patterns never changes an
+            # already-imported row's external_id, which would re-import it.
+            "payee": clean_label(payee),
+            "memo": clean_label(remittance),
             "amount": amount,
             "external_id": external_id,
             # Frozen copies of what the bank said, never edited afterwards.

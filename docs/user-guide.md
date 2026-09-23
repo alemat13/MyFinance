@@ -540,7 +540,9 @@ amount. The last sync's result — how many transactions came in, or what went w
 shown under each account.
 
 **What an imported transaction looks like.** It arrives with the bank's own date, label
-and amount, **no category**, and a split resolved through the usual account > global
+and amount, minus the "CARTE 18/09" style prefix card payments carry (the label shows
+just the merchant; the bank's full wording is kept under **As reported by the bank**),
+with **no category**, and a split resolved through the usual account > global
 cascade described in [Split Weights](#split-weights). Categorize it exactly as you would
 a transaction you typed yourself. Like any new transaction it starts out
 **unreconciled** — see [Reconciling transactions](#reconciling-transactions) — and it
