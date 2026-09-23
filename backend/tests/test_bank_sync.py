@@ -124,6 +124,43 @@ def test_payee_prefers_counterparty_then_remittance():
     assert rows[2]["memo"] == "VIR SEPA LOYER"
 
 
+def test_card_prefix_is_stripped_from_payee_and_memo_but_not_raw_label():
+    rows = enable_banking.normalize_transactions([
+        _booked("55.98", "DBIT", "2026-09-19", entry_reference="a",
+                remittance_information=["CARTE 18/09 IGP PELLEPORT"]),
+        _booked("0.58", "DBIT", "2026-09-22", entry_reference="b",
+                remittance_information=["CARTE 21/09/26 NYX*NESHUEVO"]),
+        _booked("9.00", "DBIT", "2026-09-22", entry_reference="c",
+                remittance_information=["CARTE 21/09/2026 JOE AND JOE"]),
+    ])
+    assert [r["payee"] for r in rows] == ["IGP PELLEPORT", "NYX*NESHUEVO", "JOE AND JOE"]
+    assert [r["memo"] for r in rows] == ["IGP PELLEPORT", "NYX*NESHUEVO", "JOE AND JOE"]
+    assert [r["raw_label"] for r in rows] == [
+        "CARTE 18/09 IGP PELLEPORT", "CARTE 21/09/26 NYX*NESHUEVO", "CARTE 21/09/2026 JOE AND JOE",
+    ]
+
+
+def test_label_cleanup_leaves_other_labels_alone():
+    assert enable_banking.clean_label("PRLV SEPA PayPal Europe S.a.r.l.") == "PRLV SEPA PayPal Europe S.a.r.l."
+    # Only a leading prefix, with a merchant after it.
+    assert enable_banking.clean_label("VIR CARTE 18/09 REMBOURSEMENT") == "VIR CARTE 18/09 REMBOURSEMENT"
+    assert enable_banking.clean_label("CARTE 18/09") == "CARTE 18/09"
+    assert enable_banking.clean_label(None) is None
+
+
+def test_label_cleanup_does_not_change_the_fingerprint(monkeypatch):
+    """Rows without a bank identifier are deduplicated on a fingerprint of the
+    payee. It must stay the uncleaned one, or editing the patterns would give
+    every row in the overlap window a new external_id and import it twice."""
+    raw = [_booked("3.50", "DBIT", "2026-03-04", remittance_information=["CARTE 03/03 CAFE"])]
+    with_cleanup = enable_banking.normalize_transactions(raw)
+    monkeypatch.setattr(enable_banking, "_LABEL_CLEANUP_PATTERNS", [])
+    without_cleanup = enable_banking.normalize_transactions(raw)
+    assert with_cleanup[0]["payee"] == "CAFE"
+    assert without_cleanup[0]["payee"] == "CARTE 03/03 CAFE"
+    assert with_cleanup[0]["external_id"] == without_cleanup[0]["external_id"]
+
+
 def test_external_id_falls_back_to_transaction_id_then_fingerprint():
     rows = enable_banking.normalize_transactions([
         _booked("10.00", "DBIT", "2026-03-04", entry_reference="entry-1"),
