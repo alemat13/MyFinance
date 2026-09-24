@@ -383,6 +383,8 @@ export interface ImportSummary {
   transactions: number
   transaction_splits: number
   transaction_history: number
+  bank_connections: number
+  bank_account_links: number
 }
 
 export interface TransactionHistoryEntry {
