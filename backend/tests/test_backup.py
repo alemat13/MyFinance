@@ -6,6 +6,7 @@ from datetime import date, datetime
 from models import (
     Account, Category, Transaction, User, AccountUser,
     CategorySplit, GlobalSplitWeight, AccountSplitWeight, TransactionSplit, TransactionHistory,
+    BankConnection, BankAccountLink, OneDriveBackupSettings,
 )
 import backup
 
@@ -380,3 +381,82 @@ def test_archive_written_before_the_raw_fields_existed_still_imports(client, sam
         }],
     )
     assert _post_import(client, _zip_payload(payload)).status_code == 200
+
+
+def _seed_bank_connection(db, account):
+    connection = BankConnection(
+        aspsp_name="CCF", aspsp_country="FR", state="nonce", session_id="sess-1",
+        status="linked", access_valid_until=datetime(2026, 12, 20),
+    )
+    db.add(connection)
+    db.flush()
+    db.add(BankAccountLink(
+        connection_id=connection.id, remote_account_uid="uid-1", iban="FR7600000000000000000000000",
+        remote_name="Compte joint", currency="EUR", account_id=account.id,
+        sync_from_date=date(2026, 9, 20), last_imported_count=12,
+    ))
+    db.add(BankAccountLink(connection_id=connection.id, remote_account_uid="uid-2"))
+    db.commit()
+    return connection
+
+
+def test_round_trip_preserves_bank_connections_and_links(client, db, sample_account):
+    """Losing these means granting the PSD2 consent again at every bank."""
+    _seed_bank_connection(db, sample_account)
+
+    exported = _unzip_payload(client.get("/api/backup/export").content)
+    assert [c["session_id"] for c in exported["bank_connections"]] == ["sess-1"]
+    assert len(exported["bank_account_links"]) == 2
+
+    response = _post_import(client, _zip_payload(exported))
+    assert response.status_code == 200
+    assert response.json()["bank_connections"] == 1
+    assert response.json()["bank_account_links"] == 2
+
+    db.expire_all()
+    connection = db.query(BankConnection).one()
+    assert (connection.aspsp_name, connection.session_id, connection.status) == ("CCF", "sess-1", "linked")
+    links = {l.remote_account_uid: l for l in db.query(BankAccountLink).all()}
+    assert links["uid-1"].account_id == sample_account.id
+    assert links["uid-1"].sync_from_date == date(2026, 9, 20)
+    assert links["uid-1"].last_imported_count == 12
+    assert links["uid-2"].account_id is None
+
+
+def test_archive_without_bank_sections_leaves_no_bank_connected(client, db, sample_account):
+    """An archive written before bank sync was exported keeps today's
+    behaviour: an overwrite restore clears the connections."""
+    _seed_bank_connection(db, sample_account)
+    assert _post_import(client, _zip_payload(_minimal_payload())).status_code == 200
+    db.expire_all()
+    assert db.query(BankConnection).count() == 0
+    assert db.query(BankAccountLink).count() == 0
+
+
+def test_import_overwrite_dangling_bank_link_returns_422(client):
+    payload = _minimal_payload(
+        bank_connections=[],
+        bank_account_links=[{"id": 1, "connection_id": 99, "remote_account_uid": "uid-1"}],
+    )
+    response = _post_import(client, _zip_payload(payload))
+    assert response.status_code == 422
+
+
+def test_import_overwrite_keeps_the_onedrive_connection(client, db):
+    """Never in an archive, and never wiped by a restore either."""
+    db.add(OneDriveBackupSettings(
+        id=1, connected=True, account_email="alex@example.com", folder_path="/MyFinance Backups",
+        refresh_token_encrypted="encrypted-token",
+    ))
+    db.commit()
+
+    exported = _unzip_payload(client.get("/api/backup/export").content)
+    assert "onedrive" not in json.dumps(exported).lower()
+    assert "encrypted-token" not in json.dumps(exported)
+
+    assert _post_import(client, _zip_payload(exported)).status_code == 200
+    db.expire_all()
+    settings = db.query(OneDriveBackupSettings).one()
+    assert settings.connected is True
+    assert settings.folder_path == "/MyFinance Backups"
+    assert settings.refresh_token_encrypted == "encrypted-token"

@@ -14,12 +14,14 @@ from database import Base
 from models import (
     Account, Category, Transaction, User, AccountUser,
     CategorySplit, GlobalSplitWeight, AccountSplitWeight, TransactionSplit, TransactionHistory,
+    BankConnection, BankAccountLink, OneDriveBackupSettings,
 )
 from schemas import (
     DatabaseExport, ImportSummary,
     UserExport, AccountExport, CategoryExport, AccountUserExport,
     CategorySplitExport, GlobalSplitWeightExport, AccountSplitWeightExport, TransactionExport,
     TransactionSplitExport, TransactionHistoryExport,
+    BankConnectionExport, BankAccountLinkExport,
 )
 
 SCHEMA_VERSION = 1
@@ -27,7 +29,16 @@ ZIP_ENTRY_NAME = "backup.json"
 
 # Tables with a single-column integer PK whose Postgres sequence needs
 # resyncing after an import inserts explicit id values.
-_SERIAL_PK_TABLES = ["users", "accounts", "categories", "transactions", "transaction_history"]
+_SERIAL_PK_TABLES = [
+    "users", "accounts", "categories", "transactions", "transaction_history",
+    "bank_connections", "bank_account_links",
+]
+
+# Survives an overwrite restore untouched: the OneDrive connection is app
+# configuration, not data, and is never in an archive (its refresh token
+# opens the very drive the archives are uploaded to). No FK points at it, so
+# leaving it out of drop_all()/create_all() is safe.
+_PRESERVED_ON_OVERWRITE = {OneDriveBackupSettings.__tablename__}
 
 
 class BackupFormatError(ValueError):
@@ -68,6 +79,8 @@ def build_export(db: Session) -> DatabaseExport:
         transactions=[TransactionExport.model_validate(t) for t in db.query(Transaction).all()],
         transaction_splits=[TransactionSplitExport.model_validate(s) for s in db.query(TransactionSplit).all()],
         transaction_history=[TransactionHistoryExport.model_validate(h) for h in db.query(TransactionHistory).all()],
+        bank_connections=[BankConnectionExport.model_validate(c) for c in db.query(BankConnection).all()],
+        bank_account_links=[BankAccountLinkExport.model_validate(l) for l in db.query(BankAccountLink).all()],
     )
 
 
@@ -140,6 +153,11 @@ def _validate_referential_integrity(data: DatabaseExport) -> None:
     for s in data.transaction_splits:
         _check("transaction_splits.transaction_id", s.transaction_id, transaction_ids)
         _check("transaction_splits.user_id", s.user_id, user_ids)
+    connection_ids = {c.id for c in data.bank_connections or []}
+    for link in data.bank_account_links or []:
+        _check("bank_account_links.connection_id", link.connection_id, connection_ids)
+        if link.account_id is not None:
+            _check("bank_account_links.account_id", link.account_id, account_ids)
 
 
 def _reset_postgres_sequences(bind) -> None:
@@ -157,7 +175,8 @@ def import_database(db: Session, data: DatabaseExport, mode: Literal["overwrite"
 
     if mode == "overwrite":
         _validate_referential_integrity(data)
-        Base.metadata.drop_all(bind=bind)
+        tables = [t for t in Base.metadata.sorted_tables if t.name not in _PRESERVED_ON_OVERWRITE]
+        Base.metadata.drop_all(bind=bind, tables=tables)
         Base.metadata.create_all(bind=bind)
 
     ImportSession = sessionmaker(bind=bind)
@@ -194,6 +213,14 @@ def import_database(db: Session, data: DatabaseExport, mode: Literal["overwrite"
 
         session.add_all(TransactionSplit(**s.model_dump()) for s in data.transaction_splits)
         session.add_all(TransactionHistory(**h.model_dump()) for h in data.transaction_history)
+        # Bank sync, overwrite only: in append mode a restored link would
+        # point at the archive's account ids, not this database's. An archive
+        # that predates these sections (None) leaves them empty, as before.
+        bank_connections = (data.bank_connections or []) if mode == "overwrite" else []
+        bank_account_links = (data.bank_account_links or []) if mode == "overwrite" else []
+        session.add_all(BankConnection(**c.model_dump()) for c in bank_connections)
+        session.flush()
+        session.add_all(BankAccountLink(**l.model_dump()) for l in bank_account_links)
         # Bulk restore bypasses every per-site invalidation above by design -
         # a full reset is the only thing that can be correct here. A no-op in
         # "overwrite" mode (drop_all/create_all already emptied the table).
@@ -220,4 +247,6 @@ def import_database(db: Session, data: DatabaseExport, mode: Literal["overwrite"
         transactions=len(data.transactions),
         transaction_splits=len(data.transaction_splits),
         transaction_history=len(data.transaction_history),
+        bank_connections=len(bank_connections),
+        bank_account_links=len(bank_account_links),
     )

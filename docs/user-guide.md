@@ -558,8 +558,11 @@ true of **Refresh accounts**.
 Transactions already imported stay exactly where they are; they're ordinary MyFinance
 transactions.
 
-Note that restoring a backup in **Overwrite** mode clears bank connections, so you'll
-need to connect your banks again afterwards.
+Bank connections are part of a backup: restoring one in **Overwrite** mode brings back
+each connected bank and which MyFinance account each of its accounts feeds, so you don't
+have to grant access at your bank again. A consent that has lapsed since the backup was
+taken still needs renewing, as usual. A backup exported before bank connections were
+included restores with no bank connected, and **Append** mode never touches them.
 
 ## Backup & Restore
 
@@ -570,6 +573,8 @@ need to connect your banks again afterwards.
     destructive and asks you to confirm before proceeding.
   - **Append** adds the backup's data alongside what's already there, and also asks
     for confirmation first.
+- A backup includes your bank connections (see [Bank sync](#bank-sync)) but never the
+  OneDrive connection below, and restoring one leaves the OneDrive connection as it was.
 
 ### OneDrive Automatic Backup
 
