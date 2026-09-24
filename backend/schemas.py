@@ -665,6 +665,39 @@ class TransactionHistoryExport(BaseModel):
     changes: dict | None = None
 
 
+class BankConnectionExport(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    aspsp_name: str
+    aspsp_country: str = "FR"
+    state: str
+    authorization_id: str | None = None
+    session_id: str | None = None
+    status: str = "pending"
+    access_valid_until: datetime | None = None
+    created_at: datetime | None = None
+    last_error: str | None = None
+
+
+class BankAccountLinkExport(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    connection_id: int
+    remote_account_uid: str
+    iban: str | None = None
+    remote_name: str | None = None
+    currency: str | None = None
+    account_id: int | None = None
+    sync_enabled: bool = True
+    sync_from_date: _DateType | None = None
+    last_synced_at: datetime | None = None
+    last_sync_status: str | None = None
+    last_sync_error: str | None = None
+    last_imported_count: int = 0
+
+
 class DatabaseExport(BaseModel):
     schema_version: int
     exported_at: datetime
@@ -678,6 +711,14 @@ class DatabaseExport(BaseModel):
     transactions: list[TransactionExport] = []
     transaction_splits: list[TransactionSplitExport] = []
     transaction_history: list[TransactionHistoryExport] = []
+    # Bank sync (Enable Banking): the consent granted at each bank and the
+    # mapping of each remote account onto a MyFinance account. `None` (an
+    # archive written before these were exported) is not the same as `[]`:
+    # see backup.import_database. The OneDrive connection is deliberately
+    # never exported — it holds the refresh token of the very drive these
+    # archives get uploaded to.
+    bank_connections: list[BankConnectionExport] | None = None
+    bank_account_links: list[BankAccountLinkExport] | None = None
 
 
 # ── OneDrive automatic backup connection ──────────────────────────
@@ -720,6 +761,8 @@ class ImportSummary(BaseModel):
     transactions: int
     transaction_splits: int
     transaction_history: int
+    bank_connections: int = 0
+    bank_account_links: int = 0
 
 
 # ── Bank sync (Enable Banking) ────────────────────────────────────────
