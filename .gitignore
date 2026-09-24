@@ -9,3 +9,6 @@ test-results/
 playwright-report/
 blob-report/
 .claude/skills/finance-xlsm-migration/
+
+# Per-user skill configuration (bank names, accounts): never committed, the repo is public
+*.local.md
