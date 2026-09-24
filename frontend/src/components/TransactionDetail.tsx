@@ -133,7 +133,7 @@ export default function TransactionDetail({
     fetchDivideSiblings(transactionId).then(setDivideSiblings).catch(() => {})
   }, [transactionId, selectedUserId])
 
-  // Prefill a new transaction's split from category > account > global priority
+  // Prefill a new transaction's split from account > category > global priority
   // whenever category/account selection changes — but never once the user has
   // hand-edited weights (source === 'custom'), which always wins. Editing an
   // existing transaction never re-prefills like this (see comment above).

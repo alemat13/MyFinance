@@ -48,26 +48,26 @@ def resolve_default_weights(
 ) -> tuple[str | None, dict[int, int]]:
     """Resolve default weights to prefill a transaction's split with.
 
-    Priority, ascending: global < account < category (category wins if
+    Priority, ascending: global < category < account (account wins if
     configured). This never inspects AccountUser/ownership — a tier applies
     whenever it's configured, regardless of how many owners an account has.
     Used only to suggest defaults (CSV import, or client-side prefill for
     the interactive form) — never to live-resolve an existing transaction's
     split, which is always driven by its own stored weights.
     """
-    if category_id is not None:
-        cat_splits = db.query(CategorySplit).filter(
-            CategorySplit.category_id == category_id, CategorySplit.weight > 0,
-        ).all()
-        if cat_splits:
-            return "category", {c.user_id: c.weight for c in cat_splits}
-
     if account_id is not None:
         acct_weights = db.query(AccountSplitWeight).filter(
             AccountSplitWeight.account_id == account_id, AccountSplitWeight.weight > 0,
         ).all()
         if acct_weights:
             return "account", {w.user_id: w.weight for w in acct_weights}
+
+    if category_id is not None:
+        cat_splits = db.query(CategorySplit).filter(
+            CategorySplit.category_id == category_id, CategorySplit.weight > 0,
+        ).all()
+        if cat_splits:
+            return "category", {c.user_id: c.weight for c in cat_splits}
 
     global_weights = db.query(GlobalSplitWeight).filter(GlobalSplitWeight.weight > 0).all()
     if global_weights:

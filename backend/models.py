@@ -145,7 +145,7 @@ class CategorySplit(Base):
     category_id = Column(Integer, ForeignKey("categories.id"), primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id"), primary_key=True, index=True)
     # Relative integer weight, not a percentage — no sum-to-100 requirement.
-    # Highest-priority tier: used only to prefill a transaction's own weights.
+    # Middle-priority tier: used only to prefill a transaction's own weights.
     weight = Column(Integer, nullable=False, default=0)
 
     category = relationship("Category", back_populates="splits")
@@ -167,7 +167,7 @@ class AccountSplitWeight(Base):
 
     account_id = Column(Integer, ForeignKey("accounts.id"), primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id"), primary_key=True, index=True)
-    # Middle-priority tier: used only to prefill a transaction's own weights.
+    # Highest-priority tier: used only to prefill a transaction's own weights.
     # Entirely separate from AccountUser.ownership_percentage.
     weight = Column(Integer, nullable=False, default=0)
 

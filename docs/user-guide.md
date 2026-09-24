@@ -151,10 +151,10 @@ action that opens the New Category form pre-filled with that parent.
   Income, Expense, or Transfer), an optional **parent category**, a **color** and an
   **icon** (pick from a curated set of finance-themed icons), and an optional
   **default split weight**: a set of per-user integer weights used to prefill the
-  split on any new transaction in this category — this is the highest-priority of the
-  three weight tiers (see [Split Weights](#split-weights)). If you don't set one for a
-  category, new transactions in it fall back to the account's split weight, and then
-  to the household's global split weight, instead.
+  split on any new transaction in this category — this is the middle of the three
+  weight tiers (see [Split Weights](#split-weights)): an account's own split weight
+  beats it, and it beats the household's global split weight. If you don't set one for
+  a category, new transactions in it fall back to the global split weight instead.
 - Picking a parent category **locks the type field** to match the parent's — a
   subcategory always shares its parent's type. Only a top-level category can be
   chosen as a parent (no 3-level nesting).
@@ -442,15 +442,15 @@ Every transaction's split is driven by its own per-user integer **weight** — s
 those weights from scratch every time, MyFinance lets you configure three fallback
 tiers that prefill sensible defaults, checked in this order (first match wins):
 
-1. **Category** — set per-category on the [Categories](#categories) screen. Highest
-   priority: e.g. "Rent" can always default to 1:1 regardless of the account or
-   household default.
-2. **Account** — set per-account on the [Accounts](#accounts) screen, in a sub-table
-   that's completely separate from ownership. Useful when one particular account (say,
-   a joint account funded unevenly) should default differently from the rest of the
-   household.
-3. **Global** — set on this screen, and used whenever neither the category nor the
-   account has a weight configured. For example, weights proportional to each person's
+1. **Account** — set per-account on the [Accounts](#accounts) screen, in a sub-table
+   that's completely separate from ownership. Highest priority: useful when one
+   particular account should always default the same way whatever the category — say,
+   a personal account whose spending only ever concerns its owner.
+2. **Category** — set per-category on the [Categories](#categories) screen, and used
+   when the account has no weight configured: e.g. "Rent" can default to 1:1 on any
+   account that doesn't set its own.
+3. **Global** — set on this screen, and used whenever neither the account nor the
+   category has a weight configured. For example, weights proportional to each person's
    income can be used so shared expenses default to splitting proportionally rather
    than 50/50. Unlike the other two tiers, the global one is **mandatory**: every new
    person you add starts with a weight of 1 here automatically, and this screen won't
@@ -496,7 +496,7 @@ hand. It's a four-step wizard:
 
 Imported transactions are tagged as such, and show up in a transaction's
 [History](#adding-or-editing-a-transaction) panel later. Their split is resolved the
-same way as a manually-entered transaction's: the category > account > global cascade
+same way as a manually-entered transaction's: the account > category > global cascade
 described in [Split Weights](#split-weights), since imported transactions must be
 split too. Like any newly-created transaction, every imported row starts out
 **unreconciled** — see [Reconciling transactions](#reconciling-transactions).
@@ -641,8 +641,8 @@ A quick reference for the rules the app enforces:
 | OneDrive backup folder path can't be empty | Backup & Restore (OneDrive) |
 | OneDrive backup "Keep last" count must be between 1 and 365 | Backup & Restore (OneDrive) |
 
-Split-weight prefill priority, from highest to lowest: a transaction's **category**
-weight beats its **account** weight, which beats the household's **global** weight.
+Split-weight prefill priority, from highest to lowest: a transaction's **account**
+weight beats its **category** weight, which beats the household's **global** weight.
 Every transaction is always split — the global tier is a guaranteed fallback (every
 person defaults to a weight of 1 there), so even with no category or account weight
 configured and no custom weights typed in, a transaction still resolves a split rather

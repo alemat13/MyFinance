@@ -374,7 +374,7 @@ def test_get_transactions_visible_via_split_without_ownership(client, sample_acc
 
 def test_create_transaction_no_users_configured_rejected(client, sample_account, sample_category):
     """Splits are mandatory. With zero users in the system there's nothing
-    for the category > account > global cascade to resolve, so creation is
+    for the account > category > global cascade to resolve, so creation is
     rejected rather than silently producing an unsplit transaction."""
     response = client.post(
         "/api/transactions",
@@ -390,7 +390,7 @@ def test_create_transaction_no_users_configured_rejected(client, sample_account,
 
 
 def test_create_transaction_omitted_split_weights_auto_resolves_from_tier_config(client, sample_account, sample_category, sample_user, db):
-    """Omitting split_weights falls back through the category > account >
+    """Omitting split_weights falls back through the account > category >
     global cascade (same as CSV import already does) rather than leaving the
     transaction unsplit."""
     from models import GlobalSplitWeight
@@ -581,7 +581,7 @@ def test_update_transaction_explicit_empty_split_weights_rejected(client, sample
 
 def test_update_transaction_heals_pre_existing_empty_split_via_cascade(client, db, sample_account, sample_category, sample_user):
     """A transaction that somehow has zero split rows (a data artefact
-    predating mandatory splits) gets healed via the category > account >
+    predating mandatory splits) gets healed via the account > category >
     global cascade on the next edit that omits split_weights, rather than
     staying unsplit forever."""
     from models import GlobalSplitWeight, TransactionSplit

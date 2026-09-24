@@ -70,7 +70,7 @@ def delete_user(user_id: int, db: Session = Depends(get_db)):
     db.query(TransactionSplit).filter(TransactionSplit.user_id == user_id).delete()
 
     if solely_split_transaction_ids:
-        # Re-resolve those transactions' splits via the category > account >
+        # Re-resolve those transactions' splits via the account > category >
         # global cascade now that this user's own tier rows are gone, rather
         # than leaving them permanently unsplit. If even that comes up empty
         # (no other user has a usable weight anywhere), refuse the deletion
