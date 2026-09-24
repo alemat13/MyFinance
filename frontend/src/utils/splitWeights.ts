@@ -35,7 +35,7 @@ export function prorateWeights(
 
 /**
  * Client-side mirror of backend split_engine.resolve_default_weights:
- * category > account > global > none. Used to prefill a new/edited
+ * account > category > global > none. Used to prefill a new/edited
  * transaction's weight fields without a round trip.
  */
 export function resolveDefaultSplitRows(
@@ -43,16 +43,16 @@ export function resolveDefaultSplitRows(
   account: Account | null,
   globalWeights: GlobalSplitWeight[],
 ): { rows: SplitRow[]; source: SplitSource | null } {
-  if (category && category.splits.length > 0) {
-    return {
-      rows: category.splits.map(s => ({ user_id: s.user_id, value: s.weight })),
-      source: 'category',
-    }
-  }
   if (account && account.split_weights.length > 0) {
     return {
       rows: account.split_weights.map(w => ({ user_id: w.user_id, value: w.weight })),
       source: 'account',
+    }
+  }
+  if (category && category.splits.length > 0) {
+    return {
+      rows: category.splits.map(s => ({ user_id: s.user_id, value: s.weight })),
+      source: 'category',
     }
   }
   const positiveGlobal = globalWeights.filter(w => w.weight > 0)

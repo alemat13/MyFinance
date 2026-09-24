@@ -214,16 +214,16 @@ def seed():
         GlobalSplitWeight(user_id=users[1].id, weight=48000),
     ])
 
-    # Account-level split weights (middle priority) — deliberately different
+    # Account-level split weights (highest priority) — deliberately different
     # from both ownership (50/50) and the global weight above, so seeded
-    # data visibly exercises the account tier on Joint Checking transactions
-    # that don't have a category default.
+    # data visibly exercises the account tier, which outranks any category
+    # default on Joint Checking transactions.
     session.add_all([
         AccountSplitWeight(account_id=accounts[0].id, user_id=users[0].id, weight=55),
         AccountSplitWeight(account_id=accounts[0].id, user_id=users[1].id, weight=45),
     ])
 
-    # Category default split (highest priority) — Transfer is always split 50/50.
+    # Category default split (middle priority, after account weights) — Transfer is always split 50/50.
     transfer_category = categories[6]
     session.add_all([
         CategorySplit(category_id=transfer_category.id, user_id=users[0].id, weight=50),
@@ -233,7 +233,7 @@ def seed():
 
     # Resolve a split for every seeded transaction, exactly as the interactive
     # form would — an explicit custom weight set on the rent payment,
-    # everything else auto-resolved via category > account > global priority.
+    # everything else auto-resolved via account > category > global priority.
     rent_transaction = transactions[1]
     for transaction in transactions:
         if transaction is rent_transaction:
