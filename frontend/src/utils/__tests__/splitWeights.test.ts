@@ -69,11 +69,19 @@ test('resolveDefaultSplitRows account takes precedence over global', () => {
   expect(result.rows).toEqual([{ user_id: 1, value: 70 }, { user_id: 2, value: 30 }])
 })
 
-test('resolveDefaultSplitRows category takes precedence over account and global', () => {
+test('resolveDefaultSplitRows account takes precedence over category and global', () => {
   const category: Category = { ...baseCategory, splits: [{ ...user1, weight: 50 }, { ...user2, weight: 50 }] }
   const account: Account = { ...baseAccount, split_weights: [{ ...user1, weight: 70 }, { ...user2, weight: 30 }] }
   const globalWeights: GlobalSplitWeight[] = [{ ...user1, weight: 90 }, { ...user2, weight: 10 }]
   const result = resolveDefaultSplitRows(category, account, globalWeights)
+  expect(result.source).toBe('account')
+  expect(result.rows).toEqual([{ user_id: 1, value: 70 }, { user_id: 2, value: 30 }])
+})
+
+test('resolveDefaultSplitRows category takes precedence over global', () => {
+  const category: Category = { ...baseCategory, splits: [{ ...user1, weight: 50 }, { ...user2, weight: 50 }] }
+  const globalWeights: GlobalSplitWeight[] = [{ ...user1, weight: 90 }, { ...user2, weight: 10 }]
+  const result = resolveDefaultSplitRows(category, baseAccount, globalWeights)
   expect(result.source).toBe('category')
   expect(result.rows).toEqual([{ user_id: 1, value: 50 }, { user_id: 2, value: 50 }])
 })

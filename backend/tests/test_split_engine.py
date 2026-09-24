@@ -87,11 +87,26 @@ def test_resolve_default_weights_account_takes_precedence_over_global(db, sample
     assert weights == {sample_user.id: 70, other_user_id: 30}
 
 
-def test_resolve_default_weights_category_takes_precedence_over_account_and_global(db, sample_account, sample_category, sample_user):
+def test_resolve_default_weights_account_takes_precedence_over_category_and_global(db, sample_account, sample_category, sample_user):
     other_user_id = sample_user.id + 1000
     db.add_all([
         GlobalSplitWeight(user_id=sample_user.id, weight=90),
         AccountSplitWeight(account_id=sample_account.id, user_id=sample_user.id, weight=70),
+        AccountSplitWeight(account_id=sample_account.id, user_id=other_user_id, weight=30),
+        CategorySplit(category_id=sample_category.id, user_id=sample_user.id, weight=50),
+        CategorySplit(category_id=sample_category.id, user_id=other_user_id, weight=50),
+    ])
+    db.commit()
+
+    source, weights = resolve_default_weights(db, sample_category.id, sample_account.id)
+    assert source == "account"
+    assert weights == {sample_user.id: 70, other_user_id: 30}
+
+
+def test_resolve_default_weights_category_takes_precedence_over_global(db, sample_account, sample_category, sample_user):
+    other_user_id = sample_user.id + 1000
+    db.add_all([
+        GlobalSplitWeight(user_id=sample_user.id, weight=90),
         CategorySplit(category_id=sample_category.id, user_id=sample_user.id, weight=50),
         CategorySplit(category_id=sample_category.id, user_id=other_user_id, weight=50),
     ])
@@ -102,21 +117,36 @@ def test_resolve_default_weights_category_takes_precedence_over_account_and_glob
     assert weights == {sample_user.id: 50, other_user_id: 50}
 
 
-def test_resolve_default_weights_all_zero_category_tier_falls_through_to_account(db, sample_account, sample_category, sample_user):
+def test_resolve_default_weights_all_zero_account_tier_falls_through_to_category(db, sample_account, sample_category, sample_user):
     """A tier with only zero weights doesn't "win" just by being non-empty
     (matching how the global tier already filters weight > 0)."""
     other_user_id = sample_user.id + 1000
     db.add_all([
-        CategorySplit(category_id=sample_category.id, user_id=sample_user.id, weight=0),
-        CategorySplit(category_id=sample_category.id, user_id=other_user_id, weight=0),
-        AccountSplitWeight(account_id=sample_account.id, user_id=sample_user.id, weight=60),
-        AccountSplitWeight(account_id=sample_account.id, user_id=other_user_id, weight=40),
+        AccountSplitWeight(account_id=sample_account.id, user_id=sample_user.id, weight=0),
+        AccountSplitWeight(account_id=sample_account.id, user_id=other_user_id, weight=0),
+        CategorySplit(category_id=sample_category.id, user_id=sample_user.id, weight=60),
+        CategorySplit(category_id=sample_category.id, user_id=other_user_id, weight=40),
     ])
     db.commit()
 
     source, weights = resolve_default_weights(db, sample_category.id, sample_account.id)
-    assert source == "account"
+    assert source == "category"
     assert weights == {sample_user.id: 60, other_user_id: 40}
+
+
+def test_resolve_default_weights_all_zero_category_tier_falls_through_to_global(db, sample_account, sample_category, sample_user):
+    other_user_id = sample_user.id + 1000
+    db.add_all([
+        CategorySplit(category_id=sample_category.id, user_id=sample_user.id, weight=0),
+        CategorySplit(category_id=sample_category.id, user_id=other_user_id, weight=0),
+        GlobalSplitWeight(user_id=sample_user.id, weight=90),
+        GlobalSplitWeight(user_id=other_user_id, weight=10),
+    ])
+    db.commit()
+
+    source, weights = resolve_default_weights(db, sample_category.id, sample_account.id)
+    assert source == "global"
+    assert weights == {sample_user.id: 90, other_user_id: 10}
 
 
 def test_resolve_default_weights_all_zero_account_tier_falls_through_to_global(db, sample_account, sample_category, sample_user):

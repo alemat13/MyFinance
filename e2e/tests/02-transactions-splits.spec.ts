@@ -17,14 +17,16 @@ test('quick-fill buttons resolve to the correct seeded weight tier', async ({ pa
   await dialog.getByPlaceholder('Amount').fill('100')
   await dialog.getByRole('combobox').filter({ hasText: 'Account' }).selectOption({ label: 'Joint Checking' })
 
-  // Category quick-fill: pick the "Transfer" category (CategorySplit 50/50 seeded)
+  // Picking the "Transfer" category (CategorySplit 50/50 seeded) doesn't take
+  // over: Joint Checking's own account weights outrank the category tier.
   await dialog.getByRole('button', { name: 'Uncategorized' }).click()
   await page.getByRole('button', { name: 'Transfer', exact: true }).click()
-  await expect(dialog.getByRole('button', { name: 'Category' })).toHaveClass(/bg-accent/)
+  await expect(dialog.getByRole('button', { name: 'Account', exact: true })).toHaveClass(/bg-accent/)
   await expect(dialog).toContainText('Total weight: 100')
 
-  // Account quick-fill (AccountSplitWeight 55/45 on Joint Checking)
-  await dialog.getByRole('button', { name: 'Account', exact: true }).click()
+  // Category quick-fill (CategorySplit 50/50 on Transfer)
+  await dialog.getByRole('button', { name: 'Category', exact: true }).click()
+  await expect(dialog.getByRole('button', { name: 'Category', exact: true })).toHaveClass(/bg-accent/)
   await expect(dialog).toContainText('Total weight: 100')
 
   // Global quick-fill (GlobalSplitWeight 52000/48000)

@@ -140,7 +140,7 @@ def create_transaction(data: TransactionCreate, actor_user_id: int | None = Quer
     validate_account_not_archived(account)
 
     if data.split_weights is None:
-        # Not provided: fall back through the category > account > global
+        # Not provided: fall back through the account > category > global
         # cascade, same as CSV import already does. Splits are mandatory, and
         # the global tier is a guaranteed non-empty floor, so this only comes
         # up empty if literally no user exists yet.
