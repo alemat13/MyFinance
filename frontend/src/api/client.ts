@@ -139,7 +139,7 @@ export interface Transaction {
   // Optional like category_color/icon above — the API always sends them, but
   // declaring them required would force every fixture and every hand-built
   // Transaction to spell out seven nulls it does not care about.
-  raw_source?: 'enable_banking' | 'linxo_export' | null
+  raw_source?: 'enable_banking' | 'csv_import' | 'linxo_export' | null
   raw_label?: string | null
   raw_counterparty?: string | null
   raw_transaction_code?: string | null

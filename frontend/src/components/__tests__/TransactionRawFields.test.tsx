@@ -82,3 +82,14 @@ test('renders even when the source is unknown, as long as a field is filled', ()
   fireEvent.click(screen.getByRole('button', { name: /As reported by the bank/ }))
   expect(screen.getByText('LIBELLE BRUT')).toBeInTheDocument()
 })
+
+test('labels a CSV-imported row with its source', () => {
+  renderWithProviders(<TransactionRawFields transaction={{
+    ...baseTxn,
+    raw_source: 'csv_import',
+    raw_label: 'CB CARREFOUR MARKET 14/01',
+  }} />)
+  expect(screen.getByText('CSV import')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: /As reported by the bank/ }))
+  expect(screen.getByText('CB CARREFOUR MARKET 14/01')).toBeInTheDocument()
+})
