@@ -223,8 +223,18 @@ def _parse_amount(raw: dict, credit_debit_indicator: str) -> float:
     return amount if credit_debit_indicator == "CRDT" else -amount
 
 
-def _parse_date(raw: dict) -> date | None:
-    for field in ("booking_date", "transaction_date", "value_date"):
+# The day the operation happened comes first: that is what the bank's own app
+# and Linxo show, and what the migrated history is dated by. booking_date is
+# when the bank posted it, which for a transfer made on a Saturday is the
+# following Monday.
+DISPLAY_DATE_FIELDS = ("transaction_date", "booking_date", "value_date")
+# The fingerprint keeps the order it has always had, so rows already imported
+# under a fp: id keep matching and a re-sync doesn't re-import them.
+FINGERPRINT_DATE_FIELDS = ("booking_date", "transaction_date", "value_date")
+
+
+def _parse_date(raw: dict, fields: tuple[str, ...] = DISPLAY_DATE_FIELDS) -> date | None:
+    for field in fields:
         value = raw.get(field)
         if value:
             try:
@@ -337,10 +347,11 @@ def normalize_transactions(raw_transactions: list[dict]) -> list[dict]:
         if external_id:
             external_id = str(external_id)[:120]
         else:
-            base = f"{row_date.isoformat()}|{amount:.2f}|{payee}"
+            fingerprint_date = _parse_date(raw, FINGERPRINT_DATE_FIELDS)
+            base = f"{fingerprint_date.isoformat()}|{amount:.2f}|{payee}"
             occurrence = fingerprint_counts.get(base, 0)
             fingerprint_counts[base] = occurrence + 1
-            external_id = _fingerprint(row_date, amount, payee, occurrence)
+            external_id = _fingerprint(fingerprint_date, amount, payee, occurrence)
 
         normalized.append({
             "date": row_date,
@@ -434,7 +445,11 @@ def import_transactions(db: Session, link: BankAccountLink, rows: list[dict], da
         .filter(Transaction.account_id == link.account_id, Transaction.external_id.isnot(None))
         .all()
     }
-    legacy_counts = _legacy_duplicate_counts(db, link.account_id, date_from, date_to)
+    # Widened by the overlap: the window is asked of the bank by booking date,
+    # and a row's own date (when it was made) can fall a few days before it.
+    legacy_counts = _legacy_duplicate_counts(
+        db, link.account_id, date_from - timedelta(days=SYNC_OVERLAP_DAYS), date_to,
+    )
 
     source, weights = split_engine.resolve_default_weights(db, None, link.account_id)
     if not weights:

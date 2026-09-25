@@ -546,7 +546,9 @@ in MyFinance before you connected the bank are left alone too, matched on their 
 amount. The last sync's result — how many transactions came in, or what went wrong — is
 shown under each account.
 
-**What an imported transaction looks like.** It arrives with the bank's own date, label
+**What an imported transaction looks like.** It arrives dated the day the operation was made
+(a transfer sent on a Saturday keeps that Saturday, even though the bank only books it on
+Monday; a bank that reports only its booking date gives that one), with the bank's own label
 and amount, minus the "CARTE 18/09" style prefix card payments carry (the label shows
 just the merchant; the bank's full wording is kept under **As reported by the bank**),
 with **no category**, and a split resolved through the usual account > global
