@@ -103,6 +103,7 @@ class Transaction(Base):
     # When the purchase actually happened, as opposed to when the bank
     # booked it — a card payment is routinely booked several days later.
     raw_initiated_date = Column(Date, nullable=True)
+    raw_booking_date = Column(Date, nullable=True)
 
     account = relationship("Account", back_populates="transactions")
     category = relationship("Category", back_populates="transactions")

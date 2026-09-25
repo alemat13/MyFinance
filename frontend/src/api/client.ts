@@ -148,6 +148,7 @@ export interface Transaction {
   raw_merchant_category_code?: string | null
   raw_merchant_location?: string | null
   raw_initiated_date?: string | null
+  raw_booking_date?: string | null
   splits: TransactionSplit[]
 }
 

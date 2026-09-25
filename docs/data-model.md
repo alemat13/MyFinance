@@ -174,6 +174,7 @@ Individual financial transactions.
 | `raw_merchant_category_code` | String(10) | Nullable. The merchant category code (MCC), when the bank supplies one. Never filled from the Linxo export, whose own MCC column is empty throughout |
 | `raw_merchant_location` | String(120) | Nullable. Where the merchant was, as the source reported it. Filled from the Linxo export's city/postcode/country; banks generally don't supply it |
 | `raw_initiated_date` | Date | Nullable. When the purchase actually happened, when the source distinguishes it from the day the entry was booked — a card payment is routinely booked several days later |
+| `raw_booking_date` | Date | Nullable. The day the bank booked the entry (Enable Banking's `booking_date`). Kept separately because a synced transaction's own `date` is the day it was made (`transaction_date`), which differs over a weekend. Empty on rows synced before Alembic `0015` |
 
 None of the `raw_*` columns is editable through the API: they are absent from `TransactionCreate`/`TransactionUpdate` by design, and present only on `TransactionOut`. They take part in no computation — no balance, no chart, no split — and exist solely so the source's original wording survives a rename, which is what makes categorisation and rename suggestions trainable on real history rather than on already-cleaned labels. They do round-trip through backup export/import, since a restore that dropped them would silently undo a backfill nothing else can redo.
 

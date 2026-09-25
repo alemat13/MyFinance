@@ -31,6 +31,7 @@ export function rawFieldRows(transaction: Transaction): [string, string][] {
     ['Merchant category code', transaction.raw_merchant_category_code],
     ['Merchant location', transaction.raw_merchant_location],
     ['Purchase date', transaction.raw_initiated_date],
+    ['Booking date', transaction.raw_booking_date],
   ]
   return candidates.filter((row): row is [string, string] => {
     const value = row[1]

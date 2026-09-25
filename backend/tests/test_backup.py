@@ -348,6 +348,7 @@ def test_round_trip_preserves_the_raw_fields(client, db, sample_account, sample_
         raw_transaction_code="PointOfSale",
         raw_merchant_location="PARIS 75 FR",
         raw_initiated_date=date(2026, 1, 14),
+        raw_booking_date=date(2026, 1, 16),
     )
     db.add(transaction)
     db.commit()
@@ -364,6 +365,7 @@ def test_round_trip_preserves_the_raw_fields(client, db, sample_account, sample_
     assert restored.raw_transaction_code == "PointOfSale"
     assert restored.raw_merchant_location == "PARIS 75 FR"
     assert restored.raw_initiated_date == date(2026, 1, 14)
+    assert restored.raw_booking_date == date(2026, 1, 16)
 
 
 def test_archive_written_before_the_raw_fields_existed_still_imports(client, sample_account):
