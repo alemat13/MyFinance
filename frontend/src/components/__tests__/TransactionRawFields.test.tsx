@@ -17,6 +17,7 @@ const baseTxn: Transaction = {
   raw_merchant_category_code: null,
   raw_merchant_location: null,
   raw_initiated_date: null,
+  raw_booking_date: null,
   splits: [],
 }
 
@@ -92,4 +93,19 @@ test('labels a CSV-imported row with its source', () => {
   expect(screen.getByText('CSV import')).toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: /As reported by the bank/ }))
   expect(screen.getByText('CB CARREFOUR MARKET 14/01')).toBeInTheDocument()
+})
+
+test('shows the booking date alongside the purchase date', () => {
+  renderWithProviders(<TransactionRawFields transaction={{
+    ...baseTxn,
+    date: '2026-09-19',
+    raw_source: 'enable_banking',
+    raw_initiated_date: '2026-09-19',
+    raw_booking_date: '2026-09-21',
+  }} />)
+
+  fireEvent.click(screen.getByRole('button', { name: /As reported by the bank/ }))
+
+  expect(screen.getByText('Booking date')).toBeInTheDocument()
+  expect(screen.getByText('2026-09-21')).toBeInTheDocument()
 })

@@ -313,6 +313,9 @@ actually said, before you renamed anything:
 - **Merchant category code** — the merchant's MCC, when the bank supplies one.
 - **Merchant location** and **Purchase date** — where the purchase happened, and the
   day it happened, which is often a few days before the bank booked it.
+- **Booking date** — the day the bank posted the entry. A bank-synced transaction is dated
+  by the day it was made, so a transfer sent on a Saturday shows that Saturday as its date
+  and the following Monday here. Transactions synced before 25 September 2026 leave it empty.
 
 None of these can be edited, here or anywhere else: they are a record of what the
 source said, not fields of your own. A row is simply left out when the source didn't

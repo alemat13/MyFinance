@@ -318,6 +318,18 @@ def _initiated_date(raw: dict) -> date | None:
         return None
 
 
+def _booking_date(raw: dict) -> date | None:
+    """When the bank posted the entry — kept because the transaction's own
+    date is now the day it was made, and the two differ over a weekend."""
+    value = raw.get("booking_date")
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(str(value)[:10])
+    except ValueError:
+        return None
+
+
 def _fingerprint(row_date: date, amount: float, payee: str, occurrence: int) -> str:
     """A stable stand-in identifier for banks that return neither
     entry_reference nor transaction_id. `occurrence` distinguishes genuinely
@@ -372,6 +384,7 @@ def normalize_transactions(raw_transactions: list[dict]) -> list[dict]:
             "raw_merchant_category_code": (str(raw["merchant_category_code"])[:10]
                                            if raw.get("merchant_category_code") else None),
             "raw_initiated_date": _initiated_date(raw),
+            "raw_booking_date": _booking_date(raw),
         })
     return normalized
 
@@ -486,6 +499,7 @@ def import_transactions(db: Session, link: BankAccountLink, rows: list[dict], da
             raw_transaction_code=row.get("raw_transaction_code"),
             raw_merchant_category_code=row.get("raw_merchant_category_code"),
             raw_initiated_date=row.get("raw_initiated_date"),
+            raw_booking_date=row.get("raw_booking_date"),
         )
         db.add(transaction)
         db.flush()

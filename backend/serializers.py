@@ -93,6 +93,7 @@ def build_transaction_out_from_row(
         raw_merchant_category_code=t.raw_merchant_category_code,
         raw_merchant_location=t.raw_merchant_location,
         raw_initiated_date=t.raw_initiated_date,
+        raw_booking_date=t.raw_booking_date,
         splits=build_transaction_splits_out(t),
     )
 

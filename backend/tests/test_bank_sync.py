@@ -209,6 +209,7 @@ def test_dated_by_transaction_date_when_booked_later():
     ])
     assert rows[0]["date"] == date(2026, 9, 19)
     assert rows[0]["raw_initiated_date"] == date(2026, 9, 19)
+    assert rows[0]["raw_booking_date"] == date(2026, 9, 21)
 
 
 def test_fingerprint_still_uses_booking_date():
