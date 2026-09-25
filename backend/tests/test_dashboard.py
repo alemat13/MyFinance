@@ -129,3 +129,34 @@ def test_dashboard_excludes_archived_accounts(client, sample_transaction, db):
     assert data["accounts"] == []
     # Historical data on the archived account is unaffected.
     assert len(data["recent_transactions"]) == 1
+
+
+def test_dashboard_reports_last_transaction_date_per_account(client, sample_account, sample_category, db):
+    from datetime import date
+    from models import Account, Transaction
+    empty = Account(name="Empty", type="Savings", currency="EUR")
+    db.add(empty)
+    for d in (date(2026, 3, 1), date(2026, 9, 23), date(1970, 1, 1)):
+        db.add(Transaction(date=d, payee="P", amount=1.0, account_id=sample_account.id, category_id=sample_category.id))
+    db.commit()
+
+    accounts = {a["name"]: a for a in client.get("/api/dashboard").json()["accounts"]}
+    assert accounts[sample_account.name]["last_transaction_date"] == "2026-09-23"
+    assert accounts["Empty"]["last_transaction_date"] is None
+
+
+def test_dashboard_last_transaction_date_follows_new_transaction_after_cache_warm(client, sample_account, sample_category, sample_user):
+    split = [{"user_id": sample_user.id, "weight": 1}]
+    response = client.post("/api/transactions", json={
+        "date": "2026-01-10", "payee": "Old", "amount": -5.0,
+        "account_id": sample_account.id, "category_id": sample_category.id, "split_weights": split,
+    })
+    assert response.status_code == 201, response.text
+    assert client.get("/api/dashboard").json()["accounts"][0]["last_transaction_date"] == "2026-01-10"
+
+    response = client.post("/api/transactions", json={
+        "date": "2026-02-20", "payee": "New", "amount": -5.0,
+        "account_id": sample_account.id, "category_id": sample_category.id, "split_weights": split,
+    })
+    assert response.status_code == 201, response.text
+    assert client.get("/api/dashboard").json()["accounts"][0]["last_transaction_date"] == "2026-02-20"

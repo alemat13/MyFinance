@@ -25,6 +25,8 @@ export interface Account {
   archived: boolean
   users: AccountUser[]
   split_weights: AccountSplitWeight[]
+  // Only sent by GET /api/dashboard; null when the account has no transactions.
+  last_transaction_date?: string | null
 }
 
 export interface AccountUserCreate {
