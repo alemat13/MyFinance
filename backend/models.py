@@ -87,13 +87,14 @@ class Transaction(Base):
     # suggestions trainable on real history rather than on already-cleaned
     # labels.
     #
-    # Two sources fill the same columns: Enable Banking for newly synced
-    # rows (enable_banking.py) and the Linxo GDPR export for the migrated
+    # Three sources fill the same columns: Enable Banking for newly synced
+    # rows (enable_banking.py), CSV import (routers/imports.py, raw_label
+    # only: the file's own payee) and the Linxo GDPR export for the migrated
     # history. raw_source says which, because the vocabularies differ —
     # raw_transaction_code is an ISO 20022 code from a bank and a Linxo
     # transaction type from the export, and nothing can tell them apart
     # from the value alone.
-    raw_source = Column(String(20), nullable=True)  # 'enable_banking' | 'linxo_export'
+    raw_source = Column(String(20), nullable=True)  # 'enable_banking' | 'csv_import' | 'linxo_export'
     raw_label = Column(Text, nullable=True)
     raw_counterparty = Column(String(200), nullable=True)
     raw_transaction_code = Column(String(60), nullable=True)

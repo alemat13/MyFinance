@@ -301,6 +301,30 @@ def test_import_commit_creates_transactions(client, sample_account, sample_categ
     assert len(response.json()) == 2
 
 
+def test_import_commit_keeps_csv_label_as_original_label(client, sample_account, sample_user):
+    response = client.post(
+        "/api/import/commit",
+        json={"rows": [{
+            "date": "2026-01-15", "payee": "CB CARREFOUR MARKET 14/01", "memo": "Courses",
+            "amount": -42.50, "account_id": sample_account.id,
+            "split_weights": [{"user_id": sample_user.id, "weight": 1}],
+        }]},
+    )
+    assert response.status_code == 200
+    transaction_id = response.json()["transaction_ids"][0]
+
+    transaction = client.get(f"/api/transactions/{transaction_id}").json()
+    assert transaction["raw_source"] == "csv_import"
+    assert transaction["raw_label"] == "CB CARREFOUR MARKET 14/01"
+
+    # Renaming the transaction afterwards leaves the frozen copy alone.
+    response = client.put(f"/api/transactions/{transaction_id}", json={"payee": "Carrefour"})
+    assert response.status_code == 200
+    transaction = client.get(f"/api/transactions/{transaction_id}").json()
+    assert transaction["payee"] == "Carrefour"
+    assert transaction["raw_label"] == "CB CARREFOUR MARKET 14/01"
+
+
 def test_import_commit_creates_transactions_in_distinct_accounts(client, sample_account, sample_account_2, sample_category, sample_user):
     response = client.post(
         "/api/import/commit",

@@ -301,12 +301,13 @@ creating a new transaction, since a transaction is always created unreconciled.
 
 #### "As reported by the bank"
 
-Transactions that came in through **Bank Sync** carry a collapsed **As reported by
+Transactions that came in through **Bank Sync** or **Import CSV** carry a collapsed **As reported by
 the bank** section near the bottom of the panel. Expand it to see what the source
 actually said, before you renamed anything:
 
-- **Original label** — the label the bank sent, word for word. The Payee field is
-  yours to rewrite; this is not, so the original wording is still there months later.
+- **Original label** — the label the bank sent, word for word (for a CSV import, the
+  file's payee column as it was read). The Payee field is yours to rewrite; this is
+  not, so the original wording is still there months later.
 - **Counterparty** — who the bank named on the other side. Empty when it named nobody.
 - **Bank transaction code** — the bank's own classification of the payment.
 - **Merchant category code** — the merchant's MCC, when the bank supplies one.
@@ -316,7 +317,8 @@ actually said, before you renamed anything:
 None of these can be edited, here or anywhere else: they are a record of what the
 source said, not fields of your own. A row is simply left out when the source didn't
 supply it, and the whole section is hidden for a transaction that has none of them —
-anything you typed in by hand, or imported from a CSV. The badge next to the heading
+anything you typed in by hand, for instance. A CSV import only ever fills in the
+**Original label**, since a CSV carries none of the rest. The badge next to the heading
 says where the values came from.
 
 ### Dividing a transaction
@@ -497,7 +499,9 @@ hand. It's a four-step wizard:
    row entirely.
 4. **Commit** — imports everything that isn't skipped or erroring, and confirms when done.
 
-Imported transactions are tagged as such, and show up in a transaction's
+Each imported transaction keeps the file's label as its **Original label** (see
+["As reported by the bank"](#as-reported-by-the-bank)), so it survives however you
+rename the payee afterwards. Imported transactions are tagged as such, and show up in a transaction's
 [History](#adding-or-editing-a-transaction) panel later. Their split is resolved the
 same way as a manually-entered transaction's: the account > category > global cascade
 described in [Split Weights](#split-weights), since imported transactions must be
