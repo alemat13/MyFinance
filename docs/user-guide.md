@@ -83,7 +83,10 @@ The Dashboard is the home screen and gives an at-a-glance summary:
   (green if the household owes them, red if they owe the household), grouped by
   currency for households with accounts in more than one currency.
 - **Account cards** — one card per visible account, showing its name, type, and current
-  balance (colored green for positive, red for negative). Clicking a card (or focusing
+  balance (colored green for positive, red for negative), plus, in small grey text
+  underneath, the date of its latest transaction ("Last transaction Sep 23", with the
+  year added when it isn't the current one), so a bank that stopped syncing stands out.
+  An account with no transactions shows no date. Clicking a card (or focusing
   it and pressing Enter or Space) jumps to the **Transactions** screen with the account
   filter already set to that account, so you go straight from a balance to the
   transactions behind it. Any filter left over from an earlier visit to Transactions is

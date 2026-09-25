@@ -72,6 +72,9 @@ class AccountOut(BaseModel):
     archived: bool = False
     users: list[AccountUserOut] = []
     split_weights: list[AccountSplitWeightOut] = []
+    # Only filled by GET /api/dashboard; None elsewhere, or when the account
+    # has no transactions.
+    last_transaction_date: date | None = None
 
 
 class AccountCreate(BaseModel):

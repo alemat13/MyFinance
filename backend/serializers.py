@@ -1,3 +1,5 @@
+from datetime import date
+
 from sqlalchemy.orm import Session
 
 import account_totals
@@ -10,7 +12,11 @@ from schemas import (
 )
 
 
-def build_account_out(account: Account, transaction_total: float = 0.0) -> AccountOut:
+def build_account_out(
+    account: Account,
+    transaction_total: float = 0.0,
+    last_transaction_date: date | None = None,
+) -> AccountOut:
     """`transaction_total` is the sum of the account's transaction amounts
     (account_totals.py); the balance reported to the client is that plus the
     account's stored offset."""
@@ -22,6 +28,7 @@ def build_account_out(account: Account, transaction_total: float = 0.0) -> Accou
         currency=account.currency,
         created_at=account.created_at,
         archived=account.archived,
+        last_transaction_date=last_transaction_date,
         users=[
             AccountUserOut(
                 user_id=au.user_id,
