@@ -25,6 +25,8 @@ export interface Account {
   archived: boolean
   users: AccountUser[]
   split_weights: AccountSplitWeight[]
+  // Only sent by GET /api/dashboard; null when the account has no transactions.
+  last_transaction_date?: string | null
 }
 
 export interface AccountUserCreate {
@@ -139,13 +141,14 @@ export interface Transaction {
   // Optional like category_color/icon above — the API always sends them, but
   // declaring them required would force every fixture and every hand-built
   // Transaction to spell out seven nulls it does not care about.
-  raw_source?: 'enable_banking' | 'linxo_export' | null
+  raw_source?: 'enable_banking' | 'csv_import' | 'linxo_export' | null
   raw_label?: string | null
   raw_counterparty?: string | null
   raw_transaction_code?: string | null
   raw_merchant_category_code?: string | null
   raw_merchant_location?: string | null
   raw_initiated_date?: string | null
+  raw_booking_date?: string | null
   splits: TransactionSplit[]
 }
 

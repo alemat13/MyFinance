@@ -26,6 +26,7 @@ def get_dashboard(user_id: int | None = Query(None), db: Session = Depends(get_d
         ).distinct()
     accounts = accounts_query.all()
     totals = account_totals.get_transaction_totals(db)
+    last_dates = account_totals.get_last_transaction_dates(db)
 
     tx_query = (
         db.query(Transaction, Account.name, Account.currency, Category.name, Category.color, Category.icon)
@@ -52,7 +53,10 @@ def get_dashboard(user_id: int | None = Query(None), db: Session = Depends(get_d
     ]
 
     return DashboardResponse(
-        accounts=[build_account_out(a, totals.get(a.id, 0.0)) for a in accounts],
+        accounts=[
+            build_account_out(a, totals.get(a.id, 0.0), last_dates.get(a.id))
+            for a in accounts
+        ],
         recent_transactions=recent_transactions,
         balances=balances,
     )

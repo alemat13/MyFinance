@@ -72,6 +72,9 @@ class AccountOut(BaseModel):
     archived: bool = False
     users: list[AccountUserOut] = []
     split_weights: list[AccountSplitWeightOut] = []
+    # Only filled by GET /api/dashboard; None elsewhere, or when the account
+    # has no transactions.
+    last_transaction_date: date | None = None
 
 
 class AccountCreate(BaseModel):
@@ -256,6 +259,7 @@ class TransactionOut(BaseModel):
     raw_merchant_category_code: Optional[str] = None
     raw_merchant_location: Optional[str] = None
     raw_initiated_date: Optional[date] = None
+    raw_booking_date: Optional[date] = None
     splits: list[TransactionSplitOut] = []
 
 
@@ -633,6 +637,7 @@ class TransactionExport(BaseModel):
     raw_merchant_category_code: str | None = None
     raw_merchant_location: str | None = None
     raw_initiated_date: _DateType | None = None
+    raw_booking_date: _DateType | None = None
     created_at: datetime
 
 

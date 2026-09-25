@@ -17,6 +17,8 @@ production sums tens of thousands of rows. Single-account reads used to
 would be persisted into the offset rather than just displayed.
 """
 
+from datetime import date
+
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -46,6 +48,30 @@ def get_transaction_totals(db: Session) -> dict[int, float]:
         db, NAMESPACE, {}, lambda: compute_transaction_totals(db),
     )
     return {int(account_id): float(total) for account_id, total in rows}
+
+
+def compute_last_transaction_dates(db: Session) -> list[list]:
+    """[[account_id, "YYYY-MM-DD"], ...]: each account's latest transaction date."""
+    rows = (
+        db.query(Transaction.account_id, func.max(Transaction.date))
+        .group_by(Transaction.account_id)
+        .all()
+    )
+    return [[account_id, last.isoformat()] for account_id, last in rows if last is not None]
+
+
+def get_last_transaction_dates(db: Session) -> dict[int, date]:
+    """Cached {account_id: latest transaction date}.
+
+    Shares the "account_totals" namespace (under its own params) because
+    every mutation that can move a total can also move a last date, so the
+    invalidations already in place cover it.
+    """
+    rows = cache_service.get_or_compute(
+        db, NAMESPACE, {"kind": "last_transaction_date"},
+        lambda: compute_last_transaction_dates(db),
+    )
+    return {int(account_id): date.fromisoformat(last) for account_id, last in rows}
 
 
 def transaction_total(db: Session, account_id: int) -> float:

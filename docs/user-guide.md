@@ -83,7 +83,10 @@ The Dashboard is the home screen and gives an at-a-glance summary:
   (green if the household owes them, red if they owe the household), grouped by
   currency for households with accounts in more than one currency.
 - **Account cards** — one card per visible account, showing its name, type, and current
-  balance (colored green for positive, red for negative). Clicking a card (or focusing
+  balance (colored green for positive, red for negative), plus, in small grey text
+  underneath, the date of its latest transaction ("Last transaction Sep 23", with the
+  year added when it isn't the current one), so a bank that stopped syncing stands out.
+  An account with no transactions shows no date. Clicking a card (or focusing
   it and pressing Enter or Space) jumps to the **Transactions** screen with the account
   filter already set to that account, so you go straight from a balance to the
   transactions behind it. Any filter left over from an earlier visit to Transactions is
@@ -298,22 +301,27 @@ creating a new transaction, since a transaction is always created unreconciled.
 
 #### "As reported by the bank"
 
-Transactions that came in through **Bank Sync** carry a collapsed **As reported by
+Transactions that came in through **Bank Sync** or **Import CSV** carry a collapsed **As reported by
 the bank** section near the bottom of the panel. Expand it to see what the source
 actually said, before you renamed anything:
 
-- **Original label** — the label the bank sent, word for word. The Payee field is
-  yours to rewrite; this is not, so the original wording is still there months later.
+- **Original label** — the label the bank sent, word for word (for a CSV import, the
+  file's payee column as it was read). The Payee field is yours to rewrite; this is
+  not, so the original wording is still there months later.
 - **Counterparty** — who the bank named on the other side. Empty when it named nobody.
 - **Bank transaction code** — the bank's own classification of the payment.
 - **Merchant category code** — the merchant's MCC, when the bank supplies one.
 - **Merchant location** and **Purchase date** — where the purchase happened, and the
   day it happened, which is often a few days before the bank booked it.
+- **Booking date** — the day the bank posted the entry. A bank-synced transaction is dated
+  by the day it was made, so a transfer sent on a Saturday shows that Saturday as its date
+  and the following Monday here. Transactions synced before 25 September 2026 leave it empty.
 
 None of these can be edited, here or anywhere else: they are a record of what the
 source said, not fields of your own. A row is simply left out when the source didn't
 supply it, and the whole section is hidden for a transaction that has none of them —
-anything you typed in by hand, or imported from a CSV. The badge next to the heading
+anything you typed in by hand, for instance. A CSV import only ever fills in the
+**Original label**, since a CSV carries none of the rest. The badge next to the heading
 says where the values came from.
 
 ### Dividing a transaction
@@ -494,7 +502,9 @@ hand. It's a four-step wizard:
    row entirely.
 4. **Commit** — imports everything that isn't skipped or erroring, and confirms when done.
 
-Imported transactions are tagged as such, and show up in a transaction's
+Each imported transaction keeps the file's label as its **Original label** (see
+["As reported by the bank"](#as-reported-by-the-bank)), so it survives however you
+rename the payee afterwards. Imported transactions are tagged as such, and show up in a transaction's
 [History](#adding-or-editing-a-transaction) panel later. Their split is resolved the
 same way as a manually-entered transaction's: the account > category > global cascade
 described in [Split Weights](#split-weights), since imported transactions must be
@@ -539,7 +549,9 @@ in MyFinance before you connected the bank are left alone too, matched on their 
 amount. The last sync's result — how many transactions came in, or what went wrong — is
 shown under each account.
 
-**What an imported transaction looks like.** It arrives with the bank's own date, label
+**What an imported transaction looks like.** It arrives dated the day the operation was made
+(a transfer sent on a Saturday keeps that Saturday, even though the bank only books it on
+Monday; a bank that reports only its booking date gives that one), with the bank's own label
 and amount, minus the "CARTE 18/09" style prefix card payments carry (the label shows
 just the merchant; the bank's full wording is kept under **As reported by the bank**),
 with **no category**, and a split resolved through the usual account > global
