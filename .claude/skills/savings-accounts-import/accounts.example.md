@@ -18,13 +18,6 @@ code, full IBAN or full account number in here.
 |---|---|---|---|---|
 | <e.g. Savings book A> | <1234> | <e.g. Savings book A> | <12> | <e.g. Accounts → Savings → click the account name> |
 
-### Default categories
-
-| Kind of movement | How to recognise it | MyFinance category |
-|---|---|---|
-| Yearly interest | <e.g. label starts with "INTERETS"> | <e.g. Savings interest> |
-| Transfer from/to the current account | <e.g. label starts with "VIR"> | <e.g. Internal transfers> |
-
 ## Troubleshooting
 
 <Notes from previous runs: pop-ups to dismiss, pages that paginate oddly,

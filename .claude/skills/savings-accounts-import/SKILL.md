@@ -60,8 +60,8 @@ which accounts they hold and how to reach them must never be committed.
    file). Read the date of the most recent transaction. Rows on or before that date are
    already imported: only strictly newer movements are to be picked up, plus any movement
    *on* that date that isn't already listed with the same amount. Don't rely on the import
-   screen's "Possible duplicate" badge for this — it only fires when the category is
-   recognised and the label matches character for character.
+   screen's "Possible duplicate" badge for this — it never fires on uncategorised rows,
+   which is all of this skill's rows.
 3. **Ask the user to log in to the bank** in a Chrome tab (skip if they already are).
 4. **Read the movements.** For each account, navigate as the local file says and read
    every movement newer than the cut-off from step 2: date, label, signed amount (money in
@@ -70,12 +70,15 @@ which accounts they hold and how to reach them must never be committed.
    cut-off date is passed. Also note the displayed balance.
 5. **Write the CSV**, one file per MyFinance account, in the scratchpad or a folder the
    user named — never inside the repository. Format:
-   - UTF-8, comma delimiter, header `Date,Payee,Amount,Category,Memo`
+   - UTF-8, comma delimiter, header `Date,Payee,Amount,Memo`
    - `Date` as `YYYY-MM-DD`, `Amount` with a dot decimal separator and a minus sign for
      money out, fields quoted when they contain a comma
-   - `Category` from the local file's default for that kind of movement (e.g. interest,
-     internal transfer), left empty when unsure — MyFinance flags it "Needs category"
-     without blocking.
+   - **Raw data only, exactly as the bank displays it.** `Payee` is the bank's label
+     verbatim (no cleanup, no renaming, no casing changes), `Memo` any extra detail line
+     the bank shows for that movement, empty otherwise. No `Category` column: don't
+     categorise, don't guess, don't map to MyFinance categories — categorisation will be
+     a feature of the app itself. Every row will show "Needs category" on the Review
+     step; that is expected and doesn't block the import.
 6. **Show the user a summary** before importing: per account, the number of rows, the
    date range, the sum of amounts, and whether *last MyFinance balance + that sum* equals
    the balance the bank displays. A mismatch means a movement was missed or read twice:
