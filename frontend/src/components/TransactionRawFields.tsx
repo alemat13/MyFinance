@@ -7,15 +7,16 @@ import { Badge } from './ui/Badge'
  * What the source said about a transaction before anyone renamed it.
  *
  * Purely read-only — none of these fields has an input anywhere, because
- * none of them is editable through the API. Two feeds write them: the bank
- * sync for newly imported rows, and the Linxo export backfill for migrated
- * history. Collapsed by default: for the transactions that have it, this is
+ * none of them is editable through the API. Three feeds write them: the
+ * bank sync for newly imported rows, CSV import (the file's label only), and
+ * the Linxo export backfill for migrated history. Collapsed by default: for the transactions that have it, this is
  * reference material you go looking for, not something you read on every
  * open.
  */
 
 const SOURCE_LABELS: Record<string, string> = {
   enable_banking: 'Bank sync',
+  csv_import: 'CSV import',
   linxo_export: 'Linxo export',
 }
 
@@ -30,6 +31,7 @@ export function rawFieldRows(transaction: Transaction): [string, string][] {
     ['Merchant category code', transaction.raw_merchant_category_code],
     ['Merchant location', transaction.raw_merchant_location],
     ['Purchase date', transaction.raw_initiated_date],
+    ['Booking date', transaction.raw_booking_date],
   ]
   return candidates.filter((row): row is [string, string] => {
     const value = row[1]

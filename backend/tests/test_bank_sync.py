@@ -202,6 +202,24 @@ def test_falls_back_to_value_date_when_booking_date_missing():
     assert rows[0]["date"] == date(2026, 3, 9)
 
 
+def test_dated_by_transaction_date_when_booked_later():
+    # A transfer made on Saturday 19 September, booked on Monday the 21st.
+    rows = enable_banking.normalize_transactions([
+        _booked("80.00", "DBIT", "2026-09-21", transaction_date="2026-09-19", entry_reference="a"),
+    ])
+    assert rows[0]["date"] == date(2026, 9, 19)
+    assert rows[0]["raw_initiated_date"] == date(2026, 9, 19)
+    assert rows[0]["raw_booking_date"] == date(2026, 9, 21)
+
+
+def test_fingerprint_still_uses_booking_date():
+    booked_only = enable_banking.normalize_transactions([_booked("80.00", "DBIT", "2026-09-21")])
+    with_initiated = enable_banking.normalize_transactions([
+        _booked("80.00", "DBIT", "2026-09-21", transaction_date="2026-09-19"),
+    ])
+    assert with_initiated[0]["external_id"] == booked_only[0]["external_id"]
+
+
 # ── Importing ─────────────────────────────────────────────────────────
 
 def test_import_creates_transactions_with_split_and_history(db, linked_connection, global_weights):

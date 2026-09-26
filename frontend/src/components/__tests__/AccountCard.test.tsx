@@ -52,3 +52,15 @@ test('calls onSelect when the tile is activated with the keyboard', () => {
 
   expect(onSelect).toHaveBeenCalledTimes(2)
 })
+
+test('shows the last transaction date when the account has one', () => {
+  render(<AccountCard account={{ ...baseAccount, last_transaction_date: '2019-09-23' }} />)
+
+  expect(screen.getByText('Last transaction Sep 23, 2019')).toBeInTheDocument()
+})
+
+test('shows no last transaction date when the account has none', () => {
+  render(<AccountCard account={{ ...baseAccount, last_transaction_date: null }} />)
+
+  expect(screen.queryByText(/Last transaction/)).not.toBeInTheDocument()
+})
