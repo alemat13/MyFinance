@@ -14,7 +14,7 @@ export const viewLabels: Record<View, string> = {
   transactions: 'Transactions',
   users: 'Users',
   'split-settings': 'Split Weights',
-  import: 'Import CSV',
+  import: 'Import',
   'bank-sync': 'Bank Sync',
   backup: 'Backup & Restore',
   charts: 'Charts',

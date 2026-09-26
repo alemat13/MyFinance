@@ -83,7 +83,7 @@ which accounts they hold and how to reach them must never be committed.
    date range, the sum of amounts, and whether *last MyFinance balance + that sum* equals
    the balance the bank displays. A mismatch means a movement was missed or read twice:
    say so and don't import until it's explained.
-7. **Import through MyFinance's Import CSV screen**, in Chrome (the tab is already signed
+7. **Import through MyFinance's Import screen**, in Chrome (the tab is already signed
    in, which a command-line call would not be): upload the file, pick the MyFinance
    account, check the detected columns and date format, then stop on the **Review** step
    and ask the user to check the rows. Only press **Commit** once they say so.
