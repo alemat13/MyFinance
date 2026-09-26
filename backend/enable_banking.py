@@ -66,11 +66,12 @@ MIN_SYNC_INTERVAL_HOURS = 6
 # own value — the two vocabularies don't overlap.
 RAW_SOURCE = "enable_banking"
 
-# Regexes stripped from a synced row's payee (never its memo), first match only, in
-# order — e.g. the "CARTE 18/09 " / "CARTE 21/09/26 " prefix card payments
-# carry. Edited in the JSON file rather than here so a new bank wording needs
-# no code change. A pattern that fails to compile fails at import, i.e. at
-# startup, rather than silently on the first sync.
+# Regexes stripped from a synced row's payee (never its memo), first match
+# only, in order — e.g. the "CARTE 18/09 " / "CARTE 21/09/26 " prefix and the
+# " CB*4325" card-number suffix card payments carry. Edited in the JSON file
+# rather than here so a new bank wording needs no code change. A pattern that
+# fails to compile fails at import, i.e. at startup, rather than silently on
+# the first sync.
 _CONFIG_PATH = Path(__file__).parent / "bank_sync_config.json"
 _LABEL_CLEANUP_PATTERNS: list[re.Pattern] = [
     re.compile(pattern)

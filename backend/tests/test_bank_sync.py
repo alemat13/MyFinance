@@ -139,11 +139,25 @@ def test_card_prefix_is_stripped_from_payee_only():
     assert [r["raw_label"] for r in rows] == full
 
 
+def test_card_number_suffix_is_stripped_from_payee_only():
+    rows = enable_banking.normalize_transactions([
+        _booked("22.55", "DBIT", "2026-09-24", entry_reference="a",
+                remittance_information=["INTERMARCHE CB*4325"]),
+        _booked("6.00", "DBIT", "2026-09-23", entry_reference="b",
+                remittance_information=["CARTE 22/09/26 ANTHROPIC CB*4325"]),
+    ])
+    assert [r["payee"] for r in rows] == ["INTERMARCHE", "ANTHROPIC"]
+    assert [r["memo"] for r in rows] == ["INTERMARCHE CB*4325", "CARTE 22/09/26 ANTHROPIC CB*4325"]
+
+
 def test_label_cleanup_leaves_other_labels_alone():
     assert enable_banking.clean_label("PRLV SEPA PayPal Europe S.a.r.l.") == "PRLV SEPA PayPal Europe S.a.r.l."
     # Only a leading prefix, with a merchant after it.
     assert enable_banking.clean_label("VIR CARTE 18/09 REMBOURSEMENT") == "VIR CARTE 18/09 REMBOURSEMENT"
     assert enable_banking.clean_label("CARTE 18/09") == "CARTE 18/09"
+    # Only a trailing card number, never one in the middle of the label.
+    assert enable_banking.clean_label("CB*4325 REMBOURSEMENT") == "CB*4325 REMBOURSEMENT"
+    assert enable_banking.clean_label("CB*4325") == "CB*4325"
     assert enable_banking.clean_label(None) is None
 
 

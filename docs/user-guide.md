@@ -557,7 +557,7 @@ shown under each account.
 **What an imported transaction looks like.** It arrives dated the day the operation was made
 (a transfer sent on a Saturday keeps that Saturday, even though the bank only books it on
 Monday; a bank that reports only its booking date gives that one), with the bank's own label
-and amount, minus the "CARTE 18/09" style prefix card payments carry (the payee shows just the
+and amount, minus the "CARTE 18/09" prefix and "CB*4325" card-number suffix card payments carry (the payee shows just the
 merchant; the memo and **As reported by the bank** keep the bank's full wording),
 with **no category**, and a split resolved through the usual account > global
 cascade described in [Split Weights](#split-weights). Categorize it exactly as you would
