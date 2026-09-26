@@ -8,7 +8,7 @@ const fixture = (name: string) => path.join(__dirname, '..', 'fixtures', name)
 test('happy path: auto-detected column mapping imports two transactions', async ({ page }) => {
   await page.goto('/?view=import')
 
-  await page.getByLabel('CSV file').setInputFiles(fixture('sample-import.csv'))
+  await page.getByLabel('CSV or QIF file').setInputFiles(fixture('sample-import.csv'))
   await page.getByRole('combobox').filter({ hasText: 'Default account' }).selectOption({ label: 'Joint Checking' })
   await page.getByRole('button', { name: 'Analyze file' }).click()
 
@@ -36,7 +36,7 @@ test('happy path: auto-detected column mapping imports two transactions', async 
 test('duplicate detection: re-importing the same file flags possible duplicates', async ({ page }) => {
   await page.goto('/?view=import')
 
-  await page.getByLabel('CSV file').setInputFiles(fixture('sample-import.csv'))
+  await page.getByLabel('CSV or QIF file').setInputFiles(fixture('sample-import.csv'))
   await page.getByRole('combobox').filter({ hasText: 'Default account' }).selectOption({ label: 'Joint Checking' })
   await page.getByRole('button', { name: 'Analyze file' }).click()
   await page.getByRole('button', { name: 'Preview' }).click()
@@ -50,7 +50,7 @@ test('duplicate detection: re-importing the same file flags possible duplicates'
 test('manual column mapping override for unrecognized headers', async ({ page }) => {
   await page.goto('/?view=import')
 
-  await page.getByLabel('CSV file').setInputFiles(fixture('sample-import-custom-headers.csv'))
+  await page.getByLabel('CSV or QIF file').setInputFiles(fixture('sample-import-custom-headers.csv'))
   await page.getByRole('combobox').filter({ hasText: 'Default account' }).selectOption({ label: 'Joint Checking' })
   await page.getByRole('button', { name: 'Analyze file' }).click()
 
@@ -80,7 +80,7 @@ test('manual column mapping override for unrecognized headers', async ({ page })
 test('row-level parse error blocks commit until unchecked', async ({ page }) => {
   await page.goto('/?view=import')
 
-  await page.getByLabel('CSV file').setInputFiles(fixture('sample-import-error-row.csv'))
+  await page.getByLabel('CSV or QIF file').setInputFiles(fixture('sample-import-error-row.csv'))
   await page.getByRole('combobox').filter({ hasText: 'Default account' }).selectOption({ label: 'Joint Checking' })
   await page.getByRole('button', { name: 'Analyze file' }).click()
   await page.getByRole('button', { name: 'Preview' }).click()
@@ -99,4 +99,28 @@ test('row-level parse error blocks commit until unchecked', async ({ page }) => 
 
   await page.getByRole('button', { name: 'Commit 1 transaction(s)' }).click()
   await expect(page.getByText('Imported 1 transaction(s).')).toBeVisible()
+})
+
+test('QIF file: records are read as Date/Payee/Amount/Memo/Category and imported', async ({ page }) => {
+  await page.goto('/?view=import')
+
+  await page.getByLabel('CSV or QIF file').setInputFiles(fixture('sample-import.qif'))
+  await page.getByRole('combobox').filter({ hasText: 'Default account' }).selectOption({ label: 'Joint Checking' })
+  await page.getByRole('button', { name: 'Analyze file' }).click()
+
+  await expect(page.getByText(/QIF file: its records are read as/)).toBeVisible()
+  await expect(page.getByLabel('Date column')).toHaveValue('Date')
+  await expect(page.getByLabel('Payee column')).toHaveValue('Payee')
+  await expect(page.getByLabel('Amount column')).toHaveValue('Amount')
+  await expect(page.getByLabel('Category column (optional)')).toHaveValue('Category')
+
+  await page.getByRole('button', { name: 'Preview' }).click()
+
+  const bakeryRow = page.locator('tbody tr').filter({ hasText: 'E2E QIF Bakery' })
+  const clientRow = page.locator('tbody tr').filter({ hasText: 'E2E QIF Client' })
+  await expect(bakeryRow.getByText('OK', { exact: true })).toBeVisible()
+  await expect(clientRow.getByText('OK', { exact: true })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Commit 2 transaction(s)' }).click()
+  await expect(page.getByText('Imported 2 transaction(s).')).toBeVisible()
 })
