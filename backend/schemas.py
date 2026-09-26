@@ -494,6 +494,7 @@ class ImportDetectResponse(BaseModel):
     decimal_separator: str  # ',' or '.'
     column_mapping: dict[str, str | None]  # canonical field -> detected raw header (or None)
     sample_rows: list[dict[str, str]]
+    file_format: str = "csv"  # 'csv' or 'qif' (a QIF file is read as fixed Date/Payee/Amount/Memo/Category columns)
 
 
 class ImportPreviewRequest(BaseModel):

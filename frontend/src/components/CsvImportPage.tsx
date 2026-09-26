@@ -163,8 +163,8 @@ export default function CsvImportPage({ onBack, selectedUserId }: Props) {
           <div className="flex gap-2 flex-wrap items-end mb-2">
             <Input
               type="file"
-              accept=".csv"
-              aria-label="CSV file"
+              accept=".csv,.qif"
+              aria-label="CSV or QIF file"
               onChange={e => setFile(e.target.files?.[0] ?? null)}
             />
             <Select value={accountId} onChange={e => setAccountId(parseInt(e.target.value) || 0)}>
@@ -183,6 +183,12 @@ export default function CsvImportPage({ onBack, selectedUserId }: Props) {
           <p className="text-[13px] text-slate-500 dark:text-slate-400 mb-3">
             Detected settings — review and adjust before previewing.
           </p>
+          {detected.file_format === 'qif' && (
+            <p className="text-[13px] text-slate-500 dark:text-slate-400 mb-3">
+              QIF file: its records are read as Date, Payee, Amount, Memo and Category columns.
+              Check the date format, since QIF files can be day-first or month-first.
+            </p>
+          )}
           <div className="grid grid-cols-2 gap-3 mb-3">
             <label className="flex flex-col gap-1 text-[13px] text-slate-600 dark:text-slate-300">
               Encoding

@@ -1,0 +1,12 @@
+!Type:Bank
+D03/07/2026
+T-12,30
+PE2E QIF Bakery
+MCroissants
+LGroceries
+^
+D04/07/2026
+T300,00
+PE2E QIF Client
+LIncome:Freelance
+^
