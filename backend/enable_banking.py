@@ -66,7 +66,7 @@ MIN_SYNC_INTERVAL_HOURS = 6
 # own value — the two vocabularies don't overlap.
 RAW_SOURCE = "enable_banking"
 
-# Regexes stripped from a synced row's payee and memo, first match only, in
+# Regexes stripped from a synced row's payee (never its memo), first match only, in
 # order — e.g. the "CARTE 18/09 " / "CARTE 21/09/26 " prefix card payments
 # carry. Edited in the JSON file rather than here so a new bank wording needs
 # no code change. A pattern that fails to compile fails at import, i.e. at
@@ -275,10 +275,10 @@ def _payee(raw: dict, credit_debit_indicator: str, remittance: str | None) -> st
 
 
 def clean_label(label: str | None) -> str | None:
-    """A payee/memo with every configured cleanup pattern stripped. A pattern
+    """A payee with every configured cleanup pattern stripped. A pattern
     that would leave nothing behind is skipped, so a label is never blanked.
-    Only ever applied to the user-editable fields: raw_label and
-    raw_counterparty keep the bank's wording intact."""
+    Applied to the payee alone: the memo, raw_label and raw_counterparty
+    keep the bank's wording intact."""
     if not label:
         return label
     for pattern in _LABEL_CLEANUP_PATTERNS:
@@ -371,7 +371,7 @@ def normalize_transactions(raw_transactions: list[dict]) -> list[dict]:
             # uncleaned payee so that editing the patterns never changes an
             # already-imported row's external_id, which would re-import it.
             "payee": clean_label(payee),
-            "memo": clean_label(remittance),
+            "memo": remittance,
             "amount": amount,
             "external_id": external_id,
             # Frozen copies of what the bank said, never edited afterwards.

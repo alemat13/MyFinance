@@ -124,7 +124,7 @@ def test_payee_prefers_counterparty_then_remittance():
     assert rows[2]["memo"] == "VIR SEPA LOYER"
 
 
-def test_card_prefix_is_stripped_from_payee_and_memo_but_not_raw_label():
+def test_card_prefix_is_stripped_from_payee_only():
     rows = enable_banking.normalize_transactions([
         _booked("55.98", "DBIT", "2026-09-19", entry_reference="a",
                 remittance_information=["CARTE 18/09 IGP PELLEPORT"]),
@@ -134,10 +134,9 @@ def test_card_prefix_is_stripped_from_payee_and_memo_but_not_raw_label():
                 remittance_information=["CARTE 21/09/2026 JOE AND JOE"]),
     ])
     assert [r["payee"] for r in rows] == ["IGP PELLEPORT", "NYX*NESHUEVO", "JOE AND JOE"]
-    assert [r["memo"] for r in rows] == ["IGP PELLEPORT", "NYX*NESHUEVO", "JOE AND JOE"]
-    assert [r["raw_label"] for r in rows] == [
-        "CARTE 18/09 IGP PELLEPORT", "CARTE 21/09/26 NYX*NESHUEVO", "CARTE 21/09/2026 JOE AND JOE",
-    ]
+    full = ["CARTE 18/09 IGP PELLEPORT", "CARTE 21/09/26 NYX*NESHUEVO", "CARTE 21/09/2026 JOE AND JOE"]
+    assert [r["memo"] for r in rows] == full
+    assert [r["raw_label"] for r in rows] == full
 
 
 def test_label_cleanup_leaves_other_labels_alone():
