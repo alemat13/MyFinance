@@ -13,7 +13,7 @@ people *using* the app to track household finances — for schema/database detai
 5. [Transactions](#transactions)
 6. [Users](#users)
 7. [Split Weights](#split-weights)
-8. [Import CSV](#import-csv)
+8. [Import](#import)
 9. [Bank Sync](#bank-sync)
 10. [Backup & Restore](#backup--restore)
 11. [Charts](#charts)
@@ -42,7 +42,7 @@ Every screen shares the same header:
 
 MyFinance shows four primary destinations — **Dashboard**, **Transactions**,
 **Accounts**, and **Charts** — plus a **More** button for everything else (Categories,
-Users, Split Weights, Import CSV, Bank Sync, Backup & Restore, and Help). On a phone, the primary
+Users, Split Weights, Import, Bank Sync, Backup & Restore, and Help). On a phone, the primary
 destinations sit in a tab bar fixed to the bottom of the screen and **More** opens a
 sheet that slides up from the bottom; on a wider screen, the same buttons sit in a bar
 under the header, with **More** opening a panel from the right instead. Either way, the
@@ -306,7 +306,7 @@ creating a new transaction, since a transaction is always created unreconciled.
 
 #### "As reported by the bank"
 
-Transactions that came in through **Bank Sync** or **Import CSV** carry a collapsed **As reported by
+Transactions that came in through **Bank Sync** or **Import** carry a collapsed **As reported by
 the bank** section near the bottom of the panel. Expand it to see what the source
 actually said, before you renamed anything:
 
@@ -372,7 +372,7 @@ date) simply peel an amount off into its own row.
 "Reconciled" marks a transaction as reviewed and validated by you — for example,
 after checking it against your bank statement. It's purely manual: MyFinance never
 sets or clears it on its own. Every new transaction, whether entered by hand or
-brought in via [CSV import](#import-csv), starts out **unreconciled**.
+brought in via [CSV or QIF import](#import), starts out **unreconciled**.
 
 There are three ways to mark a transaction reconciled (or un-reconciled again):
 
@@ -482,9 +482,9 @@ already-saved transaction. The Global/Account/Category quick-fill buttons on the
 transaction form are the only way to pull a tier's *current* weights into an existing
 transaction.
 
-## Import CSV
+## Import
 
-Bulk-load transactions from a bank or credit card export instead of entering them by
+Bulk-load transactions from a bank or credit card export (CSV or QIF file) instead of entering them by
 hand. It's a four-step wizard:
 
 1. **Upload & account** — choose the CSV or QIF file and a default account. This account is used

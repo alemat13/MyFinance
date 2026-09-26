@@ -76,6 +76,12 @@ test('analyzing a file pre-fills the confirmation form from detected settings', 
   expect(screen.getByText('Preview')).not.toBeDisabled()
 })
 
+test('the setup step says which file types are accepted', async () => {
+  await goToSetup()
+  expect(screen.getByText('Accepted files: CSV (.csv) and QIF (.qif).')).toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: 'Import' })).toBeInTheDocument()
+})
+
 test('a QIF file shows the QIF notice on the confirm step', async () => {
   await goToConfirm({ ...fullyDetected, file_format: 'qif' })
   expect(screen.getByText(/QIF file: its records are read as/)).toBeInTheDocument()

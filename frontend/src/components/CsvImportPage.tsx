@@ -141,7 +141,7 @@ export default function CsvImportPage({ onBack, selectedUserId }: Props) {
   return (
     <div>
       <BackButton onClick={onBack} />
-      <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-3">Import CSV</h2>
+      <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-3">Import</h2>
 
       {formError && (
         <div className="px-3 py-2 mb-3 rounded-md border border-red-200 dark:border-red-900/60 bg-red-50 dark:bg-red-900/20 text-negative text-[13px]">
@@ -160,6 +160,9 @@ export default function CsvImportPage({ onBack, selectedUserId }: Props) {
 
       {step === 'setup' && (
         <Card className="p-3 max-w-md">
+          <p className="text-[13px] text-slate-500 dark:text-slate-400 mb-2">
+            Accepted files: CSV (.csv) and QIF (.qif).
+          </p>
           <div className="flex gap-2 flex-wrap items-end mb-2">
             <Input
               type="file"
