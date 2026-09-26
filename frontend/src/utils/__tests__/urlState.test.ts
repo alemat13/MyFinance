@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach } from 'vitest'
-import { getParam, patchQueryParams } from '../urlState'
+import { getParam, navigateQueryParams, patchQueryParams } from '../urlState'
 
 beforeEach(() => {
   window.history.replaceState(null, '', '/')
@@ -43,4 +43,28 @@ test('produces a bare pathname with no trailing ? when all params are removed', 
   patchQueryParams({ a: undefined })
   expect(window.location.search).toBe('')
   expect(window.location.pathname + window.location.search).toBe('/')
+})
+
+test('patchQueryParams keeps the current history entry and its state', () => {
+  window.history.replaceState({ overlays: ['a'] }, '', '/?a=1')
+  const length = window.history.length
+  patchQueryParams({ b: '2' })
+  expect(window.history.length).toBe(length)
+  expect(window.history.state).toEqual({ overlays: ['a'] })
+})
+
+test('navigateQueryParams adds a history entry', () => {
+  const length = window.history.length
+  navigateQueryParams({ view: 'charts' })
+  expect(window.history.length).toBe(length + 1)
+  expect(getParam('view')).toBe('charts')
+})
+
+test('navigateQueryParams reuses an open dialog entry instead of stacking on it', () => {
+  window.history.pushState({ overlays: ['sheet'] }, '', '/')
+  const length = window.history.length
+  navigateQueryParams({ view: 'backup' })
+  expect(window.history.length).toBe(length)
+  expect(window.history.state).toEqual({ overlays: [] })
+  expect(getParam('view')).toBe('backup')
 })

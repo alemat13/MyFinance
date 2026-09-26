@@ -49,6 +49,11 @@ under the header, with **More** opening a panel from the right instead. Either w
 current screen is reflected in the page URL, so you can bookmark or share a link to a
 specific view.
 
+The browser's back button, and Android's back button or edge swipe in the installed app,
+work like in a native app: going back closes the open dialog or sheet (a transaction's
+detail, **More**, a confirmation) if there is one, and otherwise returns to the previous
+screen. It only leaves MyFinance from the first screen you opened.
+
 ### Installing MyFinance on your phone
 
 MyFinance can be installed like a native app. On iOS Safari, use **Share → Add to Home

@@ -2,6 +2,7 @@ import { ReactNode } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { X } from 'lucide-react'
 import { IconButton } from './IconButton'
+import { useBackToClose } from '../../hooks/useBackToClose'
 
 interface SheetProps {
   isOpen: boolean
@@ -16,6 +17,7 @@ interface SheetProps {
 // same Radix Dialog primitive as Modal, so it gets the same nested-dialog-safe
 // Escape handling and focus trap for free.
 export function Sheet({ isOpen, onClose, title, children }: SheetProps) {
+  useBackToClose(isOpen, onClose)
   return (
     <Dialog.Root open={isOpen} onOpenChange={open => { if (!open) onClose() }}>
       <Dialog.Portal>

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Sun, Moon } from 'lucide-react'
 import { fetchUsers, User } from './api/client'
 import { useTheme } from './context/ThemeContext'
-import { getParam, patchQueryParams } from './utils/urlState'
+import { getParam, navigateQueryParams } from './utils/urlState'
 import { IconButton, Select } from './components/ui'
 import NavShell from './components/NavShell'
 import { View, viewLabels } from './nav'
@@ -67,9 +67,17 @@ export default function App() {
       .catch(() => { setUsersLoadError(true); setUsersLoaded(true) })
   }, [])
 
+  // Back/forward (browser button, Android back gesture) restores the view from the URL.
+  useEffect(() => {
+    const onPopState = () => setView(loadInitialView())
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [])
+
   const navigateToView = (v: View) => {
+    if (v === view) return
     setView(v)
-    patchQueryParams({ view: v === 'dashboard' ? undefined : v })
+    navigateQueryParams({ view: v === 'dashboard' ? undefined : v })
   }
 
   // Jumps from a Dashboard account tile to the Transactions view filtered on that
@@ -77,7 +85,7 @@ export default function App() {
   // we set account_id (and clear every other simple/advanced filter, which may be
   // left over from an earlier visit) before switching the view.
   const navigateToAccountTransactions = (accountId: number) => {
-    patchQueryParams({
+    navigateQueryParams({
       view: 'transactions',
       account_id: String(accountId),
       mode: undefined,
