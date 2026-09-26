@@ -3,6 +3,7 @@ import * as Dialog from '@radix-ui/react-dialog'
 import { X } from 'lucide-react'
 import { IconButton } from './IconButton'
 import { cn } from '../../lib/utils'
+import { useBackToClose } from '../../hooks/useBackToClose'
 
 interface ModalProps {
   isOpen: boolean
@@ -22,6 +23,7 @@ const SIZE_CLASSES: Record<'sm' | 'lg', string> = {
 }
 
 export function Modal({ isOpen, onClose, title, children, size = 'sm' }: ModalProps) {
+  useBackToClose(isOpen, onClose)
   const isFullScreenCapable = size === 'lg'
 
   return (
