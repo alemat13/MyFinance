@@ -45,14 +45,14 @@ afterEach(() => {
 
 function selectFile(name = 'transactions.csv') {
   const file = new File(['Date,Label,Amount\n2026-01-15,Whole Foods,-42.50\n'], name, { type: 'text/csv' })
-  fireEvent.change(screen.getByLabelText('CSV file'), { target: { files: [file] } })
+  fireEvent.change(screen.getByLabelText('CSV or QIF file'), { target: { files: [file] } })
   return file
 }
 
 async function goToSetup() {
   render(<CsvImportPage onBack={() => {}} selectedUserId={null} />)
   await waitFor(() => {
-    expect(screen.getByLabelText('CSV file')).toBeInTheDocument()
+    expect(screen.getByLabelText('CSV or QIF file')).toBeInTheDocument()
   })
 }
 
@@ -74,6 +74,16 @@ test('analyzing a file pre-fills the confirmation form from detected settings', 
   expect(screen.getByDisplayValue('Label')).toBeInTheDocument()
   expect(screen.getByDisplayValue('Amount')).toBeInTheDocument()
   expect(screen.getByText('Preview')).not.toBeDisabled()
+})
+
+test('a QIF file shows the QIF notice on the confirm step', async () => {
+  await goToConfirm({ ...fullyDetected, file_format: 'qif' })
+  expect(screen.getByText(/QIF file: its records are read as/)).toBeInTheDocument()
+})
+
+test('a CSV file shows no QIF notice', async () => {
+  await goToConfirm()
+  expect(screen.queryByText(/QIF file: its records are read as/)).not.toBeInTheDocument()
 })
 
 test('preview stays disabled until required columns are chosen when detection fails to map them', async () => {
@@ -199,7 +209,7 @@ test('commits active rows and shows a success message with a way back', async ()
   mockDetectImport.mockResolvedValue(fullyDetected)
   render(<CsvImportPage onBack={onBack} selectedUserId={42} />)
   await waitFor(() => {
-    expect(screen.getByLabelText('CSV file')).toBeInTheDocument()
+    expect(screen.getByLabelText('CSV or QIF file')).toBeInTheDocument()
   })
   selectFile()
   fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: '1' } })

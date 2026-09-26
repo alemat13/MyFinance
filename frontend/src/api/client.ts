@@ -283,6 +283,7 @@ export interface ImportDetectResponse {
   decimal_separator: string
   column_mapping: Record<'date' | 'payee' | 'amount' | 'memo' | 'category' | 'account', string | null>
   sample_rows: Record<string, string>[]
+  file_format?: 'csv' | 'qif'
 }
 
 export interface CategoryChartItem {

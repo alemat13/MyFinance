@@ -487,7 +487,7 @@ transaction.
 Bulk-load transactions from a bank or credit card export instead of entering them by
 hand. It's a four-step wizard:
 
-1. **Upload & account** — choose the CSV file and a default account. This account is used
+1. **Upload & account** — choose the CSV or QIF file and a default account. This account is used
    for every row unless the file has its own account-name column (see below), in which
    case it's only the fallback for rows whose account name doesn't match one of yours.
    Files are capped at 5,000 rows per import; for larger exports, split the file and
@@ -506,6 +506,19 @@ hand. It's a four-step wizard:
    can override the category or account per row, or check a box to skip importing that
    row entirely.
 4. **Commit** — imports everything that isn't skipped or erroring, and confirms when done.
+
+**QIF files** (Quicken Interchange Format, offered by many French banks' download page)
+go through the same four steps. MyFinance reads the file's bank and credit card records
+(`!Type:Bank`, `CCard`, `Cash`, `Oth A`, `Oth L`) as five columns: **Date**, **Payee**,
+**Amount**, **Memo** and **Category**, and skips everything else in the file (account
+lists, category lists, investment records). A few QIF specifics:
+
+- Dates are read as written, day-first or month-first, so check the detected date format
+  on step 2; two-digit years (`05/01/98`, `1/ 5'98`) become 1970 to 2069.
+- A record with no payee uses its memo as the payee.
+- A `Parent:Child` category matches a MyFinance category named like the whole thing or
+  like the part after the colon; a transfer (`[Account name]`) and a class (`/Class`) are
+  ignored, and a split transaction is imported as one transaction for its total.
 
 Each imported transaction keeps the file's label as its **Original label** (see
 ["As reported by the bank"](#as-reported-by-the-bank)), so it survives however you

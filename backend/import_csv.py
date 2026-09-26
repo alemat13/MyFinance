@@ -7,6 +7,7 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
+from import_qif import QIF_DELIMITER, is_qif, qif_to_csv_text
 from models import Account, Category, Transaction
 from rules import RuleViolation
 from schemas import ImportDetectResponse, ImportPreviewRequest, ImportPreviewRow, ImportPreviewSplitShare
@@ -82,8 +83,13 @@ def detect_decimal_separator(samples: list[str]) -> str:
 
 def detect_import_settings(raw: bytes) -> ImportDetectResponse:
     text, encoding = detect_encoding(raw)
-    sample_text = "\n".join(text.splitlines()[: _SAMPLE_SIZE + 1])
-    delimiter = sniff_delimiter(sample_text)
+    file_format = "qif" if is_qif(text) else "csv"
+    if file_format == "qif":
+        text = qif_to_csv_text(text)
+        delimiter = QIF_DELIMITER
+    else:
+        sample_text = "\n".join(text.splitlines()[: _SAMPLE_SIZE + 1])
+        delimiter = sniff_delimiter(sample_text)
 
     reader = csv.DictReader(io.StringIO(text), delimiter=delimiter)
     headers = reader.fieldnames or []
@@ -111,6 +117,7 @@ def detect_import_settings(raw: bytes) -> ImportDetectResponse:
         decimal_separator=decimal_separator,
         column_mapping=mapping,
         sample_rows=sample_rows,
+        file_format=file_format,
     )
 
 
@@ -140,7 +147,11 @@ def _resolve_account(raw_row: dict, data: ImportPreviewRequest, accounts_by_name
 
 def preview_import(db: Session, raw: bytes, data: ImportPreviewRequest) -> list[ImportPreviewRow]:
     text = raw.decode(data.encoding)
-    reader = csv.DictReader(io.StringIO(text), delimiter=data.delimiter)
+    delimiter = data.delimiter
+    if is_qif(text):
+        text = qif_to_csv_text(text)
+        delimiter = QIF_DELIMITER
+    reader = csv.DictReader(io.StringIO(text), delimiter=delimiter)
     raw_rows = list(reader)
 
     if len(raw_rows) > MAX_IMPORT_ROWS:
@@ -183,6 +194,9 @@ def preview_import(db: Session, raw: bytes, data: ImportPreviewRequest) -> list[
         if data.category_col:
             raw_category = (raw_row.get(data.category_col) or "").strip()
             category = categories_by_name.get(raw_category.lower())
+            if category is None and ":" in raw_category:
+                # QIF writes a subcategory as "Parent:Child"; MyFinance names are unique on their own.
+                category = categories_by_name.get(raw_category.rsplit(":", 1)[1].strip().lower())
 
         status = "ok"
         if category is None:
