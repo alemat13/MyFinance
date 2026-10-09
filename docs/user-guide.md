@@ -634,7 +634,7 @@ been seen, and how consistently you must have named it the same way, before the 
 will propose that name. Raising either makes it propose fewer names and get more of them
 right. Categories are unaffected by both.
 
-**Training** takes around fifteen seconds — leave the page open. Only one training run
+**Training** takes about a minute on a full history — leave the page open. Only one training run
 can be in flight at a time.
 
 **Reading the score.** Four figures are shown side by side:
@@ -660,7 +660,7 @@ until you press **Use this model**. Activating a model deactivates whichever one
 active before. The five most recent models are kept, so if a new one scores worse than
 the one it replaced you can go back by activating the older one again. A model can be
 deleted once it is not the active one; its score goes with it, and training a fresh one
-takes about fifteen seconds. If a training run fails, its row says so and shows the
+takes about a minute. If a training run fails, its row says so and shows the
 error instead of a score.
 
 ## Backup & Restore

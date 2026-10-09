@@ -212,7 +212,7 @@ export default function CategorizerPage({ onBack }: Props) {
     })
       .then(model => {
         setShownModelId(model.id)
-        showToast('Training finished. Look at the score before activating it.')
+        showToast('Training finished. Look at the score before activating it.', 'success')
         return loadModels()
       })
       .catch(err => setTrainError(err.message))
@@ -223,7 +223,7 @@ export default function CategorizerPage({ onBack }: Props) {
     setActivatingId(model.id)
     activateCategorizerModel(model.id)
       .then(() => loadModels())
-      .then(() => showToast('This model is now the active one.'))
+      .then(() => showToast('This model is now the active one.', 'success'))
       .catch(err => showToast(err.message))
       .finally(() => setActivatingId(null))
   }
@@ -343,8 +343,8 @@ export default function CategorizerPage({ onBack }: Props) {
         </Button>
         <span className="text-xs text-slate-500 dark:text-slate-400">
           {training
-            ? 'This takes around fifteen seconds. Leave the page open.'
-            : 'Takes around fifteen seconds. Nothing is applied and no transaction changes.'}
+            ? 'This takes about a minute on a full history. Leave the page open.'
+            : 'Takes about a minute on a full history. Nothing is applied and no transaction changes.'}
         </span>
       </div>
 
@@ -424,7 +424,7 @@ export default function CategorizerPage({ onBack }: Props) {
       <ConfirmDialog
         isOpen={deleting !== null}
         title="Delete this model?"
-        message="Its score is lost with it. Training another one takes about fifteen seconds."
+        message="Its score is lost with it. Training another one takes about a minute."
         confirmLabel="Delete"
         onConfirm={handleDelete}
         onCancel={() => setDeleting(null)}
