@@ -366,6 +366,12 @@ export interface ImportPreviewRow {
   status: 'ok' | 'needs_category' | 'possible_duplicate' | 'error'
   error_message: string | null
   preview_split: { user_id: number; weight: number; share_amount: number; source: string }[]
+  // What the active categorization model would file this row under, or null
+  // throughout when no model is active. Advisory: the screen offers it next
+  // to the file's own category and commits whichever one the user kept.
+  suggested_category_id: number | null
+  suggested_category_name: string | null
+  suggested_confidence: number | null
 }
 
 export interface ImportCommitResponse {
@@ -847,4 +853,61 @@ export function activateCategorizerModel(id: number): Promise<CategorizerModel> 
 
 export function deleteCategorizerModel(id: number): Promise<void> {
   return request<void>(`/categorizer/models/${id}`, { method: 'DELETE' })
+}
+
+export interface CategorizerSuggestion {
+  transaction_id: number
+  date: string
+  payee: string
+  raw_label: string | null
+  amount: number
+  current_category_id: number | null
+  current_category_name: string | null
+  suggested_category_id: number | null
+  suggested_category_name: string | null
+  confidence: number | null
+  high_confidence: boolean
+  suggested_payee: string | null
+  category_changed: boolean
+  payee_changed: boolean
+}
+
+export interface CategorizerSuggestResponse {
+  model_id: number
+  threshold: number
+  items: CategorizerSuggestion[]
+  category_changes: number
+  payee_changes: number
+  high_confidence_changes: number
+}
+
+export interface CategorizerApplyItem {
+  transaction_id: number
+  category_id?: number | null
+  payee?: string | null
+}
+
+export interface CategorizerApplyResponse {
+  updated_count: number
+  transaction_ids: number[]
+  skipped_transaction_ids: number[]
+}
+
+export function suggestCategories(transactionIds: number[]): Promise<CategorizerSuggestResponse> {
+  return request<CategorizerSuggestResponse>('/categorizer/suggest', {
+    method: 'POST',
+    body: JSON.stringify({ transaction_ids: transactionIds }),
+  })
+}
+
+export function applyCategorizerSuggestions(
+  items: CategorizerApplyItem[],
+  overwriteCategory: boolean,
+  actorUserId: number | null,
+): Promise<CategorizerApplyResponse> {
+  const query = actorUserId ? `?actor_user_id=${actorUserId}` : ''
+  return request<CategorizerApplyResponse>(`/categorizer/apply${query}`, {
+    method: 'POST',
+    body: JSON.stringify({ items, overwrite_category: overwriteCategory }),
+  })
 }

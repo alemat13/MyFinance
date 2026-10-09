@@ -104,6 +104,20 @@ export default function CsvImportPage({ onBack, selectedUserId }: Props) {
   const resolvedCategoryId = (row: ImportPreviewRow) => rowCategoryOverride[row.row_number] ?? row.category_id
   const resolvedAccountId = (row: ImportPreviewRow) => rowAccountOverride[row.row_number] ?? row.account_id
 
+  // A row whose category no longer matches what the file said — the "after"
+  // half of the before/after the review table highlights.
+  const isChanged = (row: ImportPreviewRow) => resolvedCategoryId(row) !== row.category_id
+  const suggestable = rows.filter(r => r.status !== 'error' && r.suggested_category_id !== null)
+  const withoutCategory = suggestable.filter(r => !r.category_id)
+
+  const useSuggestions = (target: ImportPreviewRow[]) => {
+    const next = { ...rowCategoryOverride }
+    for (const row of target) next[row.row_number] = row.suggested_category_id as number
+    setRowCategoryOverride(next)
+  }
+
+  const undoSuggestions = () => setRowCategoryOverride({})
+
   const effectiveStatus = (row: ImportPreviewRow) => {
     if (row.status === 'error') return 'error'
     if (!resolvedCategoryId(row)) return 'needs_category'
@@ -299,6 +313,31 @@ export default function CsvImportPage({ onBack, selectedUserId }: Props) {
 
       {step === 'review' && (
         <div>
+          {suggestable.length > 0 && (
+            <Card className="p-3 mb-3">
+              <div className="flex gap-2 flex-wrap items-center">
+                <span className="text-[13px] text-slate-600 dark:text-slate-300">
+                  Automatic categorization suggests a category for {suggestable.length} row
+                  {suggestable.length === 1 ? '' : 's'}.
+                </span>
+                <Button
+                  size="sm"
+                  disabled={withoutCategory.length === 0}
+                  onClick={() => useSuggestions(withoutCategory)}
+                >
+                  Use where the file has none ({withoutCategory.length})
+                </Button>
+                <Button size="sm" variant="secondary" onClick={() => useSuggestions(suggestable)}>
+                  Use for every row ({suggestable.length})
+                </Button>
+                {Object.keys(rowCategoryOverride).length > 0 && (
+                  <Button size="sm" variant="secondary" onClick={undoSuggestions}>
+                    Back to the file's categories
+                  </Button>
+                )}
+              </div>
+            </Card>
+          )}
           <div className="mb-3">
             <Table>
               <Thead>
@@ -309,6 +348,7 @@ export default function CsvImportPage({ onBack, selectedUserId }: Props) {
                   <Th className="text-right">Amount</Th>
                   <Th>Account</Th>
                   <Th>Category</Th>
+                  {suggestable.length > 0 && <Th>Suggested</Th>}
                   <Th>Status</Th>
                 </Tr>
               </Thead>
@@ -350,7 +390,7 @@ export default function CsvImportPage({ onBack, selectedUserId }: Props) {
                           </div>
                         )}
                       </Td>
-                      <Td>
+                      <Td className={isChanged(r) ? 'bg-amber-50 dark:bg-amber-900/20' : ''}>
                         {status === 'error' ? (
                           <span className="text-slate-400">—</span>
                         ) : (
@@ -362,7 +402,33 @@ export default function CsvImportPage({ onBack, selectedUserId }: Props) {
                             {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                           </Select>
                         )}
+                        {isChanged(r) && (
+                          <div className="mt-1 text-[12px] text-slate-500 dark:text-slate-400">
+                            was {r.category_name ?? 'no category'}
+                          </div>
+                        )}
                       </Td>
+                      {suggestable.length > 0 && (
+                        <Td>
+                          {r.suggested_category_name ? (
+                            <div className="flex items-center gap-2">
+                              <span className="text-[13px]">
+                                {r.suggested_category_name}{' '}
+                                <span className="text-slate-500 dark:text-slate-400">
+                                  {Math.round((r.suggested_confidence ?? 0) * 100)}%
+                                </span>
+                              </span>
+                              {resolvedCategoryId(r) !== r.suggested_category_id && (
+                                <Button size="sm" variant="secondary" onClick={() => useSuggestions([r])}>
+                                  Use
+                                </Button>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-slate-400">—</span>
+                          )}
+                        </Td>
+                      )}
                       <Td>
                         {status === 'error' && <Badge variant="negative">Error: {r.error_message}</Badge>}
                         {status === 'needs_category' && <Badge variant="negative">Needs category</Badge>}

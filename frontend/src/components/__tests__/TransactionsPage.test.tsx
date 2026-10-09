@@ -34,6 +34,13 @@ vi.mock('../../api/client', () => ({
   bulkUpdateTransactions: mockBulkUpdateTransactions,
   bulkDeleteTransactions: mockBulkDeleteTransactions,
   fetchDivideSiblings: mockFetchDivideSiblings,
+  suggestCategories: mockSuggestCategories,
+  applyCategorizerSuggestions: mockApplyCategorizerSuggestions,
+}))
+
+const { mockSuggestCategories, mockApplyCategorizerSuggestions } = vi.hoisted(() => ({
+  mockSuggestCategories: vi.fn(),
+  mockApplyCategorizerSuggestions: vi.fn(),
 }))
 
 const { mockDownloadBlob } = vi.hoisted(() => ({
@@ -67,7 +74,7 @@ test('shows loading state', () => {
   mockFetchAccounts.mockReturnValue(new Promise(() => {}))
   mockFetchCategories.mockReturnValue(new Promise(() => {}))
 
-  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} onOpenCategorizer={() => {}} />)
 
   expect(screen.getByText('Loading...')).toBeInTheDocument()
 })
@@ -77,7 +84,7 @@ test('renders transactions with account/category dropdowns', async () => {
   mockFetchAccounts.mockResolvedValue([baseAccount])
   mockFetchCategories.mockResolvedValue([baseCategory])
 
-  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} onOpenCategorizer={() => {}} />)
 
   await waitFor(() => {
     expect(screen.getByText('Test')).toBeInTheDocument()
@@ -93,7 +100,7 @@ test('groups same-day transactions under one date header, sorted by date by defa
   mockFetchAccounts.mockResolvedValue([baseAccount])
   mockFetchCategories.mockResolvedValue([baseCategory])
 
-  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} onOpenCategorizer={() => {}} />)
 
   await waitFor(() => {
     expect(screen.getByText('Coffee')).toBeInTheDocument()
@@ -108,7 +115,7 @@ test('shows error state on fetch failure', async () => {
   mockFetchAccounts.mockResolvedValue([])
   mockFetchCategories.mockResolvedValue([])
 
-  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} onOpenCategorizer={() => {}} />)
 
   await waitFor(() => {
     expect(screen.getByText('Error: Failed to load')).toBeInTheDocument()
@@ -120,7 +127,7 @@ test('clicking + New Transaction opens the detail panel in create mode', async (
   mockFetchAccounts.mockResolvedValue([])
   mockFetchCategories.mockResolvedValue([])
 
-  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} onOpenCategorizer={() => {}} />)
 
   await waitFor(() => {
     expect(screen.getByText('No transactions match your filters')).toBeInTheDocument()
@@ -141,7 +148,7 @@ test('clicking a transaction row opens the detail view and updates the URL', asy
   mockFetchCategories.mockResolvedValue([baseCategory])
   mockFetchTransaction.mockResolvedValue(txn)
 
-  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} onOpenCategorizer={() => {}} />)
 
   await waitFor(() => {
     expect(screen.getByText('Test')).toBeInTheDocument()
@@ -168,7 +175,7 @@ test('saving from the detail view refreshes the transaction list without refetch
   mockFetchTransaction.mockResolvedValue(txn)
   mockUpdateTransaction.mockResolvedValue({ ...txn, payee: 'Updated' })
 
-  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} onOpenCategorizer={() => {}} />)
 
   await waitFor(() => {
     expect(screen.getByText('Test')).toBeInTheDocument()
@@ -201,7 +208,7 @@ test('pressing Enter on a focused transaction row opens the detail view', async 
   mockFetchCategories.mockResolvedValue([baseCategory])
   mockFetchTransaction.mockResolvedValue(txn)
 
-  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} onOpenCategorizer={() => {}} />)
 
   await waitFor(() => {
     expect(screen.getByText('Test')).toBeInTheDocument()
@@ -222,7 +229,7 @@ test('simple mode text search triggers a debounced search request', async () => 
   mockFetchAccounts.mockResolvedValue([baseAccount])
   mockFetchCategories.mockResolvedValue([baseCategory])
 
-  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} onOpenCategorizer={() => {}} />)
 
   await waitFor(() => expect(mockSearchTransactions).toHaveBeenCalled())
   mockSearchTransactions.mockClear()
@@ -239,7 +246,7 @@ test('advanced mode builds a conditions request', async () => {
   mockFetchAccounts.mockResolvedValue([baseAccount])
   mockFetchCategories.mockResolvedValue([baseCategory])
 
-  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} onOpenCategorizer={() => {}} />)
 
   await waitFor(() => expect(mockSearchTransactions).toHaveBeenCalled())
 
@@ -262,7 +269,7 @@ test('pagination controls change page', async () => {
   mockFetchAccounts.mockResolvedValue([baseAccount])
   mockFetchCategories.mockResolvedValue([baseCategory])
 
-  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} onOpenCategorizer={() => {}} />)
 
   await waitFor(() => expect(screen.getByText('Page 1 / 2')).toBeInTheDocument())
 
@@ -279,7 +286,7 @@ test('hydrates simple-mode filters from the URL on mount', async () => {
   mockFetchAccounts.mockResolvedValue([baseAccount])
   mockFetchCategories.mockResolvedValue([baseCategory])
 
-  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} onOpenCategorizer={() => {}} />)
 
   await waitFor(() => {
     expect(mockSearchTransactions).toHaveBeenCalledWith(expect.objectContaining({ search: 'amazon', page: 2 }))
@@ -292,7 +299,7 @@ test('changing a simple-mode filter updates the URL', async () => {
   mockFetchAccounts.mockResolvedValue([baseAccount])
   mockFetchCategories.mockResolvedValue([baseCategory])
 
-  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} onOpenCategorizer={() => {}} />)
 
   await waitFor(() => expect(mockSearchTransactions).toHaveBeenCalled())
 
@@ -308,7 +315,7 @@ test('advanced mode conditions round-trip through the conditions URL param', asy
   mockFetchAccounts.mockResolvedValue([baseAccount])
   mockFetchCategories.mockResolvedValue([baseCategory])
 
-  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} onOpenCategorizer={() => {}} />)
 
   await waitFor(() => expect(mockSearchTransactions).toHaveBeenCalled())
 
@@ -332,7 +339,7 @@ test('changing the Reconciled filter sends it in the search request and updates 
   mockFetchAccounts.mockResolvedValue([baseAccount])
   mockFetchCategories.mockResolvedValue([baseCategory])
 
-  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} onOpenCategorizer={() => {}} />)
 
   await waitFor(() => expect(mockSearchTransactions).toHaveBeenCalled())
 
@@ -354,7 +361,7 @@ test('selecting rows shows the bulk-actions bar with correct count, and Clear se
   mockFetchAccounts.mockResolvedValue([baseAccount])
   mockFetchCategories.mockResolvedValue([baseCategory])
 
-  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} onOpenCategorizer={() => {}} />)
 
   await waitFor(() => expect(screen.getByText('Coffee')).toBeInTheDocument())
 
@@ -377,7 +384,7 @@ test('select-all-on-page checkbox selects and deselects every row currently show
   mockFetchAccounts.mockResolvedValue([baseAccount])
   mockFetchCategories.mockResolvedValue([baseCategory])
 
-  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} onOpenCategorizer={() => {}} />)
 
   await waitFor(() => expect(screen.getByText('Coffee')).toBeInTheDocument())
 
@@ -393,7 +400,7 @@ test('clicking a row checkbox does not open the transaction detail modal', async
   mockFetchAccounts.mockResolvedValue([baseAccount])
   mockFetchCategories.mockResolvedValue([baseCategory])
 
-  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} onOpenCategorizer={() => {}} />)
 
   await waitFor(() => expect(screen.getByText('Coffee')).toBeInTheDocument())
 
@@ -409,7 +416,7 @@ test('clicking the reconciled icon toggles it without opening the transaction de
   mockFetchCategories.mockResolvedValue([baseCategory])
   mockUpdateTransaction.mockResolvedValue({ ...twoTxns[0], reconciled: true })
 
-  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} onOpenCategorizer={() => {}} />)
 
   await waitFor(() => expect(screen.getByText('Coffee')).toBeInTheDocument())
 
@@ -428,7 +435,7 @@ test('toggling the reconciled icon updates the row in place without a full list 
   mockFetchCategories.mockResolvedValue([baseCategory])
   mockUpdateTransaction.mockResolvedValue({ ...twoTxns[0], reconciled: true })
 
-  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} onOpenCategorizer={() => {}} />)
 
   await waitFor(() => expect(screen.getByText('Coffee')).toBeInTheDocument())
   mockSearchTransactions.mockClear()
@@ -447,7 +454,7 @@ test('toggling the reconciled icon preserves the current row selection', async (
   mockFetchCategories.mockResolvedValue([baseCategory])
   mockUpdateTransaction.mockResolvedValue({ ...twoTxns[0], reconciled: true })
 
-  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} onOpenCategorizer={() => {}} />)
 
   await waitFor(() => expect(screen.getByText('Coffee')).toBeInTheDocument())
 
@@ -469,7 +476,7 @@ test('reverts the reconciled icon and reloads if the toggle PATCH fails', async 
   mockFetchCategories.mockResolvedValue([baseCategory])
   mockUpdateTransaction.mockRejectedValue(new Error('Update failed'))
 
-  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} onOpenCategorizer={() => {}} />)
 
   await waitFor(() => expect(screen.getByText('Coffee')).toBeInTheDocument())
   mockSearchTransactions.mockClear()
@@ -492,7 +499,7 @@ test('toggling a row to match the opposite of the active Reconciled filter remov
   mockFetchCategories.mockResolvedValue([baseCategory])
   mockUpdateTransaction.mockResolvedValue({ ...twoTxns[0], reconciled: true })
 
-  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} onOpenCategorizer={() => {}} />)
 
   await waitFor(() => expect(screen.getByText('Coffee')).toBeInTheDocument())
   expect(screen.getByText('2 results')).toBeInTheDocument()
@@ -512,7 +519,7 @@ test('clicking Bulk Edit with N selected opens BulkEditModal with the right tran
   mockFetchAccounts.mockResolvedValue([baseAccount])
   mockFetchCategories.mockResolvedValue([baseCategory])
 
-  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} onOpenCategorizer={() => {}} />)
 
   await waitFor(() => expect(screen.getByText('Coffee')).toBeInTheDocument())
 
@@ -524,12 +531,32 @@ test('clicking Bulk Edit with N selected opens BulkEditModal with the right tran
   expect(screen.getByText('2 transactions selected')).toBeInTheDocument()
 })
 
+test('clicking Categorize asks the model about exactly the selected transactions', async () => {
+  mockSearchTransactions.mockResolvedValue(searchResult(twoTxns))
+  mockFetchAccounts.mockResolvedValue([baseAccount])
+  mockFetchCategories.mockResolvedValue([baseCategory])
+  mockSuggestCategories.mockResolvedValue({
+    model_id: 1, threshold: 0.8, items: [], category_changes: 0, payee_changes: 0, high_confidence_changes: 0,
+  })
+
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} onOpenCategorizer={() => {}} />)
+
+  await waitFor(() => expect(screen.getByText('Coffee')).toBeInTheDocument())
+
+  fireEvent.click(screen.getByLabelText('Select transaction Lunch'))
+  fireEvent.click(screen.getByText('Categorize'))
+
+  expect(screen.getByRole('dialog', { name: 'Categorize automatically' })).toBeInTheDocument()
+  await waitFor(() => expect(mockSuggestCategories).toHaveBeenCalledWith([2]))
+})
+
+
 test('clicking Delete selected opens a confirm dialog, and Cancel does not call the API', async () => {
   mockSearchTransactions.mockResolvedValue(searchResult(twoTxns))
   mockFetchAccounts.mockResolvedValue([baseAccount])
   mockFetchCategories.mockResolvedValue([baseCategory])
 
-  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} onOpenCategorizer={() => {}} />)
 
   await waitFor(() => expect(screen.getByText('Coffee')).toBeInTheDocument())
 
@@ -553,7 +580,7 @@ test('confirming bulk delete calls bulkDeleteTransactions with selected ids, rel
   mockFetchCategories.mockResolvedValue([baseCategory])
   mockBulkDeleteTransactions.mockResolvedValue({ deleted_count: 2, transaction_ids: [1, 2] })
 
-  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} onOpenCategorizer={() => {}} />)
 
   await waitFor(() => expect(screen.getByText('Coffee')).toBeInTheDocument())
 
@@ -580,7 +607,7 @@ test('shows an error toast and leaves the selection unchanged if bulk delete fai
   mockFetchCategories.mockResolvedValue([baseCategory])
   mockBulkDeleteTransactions.mockRejectedValue(new Error('Delete failed'))
 
-  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} onOpenCategorizer={() => {}} />)
 
   await waitFor(() => expect(screen.getByText('Coffee')).toBeInTheDocument())
 
@@ -600,7 +627,7 @@ test('changing page clears the existing selection', async () => {
   mockFetchAccounts.mockResolvedValue([baseAccount])
   mockFetchCategories.mockResolvedValue([baseCategory])
 
-  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} onOpenCategorizer={() => {}} />)
 
   await waitFor(() => expect(screen.getByText('Coffee')).toBeInTheDocument())
 
@@ -641,7 +668,7 @@ test('shows My share and Balance columns for a jointly-owned account, computed f
   mockFetchAccounts.mockResolvedValue([jointAccount])
   mockFetchCategories.mockResolvedValue([baseCategory])
 
-  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={1} />)
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={1} onOpenCategorizer={() => {}} />)
 
   await waitFor(() => expect(screen.getByText('Grocery')).toBeInTheDocument())
 
@@ -657,7 +684,7 @@ test('Balance is positive when the user paid a shared expense from their own ful
   mockFetchAccounts.mockResolvedValue([personalAccount])
   mockFetchCategories.mockResolvedValue([baseCategory])
 
-  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={1} />)
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={1} onOpenCategorizer={() => {}} />)
 
   await waitFor(() => expect(screen.getByText('Grocery')).toBeInTheDocument())
 
@@ -671,7 +698,7 @@ test('hides My share and Balance columns when no specific user is selected', asy
   mockFetchAccounts.mockResolvedValue([jointAccount])
   mockFetchCategories.mockResolvedValue([baseCategory])
 
-  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} onOpenCategorizer={() => {}} />)
 
   await waitFor(() => expect(screen.getByText('Grocery')).toBeInTheDocument())
 
@@ -686,7 +713,7 @@ test('Total row sums Amount, My share, and Balance across the displayed rows', a
   mockFetchAccounts.mockResolvedValue([jointAccount])
   mockFetchCategories.mockResolvedValue([baseCategory])
 
-  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={1} />)
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={1} onOpenCategorizer={() => {}} />)
 
   await waitFor(() => expect(screen.getByText('Rent')).toBeInTheDocument())
 
@@ -707,7 +734,7 @@ test('Export CSV re-requests the current filtered view unpaginated', async () =>
   mockFetchCategories.mockResolvedValue([baseCategory])
   mockFetchUsers.mockResolvedValue(bobAndAlice)
 
-  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={1} />)
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={1} onOpenCategorizer={() => {}} />)
   await waitFor(() => expect(screen.getByText('Grocery')).toBeInTheDocument())
 
   mockSearchTransactions.mockClear()
@@ -725,7 +752,7 @@ test('downloads a CSV with one Weight/Share/Balance column per household user', 
   mockFetchCategories.mockResolvedValue([baseCategory])
   mockFetchUsers.mockResolvedValue(bobAndAlice)
 
-  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={1} />)
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={1} onOpenCategorizer={() => {}} />)
   await waitFor(() => expect(screen.getByText('Grocery')).toBeInTheDocument())
 
   fireEvent.click(screen.getByText('Export'))
@@ -749,7 +776,7 @@ test('downloads an Excel file with the same data as the CSV export', async () =>
   mockFetchCategories.mockResolvedValue([baseCategory])
   mockFetchUsers.mockResolvedValue(bobAndAlice)
 
-  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={1} />)
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={1} onOpenCategorizer={() => {}} />)
   await waitFor(() => expect(screen.getByText('Grocery')).toBeInTheDocument())
 
   fireEvent.click(screen.getByText('Export'))
@@ -779,7 +806,7 @@ test('shows an error toast when the export request fails', async () => {
   mockFetchCategories.mockResolvedValue([baseCategory])
   mockFetchUsers.mockResolvedValue(bobAndAlice)
 
-  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={1} />)
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={1} onOpenCategorizer={() => {}} />)
   await waitFor(() => expect(screen.getByText('Grocery')).toBeInTheDocument())
 
   mockSearchTransactions.mockRejectedValueOnce(new Error('export exploded'))
@@ -808,7 +835,7 @@ test('renders a card list instead of a table below the mobile breakpoint', async
     mockFetchAccounts.mockResolvedValue([baseAccount])
     mockFetchCategories.mockResolvedValue([baseCategory])
 
-    renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+    renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} onOpenCategorizer={() => {}} />)
 
     await waitFor(() => expect(screen.getByText('Coffee')).toBeInTheDocument())
     expect(screen.queryByRole('table')).not.toBeInTheDocument()
@@ -831,7 +858,7 @@ test('the mobile selection bar offers select-all-on-page', async () => {
     mockFetchAccounts.mockResolvedValue([baseAccount])
     mockFetchCategories.mockResolvedValue([baseCategory])
 
-    renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} />)
+    renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} onOpenCategorizer={() => {}} />)
 
     await waitFor(() => expect(screen.getByText('Coffee')).toBeInTheDocument())
     expect(screen.queryByRole('table')).not.toBeInTheDocument()
