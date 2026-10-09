@@ -774,3 +774,77 @@ export function updateBankAccountLink(id: number, data: BankAccountLinkUpdate): 
 export function syncBankAccountLink(id: number): Promise<BankSyncRunResult> {
   return request<BankSyncRunResult>(`/bank-sync/links/${id}/sync`, { method: 'POST' })
 }
+
+// ── Automatic categorization ────────────────────────────────────
+// `metrics` and `params` are typed loosely on purpose: the backend writes
+// whatever `categorizer.evaluate()` produced at the time a model was fitted,
+// and an old model keeps the shape it was stored with. The screen reads them
+// defensively rather than assuming every key is there.
+
+export interface CategorizerThresholdRow {
+  threshold: number
+  coverage: number
+  accuracy: number
+  parent_accuracy: number
+}
+
+export interface CategorizerBaseline {
+  coverage?: number
+  accuracy_on_covered?: number
+  accuracy?: number
+}
+
+export interface CategorizerPayeeMetrics {
+  tested_rows?: number
+  merchants?: number
+  coverage?: number
+  precision?: number
+  would_change?: number
+}
+
+export interface CategorizerMetrics {
+  tested_rows?: number
+  accuracy?: number
+  parent_accuracy?: number
+  top3_accuracy?: number
+  thresholds?: CategorizerThresholdRow[]
+  baseline?: CategorizerBaseline
+  payee?: CategorizerPayeeMetrics
+}
+
+export interface CategorizerModel {
+  id: number
+  created_at: string
+  status: string
+  is_active: boolean
+  trained_rows: number
+  tested_rows: number
+  note: string | null
+  params: Record<string, unknown> | null
+  metrics: CategorizerMetrics | null
+  error: string | null
+}
+
+export interface CategorizerTrainRequest {
+  train: TransactionSearchRequest
+  test: TransactionSearchRequest
+  note?: string
+  payee_min_occurrences?: number
+  payee_min_stability?: number
+}
+
+export function fetchCategorizerModels(): Promise<CategorizerModel[]> {
+  return request<CategorizerModel[]>('/categorizer/models')
+}
+
+export function trainCategorizerModel(req: CategorizerTrainRequest): Promise<CategorizerModel> {
+  return request<CategorizerModel>('/categorizer/train', { method: 'POST', body: JSON.stringify(req) })
+}
+
+export function activateCategorizerModel(id: number): Promise<CategorizerModel> {
+  return request<CategorizerModel>(`/categorizer/models/${id}/activate`, { method: 'POST' })
+}
+
+export function deleteCategorizerModel(id: number): Promise<void> {
+  return request<void>(`/categorizer/models/${id}`, { method: 'DELETE' })
+}
