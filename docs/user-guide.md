@@ -15,9 +15,10 @@ people *using* the app to track household finances — for schema/database detai
 7. [Split Weights](#split-weights)
 8. [Import](#import)
 9. [Bank Sync](#bank-sync)
-10. [Backup & Restore](#backup--restore)
-11. [Charts](#charts)
-12. [Appendix: Validation Rules & Tips](#appendix-validation-rules--tips)
+10. [Auto-categorization](#auto-categorization)
+11. [Backup & Restore](#backup--restore)
+12. [Charts](#charts)
+13. [Appendix: Validation Rules & Tips](#appendix-validation-rules--tips)
 
 ## Getting Started
 
@@ -42,7 +43,8 @@ Every screen shares the same header:
 
 MyFinance shows four primary destinations — **Dashboard**, **Transactions**,
 **Accounts**, and **Charts** — plus a **More** button for everything else (Categories,
-Users, Split Weights, Import, Bank Sync, Backup & Restore, and Help). On a phone, the primary
+Users, Split Weights, Import, Bank Sync, Auto-categorization, Backup & Restore, and
+Help). On a phone, the primary
 destinations sit in a tab bar fixed to the bottom of the screen and **More** opens a
 sheet that slides up from the bottom; on a wider screen, the same buttons sit in a bar
 under the header, with **More** opening a panel from the right instead. Either way, the
@@ -593,6 +595,73 @@ each connected bank and which MyFinance account each of its accounts feeds, so y
 have to grant access at your bank again. A consent that has lapsed since the backup was
 taken still needs renewing, as usual. A backup exported before bank connections were
 included restores with no bank connected, and **Append** mode never touches them.
+
+## Auto-categorization
+
+Learns from the transactions you have already filed, so it can propose a category for the
+ones you have not — and, for a merchant you see every month, propose the name you gave it
+yourself. It learns from your own history and nothing leaves the app.
+
+**Nothing on this screen changes a transaction.** Training produces a model, scores it,
+and leaves it to you to decide whether to use it. Applying its suggestions — when a bank
+sync brings in new rows, when you import a file, or on a selection you pick yourself — is
+a separate feature that comes later; until then this screen is where you build the model
+and check it is any good.
+
+The screen works in three steps, then shows you a score.
+
+**1. What to learn from.** The transactions whose categories you trust, chosen with the
+same conditions as the Transactions screen's Advanced filter. It opens on everything
+older than twelve months. This is not just a date range on purpose: rows nobody has
+curated carry *wrong* labels rather than missing ones, so training on an account that is
+never kept up to date teaches the model those omissions. Leaving such an account out —
+with an "Account is not …" condition — usually scores better than including it. Only rows
+that have both a category and an original label can be learned from, and at least 50 of
+them are needed.
+
+**2. What to score it on.** A period you have already filed, which must *not* overlap the
+first selection; it opens on the last twelve months. The overlap rule is the point of the
+whole screen: a model scored on the rows it learned from reports a precision it does not
+have, and that number is exactly what you are about to base a decision on. If the two
+selections share even one transaction, training is refused and says how many.
+
+Neither selection is affected by the user selector in the header. There is one model for
+the household, so it learns from everyone's filing.
+
+**3. Settings.** An optional note to remind you later what was different about this run,
+plus the two settings that govern merchant names: how many times a merchant must have
+been seen, and how consistently you must have named it the same way, before the model
+will propose that name. Raising either makes it propose fewer names and get more of them
+right. Categories are unaffected by both.
+
+**Training** takes about a minute on a full history — leave the page open. Only one training run
+can be in flight at a time.
+
+**Reading the score.** Four figures are shown side by side:
+
+- **Right category** — how often it picked exactly the right category, on transactions it
+  never saw.
+- **Right parent category** — the same, counting a subcategory as its parent. Higher than
+  the first, and the more useful number if you mostly care that groceries don't land
+  under travel.
+- **In its top 3 guesses** — how often the right category was among its three best.
+- **Simple merchant rule** — what you would get by always reusing the category a merchant
+  was given most often. This is the figure the model has to beat; if it doesn't, there is
+  no reason to use it.
+
+Below that, a table shows how it does when it is *confident*: at each confidence level,
+the share of transactions it speaks about at all and how often it is right about them.
+This is how you choose where to trust it blindly and where to review. Finally, a line
+reports how many merchants it remembers a name for, how often it proposes one, and how
+often that name is exactly right.
+
+**Using a model.** A freshly trained model is *inactive*: it sits there with its score
+until you press **Use this model**. Activating a model deactivates whichever one was
+active before. The five most recent models are kept, so if a new one scores worse than
+the one it replaced you can go back by activating the older one again. A model can be
+deleted once it is not the active one; its score goes with it, and training a fresh one
+takes about a minute. If a training run fails, its row says so and shows the
+error instead of a score.
 
 ## Backup & Restore
 

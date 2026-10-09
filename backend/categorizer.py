@@ -153,7 +153,7 @@ def train(rows: list,
     with, for the record kept alongside the stored blob.
     """
     from sklearn.feature_extraction.text import TfidfVectorizer
-    from sklearn.linear_model import LogisticRegression
+    from sklearn.linear_model import SGDClassifier
     from sklearn.preprocessing import OneHotEncoder
 
     char_vec = TfidfVectorizer(analyzer="char_wb", ngram_range=(3, 5), min_df=3, sublinear_tf=True)
@@ -169,10 +169,23 @@ def train(rows: list,
     ]).tocsr()
     y = [t.category_id for t in rows]
 
-    # Probabilities are the whole point of the confidence threshold, so this
-    # is a logistic regression rather than the (faster) linear SVC that scored
-    # identically without them.
-    classifier = LogisticRegression(max_iter=400, C=10)
+    # Probabilities are the whole point of the confidence threshold, so a
+    # LinearSVC is out however well it scores. This is a logistic regression
+    # fitted by SGD rather than by lbfgs, which is not a micro-optimisation:
+    # measured on the production dataset (26 017 training rows, 89 classes,
+    # 64 614 features) `LogisticRegression(max_iter=400, C=10)` took seven to
+    # eight minutes, which Cloud Run would have cut off at 120 s, while this
+    # takes 36 s on one core and scores slightly *better* — 73.2% exact and
+    # 80.8% at parent level against 72.6% and 80.0%, and 95.2% over the 51.1%
+    # of rows above confidence 0.8 against 94.4% over 61.8%.
+    #
+    # `tol=None` runs exactly `max_iter` epochs instead of stopping early, so
+    # the time a fit takes is predictable from the row count — which is what
+    # keeps the in-request design honest as the ledger grows. 30 epochs is a
+    # measured optimum, not a guess: 15 scored 71.8% and 50 scored 72.6%,
+    # both worse. `random_state` makes a fit reproducible.
+    classifier = SGDClassifier(loss="log_loss", alpha=1e-5, max_iter=30,
+                               tol=None, random_state=0)
     classifier.fit(x, y)
 
     memory = build_payee_memory(rows, payee_min_occurrences, payee_min_stability)
@@ -182,8 +195,9 @@ def train(rows: list,
         "classes": len(model.classes),
         "char_ngrams": "3-5",
         "word_ngrams": "1-2",
-        "classifier": "logistic_regression",
-        "C": 10,
+        "classifier": "sgd_log_loss",
+        "alpha": 1e-5,
+        "epochs": 30,
         "payee_min_occurrences": payee_min_occurrences,
         "payee_min_stability": payee_min_stability,
         "payee_merchants": len(memory.mapping),

@@ -1,10 +1,19 @@
 """Endpoints for the category/payee suggestion feature (logic in categorizer.py).
 
-Training runs inside the request rather than in a background job: measured on
-the production dataset it takes about fourteen seconds on a single core, well
+Training runs inside the request rather than in a background job: measured
+end to end against a copy of the production database (30 167 transactions,
+26 017 of them trainable) a run takes a little under a minute — 36 s of
+fitting on one core plus reading the selection, vectorising and scoring —
 inside Cloud Run's 120-second request timeout, and a Cloud Run job would mean
 another image, another service account and another deploy path for no gain.
-What it does need is a lock, because a fit peaks around 360 MB in a 1 GiB
+That margin is why `categorizer.train()` pins the number of epochs instead of
+letting the solver decide when to stop: the time a fit takes stays
+proportional to the row count, so the ledger growing cannot quietly turn a
+working screen into a timeout. It is also why the row count is worth watching
+— at roughly three times today's history this stops fitting in a request and
+wants a job.
+
+What a fit also needs is a lock, because it peaks around 360 MB in a 1 GiB
 instance serving up to ten concurrent requests — hence the `training` row.
 """
 
