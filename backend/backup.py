@@ -14,7 +14,7 @@ from database import Base
 from models import (
     Account, Category, Transaction, User, AccountUser,
     CategorySplit, GlobalSplitWeight, AccountSplitWeight, TransactionSplit, TransactionHistory,
-    BankConnection, BankAccountLink, OneDriveBackupSettings,
+    BankConnection, BankAccountLink, CategorizerModel, OneDriveBackupSettings,
 )
 from schemas import (
     DatabaseExport, ImportSummary,
@@ -34,11 +34,15 @@ _SERIAL_PK_TABLES = [
     "bank_connections", "bank_account_links",
 ]
 
-# Survives an overwrite restore untouched: the OneDrive connection is app
-# configuration, not data, and is never in an archive (its refresh token
-# opens the very drive the archives are uploaded to). No FK points at it, so
-# leaving it out of drop_all()/create_all() is safe.
-_PRESERVED_ON_OVERWRITE = {OneDriveBackupSettings.__tablename__}
+# Survive an overwrite restore untouched, and are never in an archive. The
+# OneDrive connection is app configuration, not data (its refresh token opens
+# the very drive the archives are uploaded to). A trained categorizer model is
+# derived data: several megabytes of pickle that retraining rebuilds in
+# seconds, so carrying it in every archive would cost more than it saves —
+# but dropping it on a restore would silently throw away the active model, so
+# it is kept where it is. No FK points at either, so leaving them out of
+# drop_all()/create_all() is safe.
+_PRESERVED_ON_OVERWRITE = {OneDriveBackupSettings.__tablename__, CategorizerModel.__tablename__}
 
 
 class BackupFormatError(ValueError):
