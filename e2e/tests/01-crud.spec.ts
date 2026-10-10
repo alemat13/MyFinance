@@ -15,7 +15,8 @@ test.describe('Accounts CRUD', () => {
 
     const row = page.locator('tbody tr').filter({ hasText: name })
     await expect(row).toBeVisible()
-    await expect(row).toContainText('Checking')
+    // The type is no longer a column: the account sits under its type's group header.
+    await expect(page.getByRole('button', { name: /^Checking/ })).toBeVisible()
 
     // Edit
     await row.getByRole('button', { name: 'Edit' }).click()
@@ -30,8 +31,10 @@ test.describe('Accounts CRUD', () => {
     await expect(page.locator('tbody tr').filter({ hasText: renamed })).toHaveCount(0)
 
     await page.getByLabel('Show archived').check()
+    // ...and back under the Archived group once archived accounts are shown.
+    await expect(page.getByRole('button', { name: /^Archived/ })).toBeVisible()
     const archivedRow = page.locator('tbody tr').filter({ hasText: renamed })
-    await expect(archivedRow).toContainText('Archived')
+    await expect(archivedRow.getByRole('button', { name: 'Unarchive' })).toBeVisible()
 
     await archivedRow.getByRole('button', { name: 'Unarchive' }).click()
     await page.getByLabel('Show archived').uncheck()

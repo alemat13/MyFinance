@@ -110,8 +110,21 @@ The Dashboard is the home screen and gives an at-a-glance summary:
 
 Manage your checking accounts, savings accounts, credit cards, and so on.
 
-The accounts table lists **Name, Type, Balance, Currency, Owners,** and row actions.
-The **Owners** column shows each owner as "Name (percentage%)".
+The accounts table lists **Name, Balance, Currency, Owners, Split weights,** and row
+actions, grouped under one collapsible header per account **Type** (alphabetical, with
+the number of accounts; click a header to fold it). Accounts are alphabetical inside
+their group. With **Show archived** checked, archived accounts appear together under
+one **Archived** header at the bottom, sorted by type then name with a small heading
+per type.
+
+- The **Owners** column shows each owner as "Name (percentage%)".
+- The **Split weights** column shows the account's own split-weight tier, each person
+  as "Name weight · share%" (e.g. "Alexandre 3 · 60%"). **Default** means the account
+  has none, so new transactions on it are prefilled from the category, then global,
+  weights.
+- On a phone the table becomes one card per account (name and balance, then owners
+  and split weights, then the actions), keeping the same groups; **Edit** opens the
+  form inside the card.
 
 - **+ New Account** opens an inline form: name, type, current balance, and currency
   (pick from a curated list of common currencies, or choose "Other…" to type any

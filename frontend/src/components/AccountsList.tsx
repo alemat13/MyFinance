@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { Fragment, ReactNode, useState } from 'react'
+import { Archive, ChevronDown, ChevronRight } from 'lucide-react'
 import {
   Account, AccountCreate, AccountUpdate, AccountUserCreate, AccountSplitWeightCreate,
   User, fetchAccounts, createAccount, updateAccount, deleteAccount,
@@ -9,6 +10,11 @@ import { useToast } from '../context/ToastContext'
 import { useCrudList } from '../hooks/useCrudList'
 import { Button, Input, Select, Table, Thead, Tbody, Tr, Th, Td, StatusMessage, ConfirmDialog, BackButton } from './ui'
 import { CURRENCY_OPTIONS, formatMoney } from '../utils/currency'
+import { AccountTypeGroup, groupAccounts } from '../utils/accountGroups'
+import { useIsMobile } from '../hooks/useMediaQuery'
+
+const ARCHIVED_KEY = 'archived'
+const groupKey = (g: AccountTypeGroup) => `type:${g.key}`
 
 const toRows = (users: AccountUserCreate[]): SplitRow[] =>
   users.map(u => ({ user_id: u.user_id, value: u.ownership_percentage }))
@@ -80,6 +86,8 @@ export default function AccountsList({ onBack, selectedUserId }: Props) {
   const [editSplitWeights, setEditSplitWeights] = useState<SplitRow[]>([])
   const [newSplitWeights, setNewSplitWeights] = useState<SplitRow[]>([])
   const [showArchived, setShowArchived] = useState(false)
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+  const isMobile = useIsMobile()
   const { showToast } = useToast()
 
   const {
@@ -163,11 +171,234 @@ export default function AccountsList({ onBack, selectedUserId }: Props) {
     return a.users.map(u => `${u.user_name} (${u.ownership_percentage}%)`).join(', ')
   }
 
+  // The account's own split-weight tier, with each person's resulting share. An
+  // account without one falls back to the category, then global, tiers.
+  const splitWeightsDisplay = (a: Account) => {
+    const total = a.split_weights.reduce((s, w) => s + w.weight, 0)
+    if (a.split_weights.length === 0 || total === 0) {
+      return <span className="text-slate-400" title="No account weights: category or global weights apply">Default</span>
+    }
+    return (
+      <span className="flex flex-wrap gap-1">
+        {a.split_weights.map(w => (
+          <span
+            key={w.user_id}
+            className="whitespace-nowrap rounded bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5"
+            title={`Weight ${w.weight} of ${total}`}
+          >
+            {w.user_name} <span className="font-semibold">{w.weight}</span>
+            <span className="text-slate-400"> · {Math.round((w.weight / total) * 100)}%</span>
+          </span>
+        ))}
+      </span>
+    )
+  }
+
   const toggleArchived = (a: Account) => {
     updateAccount(a.id, { archived: !a.archived }).then(load).catch(err => showToast(err.message))
   }
 
-  const visibleAccounts = accounts.filter(a => showArchived || !a.archived)
+  const toggleGroup = (key: string) => {
+    setCollapsed(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key); else next.add(key)
+      return next
+    })
+  }
+
+  const groups = groupAccounts(accounts)
+  const archivedCount = groups.archived.reduce((n, g) => n + g.accounts.length, 0)
+  const isEmpty = groups.open.length === 0 && (!showArchived || archivedCount === 0)
+
+  const groupHeaderContent = (key: string, label: ReactNode, count: number, icon?: ReactNode) => (
+    <button
+      type="button"
+      aria-expanded={!collapsed.has(key)}
+      onClick={() => toggleGroup(key)}
+      className="flex w-full items-center gap-1.5 text-left font-semibold text-slate-700 dark:text-slate-200 cursor-pointer"
+    >
+      <span className="text-slate-400">{collapsed.has(key) ? <ChevronRight size={14} /> : <ChevronDown size={14} />}</span>
+      {icon}
+      <span>{label}</span>
+      <span className="text-xs font-normal text-slate-400">{count}</span>
+    </button>
+  )
+
+  const actionButtons = (a: Account) => (
+    <>
+      <Button size="sm" variant="secondary" onClick={() => startEdit(a)}>Edit</Button>
+      <Button size="sm" variant="secondary" onClick={() => toggleArchived(a)}>
+        {a.archived ? 'Unarchive' : 'Archive'}
+      </Button>
+      <Button size="sm" variant="danger" onClick={() => setDeletingAccount(a)}>Delete</Button>
+    </>
+  )
+
+  const splitEditors = (
+    <>
+      <SplitEditor
+        rows={toRows(editData.users ?? [])}
+        allUsers={allUsers}
+        total={100}
+        unit="%"
+        label="Owners"
+        onChange={rows => setEditData({ ...editData, users: fromRows(rows) })}
+      />
+      <SplitEditor
+        rows={editSplitWeights}
+        allUsers={allUsers}
+        unit="weight"
+        label="Split Weight (optional — prefills new transactions on this account; separate from ownership)"
+        onChange={setEditSplitWeights}
+      />
+    </>
+  )
+
+  const saveCancel = (a: Account) => (
+    <div className="mt-1.5 flex gap-1">
+      <Button size="sm" onClick={() => saveEdit(a.id)}>Save</Button>
+      <Button size="sm" variant="secondary" onClick={cancelEdit}>Cancel</Button>
+    </div>
+  )
+
+  // --- Desktop: one table, a header row per type, archived types under one header ---
+
+  const tableRow = (a: Account) => (
+    <Tr key={a.id}>
+      {editingId === a.id ? (
+        <>
+          <Td>
+            <div className="flex flex-col gap-1">
+              <Input aria-label="Name" value={editData.name ?? ''} onChange={e => setEditData({ ...editData, name: e.target.value })} />
+              <Input aria-label="Type" placeholder="Type" value={editData.type ?? ''} onChange={e => setEditData({ ...editData, type: e.target.value })} />
+            </div>
+          </Td>
+          <Td className="text-right"><Input type="number" value={editData.balance ?? 0} onChange={e => setEditData({ ...editData, balance: parseFloat(e.target.value) || 0 })} className="w-[100px] text-right" /></Td>
+          <Td><CurrencyField value={editData.currency ?? 'EUR'} onChange={currency => setEditData({ ...editData, currency })} /></Td>
+          <Td colSpan={3}>
+            {splitEditors}
+            {saveCancel(a)}
+          </Td>
+        </>
+      ) : (
+        <>
+          <Td className="pl-8">{a.name}</Td>
+          <Td className={`text-right whitespace-nowrap ${a.balance >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+            {formatMoney(a.balance, a.currency)}
+          </Td>
+          <Td>{a.currency}</Td>
+          <Td className="text-xs">{ownersDisplay(a)}</Td>
+          <Td className="text-xs">{splitWeightsDisplay(a)}</Td>
+          <Td className="text-center whitespace-nowrap">
+            <div className="inline-flex gap-1">{actionButtons(a)}</div>
+          </Td>
+        </>
+      )}
+    </Tr>
+  )
+
+  const headerRow = (key: string, content: ReactNode) => (
+    <Tr key={key} className="bg-slate-50 dark:bg-slate-800/80 hover:bg-slate-50 dark:hover:bg-slate-800/80">
+      <Td colSpan={6} className="py-1.5">{content}</Td>
+    </Tr>
+  )
+
+  const table = (
+    <Table>
+      <Thead>
+        <Tr>
+          <Th>Name</Th>
+          <Th className="text-right">Balance</Th>
+          <Th>Currency</Th>
+          <Th>Owners</Th>
+          <Th>Split weights</Th>
+          <Th className="text-center">Actions</Th>
+        </Tr>
+      </Thead>
+      <Tbody>
+        {isEmpty && (
+          <Tr><Td colSpan={6} className="text-center py-5 text-slate-400">No accounts yet</Td></Tr>
+        )}
+        {groups.open.map(g => (
+          <Fragment key={g.key}>
+            {headerRow(groupKey(g), groupHeaderContent(groupKey(g), g.label, g.accounts.length))}
+            {!collapsed.has(groupKey(g)) && g.accounts.map(tableRow)}
+          </Fragment>
+        ))}
+        {showArchived && archivedCount > 0 && (
+          <>
+            {headerRow(ARCHIVED_KEY, groupHeaderContent(ARCHIVED_KEY, 'Archived', archivedCount, <Archive size={13} className="text-slate-400" />))}
+            {!collapsed.has(ARCHIVED_KEY) && groups.archived.map(g => (
+              <Fragment key={g.key}>
+                <Tr className="hover:bg-transparent dark:hover:bg-transparent">
+                  <Td colSpan={6} role="separator" className="pl-8 pt-2 pb-0.5 text-[11px] uppercase tracking-wide text-slate-400">{g.label}</Td>
+                </Tr>
+                {g.accounts.map(tableRow)}
+              </Fragment>
+            ))}
+          </>
+        )}
+      </Tbody>
+    </Table>
+  )
+
+  // --- Mobile: the same groups as stacked cards ---
+
+  const card = (a: Account) => (
+    <div key={a.id} data-testid="account-card" className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3">
+      {editingId === a.id ? (
+        <div className="flex flex-col gap-2">
+          <Input aria-label="Name" value={editData.name ?? ''} onChange={e => setEditData({ ...editData, name: e.target.value })} />
+          <Input aria-label="Type" placeholder="Type" value={editData.type ?? ''} onChange={e => setEditData({ ...editData, type: e.target.value })} />
+          <div className="flex gap-2 items-center">
+            <Input aria-label="Balance" type="number" value={editData.balance ?? 0} onChange={e => setEditData({ ...editData, balance: parseFloat(e.target.value) || 0 })} className="w-[120px]" />
+            <CurrencyField value={editData.currency ?? 'EUR'} onChange={currency => setEditData({ ...editData, currency })} />
+          </div>
+          {splitEditors}
+          {saveCancel(a)}
+        </div>
+      ) : (
+        <>
+          <div className="flex justify-between items-baseline gap-2">
+            <span className="font-medium text-slate-900 dark:text-slate-100">{a.name}</span>
+            <span className={`whitespace-nowrap font-medium ${a.balance >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+              {formatMoney(a.balance, a.currency)}
+            </span>
+          </div>
+          <dl className="mt-1.5 grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-xs text-slate-600 dark:text-slate-300">
+            <dt className="text-slate-400">Owners</dt>
+            <dd>{ownersDisplay(a)}</dd>
+            <dt className="text-slate-400">Split</dt>
+            <dd>{splitWeightsDisplay(a)}</dd>
+          </dl>
+          <div className="mt-2 flex justify-end gap-1">{actionButtons(a)}</div>
+        </>
+      )}
+    </div>
+  )
+
+  const cards = (
+    <div className="flex flex-col gap-3">
+      {isEmpty && <p className="text-center py-5 text-slate-400">No accounts yet</p>}
+      {groups.open.map(g => (
+        <section key={g.key}>
+          <div className="px-1 py-1">{groupHeaderContent(groupKey(g), g.label, g.accounts.length)}</div>
+          {!collapsed.has(groupKey(g)) && <div className="flex flex-col gap-2">{g.accounts.map(card)}</div>}
+        </section>
+      ))}
+      {showArchived && archivedCount > 0 && (
+        <section className="pt-2 border-t border-slate-200 dark:border-slate-700">
+          <div className="px-1 py-1">{groupHeaderContent(ARCHIVED_KEY, 'Archived', archivedCount, <Archive size={13} className="text-slate-400" />)}</div>
+          {!collapsed.has(ARCHIVED_KEY) && groups.archived.map(g => (
+            <div key={g.key}>
+              <div role="separator" className="px-1 pt-2 pb-1 text-[11px] uppercase tracking-wide text-slate-400">{g.label}</div>
+              <div className="flex flex-col gap-2">{g.accounts.map(card)}</div>
+            </div>
+          ))}
+        </section>
+      )}
+    </div>
+  )
 
   if (error) {
     return <StatusMessage error={error} />
@@ -176,9 +407,9 @@ export default function AccountsList({ onBack, selectedUserId }: Props) {
   return (
     <div>
       <BackButton onClick={onBack} />
-      <div className="flex justify-between items-center mb-3">
+      <div className="flex flex-wrap justify-between items-center gap-2 mb-3">
         <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Accounts</h2>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <label className="flex items-center gap-1.5 text-sm text-slate-600 dark:text-slate-300">
             <input type="checkbox" checked={showArchived} onChange={e => setShowArchived(e.target.checked)} />
             Show archived
@@ -217,82 +448,7 @@ export default function AccountsList({ onBack, selectedUserId }: Props) {
 
       <StatusMessage loading={loading} />
 
-      {!loading && (
-        <Table>
-          <Thead>
-            <Tr>
-              <Th>Name</Th>
-              <Th>Type</Th>
-              <Th className="text-right">Balance</Th>
-              <Th>Currency</Th>
-              <Th>Owners</Th>
-              <Th className="text-center">Actions</Th>
-            </Tr>
-          </Thead>
-          <Tbody>
-            {visibleAccounts.length === 0 && (
-              <Tr><Td colSpan={6} className="text-center py-5 text-slate-400">No accounts yet</Td></Tr>
-            )}
-            {visibleAccounts.map(a => (
-              <Tr key={a.id}>
-                {editingId === a.id ? (
-                  <>
-                    <Td><Input value={editData.name ?? ''} onChange={e => setEditData({ ...editData, name: e.target.value })} /></Td>
-                    <Td><Input value={editData.type ?? ''} onChange={e => setEditData({ ...editData, type: e.target.value })} /></Td>
-                    <Td className="text-right"><Input type="number" value={editData.balance ?? 0} onChange={e => setEditData({ ...editData, balance: parseFloat(e.target.value) || 0 })} className="w-[100px] text-right" /></Td>
-                    <Td><CurrencyField value={editData.currency ?? 'EUR'} onChange={currency => setEditData({ ...editData, currency })} /></Td>
-                    <Td colSpan={2}>
-                      <SplitEditor
-                        rows={toRows(editData.users ?? [])}
-                        allUsers={allUsers}
-                        total={100}
-                        unit="%"
-                        label="Owners"
-                        onChange={rows => setEditData({ ...editData, users: fromRows(rows) })}
-                      />
-                      <SplitEditor
-                        rows={editSplitWeights}
-                        allUsers={allUsers}
-                        unit="weight"
-                        label="Split Weight (optional — prefills new transactions on this account; separate from ownership)"
-                        onChange={setEditSplitWeights}
-                      />
-                      <div className="mt-1.5 flex gap-1">
-                        <Button size="sm" onClick={() => saveEdit(a.id)}>Save</Button>
-                        <Button size="sm" variant="secondary" onClick={cancelEdit}>Cancel</Button>
-                      </div>
-                    </Td>
-                  </>
-                ) : (
-                  <>
-                    <Td>
-                      {a.name}
-                      {a.archived && (
-                        <span className="ml-1.5 text-xs px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400">
-                          Archived
-                        </span>
-                      )}
-                    </Td>
-                    <Td>{a.type}</Td>
-                    <Td className={`text-right ${a.balance >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                      {formatMoney(a.balance, a.currency)}
-                    </Td>
-                    <Td>{a.currency}</Td>
-                    <Td className="text-xs">{ownersDisplay(a)}</Td>
-                    <Td className="text-center">
-                      <Button size="sm" variant="secondary" onClick={() => startEdit(a)} className="mr-1">Edit</Button>
-                      <Button size="sm" variant="secondary" onClick={() => toggleArchived(a)} className="mr-1">
-                        {a.archived ? 'Unarchive' : 'Archive'}
-                      </Button>
-                      <Button size="sm" variant="danger" onClick={() => setDeletingAccount(a)}>Delete</Button>
-                    </Td>
-                  </>
-                )}
-              </Tr>
-            ))}
-          </Tbody>
-        </Table>
-      )}
+      {!loading && (isMobile ? cards : table)}
 
       <ConfirmDialog
         isOpen={deletingAccount !== null}

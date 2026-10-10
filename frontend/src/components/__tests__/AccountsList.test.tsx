@@ -2,6 +2,7 @@ import { describe, test, expect, vi, beforeEach } from 'vitest'
 import { screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { renderWithProviders } from '../../test-utils'
 import AccountsList from '../AccountsList'
+import { Account } from '../../api/client'
 
 const { mockFetchAccounts, mockCreateAccount, mockUpdateAccount, mockDeleteAccount, mockFetchUsers, mockUpdateAccountSplitWeights } = vi.hoisted(() => ({
   mockFetchAccounts: vi.fn(),
@@ -256,4 +257,94 @@ test('shows error state on fetch failure', async () => {
   await waitFor(() => {
     expect(screen.getByText('Error: Failed to load')).toBeInTheDocument()
   })
+})
+
+// --- Grouping and split weights ---
+
+const acct = (id: number, name: string, type: string, extra: Partial<Account> = {}): Account =>
+  ({ ...baseAccount, id, name, type, ...extra })
+
+const grouped = [
+  acct(1, 'Revolut', 'Checking'),
+  acct(2, 'CC CCF Joint', 'Checking', {
+    split_weights: [{ user_id: 1, user_name: 'Alex', weight: 3 }, { user_id: 2, user_name: 'Olivia', weight: 1 }],
+  }),
+  acct(3, 'PER', 'Investment'),
+  acct(4, 'Vieux PEL', 'Savings', { archived: true }),
+  acct(5, 'Ancien CC', 'Checking', { archived: true }),
+]
+
+const rowNames = () => screen.getAllByRole('row').map(r => r.textContent ?? '')
+
+test('groups accounts under one header per type, alphabetically, names sorted inside', async () => {
+  mockFetchAccounts.mockResolvedValue(grouped)
+
+  renderWithProviders(<AccountsList onBack={() => {}} selectedUserId={null} />)
+
+  await screen.findByText('Revolut')
+  const rows = rowNames()
+  const at = (text: string) => rows.findIndex(r => r.startsWith(text))
+  expect(at('Checking')).toBeLessThan(at('CC CCF Joint'))
+  expect(at('CC CCF Joint')).toBeLessThan(at('Revolut'))
+  expect(at('Revolut')).toBeLessThan(at('Investment'))
+  expect(screen.queryByText('Vieux PEL')).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: /^Archived/ })).not.toBeInTheDocument()
+})
+
+test('a type header collapses and expands its accounts', async () => {
+  mockFetchAccounts.mockResolvedValue(grouped)
+
+  renderWithProviders(<AccountsList onBack={() => {}} selectedUserId={null} />)
+
+  await screen.findByText('Revolut')
+  fireEvent.click(screen.getByRole('button', { name: /^Checking/ }))
+  expect(screen.queryByText('Revolut')).not.toBeInTheDocument()
+  expect(screen.getByText('PER')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: /^Checking/ }))
+  expect(screen.getByText('Revolut')).toBeInTheDocument()
+})
+
+test('archived accounts sit under one Archived header, by type then name', async () => {
+  mockFetchAccounts.mockResolvedValue(grouped)
+
+  renderWithProviders(<AccountsList onBack={() => {}} selectedUserId={null} />)
+
+  await screen.findByText('Revolut')
+  fireEvent.click(screen.getByRole('checkbox', { name: /show archived/i }))
+
+  expect(screen.getByRole('button', { name: /^Archived/ })).toHaveTextContent('Archived2')
+  expect(screen.getAllByRole('separator').map(s => s.textContent)).toEqual(['Checking', 'Savings'])
+  const rows = rowNames()
+  expect(rows.findIndex(r => r.startsWith('Ancien CC'))).toBeLessThan(rows.findIndex(r => r.startsWith('Vieux PEL')))
+})
+
+test('shows each account\'s split weights with the resulting share, or Default when unset', async () => {
+  mockFetchAccounts.mockResolvedValue(grouped)
+
+  renderWithProviders(<AccountsList onBack={() => {}} selectedUserId={null} />)
+
+  const row = (await screen.findByText('CC CCF Joint')).closest('tr')!
+  expect(row).toHaveTextContent('Alex 3 · 75%')
+  expect(row).toHaveTextContent('Olivia 1 · 25%')
+  expect(screen.getByText('Revolut').closest('tr')).toHaveTextContent('Default')
+})
+
+test('on mobile, renders cards instead of a table, still grouped and showing split weights', async () => {
+  vi.spyOn(window, 'matchMedia').mockImplementation(query => ({
+    matches: query === '(max-width: 767px)', media: query, onchange: null,
+    addListener: vi.fn(), removeListener: vi.fn(), addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
+  }))
+  mockFetchAccounts.mockResolvedValue(grouped)
+
+  renderWithProviders(<AccountsList onBack={() => {}} selectedUserId={null} />)
+
+  await screen.findByText('Revolut')
+  expect(screen.queryByRole('table')).not.toBeInTheDocument()
+  const cards = screen.getAllByTestId('account-card')
+  expect(cards.map(c => within(c).getByText(/^(CC CCF Joint|Revolut|PER)$/).textContent)).toEqual(['CC CCF Joint', 'Revolut', 'PER'])
+  expect(cards[0]).toHaveTextContent('Alex 3 · 75%')
+
+  fireEvent.click(within(cards[1]).getByText('Edit'))
+  expect(screen.getByLabelText('Name')).toHaveValue('Revolut')
+  vi.restoreAllMocks()
 })
