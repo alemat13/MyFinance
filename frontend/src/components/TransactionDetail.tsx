@@ -43,6 +43,17 @@ const emptyFormData: TransactionUpdate = {
 const historyBadgeVariant = (action: TransactionHistoryEntry['action']) =>
   action === 'created' ? 'positive' : action === 'deleted' ? 'negative' : 'info'
 
+// What wrote the row, when it wasn't somebody typing. Worth naming on the
+// badge rather than leaving every line reading "updated": an automatic
+// categorization is exactly the kind of change you need to be able to find
+// and judge afterwards, and a sync and a divide are no different.
+const HISTORY_SOURCE_LABELS: Record<string, string> = {
+  csv_import: 'CSV',
+  bank_sync: 'bank sync',
+  categorizer: 'auto',
+  divide: 'divide',
+}
+
 interface SplitSnapshotEntry {
   user_id: number
   weight: number
@@ -299,7 +310,7 @@ export default function TransactionDetail({
                   {historyEntries.map(h => (
                     <div key={h.id} className="flex items-center gap-2 text-xs flex-wrap">
                       <Badge variant={historyBadgeVariant(h.action)}>
-                        {h.action}{h.source === 'csv_import' ? ' · CSV' : ''}
+                        {h.action}{h.source && HISTORY_SOURCE_LABELS[h.source] ? ` · ${HISTORY_SOURCE_LABELS[h.source]}` : ''}
                       </Badge>
                       <span className="text-slate-500 dark:text-slate-400">{formatServerTimestamp(h.changed_at)}</span>
                       <span className="text-slate-500 dark:text-slate-400">by {h.changed_by_user_name ?? 'Unknown user'}</span>

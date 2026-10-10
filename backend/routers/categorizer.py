@@ -22,9 +22,9 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+import auto_categorize
 import cache_service
 import categorizer
-from audit import TRACKED_FIELDS, _jsonify, record_transaction_history
 from database import get_db
 from filtering import apply_transaction_filters
 from models import Category, CategorizerModel, Transaction
@@ -62,15 +62,12 @@ def _categories(db: Session) -> dict[int, Category]:
     return {c.id: c for c in db.query(Category).all()}
 
 
-def _active_model(db: Session) -> CategorizerModel:
-    row = (
-        db.query(CategorizerModel)
-        .filter(CategorizerModel.is_active.is_(True), CategorizerModel.status == "ready")
-        .first()
-    )
-    if row is None or row.blob is None:
+def _active_model(db: Session) -> tuple[CategorizerModel, "categorizer._Model"]:
+    """The active model, or a 409 saying how to get one."""
+    loaded = auto_categorize.load_active_model(db)
+    if loaded is None:
         raise HTTPException(409, "No active model. Train one first, then activate it.")
-    return row
+    return loaded
 
 
 def _prune(db: Session) -> None:
@@ -212,8 +209,7 @@ def suggest(req: CategorizerSuggestRequest, db: Session = Depends(get_db)):
     else:
         rows = _select(db, req.selection)[: req.limit]
 
-    record = _active_model(db)
-    model = categorizer.loads(record.blob)
+    record, model = _active_model(db)
     categories = _categories(db)
     predictions = model.predict(rows)
     threshold = categorizer.DEFAULT_CONFIDENCE_THRESHOLD
@@ -288,7 +284,7 @@ def apply(req: CategorizerApplyRequest, actor_user_id: int | None = Query(None),
     skipped_ids: list[int] = []
     for item in req.items:
         transaction = transactions[item.transaction_id]
-        fields = {}
+        fields: dict[str, object] = {}
         if item.category_id is not None:
             if transaction.category_id is not None and not req.overwrite_category:
                 # Only the category is refused; a rename asked for in the same
@@ -301,17 +297,9 @@ def apply(req: CategorizerApplyRequest, actor_user_id: int | None = Query(None),
         if not fields:
             continue
 
-        old = {f: getattr(transaction, f) for f in list(fields) + ["reconciled"] if f in TRACKED_FIELDS}
-        for field, value in fields.items():
-            setattr(transaction, field, value)
-        transaction.reconciled = False
-        changes = {
-            f: {"old": _jsonify(value), "new": _jsonify(getattr(transaction, f))}
-            for f, value in old.items() if value != getattr(transaction, f)
-        }
-        if changes:
-            record_transaction_history(db, transaction, "updated", actor_user_id,
-                                       source="categorizer", changes=changes)
+        # Shared with the automatic path a sync takes, so a suggestion ticked
+        # here and one applied by a sync leave exactly the same trail.
+        if auto_categorize.write_fields(db, transaction, fields, actor_user_id):
             updated_ids.append(transaction.id)
 
     if updated_ids:

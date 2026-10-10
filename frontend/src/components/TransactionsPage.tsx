@@ -8,6 +8,7 @@ import {
 } from '../api/client'
 import TransactionDetail from './TransactionDetail'
 import BulkEditModal from './BulkEditModal'
+import CategorizeModal from './CategorizeModal'
 import CategoryPicker from './CategoryPicker'
 import TransactionConditions, { ConditionRow, conditionsToFilters } from './TransactionConditions'
 import ExportMenu from './ExportMenu'
@@ -24,6 +25,8 @@ import { downloadBlob } from '../utils/download'
 interface Props {
   onBack: () => void
   selectedUserId: number | null
+  // Where "Categorize" sends the user when no model has been trained yet.
+  onOpenCategorizer: () => void
 }
 
 type FilterMode = 'simple' | 'advanced'
@@ -74,7 +77,7 @@ const splitsDisplay = (splits: TransactionSplit[], currency: string) => {
   return splits.map(s => `${s.user_name} ${formatMoney(s.share_amount, currency)}`).join(' / ')
 }
 
-export default function TransactionsPage({ onBack, selectedUserId }: Props) {
+export default function TransactionsPage({ onBack, selectedUserId, onOpenCategorizer }: Props) {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
   const [allAccounts, setAllAccounts] = useState<Account[]>([])
@@ -86,6 +89,7 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
   const [detailTarget, setDetailTarget] = useState<number | 'new' | null>(() => loadInitialInt('transaction', 0) || null)
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [bulkEditOpen, setBulkEditOpen] = useState(false)
+  const [categorizeOpen, setCategorizeOpen] = useState(false)
   const [bulkDeleteConfirming, setBulkDeleteConfirming] = useState(false)
   const [exporting, setExporting] = useState(false)
 
@@ -401,6 +405,7 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
             <Button size="sm" variant="secondary" onClick={toggleSelectAll} aria-label="Select all on this page">Select all</Button>
           )}
           <Button size="sm" onClick={() => setBulkEditOpen(true)}>Bulk Edit</Button>
+          <Button size="sm" variant="secondary" onClick={() => setCategorizeOpen(true)}>Categorize</Button>
           <Button size="sm" variant="danger" onClick={() => setBulkDeleteConfirming(true)}>Delete selected</Button>
           <Button size="sm" variant="secondary" onClick={() => setSelectedIds(new Set())}>Clear selection</Button>
         </div>
@@ -609,6 +614,17 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
           onSaved={() => { closeDetail(); loadTransactions() }}
           onDeleted={() => { closeDetail(); loadTransactions() }}
           onNavigateToTransaction={openDetail}
+        />
+      )}
+
+      {categorizeOpen && (
+        <CategorizeModal
+          transactionIds={[...selectedIds]}
+          transactions={transactions.filter(t => selectedIds.has(t.id))}
+          selectedUserId={selectedUserId}
+          onClose={() => setCategorizeOpen(false)}
+          onApplied={() => { setCategorizeOpen(false); setSelectedIds(new Set()); loadTransactions() }}
+          onOpenCategorizer={onOpenCategorizer}
         />
       )}
 

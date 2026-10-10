@@ -532,6 +532,12 @@ class ImportPreviewRow(BaseModel):
     status: str  # 'ok' | 'needs_category' | 'possible_duplicate' | 'error'
     error_message: str | None = None
     preview_split: list[ImportPreviewSplitShare] = []
+    # What the active categorisation model would file this row under, or all
+    # three None when no model is active. Advisory: the screen offers it next
+    # to the file's own category and commits whichever the user kept.
+    suggested_category_id: int | None = None
+    suggested_category_name: str | None = None
+    suggested_confidence: float | None = None
 
 
 class ImportCommitRequest(BaseModel):

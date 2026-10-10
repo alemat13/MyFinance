@@ -1,12 +1,14 @@
 import csv
 import io
 import json
+import logging
 import unicodedata
 from datetime import date, datetime
 from pathlib import Path
 
 from sqlalchemy.orm import Session
 
+import auto_categorize
 from import_qif import QIF_DELIMITER, is_qif, qif_to_csv_text
 from models import Account, Category, Transaction
 from rules import RuleViolation
@@ -21,6 +23,8 @@ MAX_IMPORT_ROWS = 5000
 
 _MAPPING_CONFIG_PATH = Path(__file__).parent / "import_mapping_config.json"
 _MAPPING_CONFIG: dict[str, list[str]] = json.loads(_MAPPING_CONFIG_PATH.read_text())
+
+logger = logging.getLogger(__name__)
 
 
 def normalize_header(raw: str) -> str:
@@ -231,4 +235,52 @@ def preview_import(db: Session, raw: bytes, data: ImportPreviewRequest) -> list[
             preview_split=preview_split,
         ))
 
+    _attach_suggestions(db, rows)
     return rows
+
+
+def _attach_suggestions(db: Session, rows: list[ImportPreviewRow]) -> None:
+    """Fill in what the active categorisation model would file each row under.
+
+    Advisory only: the preview *offers* the suggestion next to the file's own
+    category and the screen decides, which is the whole difference between
+    this and the bank sync — a file usually carries categories of its own,
+    and which source to trust is the user's call, not the server's.
+
+    No model active is the normal state until someone trains one, so this
+    stays silent rather than failing; a model that cannot be loaded at all
+    must not cost the preview either, since the import works without it.
+    """
+    scorable = [r for r in rows if r.status != "error" and (r.payee or "").strip()]
+    if not scorable:
+        return
+    try:
+        loaded = auto_categorize.load_active_model(db)
+        if loaded is None:
+            return
+        _, model = loaded
+        candidates = [
+            auto_categorize.Candidate(
+                # The commit freezes the file's payee into raw_label, so that
+                # is what the model will read once the row exists; reading it
+                # here too is what makes the preview's suggestion the one the
+                # row would actually get.
+                raw_label=row.payee,
+                payee=row.payee,
+                memo=row.memo,
+                amount=row.amount,
+                account_id=row.account_id,
+                category_id=row.category_id,
+            )
+            for row in scorable
+        ]
+        predictions = model.predict(candidates)
+    except Exception:  # noqa: BLE001 - the preview is worth more than the suggestion
+        logger.exception("Could not score the import preview; showing it without suggestions")
+        return
+
+    names = {c.id: c.name for c in db.query(Category).all()}
+    for row, (category_id, confidence) in zip(scorable, predictions):
+        row.suggested_category_id = category_id
+        row.suggested_category_name = names.get(category_id)
+        row.suggested_confidence = confidence
