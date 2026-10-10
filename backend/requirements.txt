@@ -8,4 +8,8 @@ pytest==9.1.1
 httpx==0.28.1
 python-multipart==0.0.32
 cryptography==50.0.1
-pyjwt==2.14.0
+pyjwt==2.15.1
+# Trains and runs the category-suggestion model (categorizer.py). Imported
+# lazily there: it costs over a second to import, and almost no request needs
+# it. Pulls scipy/numpy, ~205 MB in the image — the real price of the feature.
+scikit-learn==1.9.1

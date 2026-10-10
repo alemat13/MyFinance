@@ -1,6 +1,57 @@
 {
+  "_comment": [
+    "Regexes stripped from a synced row's payee, in order, first match only.",
+    "An entry is either a bare pattern or an object with a note; see",
+    "enable_banking.clean_label. Measured on the production ledger: the two",
+    "patterns this list started with rebuilt 70.1% of the labels Alex had",
+    "renamed by taking an extract of the bank's wording, and these eleven",
+    "rebuild 97.0% of them. New imports only — an existing row is never",
+    "rewritten, and raw_label always keeps the bank's full wording."
+  ],
   "label_cleanup_patterns": [
-    "^CARTE\\s+\\d{2}/\\d{2}(?:/(?:\\d{4}|\\d{2}))?\\s+",
-    "\\s+CB\\*\\d+\\s*$"
+    {
+      "note": "Card payment, one or two dates: 'CARTE 18/09 ', 'CARTE 21/09/26 ', 'PAIEMENT CARTE 18/09 18/09 '",
+      "pattern": "^(?:PAIEMENT\\s+)?CARTE\\s+\\d{2}/\\d{2}(?:/(?:\\d{4}|\\d{2}))?(?:\\s+\\d{2}/\\d{2}(?:/(?:\\d{4}|\\d{2}))?)?\\s+"
+    },
+    {
+      "note": "Card payment naming the card first: 'CARTE X7092 11/03 '",
+      "pattern": "^(?:PAIEMENT\\s+)?CARTE\\s+X?\\d{4,}\\s+\\d{2}/\\d{2}(?:/(?:\\d{4}|\\d{2}))?\\s+"
+    },
+    {
+      "note": "Cancellation or credit note, with or without a date: 'ANN CARTE ', 'AVOIR 14/04/26 '",
+      "pattern": "^(?:ANN|AVOIR)\\s+(?:CARTE\\s+)?(?:\\d{2}/\\d{2}(?:/(?:\\d{4}|\\d{2}))?\\s+)?"
+    },
+    {
+      "note": "Bare card marker some banks put in front of the merchant",
+      "pattern": "^CB\\s+"
+    },
+    {
+      "note": "Numeric reference prefix: '1511/'",
+      "pattern": "^\\d{3,4}/\\s*"
+    },
+    {
+      "note": "Transfer: 'VIR ', 'VIR SEPA ', 'VIREMENT SEPA EMIS ', 'VIR INST '",
+      "pattern": "^VIR(?:EMENT)?(?:\\s+SEPA)?(?:\\s+(?:RECU|EMIS|INST|INSTANTANE))*\\s+"
+    },
+    {
+      "note": "Direct debit: 'PRLV ', 'PRLV SEPA ', 'PRLV SEPA RECU RCUR '",
+      "pattern": "^PRLV(?:\\s+SEPA)?(?:\\s+RECU)?(?:\\s+(?:RCUR|FRST|OOFF))*\\s+"
+    },
+    {
+      "note": "Direct debit carrying its mandate number: 'PRELEVEMENT 8060628865 '",
+      "pattern": "^PRELEVEMENT\\s+\\d+\\s+"
+    },
+    {
+      "note": "Card-number suffix: ' CB*4325'",
+      "pattern": "\\s+CB\\*\\d+\\s*$"
+    },
+    {
+      "note": "Masked card-number suffix: ' CB N° 4971 60XX XXXX 3735'",
+      "pattern": "\\s+CB\\s*N°?\\s*[\\dX][\\dX\\s]{6,}\\s*$"
+    },
+    {
+      "note": "Trailing date some banks append: ' 31/12/25'",
+      "pattern": "\\s+\\d{2}/\\d{2}(?:/(?:\\d{4}|\\d{2}))?\\s*$"
+    }
   ]
 }

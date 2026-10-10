@@ -234,7 +234,7 @@ class TransactionOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    date: date
+    date: _DateType
     payee: str
     memo: Optional[str] = None
     amount: float
@@ -264,7 +264,7 @@ class TransactionOut(BaseModel):
 
 
 class TransactionCreate(BaseModel):
-    date: date
+    date: _DateType
     payee: str
     memo: Optional[str] = None
     amount: float
@@ -327,7 +327,7 @@ class TransactionDividePart(BaseModel):
     TransactionSplit/split_weights, which divides a transaction's amount
     among users). No account_id: every part stays on the original
     transaction's account."""
-    date: date
+    date: _DateType
     payee: str
     memo: Optional[str] = None
     amount: float
@@ -532,6 +532,12 @@ class ImportPreviewRow(BaseModel):
     status: str  # 'ok' | 'needs_category' | 'possible_duplicate' | 'error'
     error_message: str | None = None
     preview_split: list[ImportPreviewSplitShare] = []
+    # What the active categorisation model would file this row under, or all
+    # three None when no model is active. Advisory: the screen offers it next
+    # to the file's own category and commits whichever the user kept.
+    suggested_category_id: int | None = None
+    suggested_category_name: str | None = None
+    suggested_confidence: float | None = None
 
 
 class ImportCommitRequest(BaseModel):
@@ -541,6 +547,100 @@ class ImportCommitRequest(BaseModel):
 class ImportCommitResponse(BaseModel):
     created_count: int
     transaction_ids: list[int]
+
+
+# ── Automatic categorisation (see categorizer.py) ────────────────
+
+class CategorizerTrainRequest(BaseModel):
+    """Which transactions to learn from, and which to be scored on.
+
+    Both selections are ordinary Transactions-screen filters, so a training
+    set can be "everything except the accounts nobody keeps up to date"
+    rather than just a date range. `page`/`page_size` on either are ignored:
+    training always reads the whole selection.
+
+    The two must not overlap. A model scored on rows it was fitted on reports
+    a precision it does not have, and since the point of the test selection
+    is to decide whether to activate the model, that number has to mean
+    something.
+    """
+    train: TransactionSearchRequest
+    test: TransactionSearchRequest
+    note: str | None = Field(None, max_length=200)
+    payee_min_occurrences: int = Field(2, ge=1, le=100)
+    payee_min_stability: float = Field(0.9, ge=0.5, le=1.0)
+
+
+class CategorizerModelOut(BaseModel):
+    id: int
+    created_at: datetime
+    status: str
+    is_active: bool
+    trained_rows: int
+    tested_rows: int
+    note: str | None = None
+    params: dict | None = None
+    metrics: dict | None = None
+    error: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class CategorizerSuggestRequest(BaseModel):
+    """Either an explicit list of transactions (the bulk action on a
+    selection) or a filter (everything matching, e.g. the uncategorised)."""
+    transaction_ids: list[int] | None = None
+    selection: TransactionSearchRequest | None = None
+    limit: int = Field(500, ge=1, le=2000)
+
+
+class CategorizerSuggestion(BaseModel):
+    transaction_id: int
+    date: _DateType
+    payee: str
+    raw_label: str | None = None
+    amount: float
+    current_category_id: int | None = None
+    current_category_name: str | None = None
+    suggested_category_id: int | None = None
+    suggested_category_name: str | None = None
+    confidence: float | None = None
+    high_confidence: bool = False
+    suggested_payee: str | None = None
+    category_changed: bool = False
+    payee_changed: bool = False
+
+
+class CategorizerSuggestResponse(BaseModel):
+    model_id: int
+    threshold: float
+    items: list[CategorizerSuggestion]
+    category_changes: int
+    payee_changes: int
+    high_confidence_changes: int
+
+
+class CategorizerApplyItem(BaseModel):
+    transaction_id: int
+    category_id: int | None = None
+    payee: str | None = Field(None, min_length=1, max_length=200)
+
+
+class CategorizerApplyRequest(BaseModel):
+    """Applies one value per transaction, which is why this is not
+    bulk-update: that endpoint sets the same category on every row it
+    touches."""
+    items: list[CategorizerApplyItem]
+    # Off by default: a category somebody set by hand outranks a suggestion.
+    overwrite_category: bool = False
+
+
+class CategorizerApplyResponse(BaseModel):
+    updated_count: int
+    transaction_ids: list[int]
+    # Rows left alone because they already carried a category and
+    # overwrite_category was false.
+    skipped_transaction_ids: list[int] = []
 
 
 # ── Full database backup (export/import) ─────────────────────────

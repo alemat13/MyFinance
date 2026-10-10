@@ -103,3 +103,41 @@ def visible_transaction_filter(db: Session, user_id: int):
         Transaction.account_id.in_(owned_account_ids),
         Transaction.id.in_(split_txn_ids),
     )
+
+
+def apply_transaction_filters(query, req, db: Session):
+    """Apply a TransactionSearchRequest's simple and advanced filters to a query.
+
+    Shared by POST /api/transactions/search and by the categorizer, which lets
+    a training or test selection be expressed with exactly the filters the
+    Transactions screen already offers instead of a second filter language.
+    Only pagination and sorting are left to the caller. Raises ValueError on an
+    unusable advanced condition, for the caller to map to a 422.
+    """
+    if req.user_id is not None:
+        query = query.filter(visible_transaction_filter(db, req.user_id))
+    if req.search:
+        like = f"%{req.search.lower()}%"
+        query = query.filter(or_(
+            func.lower(Transaction.payee).like(like),
+            func.lower(Transaction.memo).like(like),
+        ))
+    if req.date_from is not None:
+        query = query.filter(Transaction.date >= req.date_from)
+    if req.date_to is not None:
+        query = query.filter(Transaction.date <= req.date_to)
+    if req.account_id is not None:
+        query = query.filter(Transaction.account_id == req.account_id)
+    if req.category_id is not None:
+        query = query.filter(Transaction.category_id == req.category_id)
+    if req.amount_min is not None:
+        query = query.filter(Transaction.amount >= req.amount_min)
+    if req.amount_max is not None:
+        query = query.filter(Transaction.amount <= req.amount_max)
+    if req.reconciled is not None:
+        query = query.filter(Transaction.reconciled == req.reconciled)
+    if req.conditions:
+        where = build_where_clause(req.conditions, req.match_mode)
+        if where is not None:
+            query = query.filter(where)
+    return query

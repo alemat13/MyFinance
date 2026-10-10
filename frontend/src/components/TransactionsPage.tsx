@@ -2,13 +2,15 @@ import { Fragment, useEffect, useState } from 'react'
 import { CheckCircle2, Circle } from 'lucide-react'
 import {
   Transaction, TransactionSplit, GlobalSplitWeight,
-  Account, Category, User, FilterField, TransactionSearchRequest,
+  Account, Category, User, TransactionSearchRequest,
   fetchAccounts, fetchCategories, fetchUsers, fetchSplitWeights, searchTransactions, updateTransaction,
   bulkDeleteTransactions,
 } from '../api/client'
 import TransactionDetail from './TransactionDetail'
 import BulkEditModal from './BulkEditModal'
+import CategorizeModal from './CategorizeModal'
 import CategoryPicker from './CategoryPicker'
+import TransactionConditions, { ConditionRow, conditionsToFilters } from './TransactionConditions'
 import ExportMenu from './ExportMenu'
 import { Button, IconButton, Input, Select, Table, Thead, Tbody, Tr, Th, Td, StatusMessage, CategoryBadge, BackButton, ConfirmDialog, Card } from './ui'
 import { formatMoney } from '../utils/currency'
@@ -23,63 +25,11 @@ import { downloadBlob } from '../utils/download'
 interface Props {
   onBack: () => void
   selectedUserId: number | null
+  // Where "Categorize" sends the user when no model has been trained yet.
+  onOpenCategorizer: () => void
 }
 
 type FilterMode = 'simple' | 'advanced'
-
-interface ConditionRow {
-  field: FilterField
-  operator: string
-  value: string
-  value2: string
-}
-
-const OPERATORS_BY_FIELD: Record<FilterField, { value: string; label: string }[]> = {
-  payee: [
-    { value: 'contains', label: 'contains' },
-    { value: 'equals', label: 'equals' },
-    { value: 'not_equals', label: 'not equals' },
-    { value: 'starts_with', label: 'starts with' },
-    { value: 'ends_with', label: 'ends with' },
-  ],
-  memo: [
-    { value: 'contains', label: 'contains' },
-    { value: 'equals', label: 'equals' },
-    { value: 'not_equals', label: 'not equals' },
-    { value: 'starts_with', label: 'starts with' },
-    { value: 'ends_with', label: 'ends with' },
-  ],
-  amount: [
-    { value: 'eq', label: '=' },
-    { value: 'ne', label: '≠' },
-    { value: 'gt', label: '>' },
-    { value: 'gte', label: '≥' },
-    { value: 'lt', label: '<' },
-    { value: 'lte', label: '≤' },
-    { value: 'between', label: 'between' },
-  ],
-  date: [
-    { value: 'on', label: 'on' },
-    { value: 'before', label: 'before' },
-    { value: 'after', label: 'after' },
-    { value: 'between', label: 'between' },
-  ],
-  account_id: [
-    { value: 'eq', label: 'is' },
-    { value: 'ne', label: 'is not' },
-  ],
-  category_id: [
-    { value: 'eq', label: 'is' },
-    { value: 'ne', label: 'is not' },
-  ],
-}
-
-const FIELD_LABELS: Record<FilterField, string> = {
-  payee: 'Payee', memo: 'Memo', amount: 'Amount', date: 'Date',
-  account_id: 'Account', category_id: 'Category',
-}
-
-const emptyCondition: ConditionRow = { field: 'payee', operator: 'contains', value: '', value2: '' }
 
 const SORT_BY_VALUES = ['date', 'amount', 'payee', 'created_at'] as const
 const SORT_DIR_VALUES = ['asc', 'desc'] as const
@@ -127,7 +77,7 @@ const splitsDisplay = (splits: TransactionSplit[], currency: string) => {
   return splits.map(s => `${s.user_name} ${formatMoney(s.share_amount, currency)}`).join(' / ')
 }
 
-export default function TransactionsPage({ onBack, selectedUserId }: Props) {
+export default function TransactionsPage({ onBack, selectedUserId, onOpenCategorizer }: Props) {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
   const [allAccounts, setAllAccounts] = useState<Account[]>([])
@@ -139,6 +89,7 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
   const [detailTarget, setDetailTarget] = useState<number | 'new' | null>(() => loadInitialInt('transaction', 0) || null)
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [bulkEditOpen, setBulkEditOpen] = useState(false)
+  const [categorizeOpen, setCategorizeOpen] = useState(false)
   const [bulkDeleteConfirming, setBulkDeleteConfirming] = useState(false)
   const [exporting, setExporting] = useState(false)
 
@@ -184,29 +135,13 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
 
   useEffect(loadMeta, [selectedUserId])
 
-  const coerceConditionValue = (field: FilterField, value: string): string | number => {
-    if (field === 'amount' || field === 'account_id' || field === 'category_id') return parseFloat(value)
-    return value
-  }
-
   const buildSearchRequest = (): TransactionSearchRequest => {
     const base: TransactionSearchRequest = {
       user_id: selectedUserId ?? undefined,
       page, page_size: pageSize, sort_by: sortBy, sort_dir: sortDir,
     }
     if (mode === 'advanced') {
-      return {
-        ...base,
-        match_mode: matchMode,
-        conditions: debouncedConditions
-          .filter(c => c.value !== '')
-          .map(c => ({
-            field: c.field,
-            operator: c.operator,
-            value: coerceConditionValue(c.field, c.value),
-            value2: c.operator === 'between' && c.value2 !== '' ? coerceConditionValue(c.field, c.value2) : undefined,
-          })),
-      }
+      return { ...base, match_mode: matchMode, conditions: conditionsToFilters(debouncedConditions) }
     }
     return {
       ...base,
@@ -344,20 +279,6 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
     setPage(1)
   }
 
-  const addCondition = () => setConditions([...conditions, { ...emptyCondition }])
-  const removeCondition = (i: number) => setConditions(conditions.filter((_, idx) => idx !== i))
-  const updateConditionField = (i: number, field: FilterField) => {
-    setConditions(conditions.map((c, idx) => idx === i
-      ? { field, operator: OPERATORS_BY_FIELD[field][0].value, value: '', value2: '' }
-      : c))
-  }
-  const updateConditionOperator = (i: number, operator: string) => {
-    setConditions(conditions.map((c, idx) => idx === i ? { ...c, operator } : c))
-  }
-  const updateConditionValue = (i: number, key: 'value' | 'value2', value: string) => {
-    setConditions(conditions.map((c, idx) => idx === i ? { ...c, [key]: value } : c))
-  }
-
   const openDetail = (id: number) => {
     setDetailTarget(id)
     patchQueryParams({ transaction: String(id) })
@@ -461,61 +382,14 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
             <Button size="sm" variant="secondary" onClick={clearSimpleFilters}>Clear</Button>
           </div>
         ) : (
-          <div>
-            <div className="flex gap-2 items-center mb-2">
-              <span className="text-xs text-slate-600 dark:text-slate-300">Match</span>
-              <Select value={matchMode} onChange={e => { setMatchMode(e.target.value as 'all' | 'any'); setPage(1) }}>
-                <option value="all">ALL (AND)</option>
-                <option value="any">ANY (OR)</option>
-              </Select>
-              <Button size="sm" onClick={addCondition}>+ Add condition</Button>
-            </div>
-            {conditions.map((c, i) => (
-              <div key={i} className="flex gap-2 items-center mb-1.5">
-                <Select value={c.field} onChange={e => updateConditionField(i, e.target.value as FilterField)} className="min-w-[110px]">
-                  {(Object.keys(OPERATORS_BY_FIELD) as FilterField[]).map(f => <option key={f} value={f}>{FIELD_LABELS[f]}</option>)}
-                </Select>
-                <Select value={c.operator} onChange={e => updateConditionOperator(i, e.target.value)} className="min-w-[120px]">
-                  {OPERATORS_BY_FIELD[c.field].map(op => <option key={op.value} value={op.value}>{op.label}</option>)}
-                </Select>
-                {c.field === 'account_id' ? (
-                  <Select value={c.value} onChange={e => updateConditionValue(i, 'value', e.target.value)} className="min-w-[140px]">
-                    <option value="">Account</option>
-                    {acctOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                  </Select>
-                ) : c.field === 'category_id' ? (
-                  <CategoryPicker
-                    categories={categories}
-                    value={c.value ? parseInt(c.value) : null}
-                    onChange={id => updateConditionValue(i, 'value', id != null ? String(id) : '')}
-                    placeholder="Category"
-                    className="min-w-[140px]"
-                  />
-                ) : (
-                  <Input
-                    type={c.field === 'amount' ? 'number' : c.field === 'date' ? 'date' : 'text'}
-                    step={c.field === 'amount' ? '0.01' : undefined}
-                    value={c.value}
-                    onChange={e => updateConditionValue(i, 'value', e.target.value)}
-                    className="w-[130px]"
-                  />
-                )}
-                {c.operator === 'between' && (
-                  <Input
-                    type={c.field === 'amount' ? 'number' : 'date'}
-                    step={c.field === 'amount' ? '0.01' : undefined}
-                    value={c.value2}
-                    onChange={e => updateConditionValue(i, 'value2', e.target.value)}
-                    className="w-[130px]"
-                  />
-                )}
-                <Button size="sm" variant="danger" onClick={() => removeCondition(i)}>×</Button>
-              </div>
-            ))}
-            {conditions.length === 0 && (
-              <div className="text-xs text-slate-400">No conditions yet — add one to filter.</div>
-            )}
-          </div>
+          <TransactionConditions
+            conditions={conditions}
+            onChange={setConditions}
+            matchMode={matchMode}
+            onMatchModeChange={m => { setMatchMode(m); setPage(1) }}
+            accounts={accounts}
+            categories={categories}
+          />
         )}
       </div>
 
@@ -531,6 +405,7 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
             <Button size="sm" variant="secondary" onClick={toggleSelectAll} aria-label="Select all on this page">Select all</Button>
           )}
           <Button size="sm" onClick={() => setBulkEditOpen(true)}>Bulk Edit</Button>
+          <Button size="sm" variant="secondary" onClick={() => setCategorizeOpen(true)}>Categorize</Button>
           <Button size="sm" variant="danger" onClick={() => setBulkDeleteConfirming(true)}>Delete selected</Button>
           <Button size="sm" variant="secondary" onClick={() => setSelectedIds(new Set())}>Clear selection</Button>
         </div>
@@ -739,6 +614,17 @@ export default function TransactionsPage({ onBack, selectedUserId }: Props) {
           onSaved={() => { closeDetail(); loadTransactions() }}
           onDeleted={() => { closeDetail(); loadTransactions() }}
           onNavigateToTransaction={openDetail}
+        />
+      )}
+
+      {categorizeOpen && (
+        <CategorizeModal
+          transactionIds={[...selectedIds]}
+          transactions={transactions.filter(t => selectedIds.has(t.id))}
+          selectedUserId={selectedUserId}
+          onClose={() => setCategorizeOpen(false)}
+          onApplied={() => { setCategorizeOpen(false); setSelectedIds(new Set()); loadTransactions() }}
+          onOpenCategorizer={onOpenCategorizer}
         />
       )}
 

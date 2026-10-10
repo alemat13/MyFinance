@@ -242,3 +242,79 @@ test('commits active rows and shows a success message with a way back', async ()
   fireEvent.click(screen.getByText('Back to Dashboard'))
   expect(onBack).toHaveBeenCalled()
 })
+
+const SUGGESTION_ROWS = [
+  {
+    row_number: 1, transaction_date: '2026-01-15', payee: 'Whole Foods', memo: null, amount: -42.5,
+    account_id: 1, account_name: null, account_matched: true,
+    category_id: 2, category_name: 'Restaurants', status: 'ok', error_message: null, preview_split: [],
+    suggested_category_id: 1, suggested_category_name: 'Groceries', suggested_confidence: 0.91,
+  },
+  {
+    row_number: 2, transaction_date: '2026-01-16', payee: 'Unknown', memo: null, amount: -10,
+    account_id: 1, account_name: null, account_matched: true,
+    category_id: null, category_name: null, status: 'needs_category', error_message: null, preview_split: [],
+    suggested_category_id: 1, suggested_category_name: 'Groceries', suggested_confidence: 0.62,
+  },
+]
+
+async function goToReviewWithSuggestions(rows: unknown[] = SUGGESTION_ROWS) {
+  mockPreviewImport.mockResolvedValue(rows)
+  await goToConfirm()
+  fireEvent.click(screen.getByText('Preview'))
+  await waitFor(() => expect(screen.getByText('Suggested')).toBeInTheDocument())
+}
+
+test('the review step offers the model category next to the file category', async () => {
+  await goToReviewWithSuggestions()
+
+  expect(screen.getByText('91%')).toBeInTheDocument()
+  expect(screen.getByText('62%')).toBeInTheDocument()
+  // Offered, not applied: the row the file categorized still says Restaurants.
+  expect(screen.getByRole('button', { name: 'Use where the file has none (1)' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Use for every row (2)' })).toBeInTheDocument()
+})
+
+test('using the suggestions only where the file has none leaves the others alone', async () => {
+  mockCommitImport.mockResolvedValue({ created_count: 2, transaction_ids: [1, 2] })
+  await goToReviewWithSuggestions()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Use where the file has none (1)' }))
+  fireEvent.click(screen.getByText('Commit 2 transaction(s)'))
+
+  await waitFor(() => expect(mockCommitImport).toHaveBeenCalled())
+  expect(mockCommitImport.mock.calls[0][0].map((r: { category_id: number }) => r.category_id)).toEqual([2, 1])
+})
+
+test('using them everywhere replaces the file categories and says what each one was', async () => {
+  mockCommitImport.mockResolvedValue({ created_count: 2, transaction_ids: [1, 2] })
+  await goToReviewWithSuggestions()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Use for every row (2)' }))
+  expect(screen.getByText('was Restaurants')).toBeInTheDocument()
+  expect(screen.getByText('was no category')).toBeInTheDocument()
+
+  fireEvent.click(screen.getByText('Commit 2 transaction(s)'))
+  await waitFor(() => expect(mockCommitImport).toHaveBeenCalled())
+  expect(mockCommitImport.mock.calls[0][0].map((r: { category_id: number }) => r.category_id)).toEqual([1, 1])
+})
+
+test('the file categories can be put back', async () => {
+  await goToReviewWithSuggestions()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Use for every row (2)' }))
+  fireEvent.click(screen.getByRole('button', { name: "Back to the file's categories" }))
+  expect(screen.queryByText('was Restaurants')).not.toBeInTheDocument()
+})
+
+test('no model means no suggestion column at all', async () => {
+  mockPreviewImport.mockResolvedValue([{
+    ...SUGGESTION_ROWS[0],
+    suggested_category_id: null, suggested_category_name: null, suggested_confidence: null,
+  }])
+  await goToConfirm()
+  fireEvent.click(screen.getByText('Preview'))
+
+  await waitFor(() => expect(screen.getByText('Commit 1 transaction(s)')).toBeInTheDocument())
+  expect(screen.queryByText('Suggested')).not.toBeInTheDocument()
+})

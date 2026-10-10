@@ -1,6 +1,6 @@
 from datetime import datetime, date
 
-from sqlalchemy import Column, Integer, String, Float, DateTime, Date, Text, ForeignKey, JSON, Boolean, Index
+from sqlalchemy import Column, Integer, String, Float, DateTime, Date, Text, ForeignKey, JSON, Boolean, Index, LargeBinary
 from sqlalchemy.orm import relationship
 
 from database import Base
@@ -210,6 +210,39 @@ class AggregateCache(Base):
     namespace = Column(String, nullable=False, index=True)
     payload = Column(Text, nullable=False)
     computed_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class CategorizerModel(Base):
+    """One trained category-suggestion model (see categorizer.py).
+
+    The fitted model lives in `blob` as a gzipped pickle, in the database
+    rather than on disk or in process memory for the same reason
+    aggregate_cache does: the backend runs several Cloud Run instances, and an
+    instance that did not serve the training request still has to answer
+    suggestions from the same model. A blob is a few megabytes.
+
+    Several rows are kept so a model that turns out worse than its predecessor
+    can be rolled back; at most one is `is_active`, and that is the one
+    suggestions use. `status` is "training" while a fit is in flight, which is
+    also the lock that keeps two fits from running at once — one fit peaks
+    around 360 MB in a 1 GiB instance, so two would risk the whole service.
+    `metrics` holds what the fit scored on its test selection, including the
+    naive baseline it was compared against, so the numbers behind an
+    activation decision stay auditable after the fact.
+    """
+    __tablename__ = "categorizer_models"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    status = Column(String(20), nullable=False, default="ready")  # 'training' | 'ready' | 'failed'
+    is_active = Column(Boolean, nullable=False, default=False)
+    trained_rows = Column(Integer, nullable=False, default=0)
+    tested_rows = Column(Integer, nullable=False, default=0)
+    note = Column(String(200), nullable=True)
+    params = Column(JSON, nullable=True)
+    metrics = Column(JSON, nullable=True)
+    error = Column(Text, nullable=True)
+    blob = Column(LargeBinary, nullable=True)
 
 
 class OneDriveBackupSettings(Base):

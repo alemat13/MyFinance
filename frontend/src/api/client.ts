@@ -366,6 +366,12 @@ export interface ImportPreviewRow {
   status: 'ok' | 'needs_category' | 'possible_duplicate' | 'error'
   error_message: string | null
   preview_split: { user_id: number; weight: number; share_amount: number; source: string }[]
+  // What the active categorization model would file this row under, or null
+  // throughout when no model is active. Advisory: the screen offers it next
+  // to the file's own category and commits whichever one the user kept.
+  suggested_category_id: number | null
+  suggested_category_name: string | null
+  suggested_confidence: number | null
 }
 
 export interface ImportCommitResponse {
@@ -773,4 +779,135 @@ export function updateBankAccountLink(id: number, data: BankAccountLinkUpdate): 
 
 export function syncBankAccountLink(id: number): Promise<BankSyncRunResult> {
   return request<BankSyncRunResult>(`/bank-sync/links/${id}/sync`, { method: 'POST' })
+}
+
+// ── Automatic categorization ────────────────────────────────────
+// `metrics` and `params` are typed loosely on purpose: the backend writes
+// whatever `categorizer.evaluate()` produced at the time a model was fitted,
+// and an old model keeps the shape it was stored with. The screen reads them
+// defensively rather than assuming every key is there.
+
+export interface CategorizerThresholdRow {
+  threshold: number
+  coverage: number
+  accuracy: number
+  parent_accuracy: number
+}
+
+export interface CategorizerBaseline {
+  coverage?: number
+  accuracy_on_covered?: number
+  accuracy?: number
+}
+
+export interface CategorizerPayeeMetrics {
+  tested_rows?: number
+  merchants?: number
+  coverage?: number
+  precision?: number
+  would_change?: number
+}
+
+export interface CategorizerMetrics {
+  tested_rows?: number
+  accuracy?: number
+  parent_accuracy?: number
+  top3_accuracy?: number
+  thresholds?: CategorizerThresholdRow[]
+  baseline?: CategorizerBaseline
+  payee?: CategorizerPayeeMetrics
+}
+
+export interface CategorizerModel {
+  id: number
+  created_at: string
+  status: string
+  is_active: boolean
+  trained_rows: number
+  tested_rows: number
+  note: string | null
+  params: Record<string, unknown> | null
+  metrics: CategorizerMetrics | null
+  error: string | null
+}
+
+export interface CategorizerTrainRequest {
+  train: TransactionSearchRequest
+  test: TransactionSearchRequest
+  note?: string
+  payee_min_occurrences?: number
+  payee_min_stability?: number
+}
+
+export function fetchCategorizerModels(): Promise<CategorizerModel[]> {
+  return request<CategorizerModel[]>('/categorizer/models')
+}
+
+export function trainCategorizerModel(req: CategorizerTrainRequest): Promise<CategorizerModel> {
+  return request<CategorizerModel>('/categorizer/train', { method: 'POST', body: JSON.stringify(req) })
+}
+
+export function activateCategorizerModel(id: number): Promise<CategorizerModel> {
+  return request<CategorizerModel>(`/categorizer/models/${id}/activate`, { method: 'POST' })
+}
+
+export function deleteCategorizerModel(id: number): Promise<void> {
+  return request<void>(`/categorizer/models/${id}`, { method: 'DELETE' })
+}
+
+export interface CategorizerSuggestion {
+  transaction_id: number
+  date: string
+  payee: string
+  raw_label: string | null
+  amount: number
+  current_category_id: number | null
+  current_category_name: string | null
+  suggested_category_id: number | null
+  suggested_category_name: string | null
+  confidence: number | null
+  high_confidence: boolean
+  suggested_payee: string | null
+  category_changed: boolean
+  payee_changed: boolean
+}
+
+export interface CategorizerSuggestResponse {
+  model_id: number
+  threshold: number
+  items: CategorizerSuggestion[]
+  category_changes: number
+  payee_changes: number
+  high_confidence_changes: number
+}
+
+export interface CategorizerApplyItem {
+  transaction_id: number
+  category_id?: number | null
+  payee?: string | null
+}
+
+export interface CategorizerApplyResponse {
+  updated_count: number
+  transaction_ids: number[]
+  skipped_transaction_ids: number[]
+}
+
+export function suggestCategories(transactionIds: number[]): Promise<CategorizerSuggestResponse> {
+  return request<CategorizerSuggestResponse>('/categorizer/suggest', {
+    method: 'POST',
+    body: JSON.stringify({ transaction_ids: transactionIds }),
+  })
+}
+
+export function applyCategorizerSuggestions(
+  items: CategorizerApplyItem[],
+  overwriteCategory: boolean,
+  actorUserId: number | null,
+): Promise<CategorizerApplyResponse> {
+  const query = actorUserId ? `?actor_user_id=${actorUserId}` : ''
+  return request<CategorizerApplyResponse>(`/categorizer/apply${query}`, {
+    method: 'POST',
+    body: JSON.stringify({ items, overwrite_category: overwriteCategory }),
+  })
 }

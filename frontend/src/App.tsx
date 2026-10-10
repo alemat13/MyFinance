@@ -16,6 +16,7 @@ import SplitWeightsSettings from './components/SplitWeightsSettings'
 import CsvImportPage from './components/CsvImportPage'
 import BackupPage from './components/BackupPage'
 import BankSyncPage from './components/BankSyncPage'
+import CategorizerPage from './components/CategorizerPage'
 import ChartsPage from './components/ChartsPage'
 import HelpPage from './components/HelpPage'
 
@@ -159,11 +160,18 @@ export default function App() {
       {view === 'dashboard' && <Dashboard selectedUserId={selectedUserId} onSelectAccount={navigateToAccountTransactions} />}
       {view === 'accounts' && <AccountsList onBack={() => navigateToView('dashboard')} selectedUserId={selectedUserId} />}
       {view === 'categories' && <CategoriesList onBack={() => navigateToView('dashboard')} />}
-      {view === 'transactions' && <TransactionsPage onBack={() => navigateToView('dashboard')} selectedUserId={selectedUserId} />}
+      {view === 'transactions' && (
+        <TransactionsPage
+          onBack={() => navigateToView('dashboard')}
+          selectedUserId={selectedUserId}
+          onOpenCategorizer={() => navigateToView('categorizer')}
+        />
+      )}
       {view === 'users' && <UsersList onBack={() => navigateToView('dashboard')} onSelectUser={handleSelectUser} />}
       {view === 'split-settings' && <SplitWeightsSettings onBack={() => navigateToView('dashboard')} />}
       {view === 'import' && <CsvImportPage onBack={() => navigateToView('dashboard')} selectedUserId={selectedUserId} />}
       {view === 'bank-sync' && <BankSyncPage onBack={() => navigateToView('dashboard')} />}
+      {view === 'categorizer' && <CategorizerPage onBack={() => navigateToView('dashboard')} />}
       {view === 'backup' && <BackupPage onBack={() => navigateToView('dashboard')} />}
       {view === 'charts' && <ChartsPage onBack={() => navigateToView('dashboard')} selectedUserId={selectedUserId} />}
       {view === 'help' && <HelpPage onBack={() => navigateToView('dashboard')} />}

@@ -6,7 +6,7 @@ import cache_service
 import split_engine
 from audit import TRACKED_FIELDS, _jsonify, diff_splits, record_transaction_history, splits_created_changes
 from database import get_db
-from filtering import build_where_clause, visible_transaction_filter
+from filtering import apply_transaction_filters, build_where_clause, visible_transaction_filter
 from models import Account, Category, Transaction, TransactionHistory, TransactionSplit, User
 from rules import (
     validate_account_not_archived,
@@ -60,37 +60,10 @@ def search_transactions(req: TransactionSearchRequest, db: Session = Depends(get
         .outerjoin(Category, Transaction.category_id == Category.id)
         .options(selectinload(Transaction.splits).joinedload(TransactionSplit.user))
     )
-    if req.user_id is not None:
-        query = query.filter(visible_transaction_filter(db, req.user_id))
-
-    if req.search:
-        like = f"%{req.search.lower()}%"
-        query = query.filter(or_(
-            func.lower(Transaction.payee).like(like),
-            func.lower(Transaction.memo).like(like),
-        ))
-    if req.date_from is not None:
-        query = query.filter(Transaction.date >= req.date_from)
-    if req.date_to is not None:
-        query = query.filter(Transaction.date <= req.date_to)
-    if req.account_id is not None:
-        query = query.filter(Transaction.account_id == req.account_id)
-    if req.category_id is not None:
-        query = query.filter(Transaction.category_id == req.category_id)
-    if req.amount_min is not None:
-        query = query.filter(Transaction.amount >= req.amount_min)
-    if req.amount_max is not None:
-        query = query.filter(Transaction.amount <= req.amount_max)
-    if req.reconciled is not None:
-        query = query.filter(Transaction.reconciled == req.reconciled)
-
-    if req.conditions:
-        try:
-            where = build_where_clause(req.conditions, req.match_mode)
-        except ValueError as e:
-            raise HTTPException(status_code=422, detail=str(e))
-        if where is not None:
-            query = query.filter(where)
+    try:
+        query = apply_transaction_filters(query, req, db)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
 
     total = query.count()
 

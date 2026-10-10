@@ -17,6 +17,7 @@ from routers import (
     backup,
     bank_sync,
     categories,
+    categorizer,
     charts,
     dashboard,
     imports,
@@ -105,3 +106,4 @@ app.include_router(onedrive.router)
 app.include_router(bank_sync.router)
 app.include_router(dashboard.router)
 app.include_router(charts.router)
+app.include_router(categorizer.router)

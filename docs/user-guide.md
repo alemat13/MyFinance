@@ -15,9 +15,10 @@ people *using* the app to track household finances — for schema/database detai
 7. [Split Weights](#split-weights)
 8. [Import](#import)
 9. [Bank Sync](#bank-sync)
-10. [Backup & Restore](#backup--restore)
-11. [Charts](#charts)
-12. [Appendix: Validation Rules & Tips](#appendix-validation-rules--tips)
+10. [Auto-categorization](#auto-categorization)
+11. [Backup & Restore](#backup--restore)
+12. [Charts](#charts)
+13. [Appendix: Validation Rules & Tips](#appendix-validation-rules--tips)
 
 ## Getting Started
 
@@ -42,7 +43,8 @@ Every screen shares the same header:
 
 MyFinance shows four primary destinations — **Dashboard**, **Transactions**,
 **Accounts**, and **Charts** — plus a **More** button for everything else (Categories,
-Users, Split Weights, Import, Bank Sync, Backup & Restore, and Help). On a phone, the primary
+Users, Split Weights, Import, Bank Sync, Auto-categorization, Backup & Restore, and
+Help). On a phone, the primary
 destinations sit in a tab bar fixed to the bottom of the screen and **More** opens a
 sheet that slides up from the bottom; on a wider screen, the same buttons sit in a bar
 under the header, with **More** opening a panel from the right instead. Either way, the
@@ -208,8 +210,11 @@ amount, category, account, reconciled toggle, and — when a specific user is se
 My share/Balance) instead of the table described below, since an eight-column table
 doesn't fit a narrow screen; on wider screens it's the table. Either way, tapping or
 clicking a transaction opens the same **History** panel: a full audit trail of who
-created or edited the transaction and when, what fields changed, and whether it
-originated from a CSV import. Changes to the transaction's own split weights — set on
+created or edited the transaction and when, and what fields changed. A line that
+wasn't somebody typing says so next to the action — `created · bank sync`,
+`created · CSV`, `updated · auto` for a change the automatic categorization made,
+`updated · divide` — so a category you didn't choose yourself is always traceable to
+what put it there. Changes to the transaction's own split weights — set on
 creation or edited later — are tracked here too, shown as each involved user's weight
 before and after the change, and the same applies to reconciled status changes.
 
@@ -397,7 +402,8 @@ phone, where the list is a stack of cards rather than a table, there's no header
 tick one card first, then use the **Select all** button that appears in the selection
 bar to extend it to every transaction on the page. Once
 at least one row is selected, a bar appears above the table showing how many are
-selected, with **Bulk Edit**, **Delete selected**, and **Clear selection** buttons.
+selected, with **Bulk Edit**, **Categorize**, **Delete selected**, and **Clear
+selection** buttons.
 
 **Bulk Edit** opens a dialog with four independent, optional changes you can apply
 together in a single save:
@@ -426,6 +432,12 @@ confirmation, the list refreshes, and the selection is cleared. If your current
 filter is "Unreconciled only" and you bulk-mark the selection as reconciled, those
 rows will no longer match the filter and will disappear from the list once the
 change applies.
+
+**Categorize** asks the active categorization model what it would file each selected
+transaction under, shows you the before and after per row, and writes only what you keep
+— see [Where the suggestions are
+applied](#where-the-suggestions-are-applied). It needs a model to have been trained and
+activated first.
 
 **Delete selected** permanently removes every selected transaction (and its
 splits) after a confirmation prompt — there's no undo. Unlike Bulk Edit, it's a
@@ -504,7 +516,9 @@ hand. It's a four-step wizard:
    match any existing account additionally shows an **Account not matched** notice — it
    falls back to the default account but you can pick the right one from a dropdown. You
    can override the category or account per row, or check a box to skip importing that
-   row entirely.
+   row entirely. When a categorization model is active, a **Suggested** column appears
+   with what it would file each row under, which you can take row by row or in one go —
+   see [Where the suggestions are applied](#where-the-suggestions-are-applied).
 4. **Commit** — imports everything that isn't skipped or erroring, and confirms when done.
 
 **QIF files** (Quicken Interchange Format, offered by many French banks' download page)
@@ -569,15 +583,22 @@ shown under each account.
 
 **What an imported transaction looks like.** It arrives dated the day the operation was made
 (a transfer sent on a Saturday keeps that Saturday, even though the bank only books it on
-Monday; a bank that reports only its booking date gives that one), with the bank's own label
-and amount, minus the "CARTE 18/09" prefix and "CB*4325" card-number suffix card payments carry (the payee shows just the
-merchant; the memo and **As reported by the bank** keep the bank's full wording),
-with **no category**, and a split resolved through the usual account > global
-cascade described in [Split Weights](#split-weights). Categorize it exactly as you would
-a transaction you typed yourself. Like any new transaction it starts out
-**unreconciled** — see [Reconciling transactions](#reconciling-transactions) — and it
-shows up in the [History](#adding-or-editing-a-transaction) panel as having come from a
-bank sync.
+Monday; a bank that reports only its booking date gives that one), with the bank's own
+label and amount, minus the mechanical parts of the bank's wording — card, transfer and
+direct-debit prefixes, card-number and date suffixes — so the payee shows just the
+merchant, while the memo and **As reported by the bank** keep the bank's full wording. The
+split is resolved through the usual account > global cascade described in
+[Split Weights](#split-weights).
+
+Its category depends on whether you have an active categorization model. With one, the
+row is categorized on arrival, and a merchant the model remembers a name for is renamed
+too — see [Where the suggestions are
+applied](#where-the-suggestions-are-applied). Without one it arrives with **no category**,
+to be categorized exactly as you would a transaction you typed yourself. Either way it
+starts out **unreconciled** — see
+[Reconciling transactions](#reconciling-transactions) — and the
+[History](#adding-or-editing-a-transaction) panel shows it as having come from a bank
+sync, with a second line for the model if one filed it.
 
 **Consent expiry.** Banks grant access for a limited time, typically 90 days. The screen
 shows the expiry date for each bank and warns you in the last week. To renew it, connect
@@ -593,6 +614,110 @@ each connected bank and which MyFinance account each of its accounts feeds, so y
 have to grant access at your bank again. A consent that has lapsed since the backup was
 taken still needs renewing, as usual. A backup exported before bank connections were
 included restores with no bank connected, and **Append** mode never touches them.
+
+## Auto-categorization
+
+Learns from the transactions you have already filed, so it can propose a category for the
+ones you have not — and, for a merchant you see every month, propose the name you gave it
+yourself. It learns from your own history and nothing leaves the app.
+
+**Nothing on this screen changes a transaction.** Training produces a model, scores it,
+and leaves it to you to decide whether to use it. Once a model is active it is used in
+three places, described under [Where the suggestions are
+applied](#where-the-suggestions-are-applied) below.
+
+The screen works in three steps, then shows you a score.
+
+**1. What to learn from.** The transactions whose categories you trust, chosen with the
+same conditions as the Transactions screen's Advanced filter. It opens on everything
+older than twelve months. This is not just a date range on purpose: rows nobody has
+curated carry *wrong* labels rather than missing ones, so training on an account that is
+never kept up to date teaches the model those omissions. Leaving such an account out —
+with an "Account is not …" condition — usually scores better than including it. Only rows
+that have both a category and an original label can be learned from, and at least 50 of
+them are needed.
+
+**2. What to score it on.** A period you have already filed, which must *not* overlap the
+first selection; it opens on the last twelve months. The overlap rule is the point of the
+whole screen: a model scored on the rows it learned from reports a precision it does not
+have, and that number is exactly what you are about to base a decision on. If the two
+selections share even one transaction, training is refused and says how many.
+
+Neither selection is affected by the user selector in the header. There is one model for
+the household, so it learns from everyone's filing.
+
+**3. Settings.** An optional note to remind you later what was different about this run,
+plus the two settings that govern merchant names: how many times a merchant must have
+been seen, and how consistently you must have named it the same way, before the model
+will propose that name. Raising either makes it propose fewer names and get more of them
+right. Categories are unaffected by both.
+
+**Training** takes about a minute on a full history — leave the page open. Only one training run
+can be in flight at a time.
+
+**Reading the score.** Four figures are shown side by side:
+
+- **Right category** — how often it picked exactly the right category, on transactions it
+  never saw.
+- **Right parent category** — the same, counting a subcategory as its parent. Higher than
+  the first, and the more useful number if you mostly care that groceries don't land
+  under travel.
+- **In its top 3 guesses** — how often the right category was among its three best.
+- **Simple merchant rule** — what you would get by always reusing the category a merchant
+  was given most often. This is the figure the model has to beat; if it doesn't, there is
+  no reason to use it.
+
+Below that, a table shows how it does when it is *confident*: at each confidence level,
+the share of transactions it speaks about at all and how often it is right about them.
+This is how you choose where to trust it blindly and where to review. Finally, a line
+reports how many merchants it remembers a name for, how often it proposes one, and how
+often that name is exactly right.
+
+**Using a model.** A freshly trained model is *inactive*: it sits there with its score
+until you press **Use this model**. Activating a model deactivates whichever one was
+active before. The five most recent models are kept, so if a new one scores worse than
+the one it replaced you can go back by activating the older one again. A model can be
+deleted once it is not the active one; its score goes with it, and training a fresh one
+takes about a minute. If a training run fails, its row says so and shows the
+error instead of a score.
+
+### Where the suggestions are applied
+
+Nothing happens until a model is active. Once one is, it is used in three places, and in
+all three a row it writes is left **not reconciled** — that is how you find it again. A
+category you set yourself is never replaced unless you explicitly ask for it.
+
+**When a bank sync brings in new rows**, they are categorized as they arrive, with no
+prompt. There is nothing to compare against — the bank sends no category — and the bank's
+own wording is kept in the transaction's Original label whatever the payee becomes, so
+nothing is lost. A merchant the model remembers a name for is renamed at the same time.
+Rows synced before you activated a model keep whatever they had; use the bulk action
+below on them.
+
+**When you import a file**, the Review step shows a **Suggested** column next to the
+file's own category, with the model's confidence. Nothing is applied until you say so,
+with one of two buttons: **Use where the file has none** fills in the rows the file left
+blank, and **Use for every row** replaces the file's categories too. A row whose category
+changed is highlighted and says what it was, so you can see exactly what you are about to
+commit. **Back to the file's categories** undoes the lot.
+
+**On transactions you pick yourself**, select rows on the Transactions screen and press
+**Categorize**. A panel lists each one with what it is filed under now and what the model
+proposes, its confidence, and any name it remembers. Rows where it would change something
+start ticked and rows it already agrees with start unticked; untick anything you disagree
+with. Two switches at the top apply the categories without the renames, or the other way
+round, and a third lets the model replace categories that are already set — off by
+default. The button says how many transactions will actually be written. If no model has
+been activated yet, the panel says so and offers a way to this screen.
+
+### Cleaning up bank wording
+
+Separately from the model, synced transactions have the mechanical parts of a bank label
+stripped from their payee: card prefixes (`CARTE 06/10/26 `, `PAIEMENT CARTE 18/09 18/09 `),
+transfer and direct-debit prefixes (`VIR SEPA `, `PRLV SEPA RECU RCUR `), card-number and
+trailing-date suffixes (` CB*4325`). The memo and the Original label always keep the
+bank's full wording, and existing transactions are never rewritten — only rows arriving
+from now on.
 
 ## Backup & Restore
 
