@@ -1,4 +1,5 @@
 import { test, expect } from '../support/fixtures'
+import { pickAccount } from '../support/pickAccount'
 
 // Seeded data (backend/seed.py) this file relies on:
 // - Accounts: "Joint Checking" (AccountSplitWeight 55/45 Alice/Bob), "Personal Savings"
@@ -15,7 +16,7 @@ test('quick-fill buttons resolve to the correct seeded weight tier', async ({ pa
   const dialog = page.getByRole('dialog', { name: 'New Transaction' })
   await dialog.getByPlaceholder('Payee').fill(payee)
   await dialog.getByPlaceholder('Amount').fill('100')
-  await dialog.getByRole('combobox').filter({ hasText: 'Account' }).selectOption({ label: 'Joint Checking' })
+  await pickAccount(dialog, 'Choose account', 'Joint Checking')
 
   // Picking the "Transfer" category (CategorySplit 50/50 seeded) doesn't take
   // over: Joint Checking's own account weights outrank the category tier.

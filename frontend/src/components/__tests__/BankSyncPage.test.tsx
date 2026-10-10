@@ -1,6 +1,6 @@
 import { test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { screen, fireEvent, waitFor, within } from '@testing-library/react'
-import { renderWithProviders } from '../../test-utils'
+import { pickAccount, renderWithProviders } from '../../test-utils'
 import BankSyncPage from '../BankSyncPage'
 
 const {
@@ -142,9 +142,11 @@ test('offers only open accounts to map a bank account to', async () => {
 
   renderWithProviders(<BankSyncPage onBack={() => {}} />)
 
-  const select = await screen.findByLabelText('Feeds MyFinance account')
-  expect(within(select).getByRole('option', { name: 'Compte Courant' })).toBeInTheDocument()
-  expect(within(select).queryByRole('option', { name: 'Vieux Compte' })).not.toBeInTheDocument()
+  fireEvent.click(await screen.findByLabelText('Feeds MyFinance account'))
+  fireEvent.change(screen.getByLabelText('Search accounts'), { target: { value: 'compte' } })
+  const listbox = screen.getByRole('listbox', { name: 'Accounts' })
+  expect(within(listbox).getByRole('option', { name: 'Compte Courant' })).toBeInTheDocument()
+  expect(within(listbox).queryByRole('option', { name: 'Vieux Compte' })).not.toBeInTheDocument()
 })
 
 test('saves the mapping when an account is picked', async () => {
@@ -153,7 +155,7 @@ test('saves the mapping when an account is picked', async () => {
 
   renderWithProviders(<BankSyncPage onBack={() => {}} />)
 
-  fireEvent.change(await screen.findByLabelText('Feeds MyFinance account'), { target: { value: '1' } })
+  pickAccount(await screen.findByLabelText('Feeds MyFinance account'), 'Compte Courant')
 
   await waitFor(() => expect(mockUpdateBankAccountLink).toHaveBeenCalledWith(10, {
     account_id: 1,

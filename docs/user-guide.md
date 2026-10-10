@@ -145,6 +145,22 @@ The **Owners** column shows each owner as "Name (percentage%)".
   hidden from this list by default; check **Show archived** to see them again and
   click **Unarchive** to bring one back into active use.
 
+### Picking an account
+
+Every account dropdown in the app (the transaction form, the Transactions filters and
+advanced conditions, the Auto-categorization selections, Import's default account and
+per-row account, and Bank Sync's **Feeds MyFinance account**) is the same picker:
+
+- Accounts are grouped into collapsible sub-menus, one per account **Type** (the
+  free-text type on the account form; types differing only by case or trailing spaces
+  share a sub-menu), with sub-menus and accounts in alphabetical order. The sub-menu
+  holding the current account opens by itself.
+- Archived accounts sit together at the bottom in one **Archived** sub-menu, sorted by
+  type and then by name, with a small header separating each type. Where archived
+  accounts can't be picked (a new transaction, Bank Sync) that sub-menu isn't shown.
+- The search box at the top filters across every sub-menu, archived included,
+  matching the account's name or its type; **Enter** picks the first match.
+
 ## Categories
 
 Categories classify transactions (e.g. Groceries, Rent, Salary). A category can
