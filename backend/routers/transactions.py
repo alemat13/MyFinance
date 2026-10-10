@@ -35,7 +35,7 @@ from serializers import build_transaction_out_from_row, get_transaction_out
 router = APIRouter(prefix="/api/transactions")
 
 # Rows per commit in bulk-update; see the comment where it is used.
-BULK_UPDATE_CHUNK_SIZE = 500
+BULK_UPDATE_CHUNK_SIZE = 1500
 
 
 @router.get("", response_model=list[TransactionOut])
