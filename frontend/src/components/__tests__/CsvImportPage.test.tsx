@@ -1,6 +1,7 @@
 import { test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import CsvImportPage from '../CsvImportPage'
+import { pickAccount } from '../../test-utils'
 import { ImportDetectResponse } from '../../api/client'
 
 const { mockFetchAccounts, mockFetchCategories, mockDetectImport, mockPreviewImport, mockCommitImport } = vi.hoisted(() => ({
@@ -60,7 +61,7 @@ async function goToConfirm(detected = fullyDetected) {
   mockDetectImport.mockResolvedValue(detected)
   await goToSetup()
   selectFile()
-  fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: '1' } })
+  pickAccount(screen.getByRole('button', { name: 'Default account' }), 'Checking')
   fireEvent.click(screen.getByText('Analyze file'))
   await waitFor(() => {
     expect(screen.getByText('Preview')).toBeInTheDocument()
@@ -166,8 +167,7 @@ test('flags a row whose account name did not match, and lets the user override i
   const commitButton = screen.getByText(/Commit 1 transaction/)
   expect(commitButton).not.toBeDisabled()
 
-  const accountSelect = screen.getAllByRole('combobox').find(el => el.innerHTML.includes('Savings'))!
-  fireEvent.change(accountSelect, { target: { value: '2' } })
+  pickAccount(screen.getByRole('button', { name: 'Checking' }), 'Savings')
 
   fireEvent.click(commitButton)
 
@@ -218,7 +218,7 @@ test('commits active rows and shows a success message with a way back', async ()
     expect(screen.getByLabelText('CSV or QIF file')).toBeInTheDocument()
   })
   selectFile()
-  fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: '1' } })
+  pickAccount(screen.getByRole('button', { name: 'Default account' }), 'Checking')
   fireEvent.click(screen.getByText('Analyze file'))
   await waitFor(() => {
     expect(screen.getByText('Preview')).toBeInTheDocument()

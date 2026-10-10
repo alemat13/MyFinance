@@ -10,6 +10,7 @@ import TransactionDetail from './TransactionDetail'
 import BulkEditModal from './BulkEditModal'
 import CategorizeModal from './CategorizeModal'
 import CategoryPicker from './CategoryPicker'
+import AccountPicker from './AccountPicker'
 import TransactionConditions, { ConditionRow, conditionsToFilters } from './TransactionConditions'
 import ExportMenu from './ExportMenu'
 import { Button, IconButton, Input, Select, Table, Thead, Tbody, Tr, Th, Td, StatusMessage, CategoryBadge, BackButton, ConfirmDialog, Card } from './ui'
@@ -327,8 +328,6 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
   const showMyColumns = selectedUserId != null
   const columnCount = showMyColumns ? 8 : 6
 
-  const acctOptions = accounts.map(a => ({ value: a.id, label: a.name }))
-
   const sumByCurrency = (values: (t: Transaction) => number) => {
     const totals = new Map<string, number>()
     transactions.forEach(t => totals.set(t.currency, (totals.get(t.currency) ?? 0) + values(t)))
@@ -361,10 +360,13 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
             <Input placeholder="Search payee/memo" value={searchText} onChange={e => setSearchText(e.target.value)} />
             <Input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(1) }} />
             <Input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(1) }} />
-            <Select value={filterAccountId} onChange={e => { setFilterAccountId(parseInt(e.target.value) || 0); setPage(1) }} className="min-w-[140px]">
-              <option value={0}>Account</option>
-              {acctOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </Select>
+            <AccountPicker
+              accounts={accounts}
+              value={filterAccountId || null}
+              onChange={id => { setFilterAccountId(id ?? 0); setPage(1) }}
+              placeholder="All accounts"
+              className="min-w-[140px]"
+            />
             <CategoryPicker
               categories={categories}
               value={filterCategoryId || null}

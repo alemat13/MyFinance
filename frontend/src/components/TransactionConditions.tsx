@@ -1,5 +1,6 @@
 import { Account, Category, FilterCondition, FilterField } from '../api/client'
 import CategoryPicker from './CategoryPicker'
+import AccountPicker from './AccountPicker'
 import { Button, Select, Input } from './ui'
 
 /** One row of the advanced filter, as the UI holds it: every value a string,
@@ -92,8 +93,6 @@ interface Props {
 export default function TransactionConditions({
   conditions, onChange, matchMode, onMatchModeChange, accounts, categories,
 }: Props) {
-  const acctOptions = accounts.map(a => ({ value: a.id, label: a.name }))
-
   const updateField = (i: number, field: FilterField) => {
     onChange(conditions.map((c, idx) => idx === i
       ? { field, operator: OPERATORS_BY_FIELD[field][0].value, value: '', value2: '' }
@@ -123,10 +122,13 @@ export default function TransactionConditions({
             {OPERATORS_BY_FIELD[c.field].map(op => <option key={op.value} value={op.value}>{op.label}</option>)}
           </Select>
           {c.field === 'account_id' ? (
-            <Select value={c.value} onChange={e => updateValue(i, 'value', e.target.value)} className="min-w-[140px]">
-              <option value="">Account</option>
-              {acctOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </Select>
+            <AccountPicker
+              accounts={accounts}
+              value={c.value ? parseInt(c.value) : null}
+              onChange={id => updateValue(i, 'value', id != null ? String(id) : '')}
+              placeholder="Choose account"
+              className="min-w-[140px]"
+            />
           ) : c.field === 'category_id' ? (
             <CategoryPicker
               categories={categories}

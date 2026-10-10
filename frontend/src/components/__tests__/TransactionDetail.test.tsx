@@ -1,6 +1,6 @@
 import { test, expect, vi, beforeEach } from 'vitest'
 import { screen, fireEvent, waitFor, within } from '@testing-library/react'
-import { renderWithProviders } from '../../test-utils'
+import { pickAccount, renderWithProviders } from '../../test-utils'
 import TransactionDetail from '../TransactionDetail'
 
 // The form's CategoryPicker is a popover, not a native <select> — open it and
@@ -282,18 +282,15 @@ test('save is rejected when payee is cleared, without calling the API', async ()
   expect(mockUpdateTransaction).not.toHaveBeenCalled()
 })
 
-test('save is rejected when account is left at the placeholder, without calling the API', async () => {
-  mockFetchTransaction.mockResolvedValue(baseTxn)
+test('save is rejected when no account is picked, without calling the API', async () => {
+  renderWithProviders(<TransactionDetail {...baseProps} transactionId={null} />)
 
-  renderWithProviders(<TransactionDetail {...baseProps} />)
-
-  await screen.findByDisplayValue('Test')
-  const accountSelect = screen.getByDisplayValue('Checking')
-  fireEvent.change(accountSelect, { target: { value: '0' } })
+  fireEvent.change(screen.getByPlaceholderText('Payee'), { target: { value: 'New Payee' } })
+  expect(screen.getByRole('button', { name: 'Choose account' })).toBeInTheDocument()
   fireEvent.click(screen.getByText('Save'))
 
   expect(await screen.findByText('Payee and account are required')).toBeInTheDocument()
-  expect(mockUpdateTransaction).not.toHaveBeenCalled()
+  expect(mockCreateTransaction).not.toHaveBeenCalled()
 })
 
 test('delete flow asks for confirmation then deletes', async () => {
@@ -453,10 +450,12 @@ test('excludes archived accounts from the account picker when creating a new tra
     accounts={[baseAccount, archivedAccount]}
   />)
 
-  const selects = screen.getAllByRole('combobox')
-  const accountSelect = selects[1]
-  expect(within(accountSelect).getByText('Checking')).toBeInTheDocument()
-  expect(within(accountSelect).queryByText('Closed Account')).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Choose account' }))
+  const listbox = screen.getByRole('listbox', { name: 'Accounts' })
+  // A single open type and nothing archived: its sub-menu opens by itself.
+  expect(within(listbox).getByRole('option', { name: 'Checking' })).toBeInTheDocument()
+  expect(within(listbox).queryByText('Archived')).not.toBeInTheDocument()
+  expect(within(listbox).queryByText('Closed Account')).not.toBeInTheDocument()
 })
 
 test('still shows an existing transaction\'s own archived account when editing it', async () => {
@@ -468,10 +467,11 @@ test('still shows an existing transaction\'s own archived account when editing i
   />)
 
   await screen.findByDisplayValue('Test')
-  const selects = screen.getAllByRole('combobox')
-  const accountSelect = selects.find(el => within(el).queryByText('Closed Account'))!
-  expect(accountSelect).toBeTruthy()
-  expect(within(accountSelect).getByText('Checking')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: /Closed Account/ }))
+  const listbox = screen.getByRole('listbox', { name: 'Accounts' })
+  // The archived sub-menu holding the current account opens on its own.
+  expect(within(listbox).getByRole('option', { name: 'Closed Account' })).toHaveAttribute('aria-selected', 'true')
+  expect(within(listbox).getByRole('button', { name: /Checking/ })).toBeInTheDocument()
 })
 
 // --- Divide ---
@@ -526,10 +526,7 @@ test('creates a new transaction', async () => {
   fireEvent.change(screen.getByPlaceholderText('Payee'), { target: { value: 'New Payee' } })
   fireEvent.change(screen.getByPlaceholderText('Amount'), { target: { value: '100' } })
 
-  // Standalone (no filter bar competing for combobox 0): [0] is Accounting
-  // Month, [1] is Account — Category is a CategoryPicker popover, not a <select>.
-  const selects = screen.getAllByRole('combobox')
-  fireEvent.change(selects[1], { target: { value: '1' } })
+  pickAccount(screen.getByRole('button', { name: 'Choose account' }), 'Checking')
   selectCategoryInForm('Salary')
 
   fireEvent.click(screen.getByText('Save'))
@@ -549,8 +546,7 @@ test('can save a new transaction without picking a category', async () => {
   fireEvent.change(screen.getByPlaceholderText('Amount'), { target: { value: '100' } })
 
   // Only the account is picked; category is left as "Uncategorized" (the default).
-  const selects = screen.getAllByRole('combobox')
-  fireEvent.change(selects[1], { target: { value: '1' } })
+  pickAccount(screen.getByRole('button', { name: 'Choose account' }), 'Checking')
 
   fireEvent.click(screen.getByText('Save'))
 
@@ -570,9 +566,8 @@ test('can select a non-default accounting month offset when creating a transacti
   fireEvent.change(screen.getByPlaceholderText('Payee'), { target: { value: 'New Payee' } })
   fireEvent.change(screen.getByPlaceholderText('Amount'), { target: { value: '100' } })
 
-  const selects = screen.getAllByRole('combobox')
-  fireEvent.change(selects[0], { target: { value: '1' } })
-  fireEvent.change(selects[1], { target: { value: '1' } })
+  fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: '1' } })
+  pickAccount(screen.getByRole('button', { name: 'Choose account' }), 'Checking')
   selectCategoryInForm('Salary')
 
   fireEvent.click(screen.getByText('Save'))
@@ -600,8 +595,7 @@ test('auto-prefills split weights from the category default when a category is s
 
   fireEvent.change(screen.getByPlaceholderText('Amount'), { target: { value: '100' } })
   fireEvent.change(screen.getByPlaceholderText('Payee'), { target: { value: 'New Payee' } })
-  const selects = screen.getAllByRole('combobox')
-  fireEvent.change(selects[1], { target: { value: '1' } })
+  pickAccount(screen.getByRole('button', { name: 'Choose account' }), 'Checking')
   selectCategoryInForm('Salary')
 
   fireEvent.click(screen.getByText('Save'))
@@ -633,8 +627,7 @@ test('free-form weight entry on a new transaction is submitted with source "cust
 
   fireEvent.change(screen.getByPlaceholderText('Payee'), { target: { value: 'New Payee' } })
   fireEvent.change(screen.getByPlaceholderText('Amount'), { target: { value: '100' } })
-  const selects = screen.getAllByRole('combobox')
-  fireEvent.change(selects[1], { target: { value: '1' } })
+  pickAccount(screen.getByRole('button', { name: 'Choose account' }), 'Checking')
   selectCategoryInForm('Salary')
 
   fireEvent.click(screen.getByLabelText('Add user'))

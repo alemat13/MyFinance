@@ -4,6 +4,7 @@ import {
   fetchAccounts, fetchCategories, detectImport, previewImport, commitImport,
 } from '../api/client'
 import { Button, Input, Select, Card, Table, Thead, Tbody, Tr, Th, Td, Badge, StatusMessage, BackButton } from './ui'
+import AccountPicker from './AccountPicker'
 
 interface Props {
   onBack: () => void
@@ -184,10 +185,14 @@ export default function CsvImportPage({ onBack, selectedUserId }: Props) {
               aria-label="CSV or QIF file"
               onChange={e => setFile(e.target.files?.[0] ?? null)}
             />
-            <Select value={accountId} onChange={e => setAccountId(parseInt(e.target.value) || 0)}>
-              <option value={0}>Default account</option>
-              {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-            </Select>
+            <AccountPicker
+              accounts={accounts}
+              value={accountId || null}
+              onChange={id => setAccountId(id ?? 0)}
+              placeholder="Default account"
+              allowEmpty={false}
+              className="min-w-[180px]"
+            />
           </div>
           <Button onClick={runDetect} disabled={!file || !accountId || detecting}>
             {detecting ? 'Analyzing...' : 'Analyze file'}
@@ -377,16 +382,17 @@ export default function CsvImportPage({ onBack, selectedUserId }: Props) {
                         {status === 'error' ? (
                           <span className="text-slate-400">—</span>
                         ) : (
-                          // Capped: a select sizes itself to its longest option, and a
-                          // household with long account names pushed the Suggested column
-                          // off the right of the screen.
-                          <Select
+                          // Capped so long account names don't push the Suggested column off
+                          // the right of the screen; the menu is portaled because the table
+                          // scrolls horizontally and would clip it.
+                          <AccountPicker
                             className="max-w-[11rem]"
-                            value={resolvedAccountId(r) ?? 0}
-                            onChange={e => setRowAccountOverride({ ...rowAccountOverride, [r.row_number]: parseInt(e.target.value) || 0 })}
-                          >
-                            {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                          </Select>
+                            accounts={accounts}
+                            value={resolvedAccountId(r) ?? null}
+                            onChange={id => setRowAccountOverride({ ...rowAccountOverride, [r.row_number]: id ?? 0 })}
+                            allowEmpty={false}
+                            portal
+                          />
                         )}
                         {!r.account_matched && (
                           <div className="mt-1">

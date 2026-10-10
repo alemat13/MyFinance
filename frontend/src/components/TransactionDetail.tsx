@@ -9,6 +9,7 @@ import { SplitRow } from './SplitEditor'
 import TransactionSplitFields from './TransactionSplitFields'
 import TransactionDivideModal from './TransactionDivideModal'
 import CategoryPicker from './CategoryPicker'
+import AccountPicker from './AccountPicker'
 import TransactionRawFields from './TransactionRawFields'
 import { useToast } from '../context/ToastContext'
 import { validateTransactionForm, ACCOUNTING_MONTH_OFFSETS, accountingMonthLabel } from '../utils/transactions'
@@ -205,8 +206,7 @@ export default function TransactionDetail({
   const currency = accounts.find(a => a.id === formData.account_id)?.currency ?? 'EUR'
   // Archived accounts are hidden from the picker when creating a new transaction, but
   // an existing transaction already on one must keep showing/saving its own account.
-  const acctOptions = (transactionId === null ? accounts.filter(a => !a.archived) : accounts)
-    .map(a => ({ value: a.id, label: a.name }))
+  const pickerAccounts = transactionId === null ? accounts.filter(a => !a.archived) : accounts
 
   return (
     <Modal isOpen size="lg" onClose={onClose} title={transactionId === null ? 'New Transaction' : (transaction?.payee ?? 'Transaction')}>
@@ -228,10 +228,14 @@ export default function TransactionDetail({
             <Input placeholder="Payee" value={formData.payee ?? ''} onChange={e => setFormData({ ...formData, payee: e.target.value })} />
             <Input placeholder="Memo" value={formData.memo ?? ''} onChange={e => setFormData({ ...formData, memo: e.target.value || null })} />
             <Input placeholder="Amount" type="number" step="0.01" value={formData.amount ?? 0} onChange={e => setFormData({ ...formData, amount: parseFloat(e.target.value) || 0 })} className="w-[110px]" />
-            <Select value={formData.account_id ?? 0} onChange={e => setFormData({ ...formData, account_id: parseInt(e.target.value) || 0 })} className="min-w-[140px]">
-              <option value={0}>Account</option>
-              {acctOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </Select>
+            <AccountPicker
+              accounts={pickerAccounts}
+              value={formData.account_id || null}
+              onChange={id => setFormData({ ...formData, account_id: id ?? 0 })}
+              placeholder="Choose account"
+              allowEmpty={false}
+              className="min-w-[140px]"
+            />
             <CategoryPicker
               categories={categories}
               value={formData.category_id ?? null}

@@ -17,6 +17,7 @@ import { useToast } from '../context/ToastContext'
 import { formatServerTimestamp } from '../utils/datetime'
 import { getParam, patchQueryParams } from '../utils/urlState'
 import { BackButton, Button, Card, ConfirmDialog, Input, Select, StatusMessage } from './ui'
+import AccountPicker from './AccountPicker'
 
 interface Props {
   onBack: () => void
@@ -235,18 +236,15 @@ export default function BankSyncPage({ onBack }: Props) {
                     <label className="block text-[13px] text-slate-500 dark:text-slate-400 mb-1" htmlFor={`link-account-${link.id}`}>
                       Feeds MyFinance account
                     </label>
-                    <Select
+                    <AccountPicker
                       id={`link-account-${link.id}`}
-                      value={link.account_id ?? ''}
-                      onChange={e => saveLink(link, { account_id: e.target.value ? parseInt(e.target.value, 10) : null })}
+                      accounts={openAccounts}
+                      value={link.account_id}
+                      onChange={id => saveLink(link, { account_id: id })}
+                      placeholder="Not linked"
                       className="w-full"
                       disabled={savingLinkId === link.id}
-                    >
-                      <option value="">Not linked</option>
-                      {openAccounts.map(a => (
-                        <option key={a.id} value={a.id}>{a.name}</option>
-                      ))}
-                    </Select>
+                    />
                   </div>
                   <div>
                     <label className="block text-[13px] text-slate-500 dark:text-slate-400 mb-1" htmlFor={`link-from-${link.id}`}>
