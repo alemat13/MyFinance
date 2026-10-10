@@ -140,9 +140,8 @@ test.describe('Dashboard account tiles', () => {
     await expect(page).toHaveURL(/account_id=\d+/)
     await expect(page.getByRole('heading', { name: 'Transactions' })).toBeVisible()
 
-    // The simple-filter account dropdown reflects the tile that was clicked...
-    const accountFilter = page.getByRole('combobox').filter({ hasText: 'Personal Savings' })
-    await expect(accountFilter).toHaveCount(1)
+    // The simple-filter account picker reflects the tile that was clicked...
+    await expect(page.getByRole('button', { name: 'Personal Savings', exact: true })).toHaveCount(1)
 
     // ...and every listed transaction belongs to it.
     const rows = page.locator('tbody tr[role="button"]')

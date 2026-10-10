@@ -1,6 +1,7 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { test, expect } from '../support/fixtures'
+import { pickAccount } from '../support/pickAccount'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const fixture = (name: string) => path.join(__dirname, '..', 'fixtures', name)
@@ -9,7 +10,7 @@ test('happy path: auto-detected column mapping imports two transactions', async 
   await page.goto('/?view=import')
 
   await page.getByLabel('CSV or QIF file').setInputFiles(fixture('sample-import.csv'))
-  await page.getByRole('combobox').filter({ hasText: 'Default account' }).selectOption({ label: 'Joint Checking' })
+  await pickAccount(page, 'Default account', 'Joint Checking')
   await page.getByRole('button', { name: 'Analyze file' }).click()
 
   // Column mapping auto-detected from headers Date/Payee/Amount/Memo/Category
@@ -37,7 +38,7 @@ test('duplicate detection: re-importing the same file flags possible duplicates'
   await page.goto('/?view=import')
 
   await page.getByLabel('CSV or QIF file').setInputFiles(fixture('sample-import.csv'))
-  await page.getByRole('combobox').filter({ hasText: 'Default account' }).selectOption({ label: 'Joint Checking' })
+  await pickAccount(page, 'Default account', 'Joint Checking')
   await page.getByRole('button', { name: 'Analyze file' }).click()
   await page.getByRole('button', { name: 'Preview' }).click()
 
@@ -51,7 +52,7 @@ test('manual column mapping override for unrecognized headers', async ({ page })
   await page.goto('/?view=import')
 
   await page.getByLabel('CSV or QIF file').setInputFiles(fixture('sample-import-custom-headers.csv'))
-  await page.getByRole('combobox').filter({ hasText: 'Default account' }).selectOption({ label: 'Joint Checking' })
+  await pickAccount(page, 'Default account', 'Joint Checking')
   await page.getByRole('button', { name: 'Analyze file' }).click()
 
   // Headers "Fecha/Concepto/Importe" don't match any known alias — nothing auto-detected
@@ -72,7 +73,7 @@ test('manual column mapping override for unrecognized headers', async ({ page })
   // Assigning a category via the row's own selector resolves it to "ok" and is
   // reflected in what gets committed (not a commit blocker either way — only
   // a row-level parse error blocks commit, see the row-level error test below).
-  await row.getByRole('combobox').nth(1).selectOption({ label: 'Groceries' })
+  await row.getByRole('combobox').nth(0).selectOption({ label: 'Groceries' })
   await page.getByRole('button', { name: 'Commit 1 transaction(s)' }).click()
   await expect(page.getByText('Imported 1 transaction(s).')).toBeVisible()
 })
@@ -81,7 +82,7 @@ test('row-level parse error blocks commit until unchecked', async ({ page }) => 
   await page.goto('/?view=import')
 
   await page.getByLabel('CSV or QIF file').setInputFiles(fixture('sample-import-error-row.csv'))
-  await page.getByRole('combobox').filter({ hasText: 'Default account' }).selectOption({ label: 'Joint Checking' })
+  await pickAccount(page, 'Default account', 'Joint Checking')
   await page.getByRole('button', { name: 'Analyze file' }).click()
   await page.getByRole('button', { name: 'Preview' }).click()
 
@@ -95,7 +96,7 @@ test('row-level parse error blocks commit until unchecked', async ({ page }) => 
 
   // Uncheck the bad row so it's excluded from the commit
   await badRow.getByRole('checkbox').uncheck()
-  await goodRow.getByRole('combobox').nth(1).selectOption({ label: 'Groceries' })
+  await goodRow.getByRole('combobox').nth(0).selectOption({ label: 'Groceries' })
 
   await page.getByRole('button', { name: 'Commit 1 transaction(s)' }).click()
   await expect(page.getByText('Imported 1 transaction(s).')).toBeVisible()
@@ -105,7 +106,7 @@ test('QIF file: records are read as Date/Payee/Amount/Memo/Category and imported
   await page.goto('/?view=import')
 
   await page.getByLabel('CSV or QIF file').setInputFiles(fixture('sample-import.qif'))
-  await page.getByRole('combobox').filter({ hasText: 'Default account' }).selectOption({ label: 'Joint Checking' })
+  await pickAccount(page, 'Default account', 'Joint Checking')
   await page.getByRole('button', { name: 'Analyze file' }).click()
 
   await expect(page.getByText(/QIF file: its records are read as/)).toBeVisible()
