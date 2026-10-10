@@ -422,7 +422,13 @@ selected, with **Bulk Edit**, **Categorize**, **Delete selected**, and **Clear
 selection** buttons.
 
 **Bulk Edit** opens a dialog with four independent, optional changes you can apply
-together in a single save:
+together in a single save. When every transaction on the page is selected and the
+current filters match more than one page, the dialog shows **Select all N
+transactions** next to the selected count: click it to apply the edit to every
+transaction the filters match, on every page, not just the ones shown (**Select only
+the 50** goes back). If the number of matching transactions changes before you save
+(a bank sync just brought new ones in), the save is refused and you're asked to reload
+the list, so nothing you didn't see counted gets edited.
 
 - **Category** — leave this off to keep each transaction's own category unchanged;
   turn it on to set every selected transaction to the same category (including
