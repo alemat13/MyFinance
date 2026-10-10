@@ -797,6 +797,20 @@ export function syncBankAccountLink(id: number): Promise<BankSyncRunResult> {
   return request<BankSyncRunResult>(`/bank-sync/links/${id}/sync`, { method: 'POST' })
 }
 
+export interface BankReimportResult {
+  applied: boolean
+  count: number
+  total: number
+  rows: { date: string; payee: string; memo: string | null; amount: number }[]
+}
+
+export function reimportBankPeriod(id: number, dateFrom: string, dateTo: string, apply: boolean): Promise<BankReimportResult> {
+  return request<BankReimportResult>(`/bank-sync/links/${id}/reimport`, {
+    method: 'POST',
+    body: JSON.stringify({ date_from: dateFrom, date_to: dateTo, apply }),
+  })
+}
+
 // ── Automatic categorization ────────────────────────────────────
 // `metrics` and `params` are typed loosely on purpose: the backend writes
 // whatever `categorizer.evaluate()` produced at the time a model was fitted,

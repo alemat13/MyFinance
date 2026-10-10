@@ -616,6 +616,15 @@ in MyFinance before you connected the bank are left alone too, matched on their 
 amount. The last sync's result — how many transactions came in, or what went wrong — is
 shown under each account.
 
+**Re-importing a past period.** A sync only ever looks a few days back, so a gap older than
+that (for instance after the ledger was rebuilt) is never filled on its own. **Re-import a
+period**, under each linked account, asks the bank again for the dates you pick (at most
+92 days at a time, and banks rarely keep more than about 90 days of history) and first
+shows you only the transactions MyFinance is missing, with their total. Nothing is written
+until you press **Add these N transaction(s)**, and transactions already in MyFinance are
+never changed: the same identifier and date+amount matching as a sync applies, so running
+it twice adds nothing the second time. Added transactions arrive like synced ones.
+
 **What an imported transaction looks like.** It arrives dated the day the operation was made
 (a transfer sent on a Saturday keeps that Saturday, even though the bank only books it on
 Monday; a bank that reports only its booking date gives that one), with the bank's own

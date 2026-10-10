@@ -931,3 +931,56 @@ def test_manually_created_transactions_have_no_raw_fields(client, sample_account
     body = response.json()
     assert body["raw_source"] is None
     assert body["raw_label"] is None
+
+
+# ── Re-import of a past period ────────────────────────────────────────
+
+def _september_rows(*a, **k):
+    return [
+        _booked("31.00", "DBIT", "2026-09-01", entry_reference="sep-1", transaction_date="2026-08-29"),
+        _booked("12.00", "DBIT", "2026-09-10", entry_reference="sep-2"),
+        _booked("15.05", "DBIT", "2026-09-30", entry_reference="sep-3"),
+    ]
+
+
+def test_reimport_preview_writes_nothing_and_skips_what_exists(client, db, linked_connection, global_weights, monkeypatch):
+    # The row a later sync already brought back, by its bank identifier.
+    db.add(Transaction(date=date(2026, 9, 30), payee="MC DO", amount=-15.05,
+                       account_id=linked_connection.account_id, external_id="sep-3"))
+    db.commit()
+    last_synced = linked_connection.last_synced_at
+    monkeypatch.setattr(enable_banking, "fetch_transactions", _september_rows)
+
+    response = client.post(f"/api/bank-sync/links/{linked_connection.id}/reimport",
+                           json={"date_from": "2026-09-01", "date_to": "2026-09-30"})
+
+    assert response.status_code == 200
+    body = response.json()
+    # sep-1 was made on 29/08, before the window: the migrated ledger owns it.
+    assert (body["applied"], body["count"], body["total"]) == (False, 1, -12.0)
+    assert body["rows"][0]["date"] == "2026-09-10"
+    assert db.query(Transaction).count() == 1
+    db.refresh(linked_connection)
+    assert linked_connection.last_synced_at == last_synced
+
+
+def test_reimport_apply_creates_the_missing_rows_once(client, db, linked_connection, global_weights, monkeypatch):
+    monkeypatch.setattr(enable_banking, "fetch_transactions", _september_rows)
+    url = f"/api/bank-sync/links/{linked_connection.id}/reimport"
+    body = {"date_from": "2026-09-01", "date_to": "2026-09-30", "apply": True}
+
+    first = client.post(url, json=body).json()
+    second = client.post(url, json=body).json()
+
+    assert (first["applied"], first["count"]) == (True, 2)
+    assert second["count"] == 0
+    assert db.query(Transaction).count() == 2
+    sources = {h.source for h in db.query(TransactionHistory).all()}
+    assert sources == {"bank_sync"}
+
+
+def test_reimport_rejects_bad_windows(client, linked_connection):
+    url = f"/api/bank-sync/links/{linked_connection.id}/reimport"
+    assert client.post(url, json={"date_from": "2026-09-30", "date_to": "2026-09-01"}).status_code == 422
+    assert client.post(url, json={"date_from": "2026-01-01", "date_to": "2026-09-01"}).status_code == 422
+    assert client.post(url, json={"date_from": "2026-09-01", "date_to": "2999-01-01"}).status_code == 422

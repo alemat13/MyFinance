@@ -12,6 +12,7 @@ const {
   mockUpdateBankAccountLink,
   mockSyncBankAccountLink,
   mockRefreshBankConnection,
+  mockReimportBankPeriod,
 } = vi.hoisted(() => ({
   mockFetchBankConnections: vi.fn(),
   mockFetchBankInstitutions: vi.fn(),
@@ -21,6 +22,7 @@ const {
   mockUpdateBankAccountLink: vi.fn(),
   mockSyncBankAccountLink: vi.fn(),
   mockRefreshBankConnection: vi.fn(),
+  mockReimportBankPeriod: vi.fn(),
 }))
 
 vi.mock('../../api/client', () => ({
@@ -32,6 +34,7 @@ vi.mock('../../api/client', () => ({
   updateBankAccountLink: mockUpdateBankAccountLink,
   syncBankAccountLink: mockSyncBankAccountLink,
   refreshBankConnection: mockRefreshBankConnection,
+  reimportBankPeriod: mockReimportBankPeriod,
 }))
 
 const accounts = [
@@ -254,4 +257,24 @@ test('reports an abandoned consent coming back from the bank', async () => {
   renderWithProviders(<BankSyncPage onBack={() => {}} />)
 
   expect(await screen.findByText('The bank connection was not completed')).toBeInTheDocument()
+})
+
+
+test('re-importing a period previews the missing rows before adding them', async () => {
+  mockFetchBankConnections.mockResolvedValue([connection({ accounts: [linkedLink] })])
+  mockReimportBankPeriod
+    .mockResolvedValueOnce({ applied: false, count: 1, total: -12, rows: [{ date: '2026-09-10', payee: 'PICARD', memo: null, amount: -12 }] })
+    .mockResolvedValueOnce({ applied: true, count: 1, total: -12, rows: [] })
+  renderWithProviders(<BankSyncPage onBack={() => {}} />)
+
+  fireEvent.click(await screen.findByRole('button', { name: 'Re-import a period' }))
+  fireEvent.change(screen.getByLabelText('From'), { target: { value: '2026-09-01' } })
+  fireEvent.change(screen.getByLabelText('To'), { target: { value: '2026-09-30' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Preview' }))
+
+  expect(await screen.findByText('PICARD')).toBeInTheDocument()
+  expect(mockReimportBankPeriod).toHaveBeenCalledWith(10, '2026-09-01', '2026-09-30', false)
+
+  fireEvent.click(screen.getByRole('button', { name: 'Add these 1 transaction(s)' }))
+  await waitFor(() => expect(mockReimportBankPeriod).toHaveBeenLastCalledWith(10, '2026-09-01', '2026-09-30', true))
 })

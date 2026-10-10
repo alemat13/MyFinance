@@ -936,6 +936,28 @@ class BankAccountLinkUpdate(BaseModel):
     sync_from_date: _DateType | None = None
 
 
+class BankReimportRequest(BaseModel):
+    """A past window to ask the bank for again. Without apply, nothing is
+    written: the response lists what an apply would create."""
+    date_from: _DateType
+    date_to: _DateType
+    apply: bool = False
+
+
+class BankReimportRow(BaseModel):
+    date: _DateType
+    payee: str
+    memo: str | None = None
+    amount: float
+
+
+class BankReimportResult(BaseModel):
+    applied: bool
+    count: int
+    total: float
+    rows: list[BankReimportRow]
+
+
 class BankSyncRunResult(BaseModel):
     ran: bool
     synced_links: int = 0

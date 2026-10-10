@@ -16,6 +16,9 @@ from schemas import (
     BankConnectionCreated,
     BankConnectionOut,
     BankInstitutionOut,
+    BankReimportRequest,
+    BankReimportResult,
+    BankReimportRow,
     BankSyncRunResult,
 )
 
@@ -180,6 +183,40 @@ def sync_link_now(link_id: int, db: Session = Depends(get_db)):
         created_count=created,
         status=link.last_sync_status,
         error=link.last_sync_error,
+    )
+
+
+# The longest window a re-import may ask for: PSD2 banks only hand back about
+# 90 days of history once the consent is more than a few minutes old.
+REIMPORT_MAX_DAYS = 92
+
+
+@router.post("/links/{link_id}/reimport", response_model=BankReimportResult)
+def reimport_period(link_id: int, data: BankReimportRequest, db: Session = Depends(get_db)):
+    """Fetch an explicit past period again and add only what the ledger is
+    missing; see enable_banking.reimport_period. Preview by default."""
+    link = db.get(BankAccountLink, link_id)
+    if link is None:
+        raise HTTPException(404, "Bank account link not found")
+    if link.account_id is None:
+        raise HTTPException(422, "Link this bank account to a MyFinance account first")
+    today = datetime.now(timezone.utc).date()
+    if data.date_from > data.date_to:
+        raise HTTPException(422, "The start date must not be after the end date")
+    if data.date_to > today:
+        raise HTTPException(422, "The end date must not be in the future")
+    if (data.date_to - data.date_from).days > REIMPORT_MAX_DAYS:
+        raise HTTPException(422, f"Re-import at most {REIMPORT_MAX_DAYS} days at a time")
+    try:
+        rows = enable_banking.reimport_period(db, link, data.date_from, data.date_to, data.apply)
+    except enable_banking.EnableBankingError as exc:
+        db.rollback()
+        raise HTTPException(502, str(exc))
+    return BankReimportResult(
+        applied=data.apply,
+        count=len(rows),
+        total=round(sum(r["amount"] for r in rows), 2),
+        rows=[BankReimportRow(date=r["date"], payee=r["payee"], memo=r["memo"], amount=r["amount"]) for r in rows],
     )
 
 

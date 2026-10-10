@@ -456,10 +456,11 @@ def is_sync_due(link: BankAccountLink, now: datetime | None = None) -> bool:
     return now - last >= timedelta(hours=MIN_SYNC_INTERVAL_HOURS)
 
 
-def import_transactions(db: Session, link: BankAccountLink, rows: list[dict], date_from: date, date_to: date) -> int:
-    """Insert the rows this account hasn't already got, resolving each one's
-    split through the normal cascade. Commits once, at the end — the row cap
-    in fetch/normalize is what keeps that single transaction short."""
+def _rows_to_import(db: Session, link: BankAccountLink, rows: list[dict], date_from: date, date_to: date) -> list[dict]:
+    """The subset of `rows` this account hasn't already got: neither its
+    external_id nor (for rows that carry none) a same-date, same-amount row
+    already in the ledger. Shared by the sync and by a period re-import's
+    preview, so what the preview lists is exactly what an apply creates."""
     existing_external_ids = {
         row[0] for row in
         db.query(Transaction.external_id)
@@ -472,17 +473,9 @@ def import_transactions(db: Session, link: BankAccountLink, rows: list[dict], da
         db, link.account_id, date_from - timedelta(days=SYNC_OVERLAP_DAYS), date_to,
     )
 
-    source, weights = split_engine.resolve_default_weights(db, None, link.account_id)
-    if not weights:
-        raise EnableBankingError(
-            "No split weights could be resolved for this account, so imported "
-            "transactions would have no split. Configure the global split weights first."
-        )
-
-    created = 0
-    imported: list[Transaction] = []
+    selected: list[dict] = []
     for row in rows:
-        if created >= MAX_ROWS_PER_SYNC:
+        if len(selected) >= MAX_ROWS_PER_SYNC:
             break
         if row["external_id"] in existing_external_ids:
             continue
@@ -490,7 +483,26 @@ def import_transactions(db: Session, link: BankAccountLink, rows: list[dict], da
         if legacy_counts.get(legacy_key):
             legacy_counts[legacy_key] -= 1
             continue
+        existing_external_ids.add(row["external_id"])
+        selected.append(row)
+    return selected
 
+
+def import_transactions(db: Session, link: BankAccountLink, rows: list[dict], date_from: date, date_to: date) -> int:
+    """Insert the rows this account hasn't already got, resolving each one's
+    split through the normal cascade. Commits once, at the end — the row cap
+    in fetch/normalize is what keeps that single transaction short."""
+    new_rows = _rows_to_import(db, link, rows, date_from, date_to)
+
+    source, weights = split_engine.resolve_default_weights(db, None, link.account_id)
+    if not weights:
+        raise EnableBankingError(
+            "No split weights could be resolved for this account, so imported "
+            "transactions would have no split. Configure the global split weights first."
+        )
+
+    imported: list[Transaction] = []
+    for row in new_rows:
         transaction = Transaction(
             date=row["date"],
             payee=row["payee"],
@@ -515,9 +527,7 @@ def import_transactions(db: Session, link: BankAccountLink, rows: list[dict], da
         split_engine.apply_split(db, transaction, weights, source or "custom")
         record_transaction_history(db, transaction, "created", None, source="bank_sync",
                                    changes=splits_created_changes(weights, source or "custom"))
-        existing_external_ids.add(row["external_id"])
         imported.append(transaction)
-        created += 1
 
     # Silently, and only ever on these brand-new rows: nothing comes back from
     # the bank to argue with, raw_label keeps the original wording whatever the
@@ -525,10 +535,26 @@ def import_transactions(db: Session, link: BankAccountLink, rows: list[dict], da
     # show up for review. A sync with no active model imports as before.
     auto_categorize.file_rows_quietly(db, imported)
 
-    if created:
+    if imported:
         cache_service.invalidate(db, "balances", "charts", "account_totals")
     db.commit()
-    return created
+    return len(imported)
+
+
+def reimport_period(db: Session, link: BankAccountLink, date_from: date, date_to: date, apply: bool) -> list[dict]:
+    """Ask the bank for an explicit past window and list (or, with apply,
+    create) the rows the ledger is missing. For a gap the regular sync can no
+    longer reach, since it only ever looks back SYNC_OVERLAP_DAYS from its
+    last run: a ledger rebuilt underneath a link that kept its
+    last_synced_at loses whatever the rebuild did not carry. Leaves the
+    link's own sync state (last_synced_at, status, count) untouched, and the
+    same dedup as a sync applies, so re-running it is a no-op."""
+    raw = fetch_transactions(link.remote_account_uid, date_from, date_to)
+    rows = [r for r in normalize_transactions(raw) if date_from <= r["date"] <= date_to]
+    new_rows = _rows_to_import(db, link, rows, date_from, date_to)
+    if apply and new_rows:
+        import_transactions(db, link, new_rows, date_from, date_to)
+    return new_rows
 
 
 def sync_link(db: Session, link: BankAccountLink) -> int:

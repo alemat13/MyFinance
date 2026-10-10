@@ -18,6 +18,7 @@ import { formatServerTimestamp } from '../utils/datetime'
 import { getParam, patchQueryParams } from '../utils/urlState'
 import { BackButton, Button, Card, ConfirmDialog, Input, Select, StatusMessage } from './ui'
 import AccountPicker from './AccountPicker'
+import BankReimportPanel from './BankReimportPanel'
 
 interface Props {
   onBack: () => void
@@ -49,6 +50,7 @@ export default function BankSyncPage({ onBack }: Props) {
   const [savingLinkId, setSavingLinkId] = useState<number | null>(null)
   const [refreshingId, setRefreshingId] = useState<number | null>(null)
   const [disconnecting, setDisconnecting] = useState<BankConnection | null>(null)
+  const [reimportLinkId, setReimportLinkId] = useState<number | null>(null)
   const { showToast } = useToast()
 
   const load = () => {
@@ -277,7 +279,16 @@ export default function BankSyncPage({ onBack }: Props) {
                     />
                     Sync automatically
                   </label>
+                  <Button
+                    variant="ghost"
+                    onClick={() => setReimportLinkId(reimportLinkId === link.id ? null : link.id)}
+                    disabled={link.account_id === null}
+                  >
+                    Re-import a period
+                  </Button>
                 </div>
+
+                {reimportLinkId === link.id && <BankReimportPanel link={link} onDone={load} />}
 
                 {link.last_synced_at && (
                   <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-2">
