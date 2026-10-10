@@ -531,6 +531,26 @@ test('clicking Bulk Edit with N selected opens BulkEditModal with the right tran
   expect(screen.getByText('2 transactions selected')).toBeInTheDocument()
 })
 
+test('with the whole page selected, Bulk Edit offers every transaction the filter matches', async () => {
+  mockSearchTransactions.mockResolvedValue({ ...searchResult(twoTxns), total: 120, total_pages: 3 })
+  mockFetchAccounts.mockResolvedValue([baseAccount])
+  mockFetchCategories.mockResolvedValue([baseCategory])
+
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} onOpenCategorizer={() => {}} />)
+
+  await waitFor(() => expect(screen.getByText('Coffee')).toBeInTheDocument())
+
+  fireEvent.click(screen.getByLabelText('Select transaction Coffee'))
+  fireEvent.click(screen.getByText('Bulk Edit'))
+  // Only part of the page ticked: no offer to extend.
+  expect(screen.queryByText('Select all 120 transactions')).not.toBeInTheDocument()
+  fireEvent.click(screen.getByText('Cancel'))
+
+  fireEvent.click(screen.getByLabelText('Select all on this page'))
+  fireEvent.click(screen.getByText('Bulk Edit'))
+  expect(screen.getByText('Select all 120 transactions')).toBeInTheDocument()
+})
+
 test('clicking Categorize asks the model about exactly the selected transactions', async () => {
   mockSearchTransactions.mockResolvedValue(searchResult(twoTxns))
   mockFetchAccounts.mockResolvedValue([baseAccount])

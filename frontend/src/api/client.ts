@@ -525,6 +525,22 @@ export function bulkUpdateTransactions(
   })
 }
 
+/** Bulk-edit every transaction a search filter matches, across all pages,
+ * rather than a list of ids. expectedCount is the total the user was shown:
+ * the server answers 409 if the filter now matches a different number. */
+export function bulkUpdateTransactionsByFilter(
+  filter: TransactionSearchRequest,
+  expectedCount: number,
+  data: BulkTransactionUpdate,
+  actorUserId?: number | null,
+): Promise<BulkUpdateTransactionsResponse> {
+  const params = actorUserId ? `?actor_user_id=${actorUserId}` : ''
+  return request<BulkUpdateTransactionsResponse>(`/transactions/bulk-update${params}`, {
+    method: 'PUT',
+    body: JSON.stringify({ filter, expected_count: expectedCount, update: data }),
+  })
+}
+
 export interface BulkDeleteTransactionsResponse {
   deleted_count: number
   transaction_ids: number[]

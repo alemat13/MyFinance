@@ -250,3 +250,69 @@ def test_bulk_update_actor_user_id_recorded_in_history(client, db, sample_accoun
 
     history = client.get(f"/api/transactions/{t1.id}/history").json()
     assert history[0]["changed_by_user_id"] == sample_user.id
+
+
+def test_bulk_update_by_filter_applies_to_every_matching_row_across_pages(client, db, sample_account, sample_category, sample_category2):
+    matching = [_make_transaction(db, sample_account, sample_category, payee=f"Boulangerie {i}") for i in range(3)]
+    other = _make_transaction(db, sample_account, sample_category, payee="Garage")
+
+    response = client.put(
+        "/api/transactions/bulk-update",
+        json={
+            # page/page_size are the screen's pagination: ignored here, so a
+            # filter matching more than one page still updates every row.
+            "filter": {"search": "boulangerie", "page": 1, "page_size": 1},
+            "expected_count": 3,
+            "update": {"category_id": sample_category2.id},
+        },
+    )
+    assert response.status_code == 200
+    assert response.json() == {"updated_count": 3, "transaction_ids": sorted(t.id for t in matching)}
+    for t in matching:
+        assert client.get(f"/api/transactions/{t.id}").json()["category_id"] == sample_category2.id
+    assert client.get(f"/api/transactions/{other.id}").json()["category_id"] == sample_category.id
+
+
+def test_bulk_update_by_filter_refuses_when_match_count_changed(client, db, sample_account, sample_category, sample_category2):
+    t1 = _make_transaction(db, sample_account, sample_category, payee="Boulangerie")
+    _make_transaction(db, sample_account, sample_category, payee="Boulangerie bis")
+
+    response = client.put(
+        "/api/transactions/bulk-update",
+        json={"filter": {"search": "boulangerie"}, "expected_count": 1, "update": {"category_id": sample_category2.id}},
+    )
+    assert response.status_code == 409
+    assert client.get(f"/api/transactions/{t1.id}").json()["category_id"] == sample_category.id
+
+
+def test_bulk_update_by_filter_commits_in_chunks(client, db, sample_account, sample_category, sample_category2, monkeypatch):
+    import routers.transactions as transactions_router
+    monkeypatch.setattr(transactions_router, "BULK_UPDATE_CHUNK_SIZE", 2)
+    rows = [_make_transaction(db, sample_account, sample_category, payee=f"Chunk {i}") for i in range(5)]
+
+    response = client.put(
+        "/api/transactions/bulk-update",
+        json={"filter": {"search": "chunk"}, "update": {"reconciled": True}},
+    )
+    assert response.status_code == 200
+    assert response.json()["updated_count"] == 5
+    for t in rows:
+        assert client.get(f"/api/transactions/{t.id}").json()["reconciled"] is True
+
+
+def test_bulk_update_rejects_both_ids_and_filter(client, db, sample_account, sample_category, sample_category2):
+    t1 = _make_transaction(db, sample_account, sample_category)
+    response = client.put(
+        "/api/transactions/bulk-update",
+        json={"transaction_ids": [t1.id], "filter": {}, "update": {"category_id": sample_category2.id}},
+    )
+    assert response.status_code == 422
+
+
+def test_bulk_update_by_filter_matching_nothing_is_rejected(client, db, sample_account, sample_category, sample_category2):
+    _make_transaction(db, sample_account, sample_category, payee="Garage")
+    response = client.put(
+        "/api/transactions/bulk-update",
+        json={"filter": {"search": "nothing-matches-this"}, "update": {"category_id": sample_category2.id}},
+    )
+    assert response.status_code == 422

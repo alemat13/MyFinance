@@ -641,6 +641,8 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
           selectedUserId={selectedUserId}
           onClose={() => setBulkEditOpen(false)}
           onSaved={() => { setBulkEditOpen(false); loadTransactions() }}
+          searchFilter={allSelected ? buildSearchRequest() : undefined}
+          matchingTotal={allSelected ? total : undefined}
         />
       )}
 

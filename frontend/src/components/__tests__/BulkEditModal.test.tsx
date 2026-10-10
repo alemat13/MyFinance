@@ -3,12 +3,14 @@ import { screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { renderWithProviders } from '../../test-utils'
 import BulkEditModal from '../BulkEditModal'
 
-const { mockBulkUpdateTransactions } = vi.hoisted(() => ({
+const { mockBulkUpdateTransactions, mockBulkUpdateTransactionsByFilter } = vi.hoisted(() => ({
   mockBulkUpdateTransactions: vi.fn(),
+  mockBulkUpdateTransactionsByFilter: vi.fn(),
 }))
 
 vi.mock('../../api/client', () => ({
   bulkUpdateTransactions: mockBulkUpdateTransactions,
+  bulkUpdateTransactionsByFilter: mockBulkUpdateTransactionsByFilter,
 }))
 
 const baseCategory = { id: 1, name: 'Salary', type: 'Income', splits: [] }
@@ -204,4 +206,40 @@ test('account/category quick-fill buttons are disabled in the split section whil
   expect(screen.getByText('Account').closest('button')).toBeDisabled()
   expect(screen.getByText('Category').closest('button')).toBeDisabled()
   expect(screen.getByText('Split Evenly').closest('button')).not.toBeDisabled()
+})
+
+
+test('no "select all" link without a filter total larger than the selection', () => {
+  renderWithProviders(<BulkEditModal {...baseProps} searchFilter={{ search: 'x' }} matchingTotal={2} />)
+  expect(screen.queryByText(/Select all/)).not.toBeInTheDocument()
+})
+
+test('"Select all N transactions" switches the edit to every row matching the filter', async () => {
+  mockBulkUpdateTransactionsByFilter.mockResolvedValue({ updated_count: 1234, transaction_ids: [] })
+  const filter = { search: 'boulangerie', page: 1, page_size: 2 }
+  renderWithProviders(<BulkEditModal {...baseProps} searchFilter={filter} matchingTotal={1234} />)
+
+  expect(screen.getByText('2 transactions selected')).toBeInTheDocument()
+  fireEvent.click(screen.getByText('Select all 1,234 transactions'))
+  expect(screen.getByText('All 1,234 transactions matching the current filters are selected.')).toBeInTheDocument()
+
+  fireEvent.click(screen.getByText('Mark as reconciled / unreconciled'))
+  fireEvent.click(screen.getByText('Apply to 1,234 transactions').closest('button')!)
+
+  await waitFor(() => expect(mockBulkUpdateTransactionsByFilter).toHaveBeenCalled())
+  expect(mockBulkUpdateTransactionsByFilter).toHaveBeenCalledWith(filter, 1234, { reconciled: true }, null)
+  expect(mockBulkUpdateTransactions).not.toHaveBeenCalled()
+})
+
+test('"Select only the N" goes back to the ticked rows', async () => {
+  mockBulkUpdateTransactions.mockResolvedValue({ updated_count: 2, transaction_ids: [1, 2] })
+  renderWithProviders(<BulkEditModal {...baseProps} searchFilter={{}} matchingTotal={1234} />)
+
+  fireEvent.click(screen.getByText('Select all 1,234 transactions'))
+  fireEvent.click(screen.getByText('Select only the 2'))
+  fireEvent.click(screen.getByText('Mark as reconciled / unreconciled'))
+  fireEvent.click(submitButton())
+
+  await waitFor(() => expect(mockBulkUpdateTransactions).toHaveBeenCalledWith([1, 2], { reconciled: true }, null))
+  expect(mockBulkUpdateTransactionsByFilter).not.toHaveBeenCalled()
 })
