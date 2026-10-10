@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import {
   Transaction, BulkTransactionUpdate, GlobalSplitWeight,
-  Account, Category, User,
-  bulkUpdateTransactions,
+  Account, Category, User, TransactionSearchRequest,
+  bulkUpdateTransactions, bulkUpdateTransactionsByFilter,
 } from '../api/client'
 import { SplitRow } from './SplitEditor'
 import TransactionSplitFields from './TransactionSplitFields'
@@ -20,9 +20,18 @@ interface Props {
   selectedUserId: number | null
   onClose: () => void
   onSaved: () => void
+  /** The Transactions screen's current filter and how many rows it matches
+   * across every page. When the match count is larger than the selection,
+   * the modal offers to extend the edit to all of them. */
+  searchFilter?: TransactionSearchRequest
+  matchingTotal?: number
 }
 
 const ACCOUNTING_MONTH_OFFSETS = [-3, -2, -1, 0, 1, 2, 3] as const
+
+function formatCount(n: number): string {
+  return n.toLocaleString('en-US')
+}
 
 function offsetLabel(offset: number): string {
   if (offset === 0) return 'No shift'
@@ -32,7 +41,12 @@ function offsetLabel(offset: number): string {
 
 export default function BulkEditModal({
   transactionIds, transactions, accounts, categories, allUsers, globalWeights, selectedUserId, onClose, onSaved,
+  searchFilter, matchingTotal,
 }: Props) {
+  const canSelectAllMatching = searchFilter != null && matchingTotal != null && matchingTotal > transactionIds.length
+  const [allMatching, setAllMatching] = useState(false)
+  const targetCount = allMatching && matchingTotal != null ? matchingTotal : transactionIds.length
+
   const [categoryEnabled, setCategoryEnabled] = useState(false)
   const [categoryId, setCategoryId] = useState<number | null>(null)
 
@@ -68,7 +82,10 @@ export default function BulkEditModal({
       ...(reconciledEnabled ? { reconciled: reconciledValue } : {}),
     }
     setSaving(true)
-    bulkUpdateTransactions(transactionIds, update, selectedUserId)
+    const call = allMatching && searchFilter && matchingTotal != null
+      ? bulkUpdateTransactionsByFilter(searchFilter, matchingTotal, update, selectedUserId)
+      : bulkUpdateTransactions(transactionIds, update, selectedUserId)
+    call
       .then(res => {
         showToast(`${res.updated_count} transaction(s) updated`, 'success')
         onSaved()
@@ -80,8 +97,23 @@ export default function BulkEditModal({
   return (
     <Modal isOpen size="lg" onClose={onClose} title="Bulk Edit Transactions">
       <div className="flex flex-col gap-4">
-        <div className="text-sm text-slate-600 dark:text-slate-300">
-          {transactionIds.length} transaction{transactionIds.length === 1 ? '' : 's'} selected
+        <div className="text-sm text-slate-600 dark:text-slate-300 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+          {allMatching ? (
+            <span>All {formatCount(targetCount)} transactions matching the current filters are selected.</span>
+          ) : (
+            <span>{transactionIds.length} transaction{transactionIds.length === 1 ? '' : 's'} selected</span>
+          )}
+          {canSelectAllMatching && (
+            <button
+              type="button"
+              className="text-indigo-600 dark:text-indigo-400 font-medium hover:underline"
+              onClick={() => setAllMatching(v => !v)}
+            >
+              {allMatching
+                ? `Select only the ${transactionIds.length}`
+                : `Select all ${formatCount(matchingTotal!)} transactions`}
+            </button>
+          )}
         </div>
 
         <div className="border border-slate-200 dark:border-slate-700 rounded-md p-3">
@@ -151,7 +183,7 @@ export default function BulkEditModal({
 
         <div className="flex gap-2">
           <Button onClick={handleSave} disabled={!canSave || saving}>
-            Apply to {transactionIds.length} transaction{transactionIds.length === 1 ? '' : 's'}
+            Apply to {formatCount(targetCount)} transaction{targetCount === 1 ? '' : 's'}
           </Button>
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
         </div>

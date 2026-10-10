@@ -303,7 +303,15 @@ class BulkTransactionUpdate(BaseModel):
 
 
 class BulkUpdateTransactionsRequest(BaseModel):
-    transaction_ids: list[int]
+    """Exactly one of transaction_ids (the rows ticked on screen) or filter
+    (every transaction the Transactions screen's current filter matches, across
+    all pages; its pagination and sorting fields are ignored). expected_count,
+    sent with a filter, is how many rows the user was shown: if the filter now
+    matches a different number (a bank sync landed in between), the request is
+    refused with 409 rather than editing rows nobody saw counted."""
+    transaction_ids: list[int] = []
+    filter: Optional["TransactionSearchRequest"] = None
+    expected_count: Optional[int] = None
     update: BulkTransactionUpdate
 
 
@@ -398,6 +406,9 @@ class TransactionSearchRequest(BaseModel):
     # sorting
     sort_by: Literal["date", "amount", "payee", "created_at"] = "date"
     sort_dir: Literal["asc", "desc"] = "desc"
+
+
+BulkUpdateTransactionsRequest.model_rebuild()
 
 
 class TransactionSearchResponse(BaseModel):

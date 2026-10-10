@@ -34,6 +34,9 @@ from serializers import build_transaction_out_from_row, get_transaction_out
 
 router = APIRouter(prefix="/api/transactions")
 
+# Rows per commit in bulk-update; see the comment where it is used.
+BULK_UPDATE_CHUNK_SIZE = 500
+
 
 @router.get("", response_model=list[TransactionOut])
 def get_transactions(user_id: int | None = Query(None), db: Session = Depends(get_db)):
@@ -147,7 +150,9 @@ def bulk_update_transactions(data: BulkUpdateTransactionsRequest, actor_user_id:
     # routes in registration order, and {transaction_id} (typed int) would
     # otherwise greedily match the literal "bulk-update" segment and 422 on
     # int conversion before this route is ever tried.
-    if not data.transaction_ids:
+    if data.filter is not None and data.transaction_ids:
+        raise HTTPException(422, "Send either transaction_ids or filter, not both")
+    if data.filter is None and not data.transaction_ids:
         raise HTTPException(422, "transaction_ids must not be empty")
 
     update_data = data.update.model_dump(exclude_unset=True)
@@ -157,13 +162,34 @@ def bulk_update_transactions(data: BulkUpdateTransactionsRequest, actor_user_id:
     if not non_split_fields and not split_weights_provided:
         raise HTTPException(422, "At least one field must be set to apply")
 
-    # Validate everything before mutating anything, so a missing id or an
-    # invalid weight set 422s/404s without partially applying the batch.
-    transactions = db.query(Transaction).filter(Transaction.id.in_(data.transaction_ids)).all()
-    found_ids = {t.id for t in transactions}
-    missing_ids = sorted(set(data.transaction_ids) - found_ids)
-    if missing_ids:
-        raise HTTPException(404, f"Transaction(s) not found: {missing_ids}")
+    # Validate everything before mutating anything, so a missing id, a
+    # selection that moved, or an invalid weight set 422s/404s/409s without
+    # partially applying the batch.
+    if data.filter is not None:
+        try:
+            id_query = apply_transaction_filters(
+                db.query(Transaction.id).join(Account, Transaction.account_id == Account.id),
+                data.filter, db,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+        target_ids = sorted(row[0] for row in id_query.all())
+        if not target_ids:
+            raise HTTPException(422, "No transaction matches this filter")
+        if data.expected_count is not None and data.expected_count != len(target_ids):
+            raise HTTPException(
+                409,
+                f"The filter now matches {len(target_ids)} transactions instead of {data.expected_count}; "
+                "reload the list and try again",
+            )
+    else:
+        target_ids = sorted(set(data.transaction_ids))
+        found_ids = {
+            row[0] for row in db.query(Transaction.id).filter(Transaction.id.in_(target_ids)).all()
+        }
+        missing_ids = sorted(set(target_ids) - found_ids)
+        if missing_ids:
+            raise HTTPException(404, f"Transaction(s) not found: {missing_ids}")
 
     weights = None
     if split_weights_provided:
@@ -172,30 +198,45 @@ def bulk_update_transactions(data: BulkUpdateTransactionsRequest, actor_user_id:
         weights = {w.user_id: w.weight for w in data.update.split_weights}
     source = data.update.split_source or "custom"
 
+    # Committed in chunks rather than in one database transaction: a filter
+    # can select the whole ledger, and holding row locks on tens of thousands
+    # of transactions for the length of the request is what once took the
+    # production database down during a mass import. Everything that could
+    # fail was validated above, so a chunk boundary is not a partial failure
+    # waiting to happen.
     updated_ids = []
-    for transaction in transactions:
-        old_values = {f: getattr(transaction, f) for f in non_split_fields if f in TRACKED_FIELDS}
-        for field, value in non_split_fields.items():
-            setattr(transaction, field, value)
-        changes = {
-            f: {"old": _jsonify(old), "new": _jsonify(getattr(transaction, f))}
-            for f, old in old_values.items() if old != getattr(transaction, f)
-        }
+    for start in range(0, len(target_ids), BULK_UPDATE_CHUNK_SIZE):
+        chunk_ids = target_ids[start:start + BULK_UPDATE_CHUNK_SIZE]
+        transactions = (
+            db.query(Transaction)
+            .filter(Transaction.id.in_(chunk_ids))
+            .options(selectinload(Transaction.splits))
+            .order_by(Transaction.id)
+            .all()
+        )
+        for transaction in transactions:
+            old_values = {f: getattr(transaction, f) for f in non_split_fields if f in TRACKED_FIELDS}
+            for field, value in non_split_fields.items():
+                setattr(transaction, field, value)
+            changes = {
+                f: {"old": _jsonify(old), "new": _jsonify(getattr(transaction, f))}
+                for f, old in old_values.items() if old != getattr(transaction, f)
+            }
 
-        if split_weights_provided:
-            existing_splits = {s.user_id: (s.weight, s.source) for s in transaction.splits}
-            new_splits = {uid: (w, source) for uid, w in (weights or {}).items()}
-            splits_diff = diff_splits(existing_splits, new_splits)
-            if splits_diff:
-                changes["splits"] = splits_diff
-            split_engine.apply_split(db, transaction, weights, source)
+            if split_weights_provided:
+                existing_splits = {s.user_id: (s.weight, s.source) for s in transaction.splits}
+                new_splits = {uid: (w, source) for uid, w in (weights or {}).items()}
+                splits_diff = diff_splits(existing_splits, new_splits)
+                if splits_diff:
+                    changes["splits"] = splits_diff
+                split_engine.apply_split(db, transaction, weights, source)
 
-        if changes:
-            record_transaction_history(db, transaction, "updated", actor_user_id, changes=changes)
-        updated_ids.append(transaction.id)
+            if changes:
+                record_transaction_history(db, transaction, "updated", actor_user_id, changes=changes)
+            updated_ids.append(transaction.id)
 
-    cache_service.invalidate(db, "balances", "charts", "account_totals")
-    db.commit()
+        cache_service.invalidate(db, "balances", "charts", "account_totals")
+        db.commit()
     return BulkUpdateTransactionsResponse(updated_count=len(updated_ids), transaction_ids=updated_ids)
 
 
