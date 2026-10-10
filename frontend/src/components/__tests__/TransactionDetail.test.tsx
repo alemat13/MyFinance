@@ -332,6 +332,28 @@ test('pressing Escape while the delete confirmation is open closes only the conf
   expect(baseProps.onClose).not.toHaveBeenCalled()
 })
 
+test('names what wrote each history row, when it was not a person', async () => {
+  mockFetchTransaction.mockResolvedValue(baseTxn)
+  mockFetchTransactionHistory.mockResolvedValue([
+    {
+      id: 1, transaction_id: 1, action: 'created', source: 'bank_sync', changed_at: '2026-01-15T10:00:00',
+      changed_by_user_id: null, changed_by_user_name: null,
+      date: '2026-01-15', payee: 'CARTE 15/01 SHOP', memo: null, amount: 50, account_id: 1, category_id: null, changes: null,
+    },
+    {
+      id: 2, transaction_id: 1, action: 'updated', source: 'categorizer', changed_at: '2026-01-15T10:00:01',
+      changed_by_user_id: null, changed_by_user_name: null,
+      date: '2026-01-15', payee: 'Shop', memo: null, amount: 50, account_id: 1, category_id: 1,
+      changes: { category_id: { old: null, new: 1 } },
+    },
+  ])
+
+  renderWithProviders(<TransactionDetail {...baseProps} />)
+
+  expect(await screen.findByText('created · bank sync')).toBeInTheDocument()
+  expect(screen.getByText('updated · auto')).toBeInTheDocument()
+})
+
 test('shows history entries', async () => {
   mockFetchTransaction.mockResolvedValue(baseTxn)
   mockFetchTransactionHistory.mockResolvedValue([

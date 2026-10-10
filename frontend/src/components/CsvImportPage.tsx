@@ -377,7 +377,11 @@ export default function CsvImportPage({ onBack, selectedUserId }: Props) {
                         {status === 'error' ? (
                           <span className="text-slate-400">—</span>
                         ) : (
+                          // Capped: a select sizes itself to its longest option, and a
+                          // household with long account names pushed the Suggested column
+                          // off the right of the screen.
                           <Select
+                            className="max-w-[11rem]"
                             value={resolvedAccountId(r) ?? 0}
                             onChange={e => setRowAccountOverride({ ...rowAccountOverride, [r.row_number]: parseInt(e.target.value) || 0 })}
                           >
@@ -395,6 +399,7 @@ export default function CsvImportPage({ onBack, selectedUserId }: Props) {
                           <span className="text-slate-400">—</span>
                         ) : (
                           <Select
+                            className="max-w-[11rem]"
                             value={resolvedCategoryId(r) ?? 0}
                             onChange={e => setRowCategoryOverride({ ...rowCategoryOverride, [r.row_number]: parseInt(e.target.value) || 0 })}
                           >

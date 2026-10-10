@@ -4,8 +4,9 @@ import {
   applyCategorizerSuggestions, suggestCategories,
 } from '../api/client'
 import { useToast } from '../context/ToastContext'
+import { useIsMobile } from '../hooks/useMediaQuery'
 import { formatMoney } from '../utils/currency'
-import { Modal, Button, Badge, Table, Thead, Tbody, Tr, Th, Td } from './ui'
+import { Modal, Button, Badge, Card, Table, Thead, Tbody, Tr, Th, Td } from './ui'
 
 interface Props {
   transactionIds: number[]
@@ -37,6 +38,7 @@ export default function CategorizeModal({
   const [overwriteCategory, setOverwriteCategory] = useState(false)
   const [applying, setApplying] = useState(false)
   const { showToast } = useToast()
+  const isMobile = useIsMobile()
 
   // Keyed on the ids themselves, not on the array: the parent builds a fresh
   // array on every render, and depending on that would re-ask the model — and
@@ -139,6 +141,59 @@ export default function CategorizeModal({
             </div>
 
             <div className="max-h-[50vh] overflow-y-auto">
+              {/* A card per row on a phone rather than the table: the before and
+                  the after are the whole point of this screen, and six columns
+                  at 390px push the suggestion off the right edge. */}
+              {isMobile ? (
+                <div className="space-y-2">
+                  {items.map(i => (
+                    <Card key={i.transaction_id}
+                          className={`p-3 ${i.category_changed || i.payee_changed ? '' : 'opacity-60'}`}>
+                      <div className="flex items-start gap-2">
+                        <input
+                          type="checkbox"
+                          className="mt-1 shrink-0"
+                          aria-label={`Include ${i.payee}`}
+                          checked={included.has(i.transaction_id)}
+                          onChange={() => toggle(i.transaction_id)}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex justify-between gap-2">
+                            <span className="font-medium truncate">{i.payee}</span>
+                            <span className="shrink-0 font-semibold">
+                              {formatMoney(i.amount, currencyOf(i.transaction_id))}
+                            </span>
+                          </div>
+                          <div className="text-[12px] text-slate-500 dark:text-slate-400">{i.date}</div>
+                          {withRenames && i.payee_changed && (
+                            <div className="text-[12px] text-amber-700 dark:text-amber-400">
+                              → {i.suggested_payee}
+                            </div>
+                          )}
+                          <div className="flex items-center gap-2 flex-wrap mt-1.5 text-[13px]">
+                            <span className="text-slate-500 dark:text-slate-400">
+                              {i.current_category_name ?? 'No category'}
+                            </span>
+                            {i.category_changed ? (
+                              <>
+                                <span className="text-slate-400">→</span>
+                                <span className="px-1 rounded bg-amber-50 dark:bg-amber-900/20">
+                                  {i.suggested_category_name}
+                                </span>
+                                <Badge variant={i.high_confidence ? 'positive' : 'warning'}>
+                                  {Math.round((i.confidence ?? 0) * 100)}%
+                                </Badge>
+                              </>
+                            ) : (
+                              <span className="text-slate-400">· no change</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              ) : (
               <Table>
                 <Thead>
                   <Tr>
@@ -193,6 +248,7 @@ export default function CategorizeModal({
                   })}
                 </Tbody>
               </Table>
+              )}
             </div>
 
             <div className="flex gap-2">

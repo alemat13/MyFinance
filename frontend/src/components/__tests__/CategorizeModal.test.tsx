@@ -179,3 +179,33 @@ test('reports any other failure without offering that way out', async () => {
   expect(await screen.findByText('Service unavailable')).toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'Go to Auto-categorization' })).not.toBeInTheDocument()
 })
+
+test('shows the before and after as cards below the mobile breakpoint', async () => {
+  const originalMatchMedia = window.matchMedia
+  window.matchMedia = ((query: string) => ({
+    matches: query === '(max-width: 767px)',
+    media: query,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  })) as unknown as typeof window.matchMedia
+
+  try {
+    mockSuggestCategories.mockResolvedValue(response([
+      suggestion({ current_category_id: 9, current_category_name: 'Loisirs' }),
+    ]))
+    render()
+
+    // Six columns do not fit at 390px, and the suggestion is the one thing that
+    // must not be the one pushed off the edge.
+    expect(await screen.findByText('Courses')).toBeInTheDocument()
+    expect(screen.getByText('Loisirs')).toBeInTheDocument()
+    expect(screen.getByText('93%')).toBeInTheDocument()
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+
+    // The ticks still drive the apply, card or row.
+    fireEvent.click(screen.getByLabelText('Include CARTE 02/08 SUPERMARCHE'))
+    expect(screen.getByRole('button', { name: /Apply to 0 transactions/ })).toBeDisabled()
+  } finally {
+    window.matchMedia = originalMatchMedia
+  }
+})

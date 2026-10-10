@@ -210,8 +210,11 @@ amount, category, account, reconciled toggle, and — when a specific user is se
 My share/Balance) instead of the table described below, since an eight-column table
 doesn't fit a narrow screen; on wider screens it's the table. Either way, tapping or
 clicking a transaction opens the same **History** panel: a full audit trail of who
-created or edited the transaction and when, what fields changed, and whether it
-originated from a CSV import. Changes to the transaction's own split weights — set on
+created or edited the transaction and when, and what fields changed. A line that
+wasn't somebody typing says so next to the action — `created · bank sync`,
+`created · CSV`, `updated · auto` for a change the automatic categorization made,
+`updated · divide` — so a category you didn't choose yourself is always traceable to
+what put it there. Changes to the transaction's own split weights — set on
 creation or edited later — are tracked here too, shown as each involved user's weight
 before and after the change, and the same applies to reconciled status changes.
 
