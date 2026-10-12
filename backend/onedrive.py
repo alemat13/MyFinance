@@ -1,12 +1,13 @@
 """OneDrive automatic backup connection: OAuth against the Microsoft
 identity platform, uploading a backup.export_to_zip_bytes() archive to a
-user-chosen OneDrive folder, and count-based retention — driven by a single
+user-chosen OneDrive folder, and grandfather-father-son retention — driven by a single
 global OneDriveBackupSettings row (see models.py). No restore path here;
 restoring from a downloaded archive still goes through backup.py/the
 existing Import Backup UI only.
 """
 import hmac
 import os
+import re
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 
@@ -25,7 +26,10 @@ SCOPE = "Files.ReadWrite offline_access User.Read"
 # Single global connection, always this row.
 SETTINGS_ID = 1
 
-_FREQUENCY_DAYS = {"daily": 1, "weekly": 7, "monthly": 30}
+# One backup a day; how many are kept is the retention settings' job. A few
+# hours short of 24 so a daily scheduler firing a little earlier than the
+# previous run (last_backup_at is the claim time) doesn't skip a whole day.
+BACKUP_INTERVAL = timedelta(hours=20)
 
 
 class OneDriveError(Exception):
@@ -181,25 +185,88 @@ def upload_backup(access_token: str, folder_path: str, filename: str, content: b
         raise OneDriveError(f"Failed to upload backup to OneDrive ({response.status_code}): {response.text}")
 
 
-def apply_retention(access_token: str, folder_path: str, retention_count: int) -> None:
-    # No $orderby here: personal/consumer OneDrive's Graph API (unlike OneDrive
-    # for Business) rejects it on this endpoint with a 400 "notSupported" error
-    # — sort client-side instead.
-    path = folder_path.strip("/")
-    response = httpx.get(
-        f"{GRAPH_BASE}/me/drive/root:/{path}:/children",
-        headers=_auth_header(access_token),
-        params={"$select": "id,name,createdDateTime"},
-        timeout=30.0,
+# Only files the app itself uploaded (see run_backup's filename) are ever
+# considered for deletion; anything else in the folder is left alone.
+BACKUP_FILENAME_RE = re.compile(r"^myfinance-backup-(\d{8}-\d{6})\.zip$")
+
+
+def backup_timestamp(name: str) -> datetime | None:
+    match = BACKUP_FILENAME_RE.match(name)
+    if match is None:
+        return None
+    try:
+        return datetime.strptime(match.group(1), "%Y%m%d-%H%M%S")
+    except ValueError:
+        return None
+
+
+def select_backups_to_keep(
+    timestamps: list[datetime], keep_daily: int, keep_weekly: int, keep_monthly: int, keep_yearly: int,
+) -> set[datetime]:
+    """Grandfather-father-son retention, like a NAS snapshot schedule: each
+    tier keeps the newest backup of each of its N most recent buckets (days,
+    ISO weeks, months, years) that hold a backup. A backup kept by several
+    tiers counts in each of them. The newest backup is always kept."""
+    ordered = sorted(timestamps, reverse=True)
+    kept: set[datetime] = set(ordered[:1])
+    tiers = (
+        (keep_daily, lambda ts: ts.date()),
+        (keep_weekly, lambda ts: ts.isocalendar()[:2]),
+        (keep_monthly, lambda ts: (ts.year, ts.month)),
+        (keep_yearly, lambda ts: ts.year),
     )
-    if response.status_code != 200:
-        raise OneDriveError(f"Failed to list OneDrive backup folder ({response.status_code}): {response.text}")
-    items = [item for item in response.json().get("value", []) if item.get("name", "").startswith("myfinance-backup-")]
-    items.sort(key=lambda item: item.get("createdDateTime", ""), reverse=True)
-    for item in items[retention_count:]:
-        delete = httpx.delete(f"{GRAPH_BASE}/me/drive/items/{item['id']}", headers=_auth_header(access_token), timeout=30.0)
-        if delete.status_code not in (200, 204, 404):
-            raise OneDriveError(f"Failed to delete old OneDrive backup '{item.get('name')}' ({delete.status_code}): {delete.text}")
+    for count, bucket_of in tiers:
+        seen = set()
+        for ts in ordered:
+            if len(seen) >= count:
+                break
+            bucket = bucket_of(ts)
+            if bucket not in seen:
+                seen.add(bucket)
+                kept.add(ts)
+    return kept
+
+
+def list_folder_items(access_token: str, folder_path: str) -> list[dict]:
+    """Every child of the folder, following Graph's paging. Raises on any
+    failed page, so a caller never acts on a partial listing."""
+    # No $orderby here: personal/consumer OneDrive's Graph API (unlike OneDrive
+    # for Business) rejects it on this endpoint with a 400 "notSupported" error.
+    path = folder_path.strip("/")
+    url = f"{GRAPH_BASE}/me/drive/root:/{path}:/children"
+    params: dict | None = {"$select": "id,name,file,folder"}
+    items: list[dict] = []
+    while url:
+        response = httpx.get(url, headers=_auth_header(access_token), params=params, timeout=30.0)
+        if response.status_code != 200:
+            raise OneDriveError(f"Failed to list OneDrive backup folder ({response.status_code}): {response.text}")
+        data = response.json()
+        items.extend(data.get("value", []))
+        url = data.get("@odata.nextLink")
+        params = None  # the next link already carries the query
+    return items
+
+
+def apply_retention(access_token: str, settings: OneDriveBackupSettings) -> None:
+    # Listing fails → raises before anything is deleted.
+    items = list_folder_items(access_token, settings.folder_path)
+    backups: dict[datetime, list[dict]] = {}
+    for item in items:
+        if "folder" in item:
+            continue
+        ts = backup_timestamp(item.get("name", ""))
+        if ts is not None:
+            backups.setdefault(ts, []).append(item)
+    kept = select_backups_to_keep(
+        list(backups), settings.keep_daily, settings.keep_weekly, settings.keep_monthly, settings.keep_yearly,
+    )
+    for ts, same_name in backups.items():
+        if ts in kept:
+            continue
+        for item in same_name:
+            delete = httpx.delete(f"{GRAPH_BASE}/me/drive/items/{item['id']}", headers=_auth_header(access_token), timeout=30.0)
+            if delete.status_code not in (200, 204, 404):
+                raise OneDriveError(f"Failed to delete old OneDrive backup '{item.get('name')}' ({delete.status_code}): {delete.text}")
 
 
 def is_backup_due(settings: OneDriveBackupSettings, now: datetime | None = None) -> bool:
@@ -211,7 +278,7 @@ def is_backup_due(settings: OneDriveBackupSettings, now: datetime | None = None)
     last = settings.last_backup_at
     if last.tzinfo is None:
         last = last.replace(tzinfo=timezone.utc)
-    return now - last >= timedelta(days=_FREQUENCY_DAYS[settings.frequency])
+    return now - last >= BACKUP_INTERVAL
 
 
 def run_backup(db: Session, settings: OneDriveBackupSettings) -> None:
@@ -230,7 +297,7 @@ def run_backup(db: Session, settings: OneDriveBackupSettings) -> None:
         filename = f"myfinance-backup-{datetime.now(timezone.utc):%Y%m%d-%H%M%S}.zip"
         content = backup_module.export_to_zip_bytes(db)
         upload_backup(access_token, settings.folder_path, filename, content)
-        apply_retention(access_token, settings.folder_path, settings.retention_count)
+        apply_retention(access_token, settings)
         settings.last_backup_status = "success"
         settings.last_backup_error = None
     except Exception as exc:

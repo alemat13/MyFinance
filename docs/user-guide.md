@@ -769,7 +769,7 @@ from now on.
 ### OneDrive Automatic Backup
 
 Connects a OneDrive account so a backup (the same archive **Export Backup** produces) is
-uploaded automatically on a schedule, without you having to remember to export one
+uploaded automatically once a day, without you having to remember to export one
 yourself. There's no restore-from-OneDrive feature — if you ever need to restore one of
 these backups, download it from OneDrive yourself and use **Import Backup** above, same
 as any other backup file.
@@ -778,9 +778,15 @@ as any other backup file.
   account's email is shown.
 - **Folder path** is where backups are uploaded (e.g. `/MyFinance Backups`) — it's
   created automatically if it doesn't already exist.
-- **Frequency** is Daily, Weekly, or Monthly.
-- **Keep last** sets how many backup files to retain in the folder — older ones beyond
-  this count are deleted automatically after each successful backup.
+- **Backups to keep** works like snapshots on a NAS, with four counts: **Daily**,
+  **Weekly**, **Monthly** and **Yearly** (8, 5, 13 and 10 by default). After each
+  successful backup, the app keeps the newest backup of each of the last 8 days, the last
+  5 weeks, the last 13 months and the last 10 years, and deletes the other backups it
+  created. A backup can count for several of them (the last one of a month can also be
+  that week's and that day's), so far fewer files are kept than the four counts added
+  up. Set a count to 0 to turn that level off; at least one must be above 0. Only the
+  app's own backup files (`myfinance-backup-….zip`) are ever deleted — anything else you
+  put in the folder is left alone, and if the folder can't be read, nothing is deleted.
 - **Backup Now** runs a backup immediately, without waiting for the schedule — useful to
   confirm the connection and folder are working.
 - The last backup's time and outcome (success or failed, with an error message) are
@@ -829,7 +835,7 @@ A quick reference for the rules the app enforces:
 | Can't delete a user who still owns a share of an account | Users |
 | Can't delete a user who's the only person in some transaction's split, unless another user has a fallback weight to re-split it with | Users |
 | OneDrive backup folder path can't be empty | Backup & Restore (OneDrive) |
-| OneDrive backup "Keep last" count must be between 1 and 365 | Backup & Restore (OneDrive) |
+| OneDrive "Backups to keep" counts must each be between 0 and 365, and not all 0 | Backup & Restore (OneDrive) |
 
 Split-weight prefill priority, from highest to lowest: a transaction's **account**
 weight beats its **category** weight, which beats the household's **global** weight.

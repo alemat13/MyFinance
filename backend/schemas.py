@@ -846,8 +846,10 @@ class OneDriveSettingsOut(BaseModel):
     connected: bool
     account_email: str | None = None
     folder_path: str | None = None
-    frequency: Literal["daily", "weekly", "monthly"]
-    retention_count: int
+    keep_daily: int
+    keep_weekly: int
+    keep_monthly: int
+    keep_yearly: int
     last_backup_at: datetime | None = None
     last_backup_status: Literal["success", "failed"] | None = None
     last_backup_error: str | None = None
@@ -856,8 +858,10 @@ class OneDriveSettingsOut(BaseModel):
 
 class OneDriveSettingsUpdate(BaseModel):
     folder_path: str
-    frequency: Literal["daily", "weekly", "monthly"]
-    retention_count: int
+    keep_daily: int
+    keep_weekly: int
+    keep_monthly: int
+    keep_yearly: int
 
 
 class OneDriveBackupRunResult(BaseModel):
