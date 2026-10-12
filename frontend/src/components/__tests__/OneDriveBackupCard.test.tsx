@@ -30,7 +30,10 @@ const notConnected = {
   account_email: null,
   folder_path: null,
   frequency: 'daily' as const,
-  retention_count: 30,
+  keep_daily: 8,
+  keep_weekly: 5,
+  keep_monthly: 13,
+  keep_yearly: 10,
   last_backup_at: null,
   last_backup_status: null,
   last_backup_error: null,
@@ -41,7 +44,10 @@ const connected = {
   account_email: 'user@example.com',
   folder_path: '/MyFinance Backups',
   frequency: 'weekly' as const,
-  retention_count: 10,
+  keep_daily: 7,
+  keep_weekly: 4,
+  keep_monthly: 12,
+  keep_yearly: 3,
   last_backup_at: '2026-01-15T10:00:00Z',
   last_backup_status: 'success' as const,
   last_backup_error: null,
@@ -79,28 +85,49 @@ test('renders connected state with account email and settings', async () => {
 
   expect(await screen.findByText('user@example.com')).toBeInTheDocument()
   expect(screen.getByDisplayValue('/MyFinance Backups')).toBeInTheDocument()
-  expect(screen.getByDisplayValue('10')).toBeInTheDocument()
+  expect(screen.getByLabelText('Daily')).toHaveValue(7)
+  expect(screen.getByLabelText('Weekly')).toHaveValue(4)
+  expect(screen.getByLabelText('Monthly')).toHaveValue(12)
+  expect(screen.getByLabelText('Yearly')).toHaveValue(3)
   expect(screen.getByText(/Last backup:/)).toBeInTheDocument()
 })
 
 test('saves updated folder/frequency/retention', async () => {
   mockFetchOneDriveSettings.mockResolvedValue(connected)
-  mockUpdateOneDriveSettings.mockResolvedValue({ ...connected, folder_path: '/New Folder', retention_count: 15 })
+  mockUpdateOneDriveSettings.mockResolvedValue({ ...connected, folder_path: '/New Folder', keep_yearly: 10 })
 
   renderWithProviders(<OneDriveBackupCard />)
   await screen.findByDisplayValue('/MyFinance Backups')
 
   fireEvent.change(screen.getByDisplayValue('/MyFinance Backups'), { target: { value: '/New Folder' } })
-  fireEvent.change(screen.getByDisplayValue('10'), { target: { value: '15' } })
+  fireEvent.change(screen.getByLabelText('Yearly'), { target: { value: '10' } })
   fireEvent.click(screen.getByText('Save'))
 
   await waitFor(() => {
     expect(mockUpdateOneDriveSettings).toHaveBeenCalledWith({
       folder_path: '/New Folder',
       frequency: 'weekly',
-      retention_count: 15,
+      keep_daily: 7,
+      keep_weekly: 4,
+      keep_monthly: 12,
+      keep_yearly: 10,
     })
   })
+})
+
+test('rejects keeping no backup at all without calling the API', async () => {
+  mockFetchOneDriveSettings.mockResolvedValue(connected)
+
+  renderWithProviders(<OneDriveBackupCard />)
+  await screen.findByDisplayValue('/MyFinance Backups')
+
+  for (const label of ['Daily', 'Weekly', 'Monthly', 'Yearly']) {
+    fireEvent.change(screen.getByLabelText(label), { target: { value: '0' } })
+  }
+  fireEvent.click(screen.getByText('Save'))
+
+  expect(await screen.findByText('At least one retention count must be above 0')).toBeInTheDocument()
+  expect(mockUpdateOneDriveSettings).not.toHaveBeenCalled()
 })
 
 test('rejects saving an empty folder path without calling the API', async () => {

@@ -258,7 +258,12 @@ class OneDriveBackupSettings(Base):
     account_email = Column(String, nullable=True)
     folder_path = Column(String, nullable=True)
     frequency = Column(String(20), nullable=False, default="daily")  # 'daily' | 'weekly' | 'monthly'
-    retention_count = Column(Integer, nullable=False, default=30)
+    # Grandfather-father-son retention (see onedrive.select_backups_to_keep):
+    # how many days, ISO weeks, months and years keep their newest backup.
+    keep_daily = Column(Integer, nullable=False, default=8)
+    keep_weekly = Column(Integer, nullable=False, default=5)
+    keep_monthly = Column(Integer, nullable=False, default=13)
+    keep_yearly = Column(Integer, nullable=False, default=10)
     access_token_encrypted = Column(Text, nullable=True)
     refresh_token_encrypted = Column(Text, nullable=True)
     token_expires_at = Column(DateTime, nullable=True)

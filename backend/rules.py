@@ -109,9 +109,12 @@ def validate_onedrive_folder_path(folder_path: str) -> None:
         raise RuleViolation("Folder path cannot be empty")
 
 
-def validate_onedrive_retention_count(retention_count: int) -> None:
-    if not (1 <= retention_count <= 365):
-        raise RuleViolation("Retention count must be between 1 and 365")
+def validate_onedrive_retention(daily: int, weekly: int, monthly: int, yearly: int) -> None:
+    counts = (daily, weekly, monthly, yearly)
+    if any(not (0 <= count <= 365) for count in counts):
+        raise RuleViolation("Each retention count must be between 0 and 365")
+    if sum(counts) == 0:
+        raise RuleViolation("At least one retention count must be above 0")
 
 
 def validate_bank_link_account(db: Session, link: BankAccountLink, account_id: int | None) -> None:

@@ -22,35 +22,43 @@ def test_get_settings_defaults(client):
     data = response.json()
     assert data["connected"] is False
     assert data["frequency"] == "daily"
-    assert data["retention_count"] == 30
+    assert (data["keep_daily"], data["keep_weekly"], data["keep_monthly"], data["keep_yearly"]) == (8, 5, 13, 10)
     assert data["account_email"] is None
+
+
+RETENTION = {"keep_daily": 8, "keep_weekly": 5, "keep_monthly": 13, "keep_yearly": 10}
 
 
 def test_put_settings_updates_folder_frequency_retention(client):
     response = client.put(
         "/api/onedrive/settings",
-        json={"folder_path": "/MyFinance Backups", "frequency": "weekly", "retention_count": 10},
+        json={"folder_path": "/MyFinance Backups", "frequency": "weekly",
+              "keep_daily": 7, "keep_weekly": 4, "keep_monthly": 12, "keep_yearly": 0},
     )
     assert response.status_code == 200
     data = response.json()
     assert data["folder_path"] == "/MyFinance Backups"
     assert data["frequency"] == "weekly"
-    assert data["retention_count"] == 10
+    assert (data["keep_daily"], data["keep_weekly"], data["keep_monthly"], data["keep_yearly"]) == (7, 4, 12, 0)
 
 
 def test_put_settings_empty_folder_rejected(client):
     response = client.put(
         "/api/onedrive/settings",
-        json={"folder_path": "   ", "frequency": "daily", "retention_count": 10},
+        json={"folder_path": "   ", "frequency": "daily", **RETENTION},
     )
     assert response.status_code == 422
 
 
-@pytest.mark.parametrize("retention_count", [0, 366])
-def test_put_settings_retention_out_of_range_rejected(client, retention_count):
+@pytest.mark.parametrize("override", [
+    {"keep_daily": -1},
+    {"keep_yearly": 366},
+    {"keep_daily": 0, "keep_weekly": 0, "keep_monthly": 0, "keep_yearly": 0},
+])
+def test_put_settings_retention_out_of_range_rejected(client, override):
     response = client.put(
         "/api/onedrive/settings",
-        json={"folder_path": "/Backups", "frequency": "daily", "retention_count": retention_count},
+        json={"folder_path": "/Backups", "frequency": "daily", **RETENTION, **override},
     )
     assert response.status_code == 422
 
@@ -58,7 +66,7 @@ def test_put_settings_retention_out_of_range_rejected(client, retention_count):
 def test_put_settings_invalid_frequency_rejected(client):
     response = client.put(
         "/api/onedrive/settings",
-        json={"folder_path": "/Backups", "frequency": "yearly", "retention_count": 10},
+        json={"folder_path": "/Backups", "frequency": "yearly", **RETENTION},
     )
     assert response.status_code == 422
 
@@ -211,29 +219,102 @@ class _FakeResponse:
         return self._payload
 
 
-def test_apply_retention_deletes_beyond_count(monkeypatch):
+def _ts(value: str) -> datetime:
+    return datetime.strptime(value, "%Y-%m-%d %H:%M")
+
+
+def _name(ts: datetime) -> str:
+    return f"myfinance-backup-{ts:%Y%m%d-%H%M%S}.zip"
+
+
+def test_select_backups_keeps_newest_per_bucket():
+    # One backup a day at 02:00 for two years, plus a second one on the last day.
+    start = datetime(2024, 10, 12, 2, 0)
+    stamps = [start + timedelta(days=i) for i in range(731)] + [_ts("2026-10-12 09:30")]
+    kept = onedrive.select_backups_to_keep(stamps, keep_daily=8, keep_weekly=5, keep_monthly=13, keep_yearly=10)
+
+    newest = _ts("2026-10-12 09:30")
+    assert newest in kept
+    assert _ts("2026-10-12 02:00") not in kept  # same day as a newer one
+    # Daily: the 8 most recent days.
+    for day in range(5, 12):
+        assert datetime(2026, 10, day, 2, 0) in kept
+    # Weekly: the Sunday closing each previous ISO week.
+    for sunday in (datetime(2026, 10, 11, 2), datetime(2026, 10, 4, 2), datetime(2026, 9, 27, 2), datetime(2026, 9, 20, 2)):
+        assert sunday in kept
+    # Monthly: last day of each of the 12 previous months.
+    for month_end in (datetime(2026, 9, 30, 2), datetime(2026, 1, 31, 2), datetime(2025, 10, 31, 2)):
+        assert month_end in kept
+    assert datetime(2025, 9, 30, 2) not in kept  # 14th month back
+    # Yearly: last backup of 2025 and of 2024.
+    assert datetime(2025, 12, 31, 2) in kept
+    assert datetime(2024, 12, 31, 2) in kept
+    assert datetime(2024, 10, 12, 2) not in kept
+    # Overlapping tiers share files, so far fewer than 8+5+13+10 are kept.
+    assert len(kept) <= 36
+
+
+def test_select_backups_counts_buckets_that_hold_a_backup():
+    # Weekly backups: "8 daily" means the 8 most recent days that had one.
+    stamps = [datetime(2026, 1, 4, 2) + timedelta(weeks=i) for i in range(20)]
+    kept = onedrive.select_backups_to_keep(stamps, keep_daily=8, keep_weekly=0, keep_monthly=0, keep_yearly=0)
+    assert kept == set(sorted(stamps)[-8:])
+
+
+def test_select_backups_always_keeps_newest():
+    stamps = [_ts("2026-10-10 02:00"), _ts("2026-10-11 02:00")]
+    kept = onedrive.select_backups_to_keep(stamps, keep_daily=0, keep_weekly=0, keep_monthly=0, keep_yearly=1)
+    assert kept == {_ts("2026-10-11 02:00")}
+
+
+def _settings(**retention):
+    values = {"keep_daily": 2, "keep_weekly": 0, "keep_monthly": 0, "keep_yearly": 0, **retention}
+    return OneDriveBackupSettings(folder_path="/Backups", **values)
+
+
+def test_apply_retention_only_deletes_app_backups(monkeypatch):
     deleted = []
     items = [
-        {"id": f"item{i}", "name": f"myfinance-backup-2026010{i}-000000.zip", "createdDateTime": f"2026-01-0{i}"}
-        for i in range(1, 6)
+        {"id": f"item{i}", "name": _name(datetime(2026, 1, i, 2)), "file": {}} for i in range(1, 6)
+    ] + [
+        {"id": "mine", "name": "myfinance-backup-manual.zip", "file": {}},
+        {"id": "notes", "name": "notes.txt", "file": {}},
+        {"id": "dir", "name": "myfinance-backup-20200101-000000.zip", "folder": {}},
     ]
-
     monkeypatch.setattr(onedrive.httpx, "get", lambda *a, **k: _FakeResponse(200, {"value": items}))
-    monkeypatch.setattr(onedrive.httpx, "delete", lambda url, **k: deleted.append(url) or _FakeResponse(204))
+    monkeypatch.setattr(onedrive.httpx, "delete", lambda url, **k: deleted.append(url.rsplit("/", 1)[-1]) or _FakeResponse(204))
 
-    onedrive.apply_retention("token", "/Backups", retention_count=2)
+    onedrive.apply_retention("token", _settings())
 
-    assert len(deleted) == 3
+    assert sorted(deleted) == ["item1", "item2", "item3"]
 
 
-def test_apply_retention_keeps_all_when_under_limit(monkeypatch):
+def test_apply_retention_follows_paging(monkeypatch):
     deleted = []
-    items = [{"id": "item1", "name": "myfinance-backup-20260101-000000.zip", "createdDateTime": "2026-01-01"}]
+    pages = {
+        "first": {"value": [{"id": "a", "name": _name(datetime(2026, 1, 1, 2))}], "@odata.nextLink": "https://graph/next"},
+        "https://graph/next": {"value": [{"id": "b", "name": _name(datetime(2026, 1, 2, 2))},
+                                         {"id": "c", "name": _name(datetime(2026, 1, 3, 2))}]},
+    }
+    monkeypatch.setattr(onedrive.httpx, "get", lambda url, **k: _FakeResponse(200, pages.get(url, pages["first"])))
+    monkeypatch.setattr(onedrive.httpx, "delete", lambda url, **k: deleted.append(url.rsplit("/", 1)[-1]) or _FakeResponse(204))
 
-    monkeypatch.setattr(onedrive.httpx, "get", lambda *a, **k: _FakeResponse(200, {"value": items}))
+    onedrive.apply_retention("token", _settings())
+
+    assert deleted == ["a"]
+
+
+def test_apply_retention_deletes_nothing_when_listing_fails(monkeypatch):
+    deleted = []
+    calls = iter([
+        _FakeResponse(200, {"value": [{"id": "a", "name": _name(datetime(2026, 1, 1, 2))}], "@odata.nextLink": "https://graph/next"}),
+        _FakeResponse(503, text="unavailable"),
+    ])
+    monkeypatch.setattr(onedrive.httpx, "get", lambda *a, **k: next(calls))
     monkeypatch.setattr(onedrive.httpx, "delete", lambda url, **k: deleted.append(url) or _FakeResponse(204))
 
-    onedrive.apply_retention("token", "/Backups", retention_count=30)
+    with pytest.raises(onedrive.OneDriveError):
+        onedrive.apply_retention("token", _settings(keep_daily=0, keep_yearly=1))
 
     assert deleted == []
 

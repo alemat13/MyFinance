@@ -267,7 +267,8 @@ Single global row (`id=1`) driving the OneDrive automatic backup connection (`ba
 | `account_email` | String | Nullable; the connected Microsoft account's email, for display only |
 | `folder_path` | String | Nullable; the OneDrive folder backups are uploaded to, created automatically if missing |
 | `frequency` | String(20) | `daily`, `weekly`, or `monthly`. Default: `daily` |
-| `retention_count` | Integer | Default: 30. How many backup files to keep in the folder; older ones are deleted after each successful run |
+| `keep_daily` / `keep_weekly` / `keep_monthly` / `keep_yearly` | Integer | Defaults: 8 / 5 / 13 / 10 (Alembic `0017`). Grandfather-father-son retention: after each successful run, the newest backup of each of the last N days / ISO weeks / months / years is kept (a file can count for several tiers), plus always the newest backup; every other `myfinance-backup-YYYYMMDD-HHMMSS.zip` in the folder is deleted. 0 turns a tier off; at least one must be above 0. Other files in the folder are never touched |
+| `retention_count` | Integer | Nullable, unused since `0017` (the old single "keep last N" count). Left in place for the old backend still running during a deploy; safe to drop later |
 | `access_token_encrypted` / `refresh_token_encrypted` | Text | Nullable; Fernet-encrypted OAuth tokens, keyed by `ONEDRIVE_TOKEN_ENCRYPTION_KEY` |
 | `token_expires_at` | DateTime | Nullable; when the access token expires, so it's refreshed just-in-time |
 | `last_backup_at` | DateTime | Nullable; also doubles as the "claim" timestamp written before a run starts, so an overlapping scheduler call sees it as no longer due |

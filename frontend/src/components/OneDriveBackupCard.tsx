@@ -13,6 +13,15 @@ import { formatServerTimestamp } from '../utils/datetime'
 import { getParam, patchQueryParams } from '../utils/urlState'
 import { Button, Card, ConfirmDialog, Input, Select, StatusMessage } from './ui'
 
+type Retention = Pick<OneDriveSettings, 'keep_daily' | 'keep_weekly' | 'keep_monthly' | 'keep_yearly'>
+
+const RETENTION_FIELDS: { key: keyof Retention; label: string }[] = [
+  { key: 'keep_daily', label: 'Daily' },
+  { key: 'keep_weekly', label: 'Weekly' },
+  { key: 'keep_monthly', label: 'Monthly' },
+  { key: 'keep_yearly', label: 'Yearly' },
+]
+
 export default function OneDriveBackupCard() {
   const [settings, setSettings] = useState<OneDriveSettings | null>(null)
   const [loading, setLoading] = useState(true)
@@ -23,7 +32,7 @@ export default function OneDriveBackupCard() {
   const [confirmingDisconnect, setConfirmingDisconnect] = useState(false)
   const [folderPath, setFolderPath] = useState('')
   const [frequency, setFrequency] = useState<OneDriveFrequency>('daily')
-  const [retentionCount, setRetentionCount] = useState(30)
+  const [retention, setRetention] = useState<Retention>({ keep_daily: 8, keep_weekly: 5, keep_monthly: 13, keep_yearly: 10 })
   const { showToast } = useToast()
 
   const load = () => {
@@ -33,7 +42,7 @@ export default function OneDriveBackupCard() {
         setSettings(s)
         setFolderPath(s.folder_path ?? '')
         setFrequency(s.frequency)
-        setRetentionCount(s.retention_count)
+        setRetention({ keep_daily: s.keep_daily, keep_weekly: s.keep_weekly, keep_monthly: s.keep_monthly, keep_yearly: s.keep_yearly })
       })
       .catch(err => { console.error(err); setError(err.message) })
       .finally(() => setLoading(false))
@@ -53,9 +62,11 @@ export default function OneDriveBackupCard() {
 
   const save = () => {
     if (!folderPath.trim()) { showToast('Folder path cannot be empty'); return }
-    if (retentionCount < 1 || retentionCount > 365) { showToast('Retention count must be between 1 and 365'); return }
+    const counts = Object.values(retention)
+    if (counts.some(n => n < 0 || n > 365)) { showToast('Each retention count must be between 0 and 365'); return }
+    if (counts.every(n => n === 0)) { showToast('At least one retention count must be above 0'); return }
     setSaving(true)
-    updateOneDriveSettings({ folder_path: folderPath.trim(), frequency, retention_count: retentionCount })
+    updateOneDriveSettings({ folder_path: folderPath.trim(), frequency, ...retention })
       .then(setSettings)
       .catch(err => showToast(err.message))
       .finally(() => setSaving(false))
@@ -116,31 +127,41 @@ export default function OneDriveBackupCard() {
             className="w-full mb-2"
           />
 
-          <div className="flex gap-2 mb-2">
-            <div className="flex-1">
-              <label className="block text-[13px] text-slate-500 dark:text-slate-400 mb-1">Frequency</label>
-              <Select
-                value={frequency}
-                onChange={e => setFrequency(e.target.value as OneDriveFrequency)}
-                className="w-full"
-              >
-                <option value="daily">Daily</option>
-                <option value="weekly">Weekly</option>
-                <option value="monthly">Monthly</option>
-              </Select>
+          <label htmlFor="onedrive-frequency" className="block text-[13px] text-slate-500 dark:text-slate-400 mb-1">Frequency</label>
+          <Select
+            id="onedrive-frequency"
+            value={frequency}
+            onChange={e => setFrequency(e.target.value as OneDriveFrequency)}
+            className="w-full mb-2"
+          >
+            <option value="daily">Daily</option>
+            <option value="weekly">Weekly</option>
+            <option value="monthly">Monthly</option>
+          </Select>
+
+          <fieldset className="mb-2">
+            <legend className="text-[13px] text-slate-500 dark:text-slate-400 mb-1">Backups to keep</legend>
+            <div className="grid grid-cols-4 gap-2">
+              {RETENTION_FIELDS.map(({ key, label }) => (
+                <div key={key}>
+                  <label htmlFor={`onedrive-${key}`} className="block text-[12px] text-slate-500 dark:text-slate-400 mb-0.5">{label}</label>
+                  <Input
+                    id={`onedrive-${key}`}
+                    type="number"
+                    min="0"
+                    max="365"
+                    value={retention[key]}
+                    onChange={e => setRetention(r => ({ ...r, [key]: parseInt(e.target.value, 10) || 0 }))}
+                    className="w-full"
+                  />
+                </div>
+              ))}
             </div>
-            <div className="flex-1">
-              <label className="block text-[13px] text-slate-500 dark:text-slate-400 mb-1">Keep last</label>
-              <Input
-                type="number"
-                min="1"
-                max="365"
-                value={retentionCount}
-                onChange={e => setRetentionCount(parseInt(e.target.value, 10) || 0)}
-                className="w-full"
-              />
-            </div>
-          </div>
+            <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-1">
+              Keeps the newest backup of each of the last N days, weeks, months and years. A
+              backup can count for several of them. Other files in the folder are never touched.
+            </p>
+          </fieldset>
 
           <div className="flex flex-wrap gap-2 mb-2">
             <Button onClick={save} disabled={saving}>

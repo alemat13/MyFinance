@@ -679,7 +679,10 @@ export interface OneDriveSettings {
   account_email: string | null
   folder_path: string | null
   frequency: OneDriveFrequency
-  retention_count: number
+  keep_daily: number
+  keep_weekly: number
+  keep_monthly: number
+  keep_yearly: number
   last_backup_at: string | null
   last_backup_status: 'success' | 'failed' | null
   last_backup_error: string | null
@@ -688,7 +691,10 @@ export interface OneDriveSettings {
 export interface OneDriveSettingsUpdate {
   folder_path: string
   frequency: OneDriveFrequency
-  retention_count: number
+  keep_daily: number
+  keep_weekly: number
+  keep_monthly: number
+  keep_yearly: number
 }
 
 export interface OneDriveBackupRunResult {

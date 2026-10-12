@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 import onedrive as onedrive_module
 from database import get_db
-from rules import validate_onedrive_folder_path, validate_onedrive_retention_count
+from rules import validate_onedrive_folder_path, validate_onedrive_retention
 from schemas import OneDriveBackupRunResult, OneDriveSettingsOut, OneDriveSettingsUpdate
 
 router = APIRouter(prefix="/api/onedrive")
@@ -39,11 +39,14 @@ def get_settings(db: Session = Depends(get_db)):
 @router.put("/settings", response_model=OneDriveSettingsOut)
 def update_settings(data: OneDriveSettingsUpdate, db: Session = Depends(get_db)):
     validate_onedrive_folder_path(data.folder_path)
-    validate_onedrive_retention_count(data.retention_count)
+    validate_onedrive_retention(data.keep_daily, data.keep_weekly, data.keep_monthly, data.keep_yearly)
     settings = onedrive_module.get_or_create_settings(db)
     settings.folder_path = data.folder_path
     settings.frequency = data.frequency
-    settings.retention_count = data.retention_count
+    settings.keep_daily = data.keep_daily
+    settings.keep_weekly = data.keep_weekly
+    settings.keep_monthly = data.keep_monthly
+    settings.keep_yearly = data.keep_yearly
     db.commit()
     db.refresh(settings)
     return settings
