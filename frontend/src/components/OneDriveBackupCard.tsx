@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import {
-  OneDriveFrequency,
   OneDriveSettings,
   disconnectOneDrive,
   fetchOneDriveSettings,
@@ -11,7 +10,7 @@ import {
 import { useToast } from '../context/ToastContext'
 import { formatServerTimestamp } from '../utils/datetime'
 import { getParam, patchQueryParams } from '../utils/urlState'
-import { Button, Card, ConfirmDialog, Input, Select, StatusMessage } from './ui'
+import { Button, Card, ConfirmDialog, Input, StatusMessage } from './ui'
 
 type Retention = Pick<OneDriveSettings, 'keep_daily' | 'keep_weekly' | 'keep_monthly' | 'keep_yearly'>
 
@@ -31,7 +30,6 @@ export default function OneDriveBackupCard() {
   const [disconnecting, setDisconnecting] = useState(false)
   const [confirmingDisconnect, setConfirmingDisconnect] = useState(false)
   const [folderPath, setFolderPath] = useState('')
-  const [frequency, setFrequency] = useState<OneDriveFrequency>('daily')
   const [retention, setRetention] = useState<Retention>({ keep_daily: 8, keep_weekly: 5, keep_monthly: 13, keep_yearly: 10 })
   const { showToast } = useToast()
 
@@ -41,7 +39,6 @@ export default function OneDriveBackupCard() {
       .then(s => {
         setSettings(s)
         setFolderPath(s.folder_path ?? '')
-        setFrequency(s.frequency)
         setRetention({ keep_daily: s.keep_daily, keep_weekly: s.keep_weekly, keep_monthly: s.keep_monthly, keep_yearly: s.keep_yearly })
       })
       .catch(err => { console.error(err); setError(err.message) })
@@ -66,7 +63,7 @@ export default function OneDriveBackupCard() {
     if (counts.some(n => n < 0 || n > 365)) { showToast('Each retention count must be between 0 and 365'); return }
     if (counts.every(n => n === 0)) { showToast('At least one retention count must be above 0'); return }
     setSaving(true)
-    updateOneDriveSettings({ folder_path: folderPath.trim(), frequency, ...retention })
+    updateOneDriveSettings({ folder_path: folderPath.trim(), ...retention })
       .then(setSettings)
       .catch(err => showToast(err.message))
       .finally(() => setSaving(false))
@@ -101,8 +98,8 @@ export default function OneDriveBackupCard() {
     <Card className="p-3 max-w-md mb-4">
       <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100 mb-1">OneDrive Automatic Backup</h3>
       <p className="text-[13px] text-slate-500 dark:text-slate-400 mb-2">
-        Connect a OneDrive account to automatically upload a backup to a chosen folder on a
-        schedule. Restoring a backup is still done manually via Import above.
+        Connect a OneDrive account to automatically upload a backup to a chosen folder once a
+        day. Restoring a backup is still done manually via Import above.
       </p>
 
       <StatusMessage loading={loading} />
@@ -126,18 +123,6 @@ export default function OneDriveBackupCard() {
             placeholder="/MyFinance Backups"
             className="w-full mb-2"
           />
-
-          <label htmlFor="onedrive-frequency" className="block text-[13px] text-slate-500 dark:text-slate-400 mb-1">Frequency</label>
-          <Select
-            id="onedrive-frequency"
-            value={frequency}
-            onChange={e => setFrequency(e.target.value as OneDriveFrequency)}
-            className="w-full mb-2"
-          >
-            <option value="daily">Daily</option>
-            <option value="weekly">Weekly</option>
-            <option value="monthly">Monthly</option>
-          </Select>
 
           <fieldset className="mb-2">
             <legend className="text-[13px] text-slate-500 dark:text-slate-400 mb-1">Backups to keep</legend>

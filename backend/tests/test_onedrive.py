@@ -21,7 +21,7 @@ def test_get_settings_defaults(client):
     assert response.status_code == 200
     data = response.json()
     assert data["connected"] is False
-    assert data["frequency"] == "daily"
+    assert "frequency" not in data
     assert (data["keep_daily"], data["keep_weekly"], data["keep_monthly"], data["keep_yearly"]) == (8, 5, 13, 10)
     assert data["account_email"] is None
 
@@ -29,23 +29,22 @@ def test_get_settings_defaults(client):
 RETENTION = {"keep_daily": 8, "keep_weekly": 5, "keep_monthly": 13, "keep_yearly": 10}
 
 
-def test_put_settings_updates_folder_frequency_retention(client):
+def test_put_settings_updates_folder_and_retention(client):
     response = client.put(
         "/api/onedrive/settings",
-        json={"folder_path": "/MyFinance Backups", "frequency": "weekly",
+        json={"folder_path": "/MyFinance Backups",
               "keep_daily": 7, "keep_weekly": 4, "keep_monthly": 12, "keep_yearly": 0},
     )
     assert response.status_code == 200
     data = response.json()
     assert data["folder_path"] == "/MyFinance Backups"
-    assert data["frequency"] == "weekly"
     assert (data["keep_daily"], data["keep_weekly"], data["keep_monthly"], data["keep_yearly"]) == (7, 4, 12, 0)
 
 
 def test_put_settings_empty_folder_rejected(client):
     response = client.put(
         "/api/onedrive/settings",
-        json={"folder_path": "   ", "frequency": "daily", **RETENTION},
+        json={"folder_path": "   ", **RETENTION},
     )
     assert response.status_code == 422
 
@@ -58,15 +57,7 @@ def test_put_settings_empty_folder_rejected(client):
 def test_put_settings_retention_out_of_range_rejected(client, override):
     response = client.put(
         "/api/onedrive/settings",
-        json={"folder_path": "/Backups", "frequency": "daily", **RETENTION, **override},
-    )
-    assert response.status_code == 422
-
-
-def test_put_settings_invalid_frequency_rejected(client):
-    response = client.put(
-        "/api/onedrive/settings",
-        json={"folder_path": "/Backups", "frequency": "yearly", **RETENTION},
+        json={"folder_path": "/Backups", **RETENTION, **override},
     )
     assert response.status_code == 422
 
@@ -185,27 +176,20 @@ def test_run_backup_fails_cleanly_with_no_folder_configured(db, monkeypatch):
     assert "folder" in settings.last_backup_error.lower()
 
 
-@pytest.mark.parametrize("frequency,days,due", [
-    ("daily", 0, False),
-    ("daily", 1, True),
-    ("weekly", 6, False),
-    ("weekly", 7, True),
-    ("monthly", 29, False),
-    ("monthly", 30, True),
-])
-def test_is_backup_due_frequency_math(frequency, days, due):
+@pytest.mark.parametrize("hours,due", [(0, False), (19, False), (20, True), (24, True), (24 * 7, True)])
+def test_is_backup_due_once_a_day(hours, due):
     now = datetime.now(timezone.utc)
-    settings = OneDriveBackupSettings(connected=True, frequency=frequency, last_backup_at=now - timedelta(days=days))
+    settings = OneDriveBackupSettings(connected=True, last_backup_at=now - timedelta(hours=hours))
     assert onedrive.is_backup_due(settings, now=now) is due
 
 
 def test_is_backup_due_false_when_not_connected():
-    settings = OneDriveBackupSettings(connected=False, frequency="daily", last_backup_at=None)
+    settings = OneDriveBackupSettings(connected=False, last_backup_at=None)
     assert onedrive.is_backup_due(settings) is False
 
 
 def test_is_backup_due_true_when_never_backed_up():
-    settings = OneDriveBackupSettings(connected=True, frequency="daily", last_backup_at=None)
+    settings = OneDriveBackupSettings(connected=True, last_backup_at=None)
     assert onedrive.is_backup_due(settings) is True
 
 

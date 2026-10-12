@@ -672,13 +672,10 @@ export async function importDatabase(file: File, mode: BackupImportMode): Promis
   return res.json()
 }
 
-export type OneDriveFrequency = 'daily' | 'weekly' | 'monthly'
-
 export interface OneDriveSettings {
   connected: boolean
   account_email: string | null
   folder_path: string | null
-  frequency: OneDriveFrequency
   keep_daily: number
   keep_weekly: number
   keep_monthly: number
@@ -690,7 +687,6 @@ export interface OneDriveSettings {
 
 export interface OneDriveSettingsUpdate {
   folder_path: string
-  frequency: OneDriveFrequency
   keep_daily: number
   keep_weekly: number
   keep_monthly: number

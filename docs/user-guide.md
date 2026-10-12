@@ -769,7 +769,7 @@ from now on.
 ### OneDrive Automatic Backup
 
 Connects a OneDrive account so a backup (the same archive **Export Backup** produces) is
-uploaded automatically on a schedule, without you having to remember to export one
+uploaded automatically once a day, without you having to remember to export one
 yourself. There's no restore-from-OneDrive feature — if you ever need to restore one of
 these backups, download it from OneDrive yourself and use **Import Backup** above, same
 as any other backup file.
@@ -778,7 +778,6 @@ as any other backup file.
   account's email is shown.
 - **Folder path** is where backups are uploaded (e.g. `/MyFinance Backups`) — it's
   created automatically if it doesn't already exist.
-- **Frequency** is Daily, Weekly, or Monthly.
 - **Backups to keep** works like snapshots on a NAS, with four counts: **Daily**,
   **Weekly**, **Monthly** and **Yearly** (8, 5, 13 and 10 by default). After each
   successful backup, the app keeps the newest backup of each of the last 8 days, the last

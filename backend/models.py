@@ -257,7 +257,6 @@ class OneDriveBackupSettings(Base):
     connected = Column(Boolean, nullable=False, default=False)
     account_email = Column(String, nullable=True)
     folder_path = Column(String, nullable=True)
-    frequency = Column(String(20), nullable=False, default="daily")  # 'daily' | 'weekly' | 'monthly'
     # Grandfather-father-son retention (see onedrive.select_backups_to_keep):
     # how many days, ISO weeks, months and years keep their newest backup.
     keep_daily = Column(Integer, nullable=False, default=8)

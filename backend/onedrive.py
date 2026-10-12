@@ -26,7 +26,10 @@ SCOPE = "Files.ReadWrite offline_access User.Read"
 # Single global connection, always this row.
 SETTINGS_ID = 1
 
-_FREQUENCY_DAYS = {"daily": 1, "weekly": 7, "monthly": 30}
+# One backup a day; how many are kept is the retention settings' job. A few
+# hours short of 24 so a daily scheduler firing a little earlier than the
+# previous run (last_backup_at is the claim time) doesn't skip a whole day.
+BACKUP_INTERVAL = timedelta(hours=20)
 
 
 class OneDriveError(Exception):
@@ -275,7 +278,7 @@ def is_backup_due(settings: OneDriveBackupSettings, now: datetime | None = None)
     last = settings.last_backup_at
     if last.tzinfo is None:
         last = last.replace(tzinfo=timezone.utc)
-    return now - last >= timedelta(days=_FREQUENCY_DAYS[settings.frequency])
+    return now - last >= BACKUP_INTERVAL
 
 
 def run_backup(db: Session, settings: OneDriveBackupSettings) -> None:

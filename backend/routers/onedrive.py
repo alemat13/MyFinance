@@ -42,7 +42,6 @@ def update_settings(data: OneDriveSettingsUpdate, db: Session = Depends(get_db))
     validate_onedrive_retention(data.keep_daily, data.keep_weekly, data.keep_monthly, data.keep_yearly)
     settings = onedrive_module.get_or_create_settings(db)
     settings.folder_path = data.folder_path
-    settings.frequency = data.frequency
     settings.keep_daily = data.keep_daily
     settings.keep_weekly = data.keep_weekly
     settings.keep_monthly = data.keep_monthly

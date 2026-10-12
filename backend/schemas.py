@@ -846,7 +846,6 @@ class OneDriveSettingsOut(BaseModel):
     connected: bool
     account_email: str | None = None
     folder_path: str | None = None
-    frequency: Literal["daily", "weekly", "monthly"]
     keep_daily: int
     keep_weekly: int
     keep_monthly: int
@@ -859,7 +858,6 @@ class OneDriveSettingsOut(BaseModel):
 
 class OneDriveSettingsUpdate(BaseModel):
     folder_path: str
-    frequency: Literal["daily", "weekly", "monthly"]
     keep_daily: int
     keep_weekly: int
     keep_monthly: int

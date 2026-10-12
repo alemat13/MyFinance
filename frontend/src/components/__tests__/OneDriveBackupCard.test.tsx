@@ -29,7 +29,6 @@ const notConnected = {
   connected: false,
   account_email: null,
   folder_path: null,
-  frequency: 'daily' as const,
   keep_daily: 8,
   keep_weekly: 5,
   keep_monthly: 13,
@@ -43,7 +42,6 @@ const connected = {
   connected: true,
   account_email: 'user@example.com',
   folder_path: '/MyFinance Backups',
-  frequency: 'weekly' as const,
   keep_daily: 7,
   keep_weekly: 4,
   keep_monthly: 12,
@@ -92,7 +90,7 @@ test('renders connected state with account email and settings', async () => {
   expect(screen.getByText(/Last backup:/)).toBeInTheDocument()
 })
 
-test('saves updated folder/frequency/retention', async () => {
+test('saves updated folder/retention', async () => {
   mockFetchOneDriveSettings.mockResolvedValue(connected)
   mockUpdateOneDriveSettings.mockResolvedValue({ ...connected, folder_path: '/New Folder', keep_yearly: 10 })
 
@@ -106,7 +104,6 @@ test('saves updated folder/frequency/retention', async () => {
   await waitFor(() => {
     expect(mockUpdateOneDriveSettings).toHaveBeenCalledWith({
       folder_path: '/New Folder',
-      frequency: 'weekly',
       keep_daily: 7,
       keep_weekly: 4,
       keep_monthly: 12,
