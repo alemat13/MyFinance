@@ -264,7 +264,7 @@ function RuleEditor({ rule, draft, accounts, categories, allUsers, globalWeights
               </Select>
             ) : (
               <div className="text-xs text-slate-400 mt-1">
-                Left off, a transaction this rule changes is left not reconciled, so you can review it.
+                Left off, the rule doesn't change whether a transaction is reconciled.
               </div>
             )}
           </div>

@@ -129,8 +129,7 @@ export default function RulesApplyModal({
             {preview && (
               <p className="text-[13px] text-slate-600 dark:text-slate-300">
                 The rules would change {preview.changed_count} of these {items.length} transaction
-                {items.length === 1 ? '' : 's'}. A row they change is left unreconciled, unless a rule marks it
-                reconciled.
+                {items.length === 1 ? '' : 's'}. Whether a row is reconciled only changes if a rule says so.
               </p>
             )}
 

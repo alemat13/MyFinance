@@ -811,8 +811,9 @@ same weights editor as Bulk Edit). The first four are looked up each time the ru
 not copied into the rule, so changing the global split in Split Weights changes what every
 rule using it applies; when that split isn't set for the transaction (an account with no
 split of its own, say), the rule leaves the split as it is. A rule can't move a transaction to another account or delete it: those
-stay hand-only. A transaction a rule changes is left **not reconciled**, so you can review
-it, unless the rule itself marks it reconciled.
+stay hand-only. A rule doesn't touch whether a transaction is reconciled unless it has the
+**Mark as reconciled / not reconciled** action: renaming a transaction you already
+reconciled leaves it reconciled.
 
 **Where rules run.** Every enabled rule runs:
 
