@@ -963,7 +963,12 @@ export interface RuleActions {
   reconciled?: boolean | null
   split_weights?: { user_id: number; weight: number }[] | null
   split_source?: SplitSource | null
+  /** A weight tier read when the rule runs (not copied into the rule), so a
+   *  later change to that tier carries through. Exclusive with split_weights. */
+  split_tier?: SplitTier | null
 }
+
+export type SplitTier = 'global' | 'account' | 'category' | 'default'
 
 export interface RuleInput {
   name: string

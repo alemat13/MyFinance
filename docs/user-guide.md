@@ -792,8 +792,13 @@ meant. A condition on an empty field never matches (a transaction with no memo i
 caught by "Memo is not …").
 
 **Actions** are one or more of: **Rename payee**, **Set category**, **Shift accounting
-month**, **Set split** (the same weights editor as Bulk Edit), and **Mark as reconciled /
-not reconciled**. A rule can't move a transaction to another account or delete it: those
+month**, **Set split**, and **Mark as reconciled / not reconciled**. **Set split** offers
+the **Global split**, the **Default split** (the account's split, else the category's, else
+the global one), the **account's** or the **category's** split, or **Fixed weights** (the
+same weights editor as Bulk Edit). The first four are looked up each time the rule runs,
+not copied into the rule, so changing the global split in Split Weights changes what every
+rule using it applies; when that split isn't set for the transaction (an account with no
+split of its own, say), the rule leaves the split as it is. A rule can't move a transaction to another account or delete it: those
 stay hand-only. A transaction a rule changes is left **not reconciled**, so you can review
 it, unless the rule itself marks it reconciled.
 
