@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import {
-  Account, Category, ImportDetectResponse, ImportPreviewRow, TransactionCreate,
-  fetchAccounts, fetchCategories, detectImport, previewImport, commitImport,
+  Account, Category, ImportCommitRow, ImportDetectResponse, ImportPreviewRow, User,
+  fetchAccounts, fetchCategories, fetchUsers, detectImport, previewImport, commitImport,
 } from '../api/client'
+import { describeOutcome } from '../utils/rules'
 import { Button, Input, Select, Card, Table, Thead, Tbody, Tr, Th, Td, Badge, StatusMessage, BackButton } from './ui'
 import AccountPicker from './AccountPicker'
 
@@ -17,6 +18,7 @@ export default function CsvImportPage({ onBack, selectedUserId }: Props) {
   const [step, setStep] = useState<'setup' | 'confirm' | 'review' | 'done'>('setup')
   const [accounts, setAccounts] = useState<Account[]>([])
   const [categories, setCategories] = useState<Category[]>([])
+  const [users, setUsers] = useState<User[]>([])
   const [error, setError] = useState<string | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
   const [createdCount, setCreatedCount] = useState(0)
@@ -41,11 +43,14 @@ export default function CsvImportPage({ onBack, selectedUserId }: Props) {
   const [skipped, setSkipped] = useState<Set<number>>(new Set())
   const [rowCategoryOverride, setRowCategoryOverride] = useState<Record<number, number>>({})
   const [rowAccountOverride, setRowAccountOverride] = useState<Record<number, number>>({})
+  // Whether the automatic rules' changes are committed. On by default, like
+  // at a bank sync; switching it off commits the file as it is.
+  const [rulesOn, setRulesOn] = useState(true)
   const [committing, setCommitting] = useState(false)
 
   useEffect(() => {
-    Promise.all([fetchAccounts(), fetchCategories()])
-      .then(([accts, cats]) => { setAccounts(accts); setCategories(cats) })
+    Promise.all([fetchAccounts(), fetchCategories(), fetchUsers()])
+      .then(([accts, cats, us]) => { setAccounts(accts); setCategories(cats); setUsers(us) })
       .catch(err => setError(err.message))
   }, [])
 
@@ -97,19 +102,26 @@ export default function CsvImportPage({ onBack, selectedUserId }: Props) {
         setSkipped(new Set())
         setRowCategoryOverride({})
         setRowAccountOverride({})
+        setRulesOn(true)
         setStep('review')
       })
       .catch(err => setFormError(err.message))
   }
 
-  const resolvedCategoryId = (row: ImportPreviewRow) => rowCategoryOverride[row.row_number] ?? row.category_id
+  const ruleOf = (row: ImportPreviewRow) => (rulesOn ? row.rules : null)
+  const ruleCategoryId = (row: ImportPreviewRow) => ruleOf(row)?.category_id ?? null
+  const resolvedCategoryId = (row: ImportPreviewRow) =>
+    rowCategoryOverride[row.row_number] ?? ruleCategoryId(row) ?? row.category_id
+  const resolvedPayee = (row: ImportPreviewRow) => ruleOf(row)?.payee ?? row.payee
   const resolvedAccountId = (row: ImportPreviewRow) => rowAccountOverride[row.row_number] ?? row.account_id
 
   // A row whose category no longer matches what the file said — the "after"
   // half of the before/after the review table highlights.
   const isChanged = (row: ImportPreviewRow) => resolvedCategoryId(row) !== row.category_id
-  const suggestable = rows.filter(r => r.status !== 'error' && r.suggested_category_id !== null)
+  // A rule outranks the model, so a row a rule files is not offered a suggestion.
+  const suggestable = rows.filter(r => r.status !== 'error' && r.suggested_category_id !== null && !ruleCategoryId(r))
   const withoutCategory = suggestable.filter(r => !r.category_id)
+  const ruleRows = rows.filter(r => r.status !== 'error' && r.rules)
 
   const useSuggestions = (target: ImportPreviewRow[]) => {
     const next = { ...rowCategoryOverride }
@@ -131,14 +143,21 @@ export default function CsvImportPage({ onBack, selectedUserId }: Props) {
 
   const commit = () => {
     setFormError(null)
-    const toCreate: TransactionCreate[] = activeRows.map(r => ({
-      date: r.transaction_date as string,
-      payee: r.payee as string,
-      memo: r.memo,
-      amount: r.amount as number,
-      account_id: resolvedAccountId(r),
-      category_id: resolvedCategoryId(r) ?? null,
-    }))
+    const toCreate: ImportCommitRow[] = activeRows.map(r => {
+      const rule = ruleOf(r)
+      return {
+        date: r.transaction_date as string,
+        payee: resolvedPayee(r) as string,
+        raw_label: r.payee,
+        memo: r.memo,
+        amount: r.amount as number,
+        account_id: resolvedAccountId(r),
+        category_id: resolvedCategoryId(r) ?? null,
+        ...(rule?.accounting_month_offset != null ? { accounting_month_offset: rule.accounting_month_offset } : {}),
+        ...(rule?.reconciled != null ? { reconciled: rule.reconciled } : {}),
+        ...(rule?.split_weights ? { split_weights: rule.split_weights, split_source: rule.split_source ?? 'custom' } : {}),
+      }
+    })
     setCommitting(true)
     commitImport(toCreate, selectedUserId)
       .then(res => {
@@ -318,6 +337,14 @@ export default function CsvImportPage({ onBack, selectedUserId }: Props) {
 
       {step === 'review' && (
         <div>
+          {ruleRows.length > 0 && (
+            <Card className="p-3 mb-3">
+              <label className="flex gap-2 items-center text-[13px] text-slate-600 dark:text-slate-300">
+                <input type="checkbox" checked={rulesOn} onChange={e => setRulesOn(e.target.checked)} />
+                Apply automatic rules: they change {ruleRows.length} row{ruleRows.length === 1 ? '' : 's'}.
+              </label>
+            </Card>
+          )}
           {suggestable.length > 0 && (
             <Card className="p-3 mb-3">
               <div className="flex gap-2 flex-wrap items-center">
@@ -354,6 +381,7 @@ export default function CsvImportPage({ onBack, selectedUserId }: Props) {
                   <Th>Account</Th>
                   <Th>Category</Th>
                   {suggestable.length > 0 && <Th>Suggested</Th>}
+                  {ruleRows.length > 0 && rulesOn && <Th>Rules</Th>}
                   <Th>Status</Th>
                 </Tr>
               </Thead>
@@ -376,7 +404,12 @@ export default function CsvImportPage({ onBack, selectedUserId }: Props) {
                         />
                       </Td>
                       <Td>{r.transaction_date ?? '—'}</Td>
-                      <Td>{r.payee ?? '—'}</Td>
+                      <Td className={ruleOf(r)?.payee ? 'bg-amber-50 dark:bg-amber-900/20' : ''}>
+                        {resolvedPayee(r) ?? '—'}
+                        {ruleOf(r)?.payee && (
+                          <div className="mt-1 text-[12px] text-slate-500 dark:text-slate-400">was {r.payee}</div>
+                        )}
+                      </Td>
                       <Td className="text-right">{r.amount ?? '—'}</Td>
                       <Td>
                         {status === 'error' ? (
@@ -435,6 +468,20 @@ export default function CsvImportPage({ onBack, selectedUserId }: Props) {
                                 </Button>
                               )}
                             </div>
+                          ) : (
+                            <span className="text-slate-400">—</span>
+                          )}
+                        </Td>
+                      )}
+                      {ruleRows.length > 0 && rulesOn && (
+                        <Td className="text-[13px]">
+                          {r.rules ? (
+                            <>
+                              {describeOutcome(r.rules, users)
+                                .filter(line => !line.startsWith('Payee') && !line.startsWith('Category'))
+                                .map(line => <div key={line}>{line}</div>)}
+                              <div className="text-[12px] text-slate-500 dark:text-slate-400">{r.rules.rule_names.join(', ')}</div>
+                            </>
                           ) : (
                             <span className="text-slate-400">—</span>
                           )}

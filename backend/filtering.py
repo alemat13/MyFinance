@@ -9,6 +9,7 @@ from schemas import DATE_FIELDS, TEXT_FIELDS, FilterCondition
 FIELD_COLUMN_MAP = {
     "payee": Transaction.payee,
     "memo": Transaction.memo,
+    "raw_label": Transaction.raw_label,
     "amount": Transaction.amount,
     "date": Transaction.date,
     "account_id": Transaction.account_id,

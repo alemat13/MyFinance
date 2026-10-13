@@ -14,14 +14,14 @@ from database import Base
 from models import (
     Account, Category, Transaction, User, AccountUser,
     CategorySplit, GlobalSplitWeight, AccountSplitWeight, TransactionSplit, TransactionHistory,
-    BankConnection, BankAccountLink, CategorizerModel, OneDriveBackupSettings,
+    BankConnection, BankAccountLink, CategorizerModel, OneDriveBackupSettings, TransactionRule,
 )
 from schemas import (
     DatabaseExport, ImportSummary,
     UserExport, AccountExport, CategoryExport, AccountUserExport,
     CategorySplitExport, GlobalSplitWeightExport, AccountSplitWeightExport, TransactionExport,
     TransactionSplitExport, TransactionHistoryExport,
-    BankConnectionExport, BankAccountLinkExport,
+    BankConnectionExport, BankAccountLinkExport, TransactionRuleExport,
 )
 
 SCHEMA_VERSION = 1
@@ -31,7 +31,7 @@ ZIP_ENTRY_NAME = "backup.json"
 # resyncing after an import inserts explicit id values.
 _SERIAL_PK_TABLES = [
     "users", "accounts", "categories", "transactions", "transaction_history",
-    "bank_connections", "bank_account_links",
+    "bank_connections", "bank_account_links", "transaction_rules",
 ]
 
 # Survive an overwrite restore untouched, and are never in an archive. The
@@ -85,6 +85,7 @@ def build_export(db: Session) -> DatabaseExport:
         transaction_history=[TransactionHistoryExport.model_validate(h) for h in db.query(TransactionHistory).all()],
         bank_connections=[BankConnectionExport.model_validate(c) for c in db.query(BankConnection).all()],
         bank_account_links=[BankAccountLinkExport.model_validate(l) for l in db.query(BankAccountLink).all()],
+        transaction_rules=[TransactionRuleExport.model_validate(r) for r in db.query(TransactionRule).all()],
     )
 
 
@@ -225,6 +226,10 @@ def import_database(db: Session, data: DatabaseExport, mode: Literal["overwrite"
         session.add_all(BankConnection(**c.model_dump()) for c in bank_connections)
         session.flush()
         session.add_all(BankAccountLink(**l.model_dump()) for l in bank_account_links)
+        transaction_rules = data.transaction_rules or []
+        session.add_all(
+            TransactionRule(**r.model_dump(exclude_none=True)) for r in transaction_rules
+        )
         # Bulk restore bypasses every per-site invalidation by design. A no-op
         # here in practice (drop_all/create_all already emptied the table),
         # kept so the restore stays correct if that ever changes.
@@ -253,6 +258,7 @@ def import_database(db: Session, data: DatabaseExport, mode: Literal["overwrite"
         transaction_history=len(data.transaction_history),
         bank_connections=len(bank_connections),
         bank_account_links=len(bank_account_links),
+        transaction_rules=len(transaction_rules),
     )
 
 

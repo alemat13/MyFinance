@@ -54,6 +54,10 @@ class Candidate:
     account_id: int | None = None
     raw_transaction_code: str | None = None
     category_id: int | None = None
+    # Read by the automatic rules, which the import preview runs on the same shim.
+    date: object = None
+    accounting_month_offset: int = 0
+    reconciled: bool = False
 
 
 def load_active_model(db: Session) -> tuple[CategorizerModel, "categorizer._Model"] | None:
@@ -73,7 +77,7 @@ def load_active_model(db: Session) -> tuple[CategorizerModel, "categorizer._Mode
 
 
 def file_rows(db: Session, transactions: list, *, actor_user_id: int | None = None) -> int:
-    """Categorise and rename the rows the active model has something to say about.
+    """Categorise the uncategorised rows with the active model.
 
     For the feeds that create transactions nobody has looked at yet. Returns
     how many rows were changed; 0 when no model is active, which is the normal
@@ -98,11 +102,7 @@ def file_rows(db: Session, transactions: list, *, actor_user_id: int | None = No
     predictions = model.predict(rows)
     changed = 0
     for transaction, (category_id, _confidence) in zip(rows, predictions):
-        payee = model.payee_memory.suggest(transaction) if model.payee_memory else None
-        fields: dict[str, object] = {"category_id": category_id}
-        if payee and payee != transaction.payee:
-            fields["payee"] = payee
-        if write_fields(db, transaction, fields, actor_user_id):
+        if write_fields(db, transaction, {"category_id": category_id}, actor_user_id):
             changed += 1
 
     if changed:

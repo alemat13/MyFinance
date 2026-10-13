@@ -49,7 +49,6 @@ const readyMetrics = {
     { threshold: 0.8, coverage: 0.618, accuracy: 0.944, parent_accuracy: 0.968 },
   ],
   baseline: { coverage: 0.583, accuracy_on_covered: 0.87, accuracy: 0.544 },
-  payee: { tested_rows: 2202, merchants: 412, coverage: 0.237, precision: 0.91, would_change: 180 },
 }
 
 const activeModel = {
@@ -98,7 +97,7 @@ test('counts the transactions each selection matches', async () => {
   await waitFor(() => expect(screen.getAllByText(/30,088 transactions selected/).length).toBe(2))
 })
 
-test('trains with both selections and the payee settings, then shows the score', async () => {
+test('trains with both selections, then shows the score', async () => {
   const trained = { ...inactiveModel, id: 9, created_at: '2026-10-09T20:00:00' }
   mockTrainCategorizerModel.mockResolvedValue(trained)
   mockFetchCategorizerModels.mockResolvedValueOnce([]).mockResolvedValue([trained])
@@ -114,16 +113,13 @@ test('trains with both selections and the payee settings, then shows the score',
   expect(body.train.conditions[0]).toMatchObject({ field: 'date', operator: 'before' })
   expect(body.test.conditions[0]).toMatchObject({ field: 'date', operator: 'between' })
   expect(body.note).toBe('first try')
-  expect(body.payee_min_occurrences).toBe(2)
-  expect(body.payee_min_stability).toBe(0.9)
+  expect(body.payee_min_occurrences).toBeUndefined()
 
   // Scoped to the score panel, since the models table repeats the accuracy.
   const score = within(await screen.findByRole('region', { name: 'Model score' }))
   expect(score.getByText('74.0%')).toBeInTheDocument()
   expect(score.getByText('54.4%')).toBeInTheDocument()
   expect(score.getByText('94.4%')).toBeInTheDocument()
-  expect(score.getByText(/proposes/)).toHaveTextContent('23.7%')
-  expect(score.getByText(/proposes/)).toHaveTextContent('91.0%')
 })
 
 test('a model lands inactive and is activated in a separate step', async () => {
@@ -183,17 +179,6 @@ test('shows why a failed model has no score', async () => {
   renderWithProviders(<CategorizerPage onBack={() => {}} />)
   expect(await screen.findByText(/Training failed: ValueError: no trainable rows/)).toBeInTheDocument()
   expect(screen.getByText('Failed')).toBeInTheDocument()
-})
-
-test('says so when no merchant was named consistently enough', async () => {
-  const noPayees = {
-    ...inactiveModel, id: 12,
-    metrics: { ...readyMetrics, payee: { tested_rows: 10, merchants: 0 } },
-  }
-  mockFetchCategorizerModels.mockResolvedValue([noPayees])
-
-  renderWithProviders(<CategorizerPage onBack={() => {}} />)
-  expect(await screen.findByText(/No merchant was named consistently enough/)).toBeInTheDocument()
 })
 
 test('selections carry no user_id, since one model serves the whole household', async () => {

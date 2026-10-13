@@ -6,7 +6,7 @@ import {
   fetchCategorizerModels, searchTransactions, trainCategorizerModel,
 } from '../api/client'
 import TransactionConditions, { ConditionRow, conditionsToFilters } from './TransactionConditions'
-import { BackButton, Badge, Button, Card, ConfirmDialog, Input, Select, StatusMessage, Table, Thead, Tbody, Tr, Th, Td } from './ui'
+import { BackButton, Badge, Button, Card, ConfirmDialog, Input, StatusMessage, Table, Thead, Tbody, Tr, Th, Td } from './ui'
 import { useToast } from '../context/ToastContext'
 import { formatServerTimestamp } from '../utils/datetime'
 
@@ -54,7 +54,6 @@ function statusBadge(model: CategorizerModel) {
  *  argument for activating a model at all. */
 function ModelResults({ model }: { model: CategorizerModel }) {
   const metrics: CategorizerMetrics = model.metrics ?? {}
-  const payee = metrics.payee ?? {}
   const baseline = metrics.baseline ?? {}
 
   if (model.status === 'failed') {
@@ -120,17 +119,6 @@ function ModelResults({ model }: { model: CategorizerModel }) {
         </div>
       )}
 
-      <div>
-        <h4 className="text-sm font-medium mb-1">Names for recurring merchants</h4>
-        <p className="text-sm text-slate-600 dark:text-slate-300">
-          {payee.merchants
-            ? <>Remembers a name for {payee.merchants.toLocaleString()} merchants. On the test transactions it proposes
-                one for {pct(payee.coverage)} of them and gets it exactly right {pct(payee.precision)} of the time, and it
-                stays silent on the rest.</>
-            : <>No merchant was named consistently enough to remember. Lower the two settings below, or train on a longer
-                period.</>}
-        </p>
-      </div>
     </div>
   )
 }
@@ -153,8 +141,6 @@ export default function CategorizerPage({ onBack }: Props) {
   const [testCount, setTestCount] = useState<Count>(null)
 
   const [note, setNote] = useState('')
-  const [minOccurrences, setMinOccurrences] = useState('2')
-  const [minStability, setMinStability] = useState('0.9')
 
   const [training, setTraining] = useState(false)
   const [trainError, setTrainError] = useState<string | null>(null)
@@ -207,8 +193,6 @@ export default function CategorizerPage({ onBack }: Props) {
       train: selection(trainConditions, trainMatch),
       test: selection(testConditions, testMatch),
       note: note.trim() || undefined,
-      payee_min_occurrences: parseInt(minOccurrences, 10) || 2,
-      payee_min_stability: parseFloat(minStability) || 0.9,
     })
       .then(model => {
         setShownModelId(model.id)
@@ -251,8 +235,8 @@ export default function CategorizerPage({ onBack }: Props) {
       <BackButton onClick={onBack} />
       <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-1">Auto-categorization</h2>
       <p className="text-sm text-slate-600 dark:text-slate-300 mb-4">
-        Learns from the transactions you have already filed, so it can propose a category for the ones you have not —
-        and the name you yourself gave a merchant you see every month. Training does not change a single transaction:
+        Learns from the transactions you have already filed, so it can propose a category for the ones you have not.
+        To rename payees, use Rules. Training does not change a single transaction:
         it produces a model, tells you how well it scored, and leaves activating it to you.
       </p>
 
@@ -313,28 +297,7 @@ export default function CategorizerPage({ onBack }: Props) {
             <div className="mb-1">Note (optional)</div>
             <Input value={note} onChange={e => setNote(e.target.value)} placeholder="What is different about this run" className="w-[260px]" />
           </label>
-          <label className="text-xs text-slate-600 dark:text-slate-300">
-            <div className="mb-1">Propose a merchant's name after</div>
-            <Select value={minOccurrences} onChange={e => setMinOccurrences(e.target.value)}>
-              <option value="2">2 sightings</option>
-              <option value="3">3 sightings</option>
-              <option value="5">5 sightings</option>
-              <option value="10">10 sightings</option>
-            </Select>
-          </label>
-          <label className="text-xs text-slate-600 dark:text-slate-300">
-            <div className="mb-1">…if you named it the same way</div>
-            <Select value={minStability} onChange={e => setMinStability(e.target.value)}>
-              <option value="0.7">70% of the time</option>
-              <option value="0.8">80% of the time</option>
-              <option value="0.9">90% of the time</option>
-              <option value="1">every single time</option>
-            </Select>
-          </label>
         </div>
-        <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
-          Raising either makes it propose fewer names and get more of them right. Categories are unaffected.
-        </p>
       </Card>
 
       <div className="flex gap-3 items-center mb-3">

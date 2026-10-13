@@ -83,13 +83,13 @@ def test_file_rows_categorises_and_leaves_the_row_for_review(db, sample_account,
     assert row.reconciled is False
 
 
-def test_file_rows_renames_a_remembered_merchant(db, sample_account, active_model):
+def test_file_rows_never_renames(db, sample_account, active_model):
+    """Renaming is the automatic rules' job now, not the model's."""
     row = _uncategorised(db, sample_account.id, "CARTE 09/08 SUPERMARCHE DU COIN")
     assert auto_categorize.file_rows(db, [row]) == 1
     db.commit()
-    assert row.payee == "SUPERMARCHE DU COIN"
-    # The bank's own wording is never touched, whatever the payee becomes.
-    assert row.raw_label == "CARTE 09/08 SUPERMARCHE DU COIN"
+    assert row.payee == "CARTE 09/08 SUPERMARCHE DU COIN"
+    assert row.category_id is not None
 
 
 def test_file_rows_never_overrules_a_category_somebody_set(db, sample_account, active_model, categories):

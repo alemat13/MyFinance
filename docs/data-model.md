@@ -223,7 +223,7 @@ Audit trail: one row per transaction create/update/delete, with a snapshot of th
 | `id` | Integer | Primary key, autoincrement |
 | `transaction_id` | Integer | Indexed, but not a foreign key |
 | `action` | String(20) | `created`, `updated`, or `deleted` |
-| `source` | String(20) | Optional; `manual`, `csv_import`, or `divide` (set only on `created` rows), or `divide` again on the `updated` row recorded when a transaction becomes a divide's anchor part |
+| `source` | String(20) | Optional; `manual`, `csv_import`, or `divide` (set only on `created` rows), or `divide` again on the `updated` row recorded when a transaction becomes a divide's anchor part; `rule` on an `updated` row an automatic rule wrote |
 | `changed_at` | DateTime | Default: current UTC time |
 | `changed_by_user_id` | Integer | Optional, not a foreign key |
 | `date` / `payee` / `memo` / `amount` / `account_id` / `category_id` / `accounting_month_offset` | (matches `transactions`) | Nullable snapshot of the transaction's fields at the time of the change |
@@ -241,7 +241,7 @@ Generic store for precomputed aggregate results (dashboard/balances, charts), ba
 | `computed_at` | DateTime | When this entry was (re)computed |
 
 ### `categorizer_models`
-One trained category/payee suggestion model (`backend/categorizer.py`) — derived data, not a domain entity, and not part of the account/transaction ER diagram above. The fitted model is a gzipped pickle in `blob`, stored in the database rather than on disk because the backend runs several Cloud Run instances and the one answering a suggestion is rarely the one that trained it. Several rows are kept (the five most recent) so a model that scores worse than its predecessor can be rolled back; at most one row is `is_active`, and that is the one suggestions use. Not part of `backup`'s export/import archive — a few megabytes of pickle that retraining rebuilds in seconds — but, like `onedrive_backup_settings`, excluded from the overwrite restore's `drop_all()`, so restoring a backup doesn't throw away the active model.
+One trained category suggestion model (`backend/categorizer.py`) — derived data, not a domain entity, and not part of the account/transaction ER diagram above. The fitted model is a gzipped pickle in `blob`, stored in the database rather than on disk because the backend runs several Cloud Run instances and the one answering a suggestion is rarely the one that trained it. Several rows are kept (the five most recent) so a model that scores worse than its predecessor can be rolled back; at most one row is `is_active`, and that is the one suggestions use. Not part of `backup`'s export/import archive — a few megabytes of pickle that retraining rebuilds in seconds — but, like `onedrive_backup_settings`, excluded from the overwrite restore's `drop_all()`, so restoring a backup doesn't throw away the active model.
 
 | Column | Type | Notes |
 |--------|------|-------|
@@ -252,10 +252,26 @@ One trained category/payee suggestion model (`backend/categorizer.py`) — deriv
 | `trained_rows` | Integer | Rows the fit actually learned from (a category plus a label to learn it from) |
 | `tested_rows` | Integer | Rows of the test selection it was scored on |
 | `note` | String(200) | Optional free-text label for the run |
-| `params` | JSON | Feature counts, class count, and the payee memory's gate (`payee_min_occurrences`, `payee_min_stability`) |
-| `metrics` | JSON | What it scored on the test selection: `accuracy`, `parent_accuracy`, `top3_accuracy`, a `thresholds` table, the naive `baseline` it was compared against, and the payee memory's `coverage`/`precision` |
+| `params` | JSON | Feature counts and class count (models trained before automatic rules also carry the retired payee memory's `payee_min_occurrences`/`payee_min_stability`) |
+| `metrics` | JSON | What it scored on the test selection: `accuracy`, `parent_accuracy`, `top3_accuracy`, a `thresholds` table, and the naive `baseline` it was compared against (older models also carry a `payee` block from the retired payee memory) |
 | `error` | Text | Set when `status` is `failed` |
 | `blob` | LargeBinary | Gzipped pickle of the fitted model, written and read only by `categorizer.py` |
+
+### `transaction_rules`
+The automatic rules (`backend/transaction_rules.py`, `routers/transaction_rules.py`): conditions to match a transaction and actions to apply to it, run on every bank sync, offered on the import preview, and run on a selection by hand. Not part of the account/transaction ER diagram above: nothing references a rule, and a rule references accounts and categories only by id inside its JSON, so deleting a category a rule names is not blocked — the rule's action on it is simply skipped from then on. Part of the backup archive (`transaction_rules`), restored in overwrite mode only, since a partial restore renumbers the very ids rules name.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | Integer | Primary key |
+| `name` | String(100) | Shown on the Rules screen and in previews |
+| `position` | Integer | Run order, ascending. Every matching rule applies in turn, each reading the row as the earlier ones left it, so a later rule wins on a field both set |
+| `enabled` | Boolean | Disabled rules never run on their own; they can still be picked when applying rules to a selection |
+| `match_mode` | String(3) | `all` \| `any`, how `conditions` combine |
+| `conditions` | JSON | List of the advanced filter's own `FilterCondition` objects (`field`, `operator`, `value`, `value2`). Evaluated in Python by `transaction_rules._matches()`, which mirrors `filtering.build_condition_expr()` operator for operator, NULLs included, because the import preview runs rules on rows that exist only in a file |
+| `actions` | JSON | `RuleActions`: any of `payee`, `category_id`, `accounting_month_offset`, `reconciled`, `split_weights` (+ `split_source`). Never an account move or a delete |
+| `created_at` / `updated_at` | DateTime | |
+
+A row a rule changes is left `reconciled = false` unless a rule sets `reconciled`, and gets a `transaction_history` row with `source="rule"`. On a bank sync, a rule that sets a category without its own split re-resolves the new row's split through the usual cascade (`fresh=True`), since that row's split was resolved before any category was known; an existing row keeps its split, as with Bulk Edit.
 
 ### `onedrive_backup_settings`
 Single global row (`id=1`) driving the OneDrive automatic backup connection (`backend/onedrive.py`) — one connection for the whole household database, not per-user, and not part of the account/transaction ER diagram above. Not part of `backup`'s export/import archive either: it's app configuration, not domain data, and its refresh token opens the very drive those archives are uploaded to. An overwrite restore leaves this table alone (it's excluded from the restore's `drop_all()`), so restoring never disconnects OneDrive. Token columns are Fernet-encrypted at rest and never returned by the API.
