@@ -232,6 +232,15 @@ Two filtering modes are available:
   simple filters allow. Reconciled status isn't available as an advanced-mode
   condition; use the simple filter for that.
 
+**Saved filters.** Once a filter (simple or advanced) is set the way you like, click
+**Save filter** and give it a name: it becomes a button right after **Simple** and
+**Advanced**, and one click on it puts that filter back. Saved filters are kept by the app
+itself, so the same buttons show on your phone and your computer, and they're part of the
+backup. The button of the saved filter currently on screen is highlighted, with a pencil to
+rename it and a bin to delete it (deleting a saved filter never touches any transaction).
+Saving under a name that already exists replaces that filter with the one on screen. On a
+computer, drag a saved filter's button onto another to reorder them.
+
 Results are sorted by date, newest first by default. The **Newest first** / **Oldest first**
 button at the right of the Simple/Advanced buttons flips the order; the app remembers your
 choice for your next visit on that device. Exports and "Select all N" bulk actions cover the

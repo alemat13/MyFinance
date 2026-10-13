@@ -389,3 +389,25 @@ class TransactionRule(Base):
     actions = Column(JSON, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+class SavedFilter(Base):
+    """A filter of the Transactions screen saved under a name, shown as a
+    button next to Simple/Advanced.
+
+    `mode` says which filter it was saved from and `filters` holds that
+    filter exactly as the screen keeps it: the simple filter's fields
+    (search, dates, account, category, amounts, reconciled), or the advanced
+    filter's `match_mode` and condition rows. It is the screen's own state,
+    replayed as is, never interpreted by the backend. One list for the whole
+    household, like the rules, so a filter saved on the PC shows on the phone.
+    """
+    __tablename__ = "saved_filters"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(100), nullable=False)
+    position = Column(Integer, nullable=False, default=0)
+    mode = Column(String(10), nullable=False)  # 'simple' | 'advanced'
+    filters = Column(JSON, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
