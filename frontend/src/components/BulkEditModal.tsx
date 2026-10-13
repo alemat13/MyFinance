@@ -7,6 +7,7 @@ import {
 import { SplitRow } from './SplitEditor'
 import TransactionSplitFields from './TransactionSplitFields'
 import CategoryPicker from './CategoryPicker'
+import AccountPicker from './AccountPicker'
 import { useToast } from '../context/ToastContext'
 import { Modal, Button, Select } from './ui'
 
@@ -25,6 +26,9 @@ interface Props {
    * the modal offers to extend the edit to all of them. */
   searchFilter?: TransactionSearchRequest
   matchingTotal?: number
+  /** Admin mode only: the accounts a selection can be moved to. When absent
+   * the "Move to another account" section isn't offered. */
+  moveAccounts?: Account[]
 }
 
 const ACCOUNTING_MONTH_OFFSETS = [-3, -2, -1, 0, 1, 2, 3] as const
@@ -41,7 +45,7 @@ function offsetLabel(offset: number): string {
 
 export default function BulkEditModal({
   transactionIds, transactions, accounts, categories, allUsers, globalWeights, selectedUserId, onClose, onSaved,
-  searchFilter, matchingTotal,
+  searchFilter, matchingTotal, moveAccounts,
 }: Props) {
   const canSelectAllMatching = searchFilter != null && matchingTotal != null && matchingTotal > transactionIds.length
   const [allMatching, setAllMatching] = useState(false)
@@ -49,6 +53,9 @@ export default function BulkEditModal({
 
   const [categoryEnabled, setCategoryEnabled] = useState(false)
   const [categoryId, setCategoryId] = useState<number | null>(null)
+
+  const [moveEnabled, setMoveEnabled] = useState(false)
+  const [moveAccountId, setMoveAccountId] = useState<number | null>(null)
 
   const [offsetEnabled, setOffsetEnabled] = useState(false)
   const [offset, setOffset] = useState(0)
@@ -66,7 +73,8 @@ export default function BulkEditModal({
   const currencies = [...new Set(transactions.map(t => t.currency))]
   const previewTransaction = transactions[0]
 
-  const canSave = categoryEnabled || offsetEnabled || splitEnabled || reconciledEnabled
+  const canSave = (categoryEnabled || moveEnabled || offsetEnabled || splitEnabled || reconciledEnabled)
+    && !(moveEnabled && moveAccountId == null)
 
   const handleSave = () => {
     if (splitEnabled && splitRows.length === 0) {
@@ -74,6 +82,7 @@ export default function BulkEditModal({
     }
     const update: BulkTransactionUpdate = {
       ...(categoryEnabled ? { category_id: categoryId } : {}),
+      ...(moveEnabled && moveAccountId != null ? { account_id: moveAccountId } : {}),
       ...(offsetEnabled ? { accounting_month_offset: offset } : {}),
       ...(splitEnabled ? {
         split_weights: splitRows.map(r => ({ user_id: r.user_id, weight: r.value })),
@@ -125,6 +134,31 @@ export default function BulkEditModal({
             <CategoryPicker categories={categories} value={categoryId} onChange={setCategoryId} />
           )}
         </div>
+
+        {moveAccounts && (
+          <div className="border border-red-300 dark:border-red-800 rounded-md p-3">
+            <label className="flex items-center gap-2 text-sm font-medium mb-2">
+              <input type="checkbox" checked={moveEnabled} onChange={e => setMoveEnabled(e.target.checked)} />
+              Move to another account
+              <span className="text-[11px] font-semibold uppercase text-red-600 dark:text-red-400">Admin</span>
+            </label>
+            {moveEnabled && (
+              <div>
+                <AccountPicker
+                  accounts={moveAccounts}
+                  value={moveAccountId}
+                  onChange={setMoveAccountId}
+                  allowEmpty={false}
+                  placeholder="Target account"
+                />
+                <div className="text-xs text-slate-400 mt-1">
+                  Each transaction keeps its own split. A bank-synced transaction less than a week old may come back
+                  on its old account at the next sync.
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="border border-slate-200 dark:border-slate-700 rounded-md p-3">
           <label className="flex items-center gap-2 text-sm font-medium mb-2">

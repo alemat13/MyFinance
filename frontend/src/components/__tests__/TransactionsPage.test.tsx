@@ -4,7 +4,7 @@ import { renderWithProviders } from '../../test-utils'
 import TransactionsPage from '../TransactionsPage'
 import { formatDateGroupHeader } from '../../utils/transactions'
 
-const { mockSearchTransactions, mockFetchAccounts, mockFetchCategories, mockCreateTransaction, mockUpdateTransaction, mockDeleteTransaction, mockFetchUsers, mockFetchSplitWeights, mockFetchTransaction, mockFetchTransactionHistory, mockBulkUpdateTransactions, mockBulkDeleteTransactions, mockFetchDivideSiblings } = vi.hoisted(() => ({
+const { mockSearchTransactions, mockFetchAccounts, mockFetchCategories, mockCreateTransaction, mockUpdateTransaction, mockDeleteTransaction, mockFetchUsers, mockFetchSplitWeights, mockFetchTransaction, mockFetchTransactionHistory, mockBulkUpdateTransactions, mockBulkDeleteTransactions, mockBulkDeleteTransactionsByFilter, mockFetchDivideSiblings } = vi.hoisted(() => ({
   mockSearchTransactions: vi.fn(),
   mockFetchAccounts: vi.fn(),
   mockFetchCategories: vi.fn(),
@@ -17,6 +17,7 @@ const { mockSearchTransactions, mockFetchAccounts, mockFetchCategories, mockCrea
   mockFetchTransactionHistory: vi.fn().mockResolvedValue([]),
   mockBulkUpdateTransactions: vi.fn(),
   mockBulkDeleteTransactions: vi.fn(),
+  mockBulkDeleteTransactionsByFilter: vi.fn(),
   mockFetchDivideSiblings: vi.fn().mockResolvedValue([]),
 }))
 
@@ -33,6 +34,7 @@ vi.mock('../../api/client', () => ({
   fetchTransactionHistory: mockFetchTransactionHistory,
   bulkUpdateTransactions: mockBulkUpdateTransactions,
   bulkDeleteTransactions: mockBulkDeleteTransactions,
+  bulkDeleteTransactionsByFilter: mockBulkDeleteTransactionsByFilter,
   fetchDivideSiblings: mockFetchDivideSiblings,
   suggestCategories: mockSuggestCategories,
   applyCategorizerSuggestions: mockApplyCategorizerSuggestions,
@@ -571,7 +573,7 @@ test('clicking Categorize asks the model about exactly the selected transactions
 })
 
 
-test('clicking Delete selected opens a confirm dialog, and Cancel does not call the API', async () => {
+test('outside admin mode there is no Delete selected button', async () => {
   mockSearchTransactions.mockResolvedValue(searchResult(twoTxns))
   mockFetchAccounts.mockResolvedValue([baseAccount])
   mockFetchCategories.mockResolvedValue([baseCategory])
@@ -579,67 +581,104 @@ test('clicking Delete selected opens a confirm dialog, and Cancel does not call 
   renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} onOpenCategorizer={() => {}} />)
 
   await waitFor(() => expect(screen.getByText('Coffee')).toBeInTheDocument())
-
   fireEvent.click(screen.getByLabelText('Select transaction Coffee'))
-  fireEvent.click(screen.getByLabelText('Select transaction Lunch'))
-  fireEvent.click(screen.getByText('Delete selected'))
-
-  expect(screen.getByRole('dialog', { name: 'Delete transactions' })).toBeInTheDocument()
-  expect(screen.getByText(/Delete 2 selected transactions\?/)).toBeInTheDocument()
-
-  fireEvent.click(screen.getByText('Cancel'))
-
-  expect(mockBulkDeleteTransactions).not.toHaveBeenCalled()
-  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-  expect(screen.getByText('2 selected')).toBeInTheDocument()
+  expect(screen.getByText('Bulk Edit')).toBeInTheDocument()
+  expect(screen.queryByText('Delete selected')).not.toBeInTheDocument()
 })
 
-test('confirming bulk delete calls bulkDeleteTransactions with selected ids, reloads, and clears selection', async () => {
-  mockSearchTransactions.mockResolvedValue(searchResult(twoTxns))
-  mockFetchAccounts.mockResolvedValue([baseAccount])
-  mockFetchCategories.mockResolvedValue([baseCategory])
-  mockBulkDeleteTransactions.mockResolvedValue({ deleted_count: 2, transaction_ids: [1, 2] })
+describe('admin mode', () => {
+  beforeEach(() => { window.history.replaceState(null, '', '/?view=transactions&admin') })
+  afterEach(() => { window.history.replaceState(null, '', '/') })
 
-  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} onOpenCategorizer={() => {}} />)
+  test('clicking Delete selected opens a confirm dialog, and Cancel does not call the API', async () => {
+    mockSearchTransactions.mockResolvedValue(searchResult(twoTxns))
+    mockFetchAccounts.mockResolvedValue([baseAccount])
+    mockFetchCategories.mockResolvedValue([baseCategory])
 
-  await waitFor(() => expect(screen.getByText('Coffee')).toBeInTheDocument())
+    renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} onOpenCategorizer={() => {}} />)
 
-  fireEvent.click(screen.getByLabelText('Select transaction Coffee'))
-  fireEvent.click(screen.getByLabelText('Select transaction Lunch'))
-  fireEvent.click(screen.getByText('Delete selected'))
-  mockSearchTransactions.mockResolvedValue(searchResult([]))
+    await waitFor(() => expect(screen.getByText('Coffee')).toBeInTheDocument())
 
-  fireEvent.click(screen.getByLabelText('Confirm delete'))
+    fireEvent.click(screen.getByLabelText('Select transaction Coffee'))
+    fireEvent.click(screen.getByLabelText('Select transaction Lunch'))
+    fireEvent.click(screen.getByText('Delete selected'))
 
-  await waitFor(() => {
-    expect(mockBulkDeleteTransactions).toHaveBeenCalledWith([1, 2], null)
+    expect(screen.getByRole('dialog', { name: 'Delete transactions' })).toBeInTheDocument()
+    expect(screen.getByText('Delete 2 transactions')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByText('Cancel'))
+
+    expect(mockBulkDeleteTransactions).not.toHaveBeenCalled()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.getByText('2 selected')).toBeInTheDocument()
   })
-  await waitFor(() => {
-    expect(mockSearchTransactions).toHaveBeenCalledTimes(2)
+
+  test('confirming bulk delete calls bulkDeleteTransactions with selected ids, reloads, and clears selection', async () => {
+    mockSearchTransactions.mockResolvedValue(searchResult(twoTxns))
+    mockFetchAccounts.mockResolvedValue([baseAccount])
+    mockFetchCategories.mockResolvedValue([baseCategory])
+    mockBulkDeleteTransactions.mockResolvedValue({ deleted_count: 2, transaction_ids: [1, 2] })
+
+    renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} onOpenCategorizer={() => {}} />)
+
+    await waitFor(() => expect(screen.getByText('Coffee')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByLabelText('Select transaction Coffee'))
+    fireEvent.click(screen.getByLabelText('Select transaction Lunch'))
+    fireEvent.click(screen.getByText('Delete selected'))
+    mockSearchTransactions.mockResolvedValue(searchResult([]))
+
+    fireEvent.click(screen.getByText('Delete 2 transactions'))
+
+    await waitFor(() => {
+      expect(mockBulkDeleteTransactions).toHaveBeenCalledWith([1, 2], null)
+    })
+    await waitFor(() => {
+      expect(mockSearchTransactions).toHaveBeenCalledTimes(2)
+    })
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.queryByText('Bulk Edit')).not.toBeInTheDocument()
   })
-  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-  expect(screen.queryByText('Bulk Edit')).not.toBeInTheDocument()
-})
 
-test('shows an error toast and leaves the selection unchanged if bulk delete fails', async () => {
-  mockSearchTransactions.mockResolvedValue(searchResult(twoTxns))
-  mockFetchAccounts.mockResolvedValue([baseAccount])
-  mockFetchCategories.mockResolvedValue([baseCategory])
-  mockBulkDeleteTransactions.mockRejectedValue(new Error('Delete failed'))
+  test('with the whole page ticked, delete can extend to every matching transaction', async () => {
+    mockSearchTransactions.mockResolvedValue({ items: twoTxns, total: 60, page: 1, page_size: 50, total_pages: 2 })
+    mockFetchAccounts.mockResolvedValue([baseAccount])
+    mockFetchCategories.mockResolvedValue([baseCategory])
+    mockBulkDeleteTransactionsByFilter.mockResolvedValue({ deleted_count: 60, transaction_ids: [] })
 
-  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} onOpenCategorizer={() => {}} />)
+    renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} onOpenCategorizer={() => {}} />)
 
-  await waitFor(() => expect(screen.getByText('Coffee')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Coffee')).toBeInTheDocument())
+    fireEvent.click(screen.getByLabelText('Select all on this page'))
+    fireEvent.click(screen.getByText('Delete selected'))
+    fireEvent.click(screen.getByText('Select all 60 transactions'))
+    fireEvent.click(screen.getByText('Delete 60 transactions'))
 
-  fireEvent.click(screen.getByLabelText('Select transaction Coffee'))
-  fireEvent.click(screen.getByText('Delete selected'))
-  fireEvent.click(screen.getByLabelText('Confirm delete'))
-
-  await waitFor(() => {
-    expect(screen.getByText('Delete failed')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(mockBulkDeleteTransactionsByFilter).toHaveBeenCalledWith(expect.objectContaining({ page: 1 }), 60, null)
+    })
+    expect(mockBulkDeleteTransactions).not.toHaveBeenCalled()
   })
-  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-  expect(screen.getByText('1 selected')).toBeInTheDocument()
+
+  test('shows an error toast and leaves the selection unchanged if bulk delete fails', async () => {
+    mockSearchTransactions.mockResolvedValue(searchResult(twoTxns))
+    mockFetchAccounts.mockResolvedValue([baseAccount])
+    mockFetchCategories.mockResolvedValue([baseCategory])
+    mockBulkDeleteTransactions.mockRejectedValue(new Error('Delete failed'))
+
+    renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} onOpenCategorizer={() => {}} />)
+
+    await waitFor(() => expect(screen.getByText('Coffee')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByLabelText('Select transaction Coffee'))
+    fireEvent.click(screen.getByText('Delete selected'))
+    fireEvent.click(screen.getByText('Delete 1 transaction'))
+
+    await waitFor(() => {
+      expect(screen.getByText('Delete failed')).toBeInTheDocument()
+    })
+    expect(screen.getByText('1 selected')).toBeInTheDocument()
+  })
 })
 
 test('changing page clears the existing selection', async () => {

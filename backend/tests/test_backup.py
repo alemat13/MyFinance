@@ -175,41 +175,6 @@ def test_import_overwrite_with_uncategorized_transaction_succeeds(client, db, sa
     assert transactions[0]["category_id"] is None
 
 
-def test_import_append_combines_with_existing(client, sample_account, sample_category):
-    # Existing data already present via fixtures (ids 1). Append payload uses
-    # disjoint ids so no collision occurs.
-    payload = _minimal_payload(
-        users=[{"id": 501, "name": "Appended User", "email": None, "created_at": datetime.utcnow().isoformat()}],
-        accounts=[{
-            "id": 502, "name": "Appended Account", "type": "Checking", "balance": 0.0,
-            "currency": "EUR", "created_at": datetime.utcnow().isoformat(),
-        }],
-    )
-    zip_bytes = _zip_payload(payload)
-
-    response = _post_import(client, zip_bytes, mode="append")
-    assert response.status_code == 200
-    summary = response.json()
-    assert summary["mode"] == "append"
-    assert summary["users"] == 1
-    assert summary["accounts"] == 1
-
-    users = client.get("/api/users").json()
-    accounts = client.get("/api/accounts").json()
-    assert {u["id"] for u in users} == {501}
-    assert {a["id"] for a in accounts} == {sample_account.id, 502}
-
-
-def test_import_append_id_collision_returns_409(client, sample_user):
-    payload = _minimal_payload(
-        users=[{"id": sample_user.id, "name": "Duplicate", "email": None, "created_at": datetime.utcnow().isoformat()}],
-    )
-    zip_bytes = _zip_payload(payload)
-
-    response = _post_import(client, zip_bytes, mode="append")
-    assert response.status_code == 409
-
-
 def test_import_malformed_zip_returns_422(client):
     response = client.post(
         "/api/backup/import",
@@ -255,35 +220,6 @@ def test_import_overwrite_invalidates_balances_cache(client, db, sample_account,
     after = client.get("/api/balances")
     balances = {b["user_id"]: b["net_position"] for b in after.json()}
     assert balances[sample_user.id] == -60.0  # share 40 - paid 100 = -60, not the stale 0.0
-
-
-def test_import_append_invalidates_balances_cache(client):
-    warm = client.get("/api/balances")
-    assert warm.json() == []
-
-    payload = _minimal_payload(
-        users=[{"id": 601, "name": "Appended User", "email": None, "created_at": datetime.utcnow().isoformat()}],
-        accounts=[{
-            "id": 602, "name": "Appended Account", "type": "Checking", "balance": 0.0,
-            "currency": "EUR", "created_at": datetime.utcnow().isoformat(),
-        }],
-        account_users=[{"account_id": 602, "user_id": 601, "ownership_percentage": 50.0}],
-        transactions=[{
-            "id": 603, "date": "2026-01-15", "payee": "Appended Payee", "memo": None, "amount": 50.0,
-            "account_id": 602, "category_id": None, "created_at": datetime.utcnow().isoformat(),
-        }],
-        transaction_splits=[{
-            "transaction_id": 603, "user_id": 601, "weight": 1, "share_amount": 50.0, "source": "custom",
-        }],
-    )
-    zip_bytes = _zip_payload(payload)
-
-    response = _post_import(client, zip_bytes, mode="append")
-    assert response.status_code == 200
-
-    after = client.get("/api/balances")
-    balances = {b["user_id"]: b["net_position"] for b in after.json()}
-    assert balances[601] == 25.0  # share 50 - paid (50% of 50 = 25) = 25, not the stale []
 
 
 def test_import_overwrite_reorders_out_of_order_category_hierarchy(client):
@@ -462,3 +398,176 @@ def test_import_overwrite_keeps_the_onedrive_connection(client, db):
     assert settings.connected is True
     assert settings.folder_path == "/MyFinance Backups"
     assert settings.refresh_token_encrypted == "encrypted-token"
+
+
+# ── Partial restore (admin mode) ──────────────────────────────────────
+
+def _now() -> str:
+    return datetime.utcnow().isoformat()
+
+
+def test_partial_restore_recreates_rows_under_new_ids(client, db, sample_account, sample_category, sample_user):
+    payload = _minimal_payload(
+        users=[{"id": 900, "name": "Ignored", "email": None, "created_at": _now()}],
+        accounts=[{
+            "id": sample_account.id, "name": "Restored Account", "type": "Checking", "balance": 30.0,
+            "currency": "EUR", "created_at": _now(),
+        }],
+        categories=[
+            {"id": 70, "name": "Restored Child", "type": "Expense", "color": None, "icon": None, "parent_id": 71},
+            {"id": 71, "name": "Restored Parent", "type": "Expense", "color": None, "icon": None, "parent_id": None},
+        ],
+        account_users=[{"account_id": sample_account.id, "user_id": sample_user.id, "ownership_percentage": 100.0}],
+        account_split_weights=[{"account_id": sample_account.id, "user_id": sample_user.id, "weight": 3}],
+        category_splits=[{"category_id": 70, "user_id": sample_user.id, "weight": 2}],
+        transactions=[
+            {"id": 1, "date": "2026-01-15", "payee": "Anchor", "amount": 20.0,
+             "account_id": sample_account.id, "category_id": 70, "divide_group_id": 1, "created_at": _now()},
+            {"id": 2, "date": "2026-01-16", "payee": "Part", "amount": 10.0,
+             "account_id": sample_account.id, "category_id": None, "divide_group_id": 1, "created_at": _now()},
+        ],
+        transaction_splits=[
+            {"transaction_id": 1, "user_id": sample_user.id, "weight": 1, "share_amount": 20.0, "source": "custom"},
+            {"transaction_id": 2, "user_id": sample_user.id, "weight": 1, "share_amount": 10.0, "source": "custom"},
+        ],
+        transaction_history=[
+            {"id": 5, "transaction_id": 1, "action": "created", "source": "manual", "changed_at": _now(),
+             "changed_by_user_id": 900, "date": "2026-01-15", "payee": "Anchor", "amount": 20.0,
+             "account_id": sample_account.id, "category_id": 70},
+            {"id": 6, "transaction_id": 99, "action": "deleted", "changed_at": _now()},
+        ],
+    )
+    response = _post_import(client, _zip_payload(payload), mode="partial")
+    assert response.status_code == 200, response.text
+    summary = response.json()
+    assert summary["mode"] == "partial"
+    assert summary["users"] == 0
+    assert summary["transactions"] == 2
+    assert summary["transaction_history"] == 1
+
+    assert {u.name for u in db.query(User).all()} == {sample_user.name}
+    restored_account = db.query(Account).filter_by(name="Restored Account").one()
+    assert restored_account.id != sample_account.id
+    accounts = {a["name"]: a for a in client.get("/api/accounts").json()}
+    assert accounts["Restored Account"]["balance"] == 30.0
+    assert sample_account.name in accounts
+
+    parent = db.query(Category).filter_by(name="Restored Parent").one()
+    child = db.query(Category).filter_by(name="Restored Child").one()
+    assert child.parent_id == parent.id
+
+    anchor = db.query(Transaction).filter_by(payee="Anchor").one()
+    part = db.query(Transaction).filter_by(payee="Part").one()
+    assert anchor.account_id == restored_account.id
+    assert anchor.category_id == child.id
+    assert anchor.divide_group_id == anchor.id
+    assert part.divide_group_id == anchor.id
+    assert [s.user_id for s in anchor.splits] == [sample_user.id]
+
+    assert db.query(AccountUser).filter_by(account_id=restored_account.id).one().user_id == sample_user.id
+    assert db.query(AccountSplitWeight).filter_by(account_id=restored_account.id).one().weight == 3
+    assert db.query(CategorySplit).filter_by(category_id=child.id).one().weight == 2
+
+    history = db.query(TransactionHistory).filter_by(transaction_id=anchor.id).one()
+    assert history.account_id == restored_account.id
+    assert history.category_id == child.id
+    assert history.changed_by_user_id is None  # user 900 isn't in this database
+
+
+def test_partial_restore_falls_back_to_existing_rows(client, db, sample_account, sample_category, sample_user):
+    payload = _minimal_payload(
+        transactions=[{"id": 1, "date": "2026-02-01", "payee": "Onto existing", "amount": -5.0,
+                       "account_id": sample_account.id, "category_id": sample_category.id, "created_at": _now()}],
+        transaction_splits=[{"transaction_id": 1, "user_id": sample_user.id, "weight": 1,
+                             "share_amount": -5.0, "source": "custom"}],
+    )
+    response = _post_import(client, _zip_payload(payload), mode="partial")
+    assert response.status_code == 200, response.text
+    restored = db.query(Transaction).filter_by(payee="Onto existing").one()
+    assert restored.account_id == sample_account.id
+    assert restored.category_id == sample_category.id
+
+
+def test_partial_restore_with_unknown_account_restores_nothing(client, db, sample_account, sample_user):
+    payload = _minimal_payload(
+        accounts=[{"id": 800, "name": "Would be created", "type": "Checking", "balance": 0.0,
+                   "currency": "EUR", "created_at": _now()}],
+        transactions=[{"id": 1, "date": "2026-02-01", "payee": "Orphan", "amount": -5.0,
+                       "account_id": 12345, "category_id": None, "created_at": _now()}],
+    )
+    response = _post_import(client, _zip_payload(payload), mode="partial")
+    assert response.status_code == 422
+    assert "12345" in response.json()["detail"]
+    assert db.query(Account).filter_by(name="Would be created").count() == 0
+    assert db.query(Transaction).filter_by(payee="Orphan").count() == 0
+
+
+def test_partial_restore_with_unknown_split_user_restores_nothing(client, db, sample_account):
+    payload = _minimal_payload(
+        transactions=[{"id": 1, "date": "2026-02-01", "payee": "Unknown user", "amount": -5.0,
+                       "account_id": sample_account.id, "category_id": None, "created_at": _now()}],
+        transaction_splits=[{"transaction_id": 1, "user_id": 4242, "weight": 1,
+                             "share_amount": -5.0, "source": "custom"}],
+    )
+    response = _post_import(client, _zip_payload(payload), mode="partial")
+    assert response.status_code == 422
+    assert db.query(Transaction).filter_by(payee="Unknown user").count() == 0
+
+
+def test_partial_restore_refuses_a_bank_id_already_on_the_account(client, db, sample_account):
+    db.add(Transaction(date=date(2026, 2, 1), payee="Synced", amount=-5.0,
+                       account_id=sample_account.id, external_id="bank-1"))
+    db.commit()
+    payload = _minimal_payload(
+        transactions=[{"id": 1, "date": "2026-02-01", "payee": "Same bank row", "amount": -5.0,
+                       "account_id": sample_account.id, "category_id": None, "external_id": "bank-1",
+                       "created_at": _now()}],
+    )
+    response = _post_import(client, _zip_payload(payload), mode="partial")
+    assert response.status_code == 422
+    assert db.query(Transaction).filter_by(payee="Same bank row").count() == 0
+
+
+def test_partial_restore_invalidates_balances_cache(client, db, sample_account, sample_user):
+    db.add(AccountUser(account_id=sample_account.id, user_id=sample_user.id, ownership_percentage=100.0))
+    db.commit()
+    assert client.get("/api/balances").status_code == 200
+
+    payload = _minimal_payload(
+        transactions=[{"id": 1, "date": "2026-02-01", "payee": "Shared", "amount": 50.0,
+                       "account_id": sample_account.id, "category_id": None, "created_at": _now()}],
+        transaction_splits=[{"transaction_id": 1, "user_id": sample_user.id, "weight": 1,
+                             "share_amount": 20.0, "source": "custom"}],
+    )
+    assert _post_import(client, _zip_payload(payload), mode="partial").status_code == 200
+    balances = {b["user_id"]: b["net_position"] for b in client.get("/api/balances").json()}
+    assert balances[sample_user.id] == -30.0  # share 20 - paid 50
+
+
+def test_partial_restore_reuses_a_category_of_the_same_name(client, db, sample_account, sample_category, sample_user):
+    db.add(CategorySplit(category_id=sample_category.id, user_id=sample_user.id, weight=1))
+    db.commit()
+    payload = _minimal_payload(
+        categories=[{"id": 300, "name": sample_category.name, "type": sample_category.type,
+                     "color": None, "icon": None, "parent_id": None}],
+        category_splits=[{"category_id": 300, "user_id": sample_user.id, "weight": 9}],
+        transactions=[{"id": 1, "date": "2026-02-01", "payee": "Same name", "amount": -5.0,
+                       "account_id": sample_account.id, "category_id": 300, "created_at": _now()}],
+    )
+    response = _post_import(client, _zip_payload(payload), mode="partial")
+    assert response.status_code == 200, response.text
+    assert response.json()["categories"] == 0
+    assert db.query(Category).filter_by(name=sample_category.name).count() == 1
+    assert db.query(Transaction).filter_by(payee="Same name").one().category_id == sample_category.id
+    assert db.query(CategorySplit).filter_by(category_id=sample_category.id).one().weight == 1
+
+
+def test_partial_restore_of_a_full_export_appends_a_second_copy(client, db, sample_account, sample_category, sample_user, sample_user2):
+    _seed_full_graph(db, sample_account, sample_category, sample_user, sample_user2)
+    export = client.get("/api/backup/export").content
+
+    response = _post_import(client, export, mode="partial")
+    assert response.status_code == 200, response.text
+    assert db.query(Account).filter_by(name=sample_account.name).count() == 2
+    assert db.query(Category).count() == 1
+    assert db.query(Transaction).count() == 2

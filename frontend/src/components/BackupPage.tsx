@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { BackupImportMode, ImportSummary, exportDatabase, importDatabase } from '../api/client'
 import { useToast } from '../context/ToastContext'
 import { downloadBlob } from '../utils/download'
+import { isAdminMode } from '../utils/admin'
 import { Button, Card, Input, Select, ConfirmDialog, BackButton } from './ui'
 import OneDriveBackupCard from './OneDriveBackupCard'
 
@@ -16,16 +17,25 @@ const CONFIRM_COPY: Record<BackupImportMode, { title: string; message: string }>
       'This will permanently delete all current data and replace it with the contents of the backup file. ' +
       'This cannot be undone — consider exporting a backup first if you have not already.',
   },
-  append: {
-    title: 'Append backup data',
+  partial: {
+    title: 'Partial restore',
     message:
-      'This will insert the backup file\'s data on top of what already exists. If any IDs or unique fields ' +
-      '(such as a category name) collide with existing data, the import will fail with a conflict error. ' +
-      'It can also create history entries that reference transactions or users not present in this database.',
+      'This will add the backup file\'s accounts, categories and transactions next to the existing data, each ' +
+      'under a new ID. A category whose name already exists is reused instead of recreated. Nothing existing is ' +
+      'changed or removed, and users and bank connections are not restored. ' +
+      'Every account, category and user the transactions refer to must exist in the file or in this database, ' +
+      'otherwise nothing is restored.',
   },
+
 }
 
 function summaryText(summary: ImportSummary): string {
+  if (summary.mode === 'partial') {
+    return (
+      `Added ${summary.accounts} account(s), ${summary.categories} category(ies), ` +
+      `${summary.transactions} transaction(s).`
+    )
+  }
   return (
     `Imported ${summary.users} user(s), ${summary.accounts} account(s), ${summary.categories} category(ies), ` +
     `${summary.transactions} transaction(s).`
@@ -38,6 +48,7 @@ export default function BackupPage({ onBack }: Props) {
   const [file, setFile] = useState<File | null>(null)
   const [mode, setMode] = useState<BackupImportMode>('overwrite')
   const [confirming, setConfirming] = useState(false)
+  const [adminMode] = useState(isAdminMode)
   const { showToast } = useToast()
 
   const handleExport = () => {
@@ -83,6 +94,13 @@ export default function BackupPage({ onBack }: Props) {
 
       <OneDriveBackupCard />
 
+      {!adminMode && (
+        <p className="text-[13px] text-slate-500 dark:text-slate-400 max-w-md">
+          Restoring a backup is available in admin mode only.
+        </p>
+      )}
+
+      {adminMode && (
       <Card className="p-3 max-w-md">
         <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100 mb-1">Import</h3>
         <p className="text-[13px] text-slate-500 dark:text-slate-400 mb-2">
@@ -97,7 +115,7 @@ export default function BackupPage({ onBack }: Props) {
           />
           <Select value={mode} onChange={e => setMode(e.target.value as BackupImportMode)} aria-label="Import mode">
             <option value="overwrite">Overwrite all data</option>
-            <option value="append">Append to existing data</option>
+            <option value="partial">Partial restore (add accounts, categories, transactions)</option>
           </Select>
         </div>
         <Button
@@ -108,6 +126,7 @@ export default function BackupPage({ onBack }: Props) {
           {importing ? 'Importing...' : 'Import Backup'}
         </Button>
       </Card>
+      )}
 
       <ConfirmDialog
         isOpen={confirming}

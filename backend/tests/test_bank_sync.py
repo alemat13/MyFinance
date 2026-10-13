@@ -931,3 +931,77 @@ def test_manually_created_transactions_have_no_raw_fields(client, sample_account
     body = response.json()
     assert body["raw_source"] is None
     assert body["raw_label"] is None
+
+
+# ── Admin: resync over a period ───────────────────────────────────────
+
+def test_resync_period_asks_the_bank_for_that_period_and_leaves_sync_state(client, db, linked_connection, global_weights, monkeypatch):
+    synced_at = datetime(2026, 10, 1, 8, 0)
+    linked_connection.last_synced_at = synced_at
+    linked_connection.last_sync_status = "success"
+    db.commit()
+    asked = {}
+
+    def _fetch(uid, date_from, date_to):
+        asked["window"] = (date_from, date_to)
+        return [
+            _booked("12.00", "DBIT", "2026-09-03", entry_reference="sep-1"),
+            _booked("7.00", "DBIT", "2026-09-04", entry_reference="sep-2"),
+        ]
+
+    monkeypatch.setattr(enable_banking, "fetch_transactions", _fetch)
+    response = client.post(
+        f"/api/bank-sync/links/{linked_connection.id}/resync",
+        json={"date_from": "2026-09-01", "date_to": "2026-09-16"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["created_count"] == 2
+    assert response.json()["status"] == "success"
+    assert asked["window"] == (date(2026, 9, 1), date(2026, 9, 16))
+    db.refresh(linked_connection)
+    assert linked_connection.last_synced_at == synced_at
+
+    # Asking again skips what is already there.
+    again = client.post(
+        f"/api/bank-sync/links/{linked_connection.id}/resync",
+        json={"date_from": "2026-09-01", "date_to": "2026-09-16"},
+    )
+    assert again.json()["created_count"] == 0
+
+
+def test_resync_period_skips_restored_rows_without_bank_id(client, db, linked_connection, sample_account, global_weights, monkeypatch):
+    db.add(Transaction(date=date(2026, 9, 3), payee="Restored", amount=-12.0, account_id=sample_account.id))
+    db.commit()
+    monkeypatch.setattr(enable_banking, "fetch_transactions", lambda *a, **k: [
+        _booked("12.00", "DBIT", "2026-09-03", entry_reference="sep-1"),
+    ])
+    response = client.post(
+        f"/api/bank-sync/links/{linked_connection.id}/resync",
+        json={"date_from": "2026-09-01", "date_to": "2026-09-16"},
+    )
+    assert response.json()["created_count"] == 0
+
+
+def test_resync_period_reports_a_bank_failure_without_touching_the_link(client, db, linked_connection, global_weights, monkeypatch):
+    def _boom(*args, **kwargs):
+        raise enable_banking.EnableBankingError("bank is down")
+
+    monkeypatch.setattr(enable_banking, "fetch_transactions", _boom)
+    response = client.post(
+        f"/api/bank-sync/links/{linked_connection.id}/resync",
+        json={"date_from": "2026-09-01", "date_to": "2026-09-16"},
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "failed"
+    assert "bank is down" in response.json()["error"]
+    db.refresh(linked_connection)
+    assert linked_connection.last_sync_status is None
+
+
+def test_resync_period_rejects_a_reversed_range(client, linked_connection):
+    response = client.post(
+        f"/api/bank-sync/links/{linked_connection.id}/resync",
+        json={"date_from": "2026-09-16", "date_to": "2026-09-01"},
+    )
+    assert response.status_code == 422

@@ -123,3 +123,29 @@ def test_bulk_delete_does_not_protect_divide_group_transactions(client, sample_t
     response = _bulk_delete(client, [anchor_id, sibling_id])
     assert response.status_code == 200
     assert response.json()["deleted_count"] == 2
+
+
+def test_bulk_delete_by_filter_deletes_every_matching_row_across_pages(client, db, sample_account, sample_category):
+    keep = _make_transaction(db, sample_account, sample_category, payee="Keep me")
+    for _ in range(3):
+        _make_transaction(db, sample_account, sample_category, payee="Doublon import")
+
+    response = client.request(
+        "DELETE", "/api/transactions/bulk-delete",
+        json={"filter": {"search": "doublon", "page": 1, "page_size": 1}, "expected_count": 3},
+    )
+    assert response.status_code == 200
+    assert response.json()["deleted_count"] == 3
+    assert [t.id for t in db.query(Transaction).all()] == [keep.id]
+
+
+def test_bulk_delete_by_filter_refuses_when_match_count_changed(client, db, sample_account, sample_category):
+    _make_transaction(db, sample_account, sample_category, payee="Doublon import")
+    _make_transaction(db, sample_account, sample_category, payee="Doublon import")
+
+    response = client.request(
+        "DELETE", "/api/transactions/bulk-delete",
+        json={"filter": {"search": "doublon"}, "expected_count": 1},
+    )
+    assert response.status_code == 409
+    assert db.query(Transaction).count() == 2

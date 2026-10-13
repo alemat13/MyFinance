@@ -12,6 +12,7 @@ const {
   mockUpdateBankAccountLink,
   mockSyncBankAccountLink,
   mockRefreshBankConnection,
+  mockResyncBankAccountLink,
 } = vi.hoisted(() => ({
   mockFetchBankConnections: vi.fn(),
   mockFetchBankInstitutions: vi.fn(),
@@ -21,6 +22,7 @@ const {
   mockUpdateBankAccountLink: vi.fn(),
   mockSyncBankAccountLink: vi.fn(),
   mockRefreshBankConnection: vi.fn(),
+  mockResyncBankAccountLink: vi.fn(),
 }))
 
 vi.mock('../../api/client', () => ({
@@ -32,6 +34,7 @@ vi.mock('../../api/client', () => ({
   updateBankAccountLink: mockUpdateBankAccountLink,
   syncBankAccountLink: mockSyncBankAccountLink,
   refreshBankConnection: mockRefreshBankConnection,
+  resyncBankAccountLink: mockResyncBankAccountLink,
 }))
 
 const accounts = [
@@ -254,4 +257,29 @@ test('reports an abandoned consent coming back from the bank', async () => {
   renderWithProviders(<BankSyncPage onBack={() => {}} />)
 
   expect(await screen.findByText('The bank connection was not completed')).toBeInTheDocument()
+})
+
+
+test('re-syncing a period is only offered in admin mode', async () => {
+  mockFetchBankConnections.mockResolvedValue([connection({ accounts: [linkedLink] })])
+  renderWithProviders(<BankSyncPage onBack={() => {}} />)
+  await screen.findByRole('button', { name: 'Sync now' })
+  expect(screen.queryByRole('button', { name: 'Re-sync period' })).not.toBeInTheDocument()
+})
+
+test('in admin mode, re-syncs a mapped account over the chosen period', async () => {
+  window.history.pushState(null, '', '/?view=bank-sync&admin')
+  mockFetchBankConnections.mockResolvedValue([connection({ accounts: [linkedLink] })])
+  mockResyncBankAccountLink.mockResolvedValue({ ran: true, synced_links: 1, created_count: 68, status: 'success', error: null })
+
+  renderWithProviders(<BankSyncPage onBack={() => {}} />)
+
+  const button = await screen.findByRole('button', { name: 'Re-sync period' })
+  expect(button).toBeDisabled()
+  fireEvent.change(screen.getByLabelText('From'), { target: { value: '2026-09-01' } })
+  fireEvent.change(screen.getByLabelText('To'), { target: { value: '2026-09-16' } })
+  fireEvent.click(button)
+
+  await waitFor(() => expect(mockResyncBankAccountLink).toHaveBeenCalledWith(10, '2026-09-01', '2026-09-16'))
+  expect(await screen.findByText('68 transaction(s) imported for that period')).toBeInTheDocument()
 })
