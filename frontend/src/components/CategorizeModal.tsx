@@ -33,8 +33,6 @@ export default function CategorizeModal({
   const [result, setResult] = useState<CategorizerSuggestResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [included, setIncluded] = useState<Set<number>>(new Set())
-  const [withCategories, setWithCategories] = useState(true)
-  const [withRenames, setWithRenames] = useState(true)
   const [overwriteCategory, setOverwriteCategory] = useState(false)
   const [applying, setApplying] = useState(false)
   const { showToast } = useToast()
@@ -53,8 +51,7 @@ export default function CategorizeModal({
         setResult(res)
         // Pre-ticked: the rows where the model would change something. A row it
         // agrees with has nothing to apply, so it starts unticked.
-        setIncluded(new Set(res.items.filter(i => i.category_changed || i.payee_changed)
-          .map(i => i.transaction_id)))
+        setIncluded(new Set(res.items.filter(i => i.category_changed).map(i => i.transaction_id)))
       })
       .catch(err => { if (!cancelled) setError(err.message) })
     return () => { cancelled = true }
@@ -70,14 +67,8 @@ export default function CategorizeModal({
   }
 
   const payload = (): CategorizerApplyItem[] => items
-    .filter(i => included.has(i.transaction_id))
-    .map(i => ({
-      transaction_id: i.transaction_id,
-      ...(withCategories && i.category_changed && i.suggested_category_id !== null
-        ? { category_id: i.suggested_category_id } : {}),
-      ...(withRenames && i.payee_changed && i.suggested_payee ? { payee: i.suggested_payee } : {}),
-    }))
-    .filter(i => i.category_id !== undefined || i.payee !== undefined)
+    .filter(i => included.has(i.transaction_id) && i.category_changed && i.suggested_category_id !== null)
+    .map(i => ({ transaction_id: i.transaction_id, category_id: i.suggested_category_id as number }))
 
   const toApply = payload()
 
@@ -117,22 +108,11 @@ export default function CategorizeModal({
           <>
             <p className="text-[13px] text-slate-600 dark:text-slate-300">
               The model would change the category on {result.category_changes} of these{' '}
-              {items.length} transaction{items.length === 1 ? '' : 's'}
-              {result.payee_changes > 0 && <> and rename {result.payee_changes}</>}.
+              {items.length} transaction{items.length === 1 ? '' : 's'}.
               {' '}Everything applied here is left unreconciled, so you can find it again.
             </p>
 
             <div className="flex gap-4 flex-wrap text-[13px]">
-              <label className="flex items-center gap-2">
-                <input type="checkbox" checked={withCategories}
-                       onChange={e => setWithCategories(e.target.checked)} />
-                Apply categories
-              </label>
-              <label className="flex items-center gap-2">
-                <input type="checkbox" checked={withRenames}
-                       onChange={e => setWithRenames(e.target.checked)} />
-                Apply remembered names ({result.payee_changes})
-              </label>
               <label className="flex items-center gap-2">
                 <input type="checkbox" checked={overwriteCategory}
                        onChange={e => setOverwriteCategory(e.target.checked)} />
@@ -148,7 +128,7 @@ export default function CategorizeModal({
                 <div className="space-y-2">
                   {items.map(i => (
                     <Card key={i.transaction_id}
-                          className={`p-3 ${i.category_changed || i.payee_changed ? '' : 'opacity-60'}`}>
+                          className={`p-3 ${i.category_changed ? '' : 'opacity-60'}`}>
                       <div className="flex items-start gap-2">
                         <input
                           type="checkbox"
@@ -165,11 +145,6 @@ export default function CategorizeModal({
                             </span>
                           </div>
                           <div className="text-[12px] text-slate-500 dark:text-slate-400">{i.date}</div>
-                          {withRenames && i.payee_changed && (
-                            <div className="text-[12px] text-amber-700 dark:text-amber-400">
-                              → {i.suggested_payee}
-                            </div>
-                          )}
                           <div className="flex items-center gap-2 flex-wrap mt-1.5 text-[13px]">
                             <span className="text-slate-500 dark:text-slate-400">
                               {i.current_category_name ?? 'No category'}
@@ -207,9 +182,8 @@ export default function CategorizeModal({
                 </Thead>
                 <Tbody>
                   {items.map(i => {
-                    const changes = i.category_changed || i.payee_changed
                     return (
-                      <Tr key={i.transaction_id} className={changes ? '' : 'opacity-60'}>
+                      <Tr key={i.transaction_id} className={i.category_changed ? '' : 'opacity-60'}>
                         <Td>
                           <input
                             type="checkbox"
@@ -219,14 +193,7 @@ export default function CategorizeModal({
                           />
                         </Td>
                         <Td>{i.date}</Td>
-                        <Td>
-                          <div>{i.payee}</div>
-                          {withRenames && i.payee_changed && (
-                            <div className="text-[12px] text-amber-700 dark:text-amber-400">
-                              → {i.suggested_payee}
-                            </div>
-                          )}
-                        </Td>
+                        <Td>{i.payee}</Td>
                         <Td className="text-right">{formatMoney(i.amount, currencyOf(i.transaction_id))}</Td>
                         <Td className="text-slate-500 dark:text-slate-400">
                           {i.current_category_name ?? 'No category'}

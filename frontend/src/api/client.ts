@@ -218,7 +218,7 @@ export interface TransactionDivideResponse {
   transactions: Transaction[]
 }
 
-export type FilterField = 'payee' | 'memo' | 'amount' | 'date' | 'account_id' | 'category_id'
+export type FilterField = 'payee' | 'memo' | 'raw_label' | 'amount' | 'date' | 'account_id' | 'category_id'
 
 export interface FilterCondition {
   field: FilterField
@@ -374,6 +374,16 @@ export interface ImportPreviewRow {
   suggested_category_id: number | null
   suggested_category_name: string | null
   suggested_confidence: number | null
+  // What the enabled automatic rules would change on this row, or null when
+  // no rule matches. The screen applies it unless the user switches rules off.
+  rules: RuleOutcome | null
+}
+
+/** A row as the import commits it: `raw_label` is the file's own payee, sent
+ *  separately because a rule may have renamed `payee` in the preview. */
+export interface ImportCommitRow extends TransactionCreate {
+  raw_label?: string | null
+  reconciled?: boolean
 }
 
 export interface ImportCommitResponse {
@@ -669,7 +679,7 @@ export async function previewImport(file: File, data: ImportPreviewRequest): Pro
   return res.json()
 }
 
-export function commitImport(rows: TransactionCreate[], actorUserId?: number | null): Promise<ImportCommitResponse> {
+export function commitImport(rows: ImportCommitRow[], actorUserId?: number | null): Promise<ImportCommitResponse> {
   const params = actorUserId ? `?actor_user_id=${actorUserId}` : ''
   return request<ImportCommitResponse>(`/import/commit${params}`, { method: 'POST', body: JSON.stringify({ rows }) })
 }
@@ -843,14 +853,6 @@ export interface CategorizerBaseline {
   accuracy?: number
 }
 
-export interface CategorizerPayeeMetrics {
-  tested_rows?: number
-  merchants?: number
-  coverage?: number
-  precision?: number
-  would_change?: number
-}
-
 export interface CategorizerMetrics {
   tested_rows?: number
   accuracy?: number
@@ -858,7 +860,6 @@ export interface CategorizerMetrics {
   top3_accuracy?: number
   thresholds?: CategorizerThresholdRow[]
   baseline?: CategorizerBaseline
-  payee?: CategorizerPayeeMetrics
 }
 
 export interface CategorizerModel {
@@ -878,8 +879,6 @@ export interface CategorizerTrainRequest {
   train: TransactionSearchRequest
   test: TransactionSearchRequest
   note?: string
-  payee_min_occurrences?: number
-  payee_min_stability?: number
 }
 
 export function fetchCategorizerModels(): Promise<CategorizerModel[]> {
@@ -910,9 +909,7 @@ export interface CategorizerSuggestion {
   suggested_category_name: string | null
   confidence: number | null
   high_confidence: boolean
-  suggested_payee: string | null
   category_changed: boolean
-  payee_changed: boolean
 }
 
 export interface CategorizerSuggestResponse {
@@ -920,14 +917,12 @@ export interface CategorizerSuggestResponse {
   threshold: number
   items: CategorizerSuggestion[]
   category_changes: number
-  payee_changes: number
   high_confidence_changes: number
 }
 
 export interface CategorizerApplyItem {
   transaction_id: number
-  category_id?: number | null
-  payee?: string | null
+  category_id: number
 }
 
 export interface CategorizerApplyResponse {
@@ -952,5 +947,101 @@ export function applyCategorizerSuggestions(
   return request<CategorizerApplyResponse>(`/categorizer/apply${query}`, {
     method: 'POST',
     body: JSON.stringify({ items, overwrite_category: overwriteCategory }),
+  })
+}
+
+// ── Automatic rules ─────────────────────────────────────────────
+// A rule is the advanced filter's conditions plus a bulk edit's actions (and a
+// payee rename). Never a move to another account or a delete.
+
+export interface RuleActions {
+  payee?: string | null
+  category_id?: number | null
+  accounting_month_offset?: number | null
+  reconciled?: boolean | null
+  split_weights?: { user_id: number; weight: number }[] | null
+  split_source?: SplitSource | null
+}
+
+export interface RuleInput {
+  name: string
+  enabled: boolean
+  match_mode: 'all' | 'any'
+  conditions: FilterCondition[]
+  actions: RuleActions
+}
+
+export interface Rule extends RuleInput {
+  id: number
+  position: number
+  created_at: string
+  updated_at: string
+}
+
+/** What the rules change on one transaction: only the fields a rule changed
+ *  are set; `split_weights` set means a rule set the split. */
+export interface RuleOutcome {
+  rule_ids: number[]
+  rule_names: string[]
+  payee: string | null
+  category_id: number | null
+  category_name: string | null
+  accounting_month_offset: number | null
+  reconciled: boolean | null
+  split_weights: { user_id: number; weight: number }[] | null
+  split_source: SplitSource | null
+}
+
+export interface RulePreviewItem {
+  transaction_id: number
+  date: string
+  payee: string
+  amount: number
+  current_category_id: number | null
+  current_category_name: string | null
+  current_accounting_month_offset: number
+  current_reconciled: boolean
+  outcome: RuleOutcome | null
+}
+
+export interface RulePreviewResponse {
+  items: RulePreviewItem[]
+  changed_count: number
+}
+
+export function fetchRules(): Promise<Rule[]> {
+  return request<Rule[]>('/rules')
+}
+
+export function createRule(data: RuleInput): Promise<Rule> {
+  return request<Rule>('/rules', { method: 'POST', body: JSON.stringify(data) })
+}
+
+export function updateRule(id: number, data: RuleInput): Promise<Rule> {
+  return request<Rule>(`/rules/${id}`, { method: 'PUT', body: JSON.stringify(data) })
+}
+
+export function deleteRule(id: number): Promise<void> {
+  return request<void>(`/rules/${id}`, { method: 'DELETE' })
+}
+
+export function reorderRules(ruleIds: number[]): Promise<Rule[]> {
+  return request<Rule[]>('/rules/order', { method: 'PUT', body: JSON.stringify({ rule_ids: ruleIds }) })
+}
+
+export function previewRules(transactionIds: number[], ruleIds: number[]): Promise<RulePreviewResponse> {
+  return request<RulePreviewResponse>('/rules/preview', {
+    method: 'POST',
+    body: JSON.stringify({ transaction_ids: transactionIds, rule_ids: ruleIds }),
+  })
+}
+
+export function applyRules(
+  transactionIds: number[], ruleIds: number[], actorUserId: number | null,
+): Promise<{ updated_count: number; transaction_ids: number[] }> {
+  const query = actorUserId ? `?actor_user_id=${actorUserId}` : ''
+  return request<{ updated_count: number; transaction_ids: number[] }>(`/rules/apply${query}`, {
+    method: 'POST',
+    body: JSON.stringify({ transaction_ids: transactionIds, rule_ids: ruleIds }),
   })
 }

@@ -16,10 +16,11 @@ people *using* the app to track household finances — for schema/database detai
 8. [Import](#import)
 9. [Bank Sync](#bank-sync)
 10. [Auto-categorization](#auto-categorization)
-11. [Backup & Restore](#backup--restore)
-12. [Charts](#charts)
-13. [Admin mode](#admin-mode)
-14. [Appendix: Validation Rules & Tips](#appendix-validation-rules--tips)
+11. [Rules](#rules)
+12. [Backup & Restore](#backup--restore)
+13. [Charts](#charts)
+14. [Admin mode](#admin-mode)
+15. [Appendix: Validation Rules & Tips](#appendix-validation-rules--tips)
 
 ## Getting Started
 
@@ -44,7 +45,7 @@ Every screen shares the same header:
 
 MyFinance shows four primary destinations — **Dashboard**, **Transactions**,
 **Accounts**, and **Charts** — plus a **More** button for everything else (Categories,
-Users, Split Weights, Import, Bank Sync, Auto-categorization, Backup & Restore, and
+Users, Split Weights, Import, Bank Sync, Auto-categorization, Rules, Backup & Restore, and
 Help). On a phone, the primary
 destinations sit in a tab bar fixed to the bottom of the screen and **More** opens a
 sheet that slides up from the bottom; on a wider screen, the same buttons sit in a bar
@@ -243,6 +244,7 @@ clicking a transaction opens the same **History** panel: a full audit trail of w
 created or edited the transaction and when, and what fields changed. A line that
 wasn't somebody typing says so next to the action — `created · bank sync`,
 `created · CSV`, `updated · auto` for a change the automatic categorization made,
+`updated · rule` for one an [automatic rule](#rules) made,
 `updated · divide` — so a category you didn't choose yourself is always traceable to
 what put it there. Changes to the transaction's own split weights — set on
 creation or edited later — are tracked here too, shown as each involved user's weight
@@ -432,7 +434,7 @@ phone, where the list is a stack of cards rather than a table, there's no header
 tick one card first, then use the **Select all** button that appears in the selection
 bar to extend it to every transaction on the page. Once
 at least one row is selected, a bar appears above the table showing how many are
-selected, with **Bulk Edit**, **Categorize** and **Clear selection** buttons, plus
+selected, with **Bulk Edit**, **Categorize**, **Apply rules** and **Clear selection** buttons, plus
 **Delete selected** in [admin mode](#admin-mode).
 
 **Bulk Edit** opens a dialog with four independent, optional changes you can apply
@@ -481,6 +483,10 @@ transaction under, shows you the before and after per row, and writes only what 
 — see [Where the suggestions are
 applied](#where-the-suggestions-are-applied). It needs a model to have been trained and
 activated first.
+
+**Apply rules** runs your [automatic rules](#rules) on the selected transactions and
+shows, per row, what they would change before anything is written — see
+[Running rules on a selection](#running-rules-on-a-selection).
 
 **Delete selected** (admin mode only) permanently removes every selected transaction
 (and its splits) after a confirmation prompt — there's no undo. Like Bulk Edit, with the
@@ -561,7 +567,12 @@ hand. It's a four-step wizard:
    can override the category or account per row, or check a box to skip importing that
    row entirely. When a categorization model is active, a **Suggested** column appears
    with what it would file each row under, which you can take row by row or in one go —
-   see [Where the suggestions are applied](#where-the-suggestions-are-applied).
+   see [Where the suggestions are applied](#where-the-suggestions-are-applied). When an
+   enabled [rule](#rules) matches some rows, an **Apply automatic rules** switch appears
+   above the table, on by default: a payee or category a rule changes is highlighted
+   and says what the file had, and a **Rules** column shows the rest (accounting month,
+   split, reconciled) with the rule's name. A row a rule files gets no suggestion, since
+   a rule wins over the model. Switch it off to import the file as it is.
 4. **Commit** — imports everything that isn't skipped or erroring, and confirms when done.
 
 **QIF files** (Quicken Interchange Format, offered by many French banks' download page)
@@ -634,14 +645,14 @@ split is resolved through the usual account > global cascade described in
 [Split Weights](#split-weights).
 
 Its category depends on whether you have an active categorization model. With one, the
-row is categorized on arrival, and a merchant the model remembers a name for is renamed
-too — see [Where the suggestions are
+row is categorized on arrival — see [Where the suggestions are
 applied](#where-the-suggestions-are-applied). Without one it arrives with **no category**,
-to be categorized exactly as you would a transaction you typed yourself. Either way it
-starts out **unreconciled** — see
+to be categorized exactly as you would a transaction you typed yourself. Then every
+enabled [rule](#rules) runs on it, with no prompt, and wins over the model. Either way it
+starts out **unreconciled** (unless a rule marks it reconciled) — see
 [Reconciling transactions](#reconciling-transactions) — and the
 [History](#adding-or-editing-a-transaction) panel shows it as having come from a bank
-sync, with a second line for the model if one filed it.
+sync, with a further line for the model or a rule if one changed it.
 
 **Consent expiry.** Banks grant access for a limited time, typically 90 days. The screen
 shows the expiry date for each bank and warns you in the last week. To renew it, connect
@@ -669,8 +680,8 @@ history; at most 2 000 transactions come in per run, so split a longer period.
 ## Auto-categorization
 
 Learns from the transactions you have already filed, so it can propose a category for the
-ones you have not — and, for a merchant you see every month, propose the name you gave it
-yourself. It learns from your own history and nothing leaves the app.
+ones you have not. It learns from your own history and nothing leaves the app. To rename
+payees, use [Rules](#rules).
 
 **Nothing on this screen changes a transaction.** Training produces a model, scores it,
 and leaves it to you to decide whether to use it. Once a model is active it is used in
@@ -697,11 +708,7 @@ selections share even one transaction, training is refused and says how many.
 Neither selection is affected by the user selector in the header. There is one model for
 the household, so it learns from everyone's filing.
 
-**3. Settings.** An optional note to remind you later what was different about this run,
-plus the two settings that govern merchant names: how many times a merchant must have
-been seen, and how consistently you must have named it the same way, before the model
-will propose that name. Raising either makes it propose fewer names and get more of them
-right. Categories are unaffected by both.
+**3. Settings.** An optional note to remind you later what was different about this run.
 
 **Training** takes about a minute on a full history — leave the page open. Only one training run
 can be in flight at a time.
@@ -720,9 +727,7 @@ can be in flight at a time.
 
 Below that, a table shows how it does when it is *confident*: at each confidence level,
 the share of transactions it speaks about at all and how often it is right about them.
-This is how you choose where to trust it blindly and where to review. Finally, a line
-reports how many merchants it remembers a name for, how often it proposes one, and how
-often that name is exactly right.
+This is how you choose where to trust it blindly and where to review.
 
 **Using a model.** A freshly trained model is *inactive*: it sits there with its score
 until you press **Use this model**. Activating a model deactivates whichever one was
@@ -741,8 +746,7 @@ category you set yourself is never replaced unless you explicitly ask for it.
 **When a bank sync brings in new rows**, they are categorized as they arrive, with no
 prompt. There is nothing to compare against — the bank sends no category — and the bank's
 own wording is kept in the transaction's Original label whatever the payee becomes, so
-nothing is lost. A merchant the model remembers a name for is renamed at the same time.
-Rows synced before you activated a model keep whatever they had; use the bulk action
+nothing is lost. Rows synced before you activated a model keep whatever they had; use the bulk action
 below on them.
 
 **When you import a file**, the Review step shows a **Suggested** column next to the
@@ -754,11 +758,9 @@ commit. **Back to the file's categories** undoes the lot.
 
 **On transactions you pick yourself**, select rows on the Transactions screen and press
 **Categorize**. A panel lists each one with what it is filed under now and what the model
-proposes, its confidence, and any name it remembers. Rows where it would change something
-start ticked and rows it already agrees with start unticked; untick anything you disagree
-with. Two switches at the top apply the categories without the renames, or the other way
-round, and a third lets the model replace categories that are already set — off by
-default. The button says how many transactions will actually be written. If no model has
+proposes, and its confidence. Rows where it would change something start ticked and rows
+it already agrees with start unticked; untick anything you disagree with. A switch at the
+top lets the model replace categories that are already set — off by default. The button says how many transactions will actually be written. If no model has
 been activated yet, the panel says so and offers a way to this screen.
 
 ### Cleaning up bank wording
@@ -769,6 +771,59 @@ transfer and direct-debit prefixes (`VIR SEPA `, `PRLV SEPA RECU RCUR `), card-n
 trailing-date suffixes (` CB*4325`). The memo and the Original label always keep the
 bank's full wording, and existing transactions are never rewritten — only rows arriving
 from now on.
+
+## Rules
+
+A rule is a filter plus a bulk edit that runs on its own, like the rules of a mail
+client: **when** a transaction matches its conditions, **then** it changes it. Rules live
+on their own screen, under **More → Rules**.
+
+**Conditions** are the same as the Transactions screen's Advanced filter — payee, memo,
+amount, date, account, category — plus **Original label**, the bank's (or the file's)
+own wording before any cleanup or renaming, which is the steadiest way to recognise a
+merchant. Combine them with **ALL** or **ANY**. As you type, the editor says how many
+existing transactions match today, the quickest check that a condition says what you
+meant. A condition on an empty field never matches (a transaction with no memo is not
+caught by "Memo is not …").
+
+**Actions** are one or more of: **Rename payee**, **Set category**, **Shift accounting
+month**, **Set split** (the same weights editor as Bulk Edit), and **Mark as reconciled /
+not reconciled**. A rule can't move a transaction to another account or delete it: those
+stay hand-only. A transaction a rule changes is left **not reconciled**, so you can review
+it, unless the rule itself marks it reconciled.
+
+**Where rules run.** Every enabled rule runs:
+
+- **on each bank sync**, on the transactions it brings in, with no prompt. It runs after
+  automatic categorization, so a rule wins over the model. When a rule files a new
+  transaction under a category and doesn't set a split itself, the split is resolved
+  again for that category, as if the transaction had been created with it;
+- **on the Import screen**, where the Review step shows what they change and lets you
+  switch them off — see [Import](#import);
+- **on a selection** you make on the Transactions screen, below.
+
+**Order.** Rules run top to bottom (the arrows move one up or down), each one reading the
+transaction as the rules above left it. So one rule can rename `PRLV SEPA SFR` to `SFR`
+and another, further down, can match the payee `SFR`; and when two rules change the same
+thing, the lower one wins.
+
+**On / off.** An off rule never runs by itself at a sync or an import, but you can still
+tick it when running rules on a selection, which is how to try a new rule on real
+transactions before turning it on. Deleting a rule leaves the transactions it already
+changed as they are.
+
+Rules are part of a backup and come back with an **Overwrite** restore; a **Partial
+restore** leaves them alone, and a backup taken before rules existed restores with none.
+
+### Running rules on a selection
+
+Select transactions on the Transactions screen and press **Apply rules**. Every enabled
+rule starts ticked at the top of the panel; untick one, or tick an off one, and the
+preview updates. Each row shows what it is filed under now and what the rules would
+change, with the names of the rules that matched. Rows the rules change start ticked;
+rows they leave alone are listed but can't be ticked. The button says how many
+transactions will actually be written. With no rule yet, the panel offers a way to the
+Rules screen.
 
 ## Backup & Restore
 

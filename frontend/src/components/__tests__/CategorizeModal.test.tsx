@@ -30,9 +30,7 @@ const suggestion = (over: Record<string, unknown> = {}) => ({
   suggested_category_name: 'Courses',
   confidence: 0.93,
   high_confidence: true,
-  suggested_payee: null,
   category_changed: true,
-  payee_changed: false,
   ...over,
 })
 
@@ -41,7 +39,6 @@ const response = (items: unknown[], over: Record<string, unknown> = {}) => ({
   threshold: 0.8,
   items,
   category_changes: items.length,
-  payee_changes: 0,
   high_confidence_changes: items.length,
   ...over,
 })
@@ -91,34 +88,6 @@ test('applies only the ticked rows, and only what would change', async () => {
 
   // The row the model agrees with starts unticked, so it is not sent at all.
   fireEvent.click(await screen.findByRole('button', { name: /Apply to 1 transaction/ }))
-
-  await waitFor(() => expect(mockApplyCategorizerSuggestions).toHaveBeenCalledWith(
-    [{ transaction_id: 11, category_id: 3 }], false, 1,
-  ))
-})
-
-test('sends a remembered name alongside the category', async () => {
-  mockSuggestCategories.mockResolvedValue(response([
-    suggestion({ suggested_payee: 'Supermarché du coin', payee_changed: true }),
-  ], { payee_changes: 1 }))
-  render()
-
-  expect(await screen.findByText('→ Supermarché du coin')).toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: /Apply to 1 transaction/ }))
-
-  await waitFor(() => expect(mockApplyCategorizerSuggestions).toHaveBeenCalledWith(
-    [{ transaction_id: 11, category_id: 3, payee: 'Supermarché du coin' }], false, 1,
-  ))
-})
-
-test('can apply the categories without the renames', async () => {
-  mockSuggestCategories.mockResolvedValue(response([
-    suggestion({ suggested_payee: 'Supermarché du coin', payee_changed: true }),
-  ], { payee_changes: 1 }))
-  render()
-
-  fireEvent.click(await screen.findByLabelText('Apply remembered names (1)'))
-  fireEvent.click(screen.getByRole('button', { name: /Apply to 1 transaction/ }))
 
   await waitFor(() => expect(mockApplyCategorizerSuggestions).toHaveBeenCalledWith(
     [{ transaction_id: 11, category_id: 3 }], false, 1,

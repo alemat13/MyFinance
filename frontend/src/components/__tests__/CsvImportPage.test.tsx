@@ -4,8 +4,9 @@ import CsvImportPage from '../CsvImportPage'
 import { pickAccount } from '../../test-utils'
 import { ImportDetectResponse } from '../../api/client'
 
-const { mockFetchAccounts, mockFetchCategories, mockDetectImport, mockPreviewImport, mockCommitImport } = vi.hoisted(() => ({
+const { mockFetchAccounts, mockFetchCategories, mockFetchUsers, mockDetectImport, mockPreviewImport, mockCommitImport } = vi.hoisted(() => ({
   mockFetchAccounts: vi.fn(),
+  mockFetchUsers: vi.fn(),
   mockFetchCategories: vi.fn(),
   mockDetectImport: vi.fn(),
   mockPreviewImport: vi.fn(),
@@ -15,6 +16,7 @@ const { mockFetchAccounts, mockFetchCategories, mockDetectImport, mockPreviewImp
 vi.mock('../../api/client', () => ({
   fetchAccounts: mockFetchAccounts,
   fetchCategories: mockFetchCategories,
+  fetchUsers: mockFetchUsers,
   detectImport: mockDetectImport,
   previewImport: mockPreviewImport,
   commitImport: mockCommitImport,
@@ -37,6 +39,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   mockFetchAccounts.mockResolvedValue([account])
   mockFetchCategories.mockResolvedValue([category])
+  mockFetchUsers.mockResolvedValue([])
   vi.spyOn(window, 'alert').mockImplementation(() => {})
 })
 
@@ -233,7 +236,7 @@ test('commits active rows and shows a success message with a way back', async ()
 
   await waitFor(() => {
     expect(mockCommitImport).toHaveBeenCalledWith([
-      { date: '2026-01-15', payee: 'Whole Foods', memo: null, amount: -42.5, account_id: 1, category_id: 1 },
+      { date: '2026-01-15', payee: 'Whole Foods', raw_label: 'Whole Foods', memo: null, amount: -42.5, account_id: 1, category_id: 1 },
     ], 42)
     expect(screen.getByText(/Imported 1 transaction/)).toBeInTheDocument()
   })
@@ -317,4 +320,53 @@ test('no model means no suggestion column at all', async () => {
 
   await waitFor(() => expect(screen.getByText('Commit 1 transaction(s)')).toBeInTheDocument())
   expect(screen.queryByText('Suggested')).not.toBeInTheDocument()
+})
+
+const RULE_ROWS = [
+  {
+    ...SUGGESTION_ROWS[1],
+    payee: 'PRLV SFR',
+    rules: {
+      rule_ids: [7], rule_names: ['SFR'], payee: 'SFR', category_id: 1, category_name: 'Groceries',
+      accounting_month_offset: 1, reconciled: null, split_weights: null, split_source: null,
+    },
+  },
+]
+
+async function goToReviewWithRules() {
+  mockPreviewImport.mockResolvedValue(RULE_ROWS)
+  await goToConfirm()
+  fireEvent.click(screen.getByText('Preview'))
+  await waitFor(() => expect(screen.getByText(/Apply automatic rules/)).toBeInTheDocument())
+}
+
+test('the rules are applied in the preview and committed, keeping the file label', async () => {
+  mockCommitImport.mockResolvedValue({ created_count: 1, transaction_ids: [1] })
+  await goToReviewWithRules()
+
+  expect(screen.getByText('SFR', { selector: 'td' })).toBeInTheDocument()
+  expect(screen.getByText('was PRLV SFR')).toBeInTheDocument()
+  expect(screen.getByText('Accounting month → +1 month')).toBeInTheDocument()
+  // A rule outranks the model, so the row it files gets no suggestion.
+  expect(screen.queryByText('Suggested')).not.toBeInTheDocument()
+
+  fireEvent.click(screen.getByText('Commit 1 transaction(s)'))
+  await waitFor(() => expect(mockCommitImport).toHaveBeenCalled())
+  expect(mockCommitImport.mock.calls[0][0][0]).toMatchObject({
+    payee: 'SFR', raw_label: 'PRLV SFR', category_id: 1, accounting_month_offset: 1,
+  })
+})
+
+test('switching the rules off commits the file as it is', async () => {
+  mockCommitImport.mockResolvedValue({ created_count: 1, transaction_ids: [1] })
+  await goToReviewWithRules()
+
+  fireEvent.click(screen.getByLabelText(/Apply automatic rules/))
+  expect(screen.queryByText('was PRLV SFR')).not.toBeInTheDocument()
+
+  fireEvent.click(screen.getByText('Commit 1 transaction(s)'))
+  await waitFor(() => expect(mockCommitImport).toHaveBeenCalled())
+  const row = mockCommitImport.mock.calls[0][0][0]
+  expect(row).toMatchObject({ payee: 'PRLV SFR', category_id: null })
+  expect(row.accounting_month_offset).toBeUndefined()
 })
