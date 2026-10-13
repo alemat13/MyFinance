@@ -435,7 +435,7 @@ at least one row is selected, a bar appears above the table showing how many are
 selected, with **Bulk Edit**, **Categorize** and **Clear selection** buttons, plus
 **Delete selected** in [admin mode](#admin-mode).
 
-**Bulk Edit** opens a dialog with four independent, optional changes you can apply
+**Bulk Edit** opens a dialog with five independent, optional changes you can apply
 together in a single save. When every transaction on the page is selected and the
 current filters match more than one page, the dialog shows **Select all N
 transactions** next to the selected count: click it to apply the edit to every
@@ -447,6 +447,11 @@ the list, so nothing you didn't see counted gets edited.
 - **Category** — leave this off to keep each transaction's own category unchanged;
   turn it on to set every selected transaction to the same category (including
   explicitly choosing "Uncategorized").
+- **Rename** — leave this off to keep each transaction's own payee; turn it on and
+  type a new payee to give every selected transaction that same name (for example to
+  turn a batch of `CARTE 12/09 SNCF`, `PRLV SNCF CONNECT`… into plain `SNCF`). Only
+  the payee changes: memos and the original bank label are kept, and the change shows
+  in each transaction's history. The name can't be left blank.
 - **Accounting month** — leave this off to keep each transaction's own accounting
   month; turn it on to shift all of them by the same offset (e.g. +1 month). Because
   the shift is relative to each transaction's own date, transactions with different
@@ -463,7 +468,7 @@ the list, so nothing you didn't see counted gets edited.
   the quickest way to point a whole batch of imported or reviewed transactions at
   once.
 
-In [admin mode](#admin-mode) the dialog has a fifth change, **Move to another
+In [admin mode](#admin-mode) the dialog has a sixth change, **Move to another
 account**: every selected transaction moves to the account you pick, each keeping its
 own split. A bank-synced transaction moved away from its account can come back on the
 old account at the next sync if it is less than a week old, since that sync asks the
