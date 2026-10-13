@@ -201,7 +201,7 @@ def test_preview_shows_the_before_and_after(client, db, sample_account, grocerie
     assert hit.payee == "CARREFOUR"
 
 
-def test_apply_writes_unreconciles_and_records(client, db, sample_account, sample_user, groceries):
+def test_apply_writes_and_records_without_touching_reconciled(client, db, sample_account, sample_user, groceries):
     t = _txn(db, sample_account.id, "CARREFOUR", raw_label="CARTE CARREFOUR", reconciled=True,
              user_id=sample_user.id)
     _rule(db, "Shop", [_contains("payee", "carrefour")], {"payee": "Carrefour", "category_id": groceries.id})
@@ -210,11 +210,13 @@ def test_apply_writes_unreconciles_and_records(client, db, sample_account, sampl
     assert response.status_code == 200
     assert response.json()["updated_count"] == 1
     db.refresh(t)
-    assert (t.payee, t.category_id, t.reconciled) == ("Carrefour", groceries.id, False)
+    # A rename must not send an already-reconciled row back to review.
+    assert (t.payee, t.category_id, t.reconciled) == ("Carrefour", groceries.id, True)
     assert t.raw_label == "CARTE CARREFOUR"
     entry = db.query(TransactionHistory).filter(TransactionHistory.transaction_id == t.id).one()
     assert entry.source == "rule"
     assert entry.changes["payee"] == {"old": "CARREFOUR", "new": "Carrefour"}
+    assert "reconciled" not in entry.changes
     # An existing row keeps its split when a rule only changes its category.
     split = db.query(TransactionSplit).filter(TransactionSplit.transaction_id == t.id).one()
     assert split.source == "global"
