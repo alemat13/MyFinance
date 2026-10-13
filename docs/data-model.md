@@ -273,6 +273,18 @@ The automatic rules (`backend/transaction_rules.py`, `routers/transaction_rules.
 
 A rule leaves `reconciled` as it is unless one of its actions sets it (an earlier version unreconciled every row it changed, which sent already-reviewed rows back to review on a mere rename), and a row it changes gets a `transaction_history` row with `source="rule"`. On a bank sync, a rule that sets a category without its own split re-resolves the new row's split through the usual cascade (`fresh=True`), since that row's split was resolved before any category was known; an existing row keeps its split, as with Bulk Edit.
 
+### `saved_filters`
+The Transactions screen's saved filters (`routers/saved_filters.py`): a filter saved under a name and shown as a button next to Simple/Advanced. One list for the whole household (not per user), so a filter saved on one device shows on every other. Nothing references a saved filter, and it names accounts and categories only by id inside its JSON, so deleting one of those is never blocked — the filter then simply matches nothing on that field. Part of the backup archive (`saved_filters`), restored in overwrite mode only, for the same reason as `transaction_rules`.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | Integer | Primary key |
+| `name` | String(100) | The button's label |
+| `position` | Integer | Button order, ascending; changed by drag and drop (`PUT /api/saved-filters/order`) |
+| `mode` | String(10) | `simple` \| `advanced`, the filter it was saved from |
+| `filters` | JSON | That filter exactly as the screen holds it, stored and returned as is, never read by the backend: `simple` → `search`, `date_from`, `date_to`, `account_id`, `category_id`, `amount_min`, `amount_max`, `reconciled`; `advanced` → `match_mode` and the condition rows (`field`, `operator`, `value`, `value2`). Both also carry `sort_dir` (`asc` \| `desc`), the date order saved with the filter |
+| `created_at` / `updated_at` | DateTime | |
+
 ### `onedrive_backup_settings`
 Single global row (`id=1`) driving the OneDrive automatic backup connection (`backend/onedrive.py`) — one connection for the whole household database, not per-user, and not part of the account/transaction ER diagram above. Not part of `backup`'s export/import archive either: it's app configuration, not domain data, and its refresh token opens the very drive those archives are uploaded to. An overwrite restore leaves this table alone (it's excluded from the restore's `drop_all()`), so restoring never disconnects OneDrive. Token columns are Fernet-encrypted at rest and never returned by the API.
 
