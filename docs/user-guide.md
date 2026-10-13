@@ -794,6 +794,15 @@ existing transactions match today, the quickest check that a condition says what
 meant. A condition on an empty field never matches (a transaction with no memo is not
 caught by "Memo is not …").
 
+**Starting from the Transactions screen.** Filter the list until it shows the
+transactions you have in mind, then click **Create rule** (next to **Clear** in the Simple
+filter, under the conditions in the Advanced one). The Rules screen opens on a new rule
+whose conditions are the filters you set; you add the actions and save. From the Simple
+filter, the search box becomes "Payee contains" (a rule can't say "payee or memo"), and
+the Reconciled filter is left out, since a rule has no such condition. A rule built this
+way keeps any date filter you had set, so remove it if the rule should also catch future
+transactions. The button is greyed out until at least one filter is set.
+
 **Actions** are one or more of: **Rename payee**, **Set category**, **Shift accounting
 month**, **Set split**, and **Mark as reconciled / not reconciled**. **Set split** offers
 the **Global split**, the **Default split** (the account's split, else the category's, else

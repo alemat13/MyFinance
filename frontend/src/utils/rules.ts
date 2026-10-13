@@ -1,4 +1,4 @@
-import { RuleActions, RuleOutcome, SplitTier, User } from '../api/client'
+import { FilterCondition, RuleActions, RuleOutcome, SplitTier, TransactionSearchRequest, User } from '../api/client'
 
 export const SPLIT_TIER_LABELS: Record<SplitTier, string> = {
   global: 'Global split',
@@ -41,4 +41,44 @@ export function describeActions(
   if (actions.split_weights && actions.split_weights.length > 0) lines.push(`Split ${splitLabel(actions.split_weights, users)}`)
   if (actions.split_tier) lines.push(`Split: ${SPLIT_TIER_LABELS[actions.split_tier]}, as set when the rule runs`)
   return lines
+}
+
+/** The conditions a new rule starts from, taken from the Transactions screen's
+ *  filters. */
+export interface RuleDraft {
+  conditions: FilterCondition[]
+  match_mode: 'all' | 'any'
+}
+
+function shiftDay(isoDate: string, days: number): string {
+  const d = new Date(`${isoDate}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + days)
+  return d.toISOString().slice(0, 10)
+}
+
+/** The simple filter as rule conditions. A rule has no OR across fields, so the
+ *  search box (payee or memo on the screen) becomes "payee contains", and it has
+ *  no reconciled condition, so that filter is left out. Dates and amounts are
+ *  inclusive on the screen; the rule's before/after are strict, hence the day
+ *  shift. */
+export function simpleFiltersToConditions(f: TransactionSearchRequest): FilterCondition[] {
+  const out: FilterCondition[] = []
+  if (f.search?.trim()) out.push({ field: 'payee', operator: 'contains', value: f.search.trim() })
+  if (f.account_id) out.push({ field: 'account_id', operator: 'eq', value: f.account_id })
+  if (f.category_id) out.push({ field: 'category_id', operator: 'eq', value: f.category_id })
+  if (f.amount_min != null && f.amount_max != null) {
+    out.push({ field: 'amount', operator: 'between', value: f.amount_min, value2: f.amount_max })
+  } else if (f.amount_min != null) {
+    out.push({ field: 'amount', operator: 'gte', value: f.amount_min })
+  } else if (f.amount_max != null) {
+    out.push({ field: 'amount', operator: 'lte', value: f.amount_max })
+  }
+  if (f.date_from && f.date_to) {
+    out.push({ field: 'date', operator: 'between', value: f.date_from, value2: f.date_to })
+  } else if (f.date_from) {
+    out.push({ field: 'date', operator: 'after', value: shiftDay(f.date_from, -1) })
+  } else if (f.date_to) {
+    out.push({ field: 'date', operator: 'before', value: shiftDay(f.date_to, 1) })
+  }
+  return out
 }

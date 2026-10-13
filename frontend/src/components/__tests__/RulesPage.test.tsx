@@ -108,3 +108,14 @@ test('a saved tier is listed as read when the rule runs', async () => {
   expect(await screen.findByText(
     'Split: Default split (account, else category, else global), as set when the rule runs')).toBeInTheDocument()
 })
+
+test('a draft from the Transactions filters opens a new rule with its conditions', async () => {
+  const onDraftUsed = vi.fn()
+  renderWithProviders(<RulesPage onBack={() => {}} onDraftUsed={onDraftUsed} draft={{
+    match_mode: 'any',
+    conditions: [{ field: 'payee', operator: 'contains', value: 'netflix' }],
+  }} />)
+  expect(await screen.findByDisplayValue('netflix')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Save rule' })).toBeInTheDocument()
+  expect(onDraftUsed).toHaveBeenCalled()
+})

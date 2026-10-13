@@ -19,6 +19,7 @@ import BackupPage from './components/BackupPage'
 import BankSyncPage from './components/BankSyncPage'
 import CategorizerPage from './components/CategorizerPage'
 import RulesPage from './components/RulesPage'
+import { RuleDraft } from './utils/rules'
 import ChartsPage from './components/ChartsPage'
 import HelpPage from './components/HelpPage'
 
@@ -77,6 +78,9 @@ export default function App() {
     window.addEventListener('popstate', onPopState)
     return () => window.removeEventListener('popstate', onPopState)
   }, [])
+
+  // Filters handed from Transactions' "Create rule" to the Rules screen's editor.
+  const [ruleDraft, setRuleDraft] = useState<RuleDraft | null>(null)
 
   const navigateToView = (v: View) => {
     if (v === view) return
@@ -183,6 +187,7 @@ export default function App() {
           selectedUserId={selectedUserId}
           onOpenCategorizer={() => navigateToView('categorizer')}
           onOpenRules={() => navigateToView('rules')}
+          onCreateRule={draft => { setRuleDraft(draft); navigateToView('rules') }}
         />
       )}
       {view === 'users' && <UsersList onBack={() => navigateToView('dashboard')} onSelectUser={handleSelectUser} />}
@@ -190,7 +195,9 @@ export default function App() {
       {view === 'import' && <CsvImportPage onBack={() => navigateToView('dashboard')} selectedUserId={selectedUserId} />}
       {view === 'bank-sync' && <BankSyncPage onBack={() => navigateToView('dashboard')} />}
       {view === 'categorizer' && <CategorizerPage onBack={() => navigateToView('dashboard')} />}
-      {view === 'rules' && <RulesPage onBack={() => navigateToView('dashboard')} />}
+      {view === 'rules' && (
+        <RulesPage onBack={() => navigateToView('dashboard')} draft={ruleDraft} onDraftUsed={() => setRuleDraft(null)} />
+      )}
       {view === 'backup' && <BackupPage onBack={() => navigateToView('dashboard')} />}
       {view === 'charts' && <ChartsPage onBack={() => navigateToView('dashboard')} selectedUserId={selectedUserId} />}
       {view === 'help' && <HelpPage onBack={() => navigateToView('dashboard')} />}
