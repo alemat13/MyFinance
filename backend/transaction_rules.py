@@ -19,8 +19,9 @@ Transactions screen, with a before/after per row.
 How several rules combine: every enabled rule runs, in `position` order, and
 each one's conditions are read against the row *as the earlier rules left
 it*, so a later rule wins on a field both set and one rule can build on
-another's rename. A row a rule changed is left `reconciled = False` — the
-review queue, same as the model's — unless a rule itself sets `reconciled`.
+another's rename. A rule leaves `reconciled` alone unless one of its actions
+sets it: renaming an already-reconciled row must not send it back to review
+(new rows from a sync or an import arrive unreconciled anyway).
 
 Conditions have to be evaluated in Python rather than in SQL, since the
 import preview runs them on rows that exist only in a CSV. `_matches` mirrors
@@ -254,8 +255,8 @@ def outcome_out(outcome: Outcome, category_names: dict[int, str]) -> RuleOutcome
 
 def write(db: Session, transaction: Transaction, outcome: Outcome, actor_user_id: int | None,
           *, fresh: bool = False) -> bool:
-    """Apply one outcome to a transaction, unreconcile it unless a rule set
-    `reconciled`, and record a history row. Returns whether anything changed.
+    """Apply one outcome to a transaction and record a history row. Returns
+    whether anything changed. `reconciled` changes only if a rule set it.
 
     `fresh` marks a row the caller has just created with a split resolved
     before any category was known (the bank sync): when a rule files it under
@@ -266,8 +267,6 @@ def write(db: Session, transaction: Transaction, outcome: Outcome, actor_user_id
     if not outcome.changes_anything:
         return False
     fields = dict(outcome.fields)
-    if "reconciled" not in fields:
-        fields["reconciled"] = False
 
     before = {f: getattr(transaction, f) for f in fields if f in TRACKED_FIELDS}
     for name, value in fields.items():
