@@ -214,3 +214,20 @@ test('shows a load-failure message instead of "no users yet" when fetching users
   await waitFor(() => expect(screen.getByText(/Couldn't load users/)).toBeInTheDocument())
   expect(screen.queryByText(/No users yet/)).not.toBeInTheDocument()
 })
+
+test('admin mode shows a warning banner and survives navigating between views', async () => {
+  localStorage.setItem('userChoiceMade', '1')
+  window.history.replaceState(null, '', '/?admin')
+  renderApp()
+  await waitFor(() => expect(mockFetchUsers).toHaveBeenCalled())
+  expect(screen.getByRole('note', { name: 'Admin mode' })).toHaveTextContent('Export a backup first')
+
+  fireEvent.click(screen.getByRole('button', { name: 'Transactions' }))
+  expect(new URLSearchParams(window.location.search).has('admin')).toBe(true)
+})
+
+test('no admin banner without the admin parameter', async () => {
+  renderApp()
+  await waitFor(() => expect(screen.getByText('DashboardStub')).toBeInTheDocument())
+  expect(screen.queryByText(/Admin mode\./)).not.toBeInTheDocument()
+})

@@ -24,7 +24,7 @@ def export_backup(db: Session = Depends(get_db)):
 
 @router.post("/import", response_model=ImportSummary)
 async def import_backup(
-    mode: Literal["overwrite", "append"] = Query("overwrite"),
+    mode: Literal["overwrite", "partial"] = Query("overwrite"),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):

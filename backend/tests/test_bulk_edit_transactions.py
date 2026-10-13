@@ -316,3 +316,46 @@ def test_bulk_update_by_filter_matching_nothing_is_rejected(client, db, sample_a
         json={"filter": {"search": "nothing-matches-this"}, "update": {"category_id": sample_category2.id}},
     )
     assert response.status_code == 422
+
+
+def test_bulk_update_moves_to_another_account_keeping_splits(client, db, sample_account, sample_category, sample_user):
+    from models import Account, TransactionHistory, TransactionSplit
+    other = Account(name="Other", type="Savings", balance_offset=0.0, currency="EUR")
+    db.add(other)
+    db.commit()
+    t1 = _make_transaction(db, sample_account, sample_category)
+    db.add(TransactionSplit(transaction_id=t1.id, user_id=sample_user.id, weight=7, share_amount=100.0, source="custom"))
+    db.commit()
+
+    response = client.put("/api/transactions/bulk-update",
+                          json={"transaction_ids": [t1.id], "update": {"account_id": other.id}})
+    assert response.status_code == 200
+    db.refresh(t1)
+    assert t1.account_id == other.id
+    assert [(s.user_id, s.weight) for s in t1.splits] == [(sample_user.id, 7)]
+    history = db.query(TransactionHistory).filter_by(transaction_id=t1.id).one()
+    assert history.changes["account_id"] == {"old": sample_account.id, "new": other.id}
+
+
+def test_bulk_update_move_to_unknown_account_422(client, db, sample_account, sample_category):
+    t1 = _make_transaction(db, sample_account, sample_category)
+    response = client.put("/api/transactions/bulk-update",
+                          json={"transaction_ids": [t1.id], "update": {"account_id": 9999}})
+    assert response.status_code == 422
+    db.refresh(t1)
+    assert t1.account_id == sample_account.id
+
+
+def test_bulk_update_move_refuses_a_bank_id_the_target_already_has(client, db, sample_account, sample_category):
+    from models import Account
+    other = Account(name="Other", type="Savings", balance_offset=0.0, currency="EUR")
+    db.add(other)
+    db.commit()
+    moving = _make_transaction(db, sample_account, sample_category, external_id="bank-1")
+    _make_transaction(db, other, sample_category, external_id="bank-1")
+
+    response = client.put("/api/transactions/bulk-update",
+                          json={"transaction_ids": [moving.id], "update": {"account_id": other.id}})
+    assert response.status_code == 409
+    db.refresh(moving)
+    assert moving.account_id == sample_account.id

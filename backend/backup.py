@@ -174,14 +174,15 @@ def _reset_postgres_sequences(bind) -> None:
         conn.commit()
 
 
-def import_database(db: Session, data: DatabaseExport, mode: Literal["overwrite", "append"]) -> ImportSummary:
-    bind = db.get_bind()
+def import_database(db: Session, data: DatabaseExport, mode: Literal["overwrite", "partial"]) -> ImportSummary:
+    if mode == "partial":
+        return import_partial(db, data)
 
-    if mode == "overwrite":
-        _validate_referential_integrity(data)
-        tables = [t for t in Base.metadata.sorted_tables if t.name not in _PRESERVED_ON_OVERWRITE]
-        Base.metadata.drop_all(bind=bind, tables=tables)
-        Base.metadata.create_all(bind=bind)
+    bind = db.get_bind()
+    _validate_referential_integrity(data)
+    tables = [t for t in Base.metadata.sorted_tables if t.name not in _PRESERVED_ON_OVERWRITE]
+    Base.metadata.drop_all(bind=bind, tables=tables)
+    Base.metadata.create_all(bind=bind)
 
     ImportSession = sessionmaker(bind=bind)
     session = ImportSession()
@@ -217,17 +218,16 @@ def import_database(db: Session, data: DatabaseExport, mode: Literal["overwrite"
 
         session.add_all(TransactionSplit(**s.model_dump()) for s in data.transaction_splits)
         session.add_all(TransactionHistory(**h.model_dump()) for h in data.transaction_history)
-        # Bank sync, overwrite only: in append mode a restored link would
-        # point at the archive's account ids, not this database's. An archive
-        # that predates these sections (None) leaves them empty, as before.
-        bank_connections = (data.bank_connections or []) if mode == "overwrite" else []
-        bank_account_links = (data.bank_account_links or []) if mode == "overwrite" else []
+        # An archive that predates these sections (None) restores with no
+        # bank connected.
+        bank_connections = data.bank_connections or []
+        bank_account_links = data.bank_account_links or []
         session.add_all(BankConnection(**c.model_dump()) for c in bank_connections)
         session.flush()
         session.add_all(BankAccountLink(**l.model_dump()) for l in bank_account_links)
-        # Bulk restore bypasses every per-site invalidation above by design -
-        # a full reset is the only thing that can be correct here. A no-op in
-        # "overwrite" mode (drop_all/create_all already emptied the table).
+        # Bulk restore bypasses every per-site invalidation by design. A no-op
+        # here in practice (drop_all/create_all already emptied the table),
+        # kept so the restore stays correct if that ever changes.
         cache_service.invalidate_all(session)
         session.commit()
     except Exception:
@@ -253,4 +253,194 @@ def import_database(db: Session, data: DatabaseExport, mode: Literal["overwrite"
         transaction_history=len(data.transaction_history),
         bank_connections=len(bank_connections),
         bank_account_links=len(bank_account_links),
+    )
+
+
+def import_partial(db: Session, data: DatabaseExport) -> ImportSummary:
+    """Admin-mode "partial" restore: appends the archive's accounts, categories
+    and transactions next to what is already there, every one under a fresh
+    auto-increment id (the archive's own ids are only used to match rows to
+    each other). An account or category id referenced by a transaction (or a
+    category's parent_id) resolves first to a row of the archive, recreated
+    here, otherwise to an existing row with that id; if neither exists the
+    whole restore is refused before anything is written.
+
+    Also carried, remapped: each transaction's own split (its users must
+    already exist), the ownership and split weights of the recreated accounts
+    and categories, and the history of the restored transactions. Users,
+    global weights and bank connections are never touched.
+
+    Category names are unique, so an archive category whose name already
+    exists here is not recreated: its rows are filed under the existing
+    category of that name, whose own split weights are left as they are.
+    Without that, restoring any real export (which carries every category)
+    would always fail."""
+    existing_account_ids = {row[0] for row in db.query(Account.id).all()}
+    existing_category_ids = {row[0] for row in db.query(Category.id).all()}
+    existing_user_ids = {row[0] for row in db.query(User.id).all()}
+    existing_category_by_name = {name: cid for cid, name in db.query(Category.id, Category.name).all()}
+    reused_categories = {c.id: existing_category_by_name[c.name] for c in data.categories if c.name in existing_category_by_name}
+    archive_account_ids = {a.id for a in data.accounts}
+    archive_category_ids = {c.id for c in data.categories}
+    archive_transaction_ids = {t.id for t in data.transactions}
+
+    def _resolves(label: str, value: int, archive_ids: set[int], existing_ids: set[int]) -> None:
+        if value not in archive_ids and value not in existing_ids:
+            raise BackupFormatError(
+                f"{label} {value} matches no row in the archive nor in the database; nothing was restored"
+            )
+
+    def _user_exists(label: str, value: int) -> None:
+        if value not in existing_user_ids:
+            raise BackupFormatError(f"{label} {value} is not an existing user; nothing was restored")
+
+    for c in data.categories:
+        if c.parent_id is not None:
+            _resolves("categories.parent_id", c.parent_id, archive_category_ids, existing_category_ids)
+    for t in data.transactions:
+        _resolves("transactions.account_id", t.account_id, archive_account_ids, existing_account_ids)
+        if t.category_id is not None:
+            _resolves("transactions.category_id", t.category_id, archive_category_ids, existing_category_ids)
+    for s in data.transaction_splits:
+        if s.transaction_id not in archive_transaction_ids:
+            raise BackupFormatError(
+                f"transaction_splits.transaction_id {s.transaction_id} has no matching transaction in the archive; "
+                "nothing was restored"
+            )
+        _user_exists("transaction_splits.user_id", s.user_id)
+    account_users = [au for au in data.account_users if au.account_id in archive_account_ids]
+    account_split_weights = [w for w in data.account_split_weights if w.account_id in archive_account_ids]
+    category_splits = [
+        cs for cs in data.category_splits
+        if cs.category_id in archive_category_ids and cs.category_id not in reused_categories
+    ]
+    for au in account_users:
+        _user_exists("account_users.user_id", au.user_id)
+    for w in account_split_weights:
+        _user_exists("account_split_weights.user_id", w.user_id)
+    for cs in category_splits:
+        _user_exists("category_splits.user_id", cs.user_id)
+    history = [h for h in data.transaction_history if h.transaction_id in archive_transaction_ids]
+
+    # Bank ids keep a later sync from re-importing a row; the unique index on
+    # (account_id, external_id) would reject a restored row whose bank id an
+    # existing account already holds, so say which up front.
+    restored_external = {
+        (t.account_id, t.external_id) for t in data.transactions
+        if t.external_id is not None and t.account_id not in archive_account_ids
+    }
+    if restored_external:
+        clash_accounts = {account_id for account_id, _ in restored_external}
+        existing_external = {
+            (account_id, external_id) for account_id, external_id in
+            db.query(Transaction.account_id, Transaction.external_id)
+            .filter(Transaction.account_id.in_(clash_accounts), Transaction.external_id.isnot(None))
+            .all()
+        }
+        clashes = sorted(restored_external & existing_external)
+        if clashes:
+            raise BackupFormatError(
+                f"{len(clashes)} transaction(s) of the archive are already on their account with the same bank id "
+                f"(first: account {clashes[0][0]}, bank id {clashes[0][1]}); nothing was restored"
+            )
+
+    archived_totals: dict[int, float] = {}
+    for t in data.transactions:
+        archived_totals[t.account_id] = archived_totals.get(t.account_id, 0.0) + t.amount
+
+    try:
+        account_map: dict[int, int] = {}
+        for a in data.accounts:
+            account = Account(
+                **a.model_dump(exclude={"id", "balance"}),
+                balance_offset=round(a.balance - archived_totals.get(a.id, 0.0), 2),
+            )
+            db.add(account)
+            db.flush()
+            account_map[a.id] = account.id
+
+        def _account(old_id: int) -> int:
+            return account_map.get(old_id, old_id)
+
+        category_map: dict[int, int] = dict(reused_categories)
+
+        def _category(old_id: int | None) -> int | None:
+            return None if old_id is None else category_map.get(old_id, old_id)
+
+        # Parents first: a recreated child must point at its parent's new id.
+        for c in sorted(data.categories, key=lambda c: c.parent_id in archive_category_ids):
+            if c.id in reused_categories:
+                continue
+            category = Category(**c.model_dump(exclude={"id", "parent_id"}), parent_id=_category(c.parent_id))
+            db.add(category)
+            db.flush()
+            category_map[c.id] = category.id
+
+        db.add_all(
+            AccountUser(**au.model_dump(exclude={"account_id"}), account_id=_account(au.account_id))
+            for au in account_users
+        )
+        db.add_all(
+            AccountSplitWeight(**w.model_dump(exclude={"account_id"}), account_id=_account(w.account_id))
+            for w in account_split_weights
+        )
+        db.add_all(
+            CategorySplit(**cs.model_dump(exclude={"category_id"}), category_id=_category(cs.category_id))
+            for cs in category_splits
+        )
+
+        # One flush for the lot (ids come back in insertion order), since an
+        # archive can carry the whole ledger.
+        new_transactions = [
+            Transaction(
+                **t.model_dump(exclude={"id", "account_id", "category_id", "divide_group_id"}),
+                account_id=_account(t.account_id),
+                category_id=_category(t.category_id),
+            )
+            for t in data.transactions
+        ]
+        db.add_all(new_transactions)
+        db.flush()
+        transaction_map = {t.id: new.id for t, new in zip(data.transactions, new_transactions)}
+        # A divide group is named after its anchor's id; one whose anchor
+        # isn't in the archive no longer has anything to point at.
+        for t, new in zip(data.transactions, new_transactions):
+            if t.divide_group_id is not None:
+                new.divide_group_id = transaction_map.get(t.divide_group_id)
+
+        db.add_all(
+            TransactionSplit(**s.model_dump(exclude={"transaction_id"}), transaction_id=transaction_map[s.transaction_id])
+            for s in data.transaction_splits
+        )
+        # History snapshots point at the restored rows' new ids; an account or
+        # category id the archive doesn't recreate is kept as it was, like the
+        # transactions themselves.
+        db.add_all(
+            TransactionHistory(
+                **h.model_dump(exclude={"id", "transaction_id", "account_id", "category_id", "changed_by_user_id"}),
+                transaction_id=transaction_map[h.transaction_id],
+                account_id=None if h.account_id is None else _account(h.account_id),
+                category_id=_category(h.category_id),
+                changed_by_user_id=h.changed_by_user_id if h.changed_by_user_id in existing_user_ids else None,
+            )
+            for h in history
+        )
+        cache_service.invalidate_all(db)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
+    return ImportSummary(
+        mode="partial",
+        users=0,
+        accounts=len(data.accounts),
+        categories=len(data.categories) - len(reused_categories),
+        account_users=len(account_users),
+        category_splits=len(category_splits),
+        global_split_weights=0,
+        account_split_weights=len(account_split_weights),
+        transactions=len(data.transactions),
+        transaction_splits=len(data.transaction_splits),
+        transaction_history=len(history),
     )

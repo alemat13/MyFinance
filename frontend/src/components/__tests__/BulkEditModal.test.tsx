@@ -1,6 +1,6 @@
 import { test, expect, vi, beforeEach } from 'vitest'
 import { screen, fireEvent, waitFor, within } from '@testing-library/react'
-import { renderWithProviders } from '../../test-utils'
+import { pickAccount, renderWithProviders } from '../../test-utils'
 import BulkEditModal from '../BulkEditModal'
 
 const { mockBulkUpdateTransactions, mockBulkUpdateTransactionsByFilter } = vi.hoisted(() => ({
@@ -242,4 +242,27 @@ test('"Select only the N" goes back to the ticked rows', async () => {
 
   await waitFor(() => expect(mockBulkUpdateTransactions).toHaveBeenCalledWith([1, 2], { reconciled: true }, null))
   expect(mockBulkUpdateTransactionsByFilter).not.toHaveBeenCalled()
+})
+
+
+const moveAccounts = [
+  { id: 1, name: 'Checking', type: 'Checking', balance: 0, currency: 'USD', created_at: '', archived: false, users: [], split_weights: [] },
+  { id: 7, name: 'Savings', type: 'Savings', balance: 0, currency: 'USD', created_at: '', archived: false, users: [], split_weights: [] },
+]
+
+test('the move section is only offered in admin mode (moveAccounts passed)', () => {
+  renderWithProviders(<BulkEditModal {...baseProps} />)
+  expect(screen.queryByText('Move to another account')).not.toBeInTheDocument()
+})
+
+test('moving sends only account_id', async () => {
+  mockBulkUpdateTransactions.mockResolvedValue({ updated_count: 2, transaction_ids: [1, 2] })
+  renderWithProviders(<BulkEditModal {...baseProps} moveAccounts={moveAccounts} />)
+
+  fireEvent.click(screen.getByText('Move to another account'))
+  expect(submitButton()).toBeDisabled()
+  pickAccount(screen.getByText('Target account'), 'Savings')
+  fireEvent.click(submitButton())
+
+  await waitFor(() => expect(mockBulkUpdateTransactions).toHaveBeenCalledWith([1, 2], { account_id: 7 }, null))
 })

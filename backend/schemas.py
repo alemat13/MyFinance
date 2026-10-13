@@ -296,6 +296,9 @@ class BulkTransactionUpdate(BaseModel):
     reconciled has no null-clearing semantics (it's a plain bool, not nullable
     on the model) — omit it to leave reconciled status untouched."""
     category_id: Optional[int] = None
+    # Admin mode only on screen: moves every selected transaction to this
+    # account, keeping each one's own split as it is.
+    account_id: Optional[int] = None
     accounting_month_offset: Optional[int] = Field(None, ge=-3, le=3)
     reconciled: Optional[bool] = None
     split_weights: list[SplitWeightCreate] | None = None
@@ -321,7 +324,11 @@ class BulkUpdateTransactionsResponse(BaseModel):
 
 
 class BulkDeleteTransactionsRequest(BaseModel):
-    transaction_ids: list[int]
+    """Same selection contract as BulkUpdateTransactionsRequest: exactly one of
+    transaction_ids or filter (+ expected_count, 409 if the match moved)."""
+    transaction_ids: list[int] = []
+    filter: Optional["TransactionSearchRequest"] = None
+    expected_count: Optional[int] = None
 
 
 class BulkDeleteTransactionsResponse(BaseModel):
@@ -409,6 +416,7 @@ class TransactionSearchRequest(BaseModel):
 
 
 BulkUpdateTransactionsRequest.model_rebuild()
+BulkDeleteTransactionsRequest.model_rebuild()
 
 
 class TransactionSearchResponse(BaseModel):
@@ -871,7 +879,7 @@ class OneDriveBackupRunResult(BaseModel):
 
 
 class ImportSummary(BaseModel):
-    mode: Literal["overwrite", "append"]
+    mode: Literal["overwrite", "partial"]
     users: int
     accounts: int
     categories: int
@@ -938,6 +946,11 @@ class BankAccountLinkUpdate(BaseModel):
     account_id: int | None = None
     sync_enabled: bool = True
     sync_from_date: _DateType | None = None
+
+
+class BankResyncRequest(BaseModel):
+    date_from: _DateType
+    date_to: _DateType
 
 
 class BankSyncRunResult(BaseModel):

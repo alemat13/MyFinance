@@ -144,17 +144,88 @@ def create_transaction(data: TransactionCreate, actor_user_id: int | None = Quer
     return get_transaction_out(db, transaction.id)
 
 
+def _resolve_bulk_target_ids(db: Session, transaction_ids: list[int], filter_req, expected_count: int | None) -> list[int]:
+    """The ids a bulk request acts on: either the ticked ids (404 if any is
+    missing) or every row the filter matches (409 if that is no longer
+    expected_count). Validated before anything is mutated, so a selection that
+    moved fails without partially applying the batch."""
+    if filter_req is not None and transaction_ids:
+        raise HTTPException(422, "Send either transaction_ids or filter, not both")
+    if filter_req is None and not transaction_ids:
+        raise HTTPException(422, "transaction_ids must not be empty")
+    if filter_req is not None:
+        try:
+            id_query = apply_transaction_filters(
+                db.query(Transaction.id).join(Account, Transaction.account_id == Account.id),
+                filter_req, db,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+        target_ids = sorted(row[0] for row in id_query.all())
+        if not target_ids:
+            raise HTTPException(422, "No transaction matches this filter")
+        if expected_count is not None and expected_count != len(target_ids):
+            raise HTTPException(
+                409,
+                f"The filter now matches {len(target_ids)} transactions instead of {expected_count}; "
+                "reload the list and try again",
+            )
+        return target_ids
+    target_ids = sorted(set(transaction_ids))
+    found_ids = {
+        row[0] for row in db.query(Transaction.id).filter(Transaction.id.in_(target_ids)).all()
+    }
+    missing_ids = sorted(set(target_ids) - found_ids)
+    if missing_ids:
+        raise HTTPException(404, f"Transaction(s) not found: {missing_ids}")
+    return target_ids
+
+
+def _validate_bulk_move(db: Session, target_ids: list[int], account_id: int) -> None:
+    """A move must not break the (account_id, external_id) unique index that
+    bank-sync deduplication rests on: neither against a bank row the target
+    account already has, nor between two moved rows from different accounts."""
+    if db.get(Account, account_id) is None:
+        raise HTTPException(422, f"Account {account_id} does not exist")
+    moved_external_ids: dict[str, int] = {}
+    for start in range(0, len(target_ids), BULK_UPDATE_CHUNK_SIZE):
+        chunk_ids = target_ids[start:start + BULK_UPDATE_CHUNK_SIZE]
+        rows = (
+            db.query(Transaction.id, Transaction.external_id)
+            .filter(Transaction.id.in_(chunk_ids), Transaction.external_id.isnot(None))
+            .all()
+        )
+        for tx_id, external_id in rows:
+            if external_id in moved_external_ids:
+                raise HTTPException(
+                    409,
+                    f"Transactions {moved_external_ids[external_id]} and {tx_id} carry the same bank id "
+                    "and cannot both be on one account",
+                )
+            moved_external_ids[external_id] = tx_id
+    if not moved_external_ids:
+        return
+    target_set = set(target_ids)
+    clashes = sorted(
+        tx_id for tx_id, external_id in
+        db.query(Transaction.id, Transaction.external_id)
+        .filter(Transaction.account_id == account_id, Transaction.external_id.isnot(None))
+        .all()
+        if external_id in moved_external_ids and tx_id not in target_set
+    )
+    if clashes:
+        raise HTTPException(
+            409,
+            f"The target account already has the same bank transaction(s) as the selection: {clashes[:20]}",
+        )
+
+
 @router.put("/bulk-update", response_model=BulkUpdateTransactionsResponse)
 def bulk_update_transactions(data: BulkUpdateTransactionsRequest, actor_user_id: int | None = Query(None), db: Session = Depends(get_db)):
     # Registered before the /{transaction_id} routes below: Starlette matches
     # routes in registration order, and {transaction_id} (typed int) would
     # otherwise greedily match the literal "bulk-update" segment and 422 on
     # int conversion before this route is ever tried.
-    if data.filter is not None and data.transaction_ids:
-        raise HTTPException(422, "Send either transaction_ids or filter, not both")
-    if data.filter is None and not data.transaction_ids:
-        raise HTTPException(422, "transaction_ids must not be empty")
-
     update_data = data.update.model_dump(exclude_unset=True)
     split_weights_provided = "split_weights" in update_data
     non_split_fields = {k: v for k, v in update_data.items() if k not in ("split_weights", "split_source")}
@@ -162,34 +233,11 @@ def bulk_update_transactions(data: BulkUpdateTransactionsRequest, actor_user_id:
     if not non_split_fields and not split_weights_provided:
         raise HTTPException(422, "At least one field must be set to apply")
 
-    # Validate everything before mutating anything, so a missing id, a
-    # selection that moved, or an invalid weight set 422s/404s/409s without
-    # partially applying the batch.
-    if data.filter is not None:
-        try:
-            id_query = apply_transaction_filters(
-                db.query(Transaction.id).join(Account, Transaction.account_id == Account.id),
-                data.filter, db,
-            )
-        except ValueError as e:
-            raise HTTPException(status_code=422, detail=str(e))
-        target_ids = sorted(row[0] for row in id_query.all())
-        if not target_ids:
-            raise HTTPException(422, "No transaction matches this filter")
-        if data.expected_count is not None and data.expected_count != len(target_ids):
-            raise HTTPException(
-                409,
-                f"The filter now matches {len(target_ids)} transactions instead of {data.expected_count}; "
-                "reload the list and try again",
-            )
-    else:
-        target_ids = sorted(set(data.transaction_ids))
-        found_ids = {
-            row[0] for row in db.query(Transaction.id).filter(Transaction.id.in_(target_ids)).all()
-        }
-        missing_ids = sorted(set(target_ids) - found_ids)
-        if missing_ids:
-            raise HTTPException(404, f"Transaction(s) not found: {missing_ids}")
+    target_ids = _resolve_bulk_target_ids(db, data.transaction_ids, data.filter, data.expected_count)
+    if "account_id" in non_split_fields:
+        if non_split_fields["account_id"] is None:
+            raise HTTPException(422, "account_id cannot be cleared")
+        _validate_bulk_move(db, target_ids, non_split_fields["account_id"])
 
     weights = None
     if split_weights_provided:
@@ -246,26 +294,19 @@ def bulk_delete_transactions(data: BulkDeleteTransactionsRequest, actor_user_id:
     # route-registration-order reason documented on bulk_update_transactions
     # above: {transaction_id} would otherwise greedily match "bulk-delete" and
     # 422 on int conversion before this route is ever tried.
-    if not data.transaction_ids:
-        raise HTTPException(422, "transaction_ids must not be empty")
+    target_ids = _resolve_bulk_target_ids(db, data.transaction_ids, data.filter, data.expected_count)
 
-    # Validate everything before mutating anything, same discipline as
-    # bulk_update_transactions: a missing id 404s without partially deleting
-    # the batch.
-    transactions = db.query(Transaction).filter(Transaction.id.in_(data.transaction_ids)).all()
-    found_ids = {t.id for t in transactions}
-    missing_ids = sorted(set(data.transaction_ids) - found_ids)
-    if missing_ids:
-        raise HTTPException(404, f"Transaction(s) not found: {missing_ids}")
-
+    # Chunked for the same reason as bulk-update: a filter can select the
+    # whole ledger.
     deleted_ids = []
-    for transaction in transactions:
-        record_transaction_history(db, transaction, "deleted", actor_user_id)
-        db.delete(transaction)
-        deleted_ids.append(transaction.id)
-
-    cache_service.invalidate(db, "balances", "charts", "account_totals")
-    db.commit()
+    for start in range(0, len(target_ids), BULK_UPDATE_CHUNK_SIZE):
+        chunk_ids = target_ids[start:start + BULK_UPDATE_CHUNK_SIZE]
+        for transaction in db.query(Transaction).filter(Transaction.id.in_(chunk_ids)).order_by(Transaction.id).all():
+            record_transaction_history(db, transaction, "deleted", actor_user_id)
+            db.delete(transaction)
+            deleted_ids.append(transaction.id)
+        cache_service.invalidate(db, "balances", "charts", "account_totals")
+        db.commit()
     return BulkDeleteTransactionsResponse(deleted_count=len(deleted_ids), transaction_ids=deleted_ids)
 
 
