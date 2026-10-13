@@ -77,10 +77,15 @@ def search_transactions(req: TransactionSearchRequest, db: Session = Depends(get
         "created_at": Transaction.created_at,
     }
     sort_col = sort_columns[req.sort_by]
-    sort_col = sort_col.asc() if req.sort_dir == "asc" else sort_col.desc()
+    # id breaks ties (many rows share a date) so pages never overlap or skip a
+    # row, in the same direction so flipping the order flips the whole list.
+    if req.sort_dir == "asc":
+        sort_cols = (sort_col.asc(), Transaction.id.asc())
+    else:
+        sort_cols = (sort_col.desc(), Transaction.id.desc())
 
     if req.unpaginated:
-        results = query.order_by(sort_col).all()
+        results = query.order_by(*sort_cols).all()
         items = [
             build_transaction_out_from_row(t, account_name, currency, category_name, category_color, category_icon)
             for t, account_name, currency, category_name, category_color, category_icon in results
@@ -93,7 +98,7 @@ def search_transactions(req: TransactionSearchRequest, db: Session = Depends(get
     page_size = min(max(req.page_size, 1), 200)
 
     results = (
-        query.order_by(sort_col)
+        query.order_by(*sort_cols)
         .offset((page - 1) * page_size)
         .limit(page_size)
         .all()
