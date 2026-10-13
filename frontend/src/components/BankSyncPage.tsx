@@ -10,12 +10,14 @@ import {
   fetchBankConnections,
   fetchBankInstitutions,
   refreshBankConnection,
+  resyncBankAccountLink,
   syncBankAccountLink,
   updateBankAccountLink,
 } from '../api/client'
 import { useToast } from '../context/ToastContext'
 import { formatServerTimestamp } from '../utils/datetime'
 import { getParam, patchQueryParams } from '../utils/urlState'
+import { isAdminMode } from '../utils/admin'
 import { BackButton, Button, Card, ConfirmDialog, Input, Select, StatusMessage } from './ui'
 import AccountPicker from './AccountPicker'
 
@@ -36,6 +38,56 @@ function consentDaysLeft(iso: string | null): number | null {
   return Math.ceil(ms / 86_400_000)
 }
 
+// Admin mode: fetch one explicit period from the bank again, for a gap the
+// normal sync window (last sync minus 7 days) can no longer reach.
+function ResyncPeriodForm({ link, onDone }: { link: BankAccountLink; onDone: () => void }) {
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  const [running, setRunning] = useState(false)
+  const { showToast } = useToast()
+
+  const run = () => {
+    setRunning(true)
+    resyncBankAccountLink(link.id, dateFrom, dateTo)
+      .then(result => {
+        if (result.status === 'failed') showToast(result.error ?? 'Re-sync failed')
+        else showToast(`${result.created_count} transaction(s) imported for that period`, 'success')
+        onDone()
+      })
+      .catch(err => showToast(err.message))
+      .finally(() => setRunning(false))
+  }
+
+  return (
+    <div className="mt-2 p-2 rounded-md border border-red-300 dark:border-red-800">
+      <div className="text-[13px] font-medium mb-1">
+        Re-sync a period <span className="text-[11px] font-semibold uppercase text-red-600 dark:text-red-400">Admin</span>
+      </div>
+      <div className="flex flex-wrap gap-2 items-end">
+        <div>
+          <label className="block text-[12px] text-slate-500 dark:text-slate-400" htmlFor={`resync-from-${link.id}`}>From</label>
+          <Input id={`resync-from-${link.id}`} type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+        </div>
+        <div>
+          <label className="block text-[12px] text-slate-500 dark:text-slate-400" htmlFor={`resync-to-${link.id}`}>To</label>
+          <Input id={`resync-to-${link.id}`} type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+        </div>
+        <Button
+          variant="secondary"
+          onClick={run}
+          disabled={link.account_id === null || running || !dateFrom || !dateTo || dateFrom > dateTo}
+        >
+          {running ? 'Re-syncing...' : 'Re-sync period'}
+        </Button>
+      </div>
+      <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-1">
+        Transactions already in MyFinance are skipped. The last sync date doesn't change. Banks allow about 4 calls a
+        day and often only 90 days back.
+      </p>
+    </div>
+  )
+}
+
 export default function BankSyncPage({ onBack }: Props) {
   const [connections, setConnections] = useState<BankConnection[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
@@ -49,6 +101,7 @@ export default function BankSyncPage({ onBack }: Props) {
   const [savingLinkId, setSavingLinkId] = useState<number | null>(null)
   const [refreshingId, setRefreshingId] = useState<number | null>(null)
   const [disconnecting, setDisconnecting] = useState<BankConnection | null>(null)
+  const [adminMode] = useState(isAdminMode)
   const { showToast } = useToast()
 
   const load = () => {
@@ -278,6 +331,8 @@ export default function BankSyncPage({ onBack }: Props) {
                     Sync automatically
                   </label>
                 </div>
+
+                {adminMode && link.account_id !== null && <ResyncPeriodForm link={link} onDone={load} />}
 
                 {link.last_synced_at && (
                   <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-2">

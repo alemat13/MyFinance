@@ -16,6 +16,7 @@ from schemas import (
     BankConnectionCreated,
     BankConnectionOut,
     BankInstitutionOut,
+    BankResyncRequest,
     BankSyncRunResult,
 )
 
@@ -181,6 +182,26 @@ def sync_link_now(link_id: int, db: Session = Depends(get_db)):
         status=link.last_sync_status,
         error=link.last_sync_error,
     )
+
+
+@router.post("/links/{link_id}/resync", response_model=BankSyncRunResult)
+def resync_link_period(link_id: int, data: BankResyncRequest, db: Session = Depends(get_db)):
+    """Admin mode: fetch one explicit period again (see
+    enable_banking.resync_link_period). Leaves the link's sync state alone."""
+    link = db.get(BankAccountLink, link_id)
+    if link is None:
+        raise HTTPException(404, "Bank account link not found")
+    if link.account_id is None:
+        raise HTTPException(422, "Link this bank account to a MyFinance account first")
+    if data.date_from > data.date_to:
+        raise HTTPException(422, "The start date must be on or before the end date")
+    if data.date_to > datetime.now(timezone.utc).date():
+        raise HTTPException(422, "The end date cannot be in the future")
+    try:
+        created = enable_banking.resync_link_period(db, link, data.date_from, data.date_to)
+    except Exception as exc:
+        return BankSyncRunResult(ran=True, synced_links=1, created_count=0, status="failed", error=str(exc)[:2000])
+    return BankSyncRunResult(ran=True, synced_links=1, created_count=created, status="success")
 
 
 @router.post("/run-due", response_model=BankSyncRunResult)

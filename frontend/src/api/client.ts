@@ -182,6 +182,8 @@ export interface TransactionUpdate {
 // of them, mirroring the backend's exclude_unset contract.
 export interface BulkTransactionUpdate {
   category_id?: number | null
+  // Admin mode only: moves the selection to this account, splits unchanged.
+  account_id?: number
   accounting_month_offset?: number
   reconciled?: boolean
   split_weights?: SplitWeightCreate[] | null
@@ -379,7 +381,7 @@ export interface ImportCommitResponse {
   transaction_ids: number[]
 }
 
-export type BackupImportMode = 'overwrite' | 'append'
+export type BackupImportMode = 'overwrite' | 'partial'
 
 export interface ImportSummary {
   mode: BackupImportMode
@@ -554,6 +556,20 @@ export function bulkDeleteTransactions(
   return request<BulkDeleteTransactionsResponse>(`/transactions/bulk-delete${params}`, {
     method: 'DELETE',
     body: JSON.stringify({ transaction_ids: ids }),
+  })
+}
+
+/** Admin mode: bulk-delete every transaction a search filter matches, across
+ * all pages. Same 409 contract as bulkUpdateTransactionsByFilter. */
+export function bulkDeleteTransactionsByFilter(
+  filter: TransactionSearchRequest,
+  expectedCount: number,
+  actorUserId?: number | null,
+): Promise<BulkDeleteTransactionsResponse> {
+  const params = actorUserId ? `?actor_user_id=${actorUserId}` : ''
+  return request<BulkDeleteTransactionsResponse>(`/transactions/bulk-delete${params}`, {
+    method: 'DELETE',
+    body: JSON.stringify({ filter, expected_count: expectedCount }),
   })
 }
 
@@ -797,6 +813,15 @@ export function updateBankAccountLink(id: number, data: BankAccountLinkUpdate): 
 
 export function syncBankAccountLink(id: number): Promise<BankSyncRunResult> {
   return request<BankSyncRunResult>(`/bank-sync/links/${id}/sync`, { method: 'POST' })
+}
+
+/** Admin mode: fetch one explicit period from the bank again. Leaves the
+ * link's last sync date and status untouched. Dates are YYYY-MM-DD. */
+export function resyncBankAccountLink(id: number, dateFrom: string, dateTo: string): Promise<BankSyncRunResult> {
+  return request<BankSyncRunResult>(`/bank-sync/links/${id}/resync`, {
+    method: 'POST',
+    body: JSON.stringify({ date_from: dateFrom, date_to: dateTo }),
+  })
 }
 
 // ── Automatic categorization ────────────────────────────────────

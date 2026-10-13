@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Sun, Moon } from 'lucide-react'
+import { Sun, Moon, ShieldAlert } from 'lucide-react'
 import { fetchUsers, User } from './api/client'
 import { useTheme } from './context/ThemeContext'
 import { getParam, navigateQueryParams } from './utils/urlState'
+import { isAdminMode } from './utils/admin'
 import { IconButton, Select } from './components/ui'
 import NavShell from './components/NavShell'
 import { View, viewLabels } from './nav'
@@ -60,6 +61,7 @@ export default function App() {
   const [usersLoaded, setUsersLoaded] = useState(false)
   const [usersLoadError, setUsersLoadError] = useState(false)
   const [needsFirstLaunchChoice, setNeedsFirstLaunchChoice] = useState(() => !hasMadeUserChoice())
+  const [adminMode] = useState(isAdminMode)
   const { theme, toggleTheme } = useTheme()
 
   useEffect(() => {
@@ -140,6 +142,20 @@ export default function App() {
           </IconButton>
         </div>
       </div>
+
+      {adminMode && (
+        <div
+          role="note"
+          aria-label="Admin mode"
+          className="flex items-start gap-2 mb-3 p-2.5 rounded-md border border-red-300 bg-red-50 text-red-800 text-[13px] dark:border-red-800 dark:bg-red-950/60 dark:text-red-200"
+        >
+          <ShieldAlert size={18} className="shrink-0 mt-px" />
+          <span>
+            <strong>Admin mode.</strong> Advanced features that can delete or move many transactions at once are
+            visible. Export a backup first. Remove <code>admin</code> from the address and reload to leave.
+          </span>
+        </div>
+      )}
 
       <div className="mb-4 md:mb-5">
         <NavShell view={view} onNavigate={navigateToView} disabled={needsFirstLaunchChoice} />

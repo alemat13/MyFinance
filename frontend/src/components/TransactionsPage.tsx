@@ -4,10 +4,10 @@ import {
   Transaction, TransactionSplit, GlobalSplitWeight,
   Account, Category, User, TransactionSearchRequest,
   fetchAccounts, fetchCategories, fetchUsers, fetchSplitWeights, searchTransactions, updateTransaction,
-  bulkDeleteTransactions,
 } from '../api/client'
 import TransactionDetail from './TransactionDetail'
 import BulkEditModal from './BulkEditModal'
+import BulkDeleteModal from './BulkDeleteModal'
 import CategorizeModal from './CategorizeModal'
 import CategoryPicker from './CategoryPicker'
 import AccountPicker from './AccountPicker'
@@ -16,6 +16,7 @@ import ExportMenu from './ExportMenu'
 import { Button, IconButton, Input, Select, Table, Thead, Tbody, Tr, Th, Td, StatusMessage, CategoryBadge, BackButton, ConfirmDialog, Card } from './ui'
 import { formatMoney } from '../utils/currency'
 import { getParam, patchQueryParams } from '../utils/urlState'
+import { isAdminMode } from '../utils/admin'
 import { myShareFor, balanceFor, formatDateGroupHeader } from '../utils/transactions'
 import { useToast } from '../context/ToastContext'
 import { useIsMobile } from '../hooks/useMediaQuery'
@@ -91,7 +92,8 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [bulkEditOpen, setBulkEditOpen] = useState(false)
   const [categorizeOpen, setCategorizeOpen] = useState(false)
-  const [bulkDeleteConfirming, setBulkDeleteConfirming] = useState(false)
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
+  const [adminMode] = useState(isAdminMode)
   const [exporting, setExporting] = useState(false)
 
   const [mode, setMode] = useState<FilterMode>(loadInitialMode)
@@ -168,16 +170,6 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
       })
       .catch(err => { console.error(err); setError(err.message) })
       .finally(() => setLoading(false))
-  }
-
-  const confirmBulkDelete = () => {
-    bulkDeleteTransactions([...selectedIds], selectedUserId)
-      .then(res => {
-        showToast(`${res.deleted_count} transaction(s) deleted`, 'success')
-        loadTransactions()
-      })
-      .catch(err => showToast(err.message))
-      .finally(() => setBulkDeleteConfirming(false))
   }
 
   const buildExportData = (items: Transaction[]) => {
@@ -408,7 +400,9 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
           )}
           <Button size="sm" onClick={() => setBulkEditOpen(true)}>Bulk Edit</Button>
           <Button size="sm" variant="secondary" onClick={() => setCategorizeOpen(true)}>Categorize</Button>
-          <Button size="sm" variant="danger" onClick={() => setBulkDeleteConfirming(true)}>Delete selected</Button>
+          {adminMode && (
+            <Button size="sm" variant="danger" onClick={() => setBulkDeleteOpen(true)}>Delete selected</Button>
+          )}
           <Button size="sm" variant="secondary" onClick={() => setSelectedIds(new Set())}>Clear selection</Button>
         </div>
       )}
@@ -643,16 +637,21 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
           onSaved={() => { setBulkEditOpen(false); loadTransactions() }}
           searchFilter={allSelected ? buildSearchRequest() : undefined}
           matchingTotal={allSelected ? total : undefined}
+          moveAccounts={adminMode ? allAccounts : undefined}
         />
       )}
 
-      <ConfirmDialog
-        isOpen={bulkDeleteConfirming}
-        title="Delete transactions"
-        message={`Delete ${selectedIds.size} selected transaction${selectedIds.size === 1 ? '' : 's'}? This cannot be undone.`}
-        onConfirm={confirmBulkDelete}
-        onCancel={() => setBulkDeleteConfirming(false)}
-      />
+      {bulkDeleteOpen && (
+        <BulkDeleteModal
+          transactionIds={[...selectedIds]}
+          selectedUserId={selectedUserId}
+          onClose={() => setBulkDeleteOpen(false)}
+          onDeleted={() => { setBulkDeleteOpen(false); loadTransactions() }}
+          searchFilter={allSelected ? buildSearchRequest() : undefined}
+          matchingTotal={allSelected ? total : undefined}
+        />
+      )}
+
     </div>
   )
 }

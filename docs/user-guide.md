@@ -18,7 +18,8 @@ people *using* the app to track household finances — for schema/database detai
 10. [Auto-categorization](#auto-categorization)
 11. [Backup & Restore](#backup--restore)
 12. [Charts](#charts)
-13. [Appendix: Validation Rules & Tips](#appendix-validation-rules--tips)
+13. [Admin mode](#admin-mode)
+14. [Appendix: Validation Rules & Tips](#appendix-validation-rules--tips)
 
 ## Getting Started
 
@@ -431,8 +432,8 @@ phone, where the list is a stack of cards rather than a table, there's no header
 tick one card first, then use the **Select all** button that appears in the selection
 bar to extend it to every transaction on the page. Once
 at least one row is selected, a bar appears above the table showing how many are
-selected, with **Bulk Edit**, **Categorize**, **Delete selected**, and **Clear
-selection** buttons.
+selected, with **Bulk Edit**, **Categorize** and **Clear selection** buttons, plus
+**Delete selected** in [admin mode](#admin-mode).
 
 **Bulk Edit** opens a dialog with four independent, optional changes you can apply
 together in a single save. When every transaction on the page is selected and the
@@ -462,7 +463,14 @@ the list, so nothing you didn't see counted gets edited.
   the quickest way to point a whole batch of imported or reviewed transactions at
   once.
 
-At least one of the four must be turned on to save. After saving, you'll see a
+In [admin mode](#admin-mode) the dialog has a fifth change, **Move to another
+account**: every selected transaction moves to the account you pick, each keeping its
+own split. A bank-synced transaction moved away from its account can come back on the
+old account at the next sync if it is less than a week old, since that sync asks the
+bank for the last week again. A move that would put two copies of the same bank
+transaction on one account is refused.
+
+At least one of them must be turned on to save. After saving, you'll see a
 confirmation, the list refreshes, and the selection is cleared. If your current
 filter is "Unreconciled only" and you bulk-mark the selection as reconciled, those
 rows will no longer match the filter and will disappear from the list once the
@@ -474,11 +482,11 @@ transaction under, shows you the before and after per row, and writes only what 
 applied](#where-the-suggestions-are-applied). It needs a model to have been trained and
 activated first.
 
-**Delete selected** permanently removes every selected transaction (and its
-splits) after a confirmation prompt — there's no undo. Unlike Bulk Edit, it's a
-single action with no options to configure: click it, confirm, and the selected
-transactions are gone. After confirming, the list refreshes and the selection is
-cleared, same as after a Bulk Edit save.
+**Delete selected** (admin mode only) permanently removes every selected transaction
+(and its splits) after a confirmation prompt — there's no undo. Like Bulk Edit, with the
+whole page ticked it offers **Select all N transactions** to delete everything the
+filters match on every page, and it's refused if that number changed in the meantime.
+After deleting, the list refreshes and the selection is cleared.
 
 ## Users
 
@@ -648,7 +656,15 @@ Bank connections are part of a backup: restoring one in **Overwrite** mode bring
 each connected bank and which MyFinance account each of its accounts feeds, so you don't
 have to grant access at your bank again. A consent that has lapsed since the backup was
 taken still needs renewing, as usual. A backup exported before bank connections were
-included restores with no bank connected, and **Append** mode never touches them.
+included restores with no bank connected, and a **Partial restore** never touches them.
+
+**Re-sync a period** (admin mode only). Each mapped account gets a From/To form that asks
+the bank for that period again, for when a gap is older than what a normal sync reaches
+(it only goes back a week before the last sync). Transactions already in MyFinance are
+skipped, including ones restored without a bank id that have the same date and amount,
+and the account's last sync date doesn't change, so the scheduled syncs carry on as
+before. Banks allow about four calls a day per account and often only 90 days of
+history; at most 2 000 transactions come in per run, so split a longer period.
 
 ## Auto-categorization
 
@@ -758,11 +774,20 @@ from now on.
 
 - **Export Backup** downloads a zip file containing a full JSON snapshot of your data —
   keep this somewhere safe before making risky changes, or as a periodic backup.
-- **Import Backup** uploads a previously exported zip file, in one of two modes:
+- **Import Backup** (admin mode only; outside it the page says so) uploads a previously
+  exported zip file, in one of two modes, each asking you to confirm first:
   - **Overwrite** replaces all existing data with the backup's contents. This is
-    destructive and asks you to confirm before proceeding.
-  - **Append** adds the backup's data alongside what's already there, and also asks
-    for confirmation first.
+    destructive.
+  - **Partial restore** adds the backup's accounts, categories and transactions next to
+    what's already there, without changing or removing anything. Every one gets a new
+    ID. A transaction's account (or category) is the one from the backup when the backup
+    contains it, recreated alongside; otherwise the existing one with the same ID. If
+    neither exists, or a split names a user who doesn't exist here, nothing at all is
+    restored and the error says which. A category whose name already exists is reused
+    rather than recreated. The new accounts and categories keep their owners and split
+    weights, each transaction keeps its split, and the transactions' history comes
+    along. Users, global split weights and bank connections are never touched. Restoring
+    a whole export this way therefore creates a second copy of every account in it.
 - A backup includes your bank connections (see [Bank sync](#bank-sync)) but never the
   OneDrive connection below, and restoring one leaves the OneDrive connection as it was.
 
@@ -816,6 +841,24 @@ Two charts are shown:
   clicking "Overview" in it returns to the top-level view.
 - **Net income per month** — green income bars and red expense bars per month, plus a
   black line tracing the net (income minus expense) per month.
+
+## Admin mode
+
+Some features can delete or move many transactions at once, so they are hidden unless
+you add `admin` to the address yourself, e.g. `https://…/?admin` (or `&admin` after the
+other parameters). A red warning banner then stays at the top of every page. It lasts
+while you move around the app; reload without `admin` in the address to leave it.
+
+What it shows:
+
+- **Delete selected** and **Move to another account** on the Transactions screen (see
+  [Bulk editing transactions](#bulk-editing-transactions)).
+- **Import Backup**, including the **Partial restore** mode (see [Backup &
+  Restore](#backup--restore)).
+- **Re-sync a period** on each mapped bank account (see [Bank Sync](#bank-sync)).
+
+Admin mode only hides these screens; it isn't a separate permission. Export a backup
+before using any of them.
 
 ## Appendix: Validation Rules & Tips
 

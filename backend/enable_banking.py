@@ -565,6 +565,23 @@ def sync_link(db: Session, link: BankAccountLink) -> int:
     return created
 
 
+def resync_link_period(db: Session, link: BankAccountLink, date_from: date, date_to: date) -> int:
+    """Admin mode: ask the bank again for one explicit period, to refill a gap
+    the normal window (last sync - SYNC_OVERLAP_DAYS) can no longer reach.
+    Rows already present are skipped by the same deduplication as a normal
+    sync. Unlike sync_link it leaves the link's last_synced_at and status
+    alone, so the scheduled syncs carry on exactly as before; a failure
+    raises EnableBankingError instead of being recorded on the link."""
+    if link.account_id is None:
+        raise EnableBankingError("This bank account is not linked to a MyFinance account yet")
+    try:
+        raw = fetch_transactions(link.remote_account_uid, date_from, date_to)
+        return import_transactions(db, link, normalize_transactions(raw), date_from, date_to)
+    except Exception:
+        db.rollback()
+        raise
+
+
 def run_due_syncs(db: Session) -> tuple[int, int]:
     """Sync every link that's due. Returns (links synced, transactions
     created). Each link commits on its own, so one bank being down can't

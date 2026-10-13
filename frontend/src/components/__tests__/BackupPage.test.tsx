@@ -1,4 +1,4 @@
-import { test, expect, vi, beforeEach } from 'vitest'
+import { test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { renderWithProviders } from '../../test-utils'
 import BackupPage from '../BackupPage'
@@ -39,6 +39,20 @@ function selectFile(name = 'backup.zip') {
 beforeEach(() => {
   vi.clearAllMocks()
   mockFetchOneDriveSettings.mockReturnValue(new Promise(() => {}))
+  // Restoring is admin mode only; the test below without it resets the URL.
+  window.history.replaceState(null, '', '/?view=backup&admin')
+})
+
+afterEach(() => {
+  window.history.replaceState(null, '', '/')
+})
+
+test('outside admin mode, export stays but restoring is hidden', () => {
+  window.history.replaceState(null, '', '/?view=backup')
+  renderWithProviders(<BackupPage onBack={() => {}} />)
+  expect(screen.getByText('Export Backup')).toBeInTheDocument()
+  expect(screen.queryByText('Import Backup')).not.toBeInTheDocument()
+  expect(screen.getByText(/available in admin mode only/)).toBeInTheDocument()
 })
 
 test('export downloads a backup blob', async () => {
@@ -89,20 +103,21 @@ test('confirming the overwrite dialog imports with mode=overwrite and shows a su
   })
 })
 
-test('switching to append mode imports with mode=append and warns about conflicts', async () => {
-  mockImportDatabase.mockResolvedValue({ ...summary, mode: 'append' })
+test('switching to partial restore imports with mode=partial and explains it', async () => {
+  mockImportDatabase.mockResolvedValue({ ...summary, mode: 'partial' })
 
   renderWithProviders(<BackupPage onBack={() => {}} />)
   const file = selectFile()
-  fireEvent.change(screen.getByLabelText('Import mode'), { target: { value: 'append' } })
+  fireEvent.change(screen.getByLabelText('Import mode'), { target: { value: 'partial' } })
   fireEvent.click(screen.getByText('Import Backup'))
 
   const dialog = await screen.findByRole('dialog')
-  expect(within(dialog).getByText(/conflict error/)).toBeInTheDocument()
+  expect(within(dialog).getByText(/each under a new ID/)).toBeInTheDocument()
   fireEvent.click(within(dialog).getByText('Import'))
 
   await waitFor(() => {
-    expect(mockImportDatabase).toHaveBeenCalledWith(file, 'append')
+    expect(mockImportDatabase).toHaveBeenCalledWith(file, 'partial')
+    expect(screen.getByText(/Added 1 account\(s\)/)).toBeInTheDocument()
   })
 })
 
