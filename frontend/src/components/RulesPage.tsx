@@ -13,10 +13,13 @@ import CategoryPicker from './CategoryPicker'
 import { SplitRow } from './SplitEditor'
 import { BackButton, Badge, Button, Card, ConfirmDialog, IconButton, Input, Modal, Select, StatusMessage } from './ui'
 import { useToast } from '../context/ToastContext'
-import { SPLIT_TIER_LABELS, describeActions, offsetLabel } from '../utils/rules'
+import { RuleDraft, SPLIT_TIER_LABELS, describeActions, offsetLabel } from '../utils/rules'
 
 interface Props {
   onBack: () => void
+  // Conditions to open a new rule with (Transactions' "Create rule").
+  draft?: RuleDraft | null
+  onDraftUsed?: () => void
 }
 
 const ACCOUNTING_MONTH_OFFSETS = [-3, -2, -1, 0, 1, 2, 3] as const
@@ -44,6 +47,7 @@ function describeCondition(c: FilterCondition, accounts: Account[], categories: 
 
 interface EditorProps {
   rule: Rule | null
+  draft?: RuleDraft | null
   accounts: Account[]
   categories: Category[]
   allUsers: User[]
@@ -53,13 +57,13 @@ interface EditorProps {
 }
 
 /** Create or edit one rule: the advanced filter's conditions, then the actions. */
-function RuleEditor({ rule, accounts, categories, allUsers, globalWeights, onClose, onSaved }: EditorProps) {
+function RuleEditor({ rule, draft, accounts, categories, allUsers, globalWeights, onClose, onSaved }: EditorProps) {
   const actions: RuleActions = rule?.actions ?? {}
   const [name, setName] = useState(rule?.name ?? '')
   const [enabled, setEnabled] = useState(rule?.enabled ?? true)
   const [conditions, setConditions] = useState<ConditionRow[]>(
-    rule ? toRows(rule.conditions) : [{ ...emptyCondition, field: 'raw_label' }])
-  const [matchMode, setMatchMode] = useState<'all' | 'any'>(rule?.match_mode ?? 'all')
+    rule ? toRows(rule.conditions) : draft ? toRows(draft.conditions) : [{ ...emptyCondition, field: 'raw_label' }])
+  const [matchMode, setMatchMode] = useState<'all' | 'any'>(rule?.match_mode ?? draft?.match_mode ?? 'all')
 
   const [payeeEnabled, setPayeeEnabled] = useState(actions.payee != null)
   const [payee, setPayee] = useState(actions.payee ?? '')
@@ -276,7 +280,7 @@ function RuleEditor({ rule, accounts, categories, allUsers, globalWeights, onClo
 }
 
 /** The automatic rules: what they are, their order, and their editor. */
-export default function RulesPage({ onBack }: Props) {
+export default function RulesPage({ onBack, draft, onDraftUsed }: Props) {
   const [rules, setRules] = useState<Rule[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
   const [categories, setCategories] = useState<Category[]>([])
@@ -284,7 +288,10 @@ export default function RulesPage({ onBack }: Props) {
   const [globalWeights, setGlobalWeights] = useState<GlobalSplitWeight[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [editing, setEditing] = useState<Rule | 'new' | null>(null)
+  const [editing, setEditing] = useState<Rule | 'new' | null>(draft ? 'new' : null)
+  // The draft only seeds the editor it opened, not a later "+ New rule".
+  const [initialDraft, setInitialDraft] = useState(draft ?? null)
+  useEffect(() => { if (draft) onDraftUsed?.() }, [])
   const [deleting, setDeleting] = useState<Rule | null>(null)
   const { showToast } = useToast()
 
@@ -386,12 +393,13 @@ export default function RulesPage({ onBack }: Props) {
       {editing !== null && (
         <RuleEditor
           rule={editing === 'new' ? null : editing}
+          draft={editing === 'new' ? initialDraft : null}
           accounts={accounts}
           categories={categories}
           allUsers={allUsers}
           globalWeights={globalWeights}
-          onClose={() => setEditing(null)}
-          onSaved={() => { setEditing(null); load() }}
+          onClose={() => { setEditing(null); setInitialDraft(null) }}
+          onSaved={() => { setEditing(null); setInitialDraft(null); load() }}
         />
       )}
 
