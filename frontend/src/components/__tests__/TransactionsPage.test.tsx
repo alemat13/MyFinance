@@ -972,3 +972,31 @@ test('the mobile selection bar offers select-all-on-page', async () => {
     window.matchMedia = originalMatchMedia
   }
 })
+
+test('Create rule hands the simple filters over as rule conditions', async () => {
+  window.history.replaceState(null, '', '/?q=netflix&account_id=1&amount_max=-5')
+  mockSearchTransactions.mockResolvedValue(searchResult([]))
+  mockFetchAccounts.mockResolvedValue([baseAccount])
+  mockFetchCategories.mockResolvedValue([baseCategory])
+  const onCreateRule = vi.fn()
+
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} onOpenCategorizer={() => {}} onCreateRule={onCreateRule} />)
+  fireEvent.click(await screen.findByRole('button', { name: 'Create rule' }))
+
+  expect(onCreateRule).toHaveBeenCalledWith({
+    match_mode: 'all',
+    conditions: [
+      { field: 'payee', operator: 'contains', value: 'netflix' },
+      { field: 'account_id', operator: 'eq', value: 1 },
+      { field: 'amount', operator: 'lte', value: -5 },
+    ],
+  })
+})
+
+test('Create rule is disabled until a filter is set', async () => {
+  mockSearchTransactions.mockResolvedValue(searchResult([]))
+  mockFetchAccounts.mockResolvedValue([baseAccount])
+  mockFetchCategories.mockResolvedValue([baseCategory])
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} onOpenCategorizer={() => {}} onCreateRule={() => {}} />)
+  expect(await screen.findByRole('button', { name: 'Create rule' })).toBeDisabled()
+})

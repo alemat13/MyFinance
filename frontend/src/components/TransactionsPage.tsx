@@ -18,6 +18,7 @@ import { Button, IconButton, Input, Select, Table, Thead, Tbody, Tr, Th, Td, Sta
 import { formatMoney } from '../utils/currency'
 import { getParam, patchQueryParams } from '../utils/urlState'
 import { isAdminMode } from '../utils/admin'
+import { RuleDraft, simpleFiltersToConditions } from '../utils/rules'
 import { myShareFor, balanceFor, formatDateGroupHeader } from '../utils/transactions'
 import { useToast } from '../context/ToastContext'
 import { useIsMobile } from '../hooks/useMediaQuery'
@@ -32,6 +33,8 @@ interface Props {
   onOpenCategorizer: () => void
   // Where "Apply rules" sends the user when no rule exists yet.
   onOpenRules?: () => void
+  // "Create rule": opens the rule editor with the current filters as conditions.
+  onCreateRule?: (draft: RuleDraft) => void
 }
 
 type FilterMode = 'simple' | 'advanced'
@@ -87,7 +90,7 @@ const splitsDisplay = (splits: TransactionSplit[], currency: string) => {
   return splits.map(s => `${s.user_name} ${formatMoney(s.share_amount, currency)}`).join(' / ')
 }
 
-export default function TransactionsPage({ onBack, selectedUserId, onOpenCategorizer, onOpenRules }: Props) {
+export default function TransactionsPage({ onBack, selectedUserId, onOpenCategorizer, onOpenRules, onCreateRule }: Props) {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
   const [allAccounts, setAllAccounts] = useState<Account[]>([])
@@ -277,6 +280,23 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
     return () => clearTimeout(id)
   }, [JSON.stringify(conditions)])
 
+  // The filters on screen as a new rule's conditions; null when there is none
+  // to start from, since a rule needs at least one.
+  const ruleDraft = (): RuleDraft | null => {
+    const draft: RuleDraft = mode === 'advanced'
+      ? { conditions: conditionsToFilters(conditions), match_mode: matchMode }
+      : { conditions: simpleFiltersToConditions(buildSearchRequest()), match_mode: 'all' }
+    return draft.conditions.length > 0 ? draft : null
+  }
+  const currentRuleDraft = onCreateRule ? ruleDraft() : null
+  const createRuleButton = onCreateRule && (
+    <Button size="sm" variant="secondary" disabled={!currentRuleDraft}
+            title={currentRuleDraft ? 'New rule matching these filters' : 'Set a filter first'}
+            onClick={() => currentRuleDraft && onCreateRule(currentRuleDraft)}>
+      Create rule
+    </Button>
+  )
+
   const clearSimpleFilters = () => {
     setSearchText('')
     setDebouncedSearch('')
@@ -402,16 +422,20 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
               <option value="false">Unreconciled only</option>
             </Select>
             <Button size="sm" variant="secondary" onClick={clearSimpleFilters}>Clear</Button>
+            {createRuleButton}
           </div>
         ) : (
-          <TransactionConditions
-            conditions={conditions}
-            onChange={setConditions}
-            matchMode={matchMode}
-            onMatchModeChange={m => { setMatchMode(m); setPage(1) }}
-            accounts={accounts}
-            categories={categories}
-          />
+          <>
+            <TransactionConditions
+              conditions={conditions}
+              onChange={setConditions}
+              matchMode={matchMode}
+              onMatchModeChange={m => { setMatchMode(m); setPage(1) }}
+              accounts={accounts}
+              categories={categories}
+            />
+            {createRuleButton && <div className="mt-2">{createRuleButton}</div>}
+          </>
         )}
       </div>
 
