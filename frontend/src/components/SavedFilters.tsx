@@ -25,8 +25,12 @@ const canonical = (value: unknown): string => JSON.stringify(value, (_key, v) =>
     ? Object.fromEntries(Object.keys(v).sort().map(k => [k, v[k]]))
     : v)
 
+// A filter saved without a date order leaves the order as it is, so it
+// matches whichever one is on screen.
 export const sameFilter = (saved: Omit<SavedFilterInput, 'name'>, current: CurrentFilter) =>
-  current !== null && saved.mode === current.mode && canonical(saved.filters) === canonical(current.filters)
+  current !== null && saved.mode === current.mode &&
+  canonical({ ...saved.filters, sort_dir: saved.filters.sort_dir ?? current.filters.sort_dir }) ===
+    canonical(current.filters)
 
 /** The saved filters as buttons (next to Simple/Advanced), a "Save filter"
  *  button, and their rename/delete dialogs. Reordered by drag and drop on

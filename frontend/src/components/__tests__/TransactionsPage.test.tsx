@@ -1020,7 +1020,7 @@ test('Create rule is disabled until a filter is set', async () => {
 const savedFilter = (id: number, name: string, overrides: any = {}) => ({
   id, name, position: id, created_at: '', updated_at: '', mode: 'simple',
   filters: { search: name.toLowerCase(), date_from: '', date_to: '', account_id: 0, category_id: 0,
-             amount_min: '', amount_max: '', reconciled: '' },
+             amount_min: '', amount_max: '', reconciled: '', sort_dir: 'desc' },
   ...overrides,
 })
 
@@ -1064,7 +1064,7 @@ test('Save filter stores the current filter under a name', async () => {
   await waitFor(() => expect(mockCreateSavedFilter).toHaveBeenCalledWith({
     name: 'Courses', mode: 'simple',
     filters: { search: 'carrefour', date_from: '', date_to: '', account_id: 0, category_id: 0,
-               amount_min: '', amount_max: '', reconciled: '' },
+               amount_min: '', amount_max: '', reconciled: '', sort_dir: 'desc' },
   }))
   expect(await screen.findByRole('button', { name: 'Courses' })).toBeInTheDocument()
 })
@@ -1112,4 +1112,17 @@ test('saved filters reorder by drag and drop', async () => {
   await waitFor(() => expect(mockReorderSavedFilters).toHaveBeenCalledWith([3, 1, 2]))
   const names = screen.getAllByRole('button').map(b => b.textContent)
   expect(names.indexOf('C')).toBeLessThan(names.indexOf('A'))
+})
+
+test('a saved filter keeps its date order', async () => {
+  mockFetchSavedFilters.mockResolvedValue([savedFilter(1, 'Oldest', { mode: 'advanced', filters: {
+    match_mode: 'all', conditions: [{ field: 'payee', operator: 'contains', value: 'sfr', value2: '' }], sort_dir: 'asc' } })])
+  renderPage()
+  fireEvent.click(await screen.findByRole('button', { name: 'Oldest' }))
+  expect(screen.getByRole('button', { name: /Oldest first/ })).toBeInTheDocument()
+  await waitFor(() => expect(mockSearchTransactions).toHaveBeenLastCalledWith(expect.objectContaining({ sort_dir: 'asc' })))
+  // Flipping the order on screen makes it a different filter from the saved one.
+  expect(screen.getByRole('button', { name: 'Save filter' })).toBeDisabled()
+  fireEvent.click(screen.getByRole('button', { name: /Oldest first/ }))
+  expect(screen.getByRole('button', { name: 'Save filter' })).toBeEnabled()
 })

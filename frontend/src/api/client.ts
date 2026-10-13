@@ -1066,11 +1066,14 @@ export interface SimpleFilterState {
   amount_min: string
   amount_max: string
   reconciled: string
+  /** The date order (Newest/Oldest first) saved with the filter. */
+  sort_dir?: 'asc' | 'desc'
 }
 
 export interface AdvancedFilterState {
   match_mode: 'all' | 'any'
   conditions: { field: string; operator: string; value: string; value2: string }[]
+  sort_dir?: 'asc' | 'desc'
 }
 
 export type SavedFilterInput =

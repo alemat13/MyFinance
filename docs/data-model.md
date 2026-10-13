@@ -282,7 +282,7 @@ The Transactions screen's saved filters (`routers/saved_filters.py`): a filter s
 | `name` | String(100) | The button's label |
 | `position` | Integer | Button order, ascending; changed by drag and drop (`PUT /api/saved-filters/order`) |
 | `mode` | String(10) | `simple` \| `advanced`, the filter it was saved from |
-| `filters` | JSON | That filter exactly as the screen holds it, stored and returned as is, never read by the backend: `simple` → `search`, `date_from`, `date_to`, `account_id`, `category_id`, `amount_min`, `amount_max`, `reconciled`; `advanced` → `match_mode` and the condition rows (`field`, `operator`, `value`, `value2`) |
+| `filters` | JSON | That filter exactly as the screen holds it, stored and returned as is, never read by the backend: `simple` → `search`, `date_from`, `date_to`, `account_id`, `category_id`, `amount_min`, `amount_max`, `reconciled`; `advanced` → `match_mode` and the condition rows (`field`, `operator`, `value`, `value2`). Both also carry `sort_dir` (`asc` \| `desc`), the date order saved with the filter |
 | `created_at` / `updated_at` | DateTime | |
 
 ### `onedrive_backup_settings`

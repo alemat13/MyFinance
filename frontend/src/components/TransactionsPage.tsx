@@ -298,11 +298,12 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
     </Button>
   )
 
-  // The filter on screen as "Save filter" stores it; null when nothing is set.
+  // The filter on screen as "Save filter" stores it, with its date order;
+  // null when no criterion is set.
   const currentFilter: CurrentFilter = (() => {
     if (mode === 'advanced') {
       return conditions.length > 0
-        ? { mode: 'advanced', filters: { match_mode: matchMode, conditions } }
+        ? { mode: 'advanced', filters: { match_mode: matchMode, conditions, sort_dir: sortDir } }
         : null
     }
     const filters = {
@@ -310,7 +311,9 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
       account_id: filterAccountId, category_id: filterCategoryId,
       amount_min: amountMin, amount_max: amountMax, reconciled: filterReconciled,
     }
-    return Object.values(filters).some(v => v !== '' && v !== 0) ? { mode: 'simple', filters } : null
+    return Object.values(filters).some(v => v !== '' && v !== 0)
+      ? { mode: 'simple', filters: { ...filters, sort_dir: sortDir } }
+      : null
   })()
 
   // Puts a saved filter back on screen, skipping the debounce so the list
@@ -333,6 +336,7 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
       setAmountMax(f.amount_max ?? '')
       setFilterReconciled(f.reconciled ?? '')
     }
+    if (saved.filters.sort_dir === 'asc' || saved.filters.sort_dir === 'desc') setSortDir(saved.filters.sort_dir)
     setMode(saved.mode)
     setPage(1)
   }
