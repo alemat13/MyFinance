@@ -85,3 +85,26 @@ test('the on switch saves the rule enabled or not', async () => {
   fireEvent.click(await screen.findByLabelText('Enable SFR'))
   await waitFor(() => expect(mocks.updateRule).toHaveBeenCalledWith(1, expect.objectContaining({ enabled: false })))
 })
+
+test('a split action saves the global tier by name, not its current weights', async () => {
+  mocks.createRule.mockResolvedValue(rule({ id: 3 }))
+  renderWithProviders(<RulesPage onBack={() => {}} />)
+  fireEvent.click(await screen.findByText('+ New rule'))
+  fireEvent.change(screen.getByPlaceholderText('e.g. SFR phone bill'), { target: { value: 'Rent' } })
+  const valueInputs = screen.getAllByRole('textbox')
+  fireEvent.change(valueInputs[valueInputs.length - 1], { target: { value: 'loyer' } })
+
+  fireEvent.click(screen.getByLabelText('Set split'))
+  expect(screen.getByLabelText('Split to apply')).toHaveValue('global')
+  fireEvent.click(screen.getByRole('button', { name: 'Save rule' }))
+
+  await waitFor(() => expect(mocks.createRule).toHaveBeenCalledWith(
+    expect.objectContaining({ actions: { split_tier: 'global' } })))
+})
+
+test('a saved tier is listed as read when the rule runs', async () => {
+  mocks.fetchRules.mockResolvedValue([rule({ actions: { split_tier: 'default' } })])
+  renderWithProviders(<RulesPage onBack={() => {}} />)
+  expect(await screen.findByText(
+    'Split: Default split (account, else category, else global), as set when the rule runs')).toBeInTheDocument()
+})

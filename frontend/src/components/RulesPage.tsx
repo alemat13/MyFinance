@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ArrowDown, ArrowUp } from 'lucide-react'
 import {
-  Account, Category, FilterCondition, GlobalSplitWeight, Rule, RuleActions, RuleInput, SplitSource, User,
+  Account, Category, FilterCondition, GlobalSplitWeight, Rule, RuleActions, RuleInput, SplitSource, SplitTier, User,
   createRule, deleteRule, fetchAccounts, fetchCategories, fetchRules, fetchSplitWeights, fetchUsers,
   reorderRules, searchTransactions, updateRule,
 } from '../api/client'
@@ -13,7 +13,7 @@ import CategoryPicker from './CategoryPicker'
 import { SplitRow } from './SplitEditor'
 import { BackButton, Badge, Button, Card, ConfirmDialog, IconButton, Input, Modal, Select, StatusMessage } from './ui'
 import { useToast } from '../context/ToastContext'
-import { describeActions, offsetLabel } from '../utils/rules'
+import { SPLIT_TIER_LABELS, describeActions, offsetLabel } from '../utils/rules'
 
 interface Props {
   onBack: () => void
@@ -67,7 +67,10 @@ function RuleEditor({ rule, accounts, categories, allUsers, globalWeights, onClo
   const [categoryId, setCategoryId] = useState<number | null>(actions.category_id ?? null)
   const [offsetEnabled, setOffsetEnabled] = useState(actions.accounting_month_offset != null)
   const [offset, setOffset] = useState(actions.accounting_month_offset ?? 0)
-  const [splitEnabled, setSplitEnabled] = useState(!!actions.split_weights?.length)
+  const [splitEnabled, setSplitEnabled] = useState(!!actions.split_weights?.length || !!actions.split_tier)
+  // A tier is read when the rule runs; 'fixed' stores the weights in the rule.
+  const [splitMode, setSplitMode] = useState<SplitTier | 'fixed'>(
+    actions.split_tier ?? (actions.split_weights?.length ? 'fixed' : 'global'))
   const [splitRows, setSplitRows] = useState<SplitRow[]>(
     (actions.split_weights ?? []).map(w => ({ user_id: w.user_id, value: w.weight })))
   const [splitSource, setSplitSource] = useState<SplitSource | null>(actions.split_source ?? null)
@@ -97,7 +100,7 @@ function RuleEditor({ rule, accounts, categories, allUsers, globalWeights, onClo
   const anyAction = payeeEnabled || categoryEnabled || offsetEnabled || splitEnabled || reconciledEnabled
   const canSave = name.trim() !== '' && filters.length > 0 && anyAction
     && !(payeeEnabled && payee.trim() === '') && !(categoryEnabled && categoryId == null)
-    && !(splitEnabled && splitRows.length === 0)
+    && !(splitEnabled && splitMode === 'fixed' && splitRows.length === 0)
 
   const save = () => {
     const data: RuleInput = {
@@ -110,7 +113,8 @@ function RuleEditor({ rule, accounts, categories, allUsers, globalWeights, onClo
         ...(categoryEnabled && categoryId != null ? { category_id: categoryId } : {}),
         ...(offsetEnabled ? { accounting_month_offset: offset } : {}),
         ...(reconciledEnabled ? { reconciled } : {}),
-        ...(splitEnabled ? {
+        ...(splitEnabled && splitMode !== 'fixed' ? { split_tier: splitMode } : {}),
+        ...(splitEnabled && splitMode === 'fixed' ? {
           split_weights: splitRows.map(r => ({ user_id: r.user_id, weight: r.value })),
           split_source: splitSource ?? 'custom',
         } : {}),
@@ -207,6 +211,22 @@ function RuleEditor({ rule, accounts, categories, allUsers, globalWeights, onClo
               Set split
             </label>
             {splitEnabled && (
+              <div className="mt-2">
+                <Select aria-label="Split to apply" value={splitMode}
+                        onChange={e => setSplitMode(e.target.value as SplitTier | 'fixed')} className="min-w-[160px]">
+                  {(Object.keys(SPLIT_TIER_LABELS) as SplitTier[]).map(t =>
+                    <option key={t} value={t}>{SPLIT_TIER_LABELS[t]}</option>)}
+                  <option value="fixed">Fixed weights</option>
+                </Select>
+              </div>
+            )}
+            {splitEnabled && splitMode !== 'fixed' && (
+              <div className="text-xs text-slate-400 mt-1">
+                Read from the split settings each time the rule runs, so changing them there changes what this rule
+                applies. Left as is when that split isn't set for the transaction.
+              </div>
+            )}
+            {splitEnabled && splitMode === 'fixed' && (
               <div>
                 <TransactionSplitFields
                   rows={splitRows}

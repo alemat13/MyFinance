@@ -685,10 +685,21 @@ class RuleActions(BaseModel):
     reconciled: bool | None = None
     split_weights: list[SplitWeightCreate] | None = None
     split_source: Literal["global", "account", "category", "custom"] | None = None
+    # A weight tier read when the rule runs, instead of weights copied into
+    # the rule: changing the global split then changes what the rule applies.
+    # "default" is the usual account > category > global cascade. Exclusive
+    # with split_weights.
+    split_tier: Literal["global", "account", "category", "default"] | None = None
+
+    @model_validator(mode="after")
+    def _one_kind_of_split(self):
+        if self.split_tier is not None and self.split_weights is not None:
+            raise ValueError("Set either split_weights or split_tier, not both.")
+        return self
 
     def is_empty(self) -> bool:
         return all(getattr(self, f) is None for f in
-                   ("payee", "category_id", "accounting_month_offset", "reconciled", "split_weights"))
+                   ("payee", "category_id", "accounting_month_offset", "reconciled", "split_weights", "split_tier"))
 
 
 class RuleBase(BaseModel):
