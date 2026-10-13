@@ -294,8 +294,11 @@ class BulkTransactionUpdate(BaseModel):
     applied to every selected transaction. An omitted key leaves that field
     untouched on all of them; category_id explicitly set to null clears it.
     reconciled has no null-clearing semantics (it's a plain bool, not nullable
-    on the model) — omit it to leave reconciled status untouched."""
+    on the model) — omit it to leave reconciled status untouched. payee
+    renames every selected transaction to the same text (stripped; blank or
+    null is refused, a payee can't be cleared); the memo is never touched."""
     category_id: Optional[int] = None
+    payee: Optional[str] = None
     # Admin mode only on screen: moves every selected transaction to this
     # account, keeping each one's own split as it is.
     account_id: Optional[int] = None

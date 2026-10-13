@@ -359,3 +359,47 @@ def test_bulk_update_move_refuses_a_bank_id_the_target_already_has(client, db, s
     assert response.status_code == 409
     db.refresh(moving)
     assert moving.account_id == sample_account.id
+
+
+def test_bulk_update_payee_renames_every_selected_row_and_keeps_memo(client, db, sample_account, sample_category):
+    t1 = _make_transaction(db, sample_account, sample_category, payee="CARTE 12/09 SNCF", memo="Train Lyon")
+    t2 = _make_transaction(db, sample_account, sample_category, payee="PRLV SNCF CONNECT")
+    untouched = _make_transaction(db, sample_account, sample_category, payee="Garage")
+
+    response = client.put(
+        "/api/transactions/bulk-update",
+        json={"transaction_ids": [t1.id, t2.id], "update": {"payee": "  SNCF  "}},
+    )
+    assert response.status_code == 200
+    first = client.get(f"/api/transactions/{t1.id}").json()
+    assert first["payee"] == "SNCF"
+    assert first["memo"] == "Train Lyon"
+    assert client.get(f"/api/transactions/{t2.id}").json()["payee"] == "SNCF"
+    assert client.get(f"/api/transactions/{untouched.id}").json()["payee"] == "Garage"
+
+    history = client.get(f"/api/transactions/{t1.id}/history").json()
+    assert history[0]["changes"] == {"payee": {"old": "CARTE 12/09 SNCF", "new": "SNCF"}}
+
+
+@pytest.mark.parametrize("payee", ["", "   ", None])
+def test_bulk_update_blank_payee_422_and_no_mutation(client, db, sample_account, sample_category, payee):
+    t1 = _make_transaction(db, sample_account, sample_category, payee="Boulangerie")
+
+    response = client.put(
+        "/api/transactions/bulk-update",
+        json={"transaction_ids": [t1.id], "update": {"payee": payee}},
+    )
+    assert response.status_code == 422
+    assert client.get(f"/api/transactions/{t1.id}").json()["payee"] == "Boulangerie"
+
+
+def test_bulk_update_payee_by_filter_renames_every_matching_row(client, db, sample_account, sample_category):
+    matching = [_make_transaction(db, sample_account, sample_category, payee=f"CB AMAZON {i}") for i in range(3)]
+
+    response = client.put(
+        "/api/transactions/bulk-update",
+        json={"filter": {"search": "amazon", "page": 1, "page_size": 1}, "expected_count": 3, "update": {"payee": "Amazon"}},
+    )
+    assert response.status_code == 200
+    for t in matching:
+        assert client.get(f"/api/transactions/{t.id}").json()["payee"] == "Amazon"

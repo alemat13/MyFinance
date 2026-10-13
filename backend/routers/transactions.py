@@ -238,6 +238,11 @@ def bulk_update_transactions(data: BulkUpdateTransactionsRequest, actor_user_id:
         if non_split_fields["account_id"] is None:
             raise HTTPException(422, "account_id cannot be cleared")
         _validate_bulk_move(db, target_ids, non_split_fields["account_id"])
+    if "payee" in non_split_fields:
+        payee = (non_split_fields["payee"] or "").strip()
+        if not payee:
+            raise HTTPException(422, "payee cannot be blank")
+        non_split_fields["payee"] = payee
 
     weights = None
     if split_weights_provided:

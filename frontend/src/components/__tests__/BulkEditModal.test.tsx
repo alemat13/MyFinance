@@ -266,3 +266,24 @@ test('moving sends only account_id', async () => {
 
   await waitFor(() => expect(mockBulkUpdateTransactions).toHaveBeenCalledWith([1, 2], { account_id: 7 }, null))
 })
+
+test('renaming sends only the trimmed payee', async () => {
+  mockBulkUpdateTransactions.mockResolvedValue({ updated_count: 2, transaction_ids: [1, 2] })
+  renderWithProviders(<BulkEditModal {...baseProps} />)
+
+  fireEvent.click(screen.getByText('Rename'))
+  fireEvent.change(screen.getByLabelText('New payee'), { target: { value: '  Starbucks ' } })
+  fireEvent.click(submitButton())
+
+  await waitFor(() => expect(mockBulkUpdateTransactions).toHaveBeenCalled())
+  expect(mockBulkUpdateTransactions).toHaveBeenCalledWith([1, 2], { payee: 'Starbucks' }, null)
+})
+
+test('rename keeps submit disabled while the new payee is blank', () => {
+  renderWithProviders(<BulkEditModal {...baseProps} />)
+
+  fireEvent.click(screen.getByText('Rename'))
+  expect(submitButton()).toBeDisabled()
+  fireEvent.change(screen.getByLabelText('New payee'), { target: { value: '   ' } })
+  expect(submitButton()).toBeDisabled()
+})

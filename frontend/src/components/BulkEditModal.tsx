@@ -9,7 +9,7 @@ import TransactionSplitFields from './TransactionSplitFields'
 import CategoryPicker from './CategoryPicker'
 import AccountPicker from './AccountPicker'
 import { useToast } from '../context/ToastContext'
-import { Modal, Button, Select } from './ui'
+import { Modal, Button, Select, Input } from './ui'
 
 interface Props {
   transactionIds: number[]
@@ -54,6 +54,9 @@ export default function BulkEditModal({
   const [categoryEnabled, setCategoryEnabled] = useState(false)
   const [categoryId, setCategoryId] = useState<number | null>(null)
 
+  const [renameEnabled, setRenameEnabled] = useState(false)
+  const [payee, setPayee] = useState('')
+
   const [moveEnabled, setMoveEnabled] = useState(false)
   const [moveAccountId, setMoveAccountId] = useState<number | null>(null)
 
@@ -73,8 +76,9 @@ export default function BulkEditModal({
   const currencies = [...new Set(transactions.map(t => t.currency))]
   const previewTransaction = transactions[0]
 
-  const canSave = (categoryEnabled || moveEnabled || offsetEnabled || splitEnabled || reconciledEnabled)
+  const canSave = (categoryEnabled || renameEnabled || moveEnabled || offsetEnabled || splitEnabled || reconciledEnabled)
     && !(moveEnabled && moveAccountId == null)
+    && !(renameEnabled && payee.trim() === '')
 
   const handleSave = () => {
     if (splitEnabled && splitRows.length === 0) {
@@ -82,6 +86,7 @@ export default function BulkEditModal({
     }
     const update: BulkTransactionUpdate = {
       ...(categoryEnabled ? { category_id: categoryId } : {}),
+      ...(renameEnabled ? { payee: payee.trim() } : {}),
       ...(moveEnabled && moveAccountId != null ? { account_id: moveAccountId } : {}),
       ...(offsetEnabled ? { accounting_month_offset: offset } : {}),
       ...(splitEnabled ? {
@@ -132,6 +137,26 @@ export default function BulkEditModal({
           </label>
           {categoryEnabled && (
             <CategoryPicker categories={categories} value={categoryId} onChange={setCategoryId} />
+          )}
+        </div>
+
+        <div className="border border-slate-200 dark:border-slate-700 rounded-md p-3">
+          <label className="flex items-center gap-2 text-sm font-medium mb-2">
+            <input type="checkbox" checked={renameEnabled} onChange={e => setRenameEnabled(e.target.checked)} />
+            Rename
+          </label>
+          {renameEnabled && (
+            <div>
+              <Input
+                aria-label="New payee"
+                placeholder="New payee"
+                value={payee}
+                onChange={e => setPayee(e.target.value)}
+              />
+              <div className="text-xs text-slate-400 mt-1">
+                Every selected transaction gets this payee. Memos and original bank labels are kept.
+              </div>
+            </div>
           )}
         </div>
 
