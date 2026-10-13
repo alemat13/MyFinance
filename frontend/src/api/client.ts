@@ -182,6 +182,8 @@ export interface TransactionUpdate {
 // of them, mirroring the backend's exclude_unset contract.
 export interface BulkTransactionUpdate {
   category_id?: number | null
+  // Renames every selected transaction (payee only, never the memo).
+  payee?: string
   // Admin mode only: moves the selection to this account, splits unchanged.
   account_id?: number
   accounting_month_offset?: number
