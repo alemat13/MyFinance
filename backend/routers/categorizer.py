@@ -1,4 +1,4 @@
-"""Endpoints for the category/payee suggestion feature (logic in categorizer.py).
+"""Endpoints for the category suggestion feature (logic in categorizer.py).
 
 Training runs inside the request rather than in a background job: measured
 end to end against a copy of the production database (30 167 transactions,
@@ -128,14 +128,9 @@ def train_model(req: CategorizerTrainRequest, db: Session = Depends(get_db)):
     db.commit()
 
     try:
-        model, params = categorizer.train(
-            learnable,
-            payee_min_occurrences=req.payee_min_occurrences,
-            payee_min_stability=req.payee_min_stability,
-        )
+        model, params = categorizer.train(learnable)
         categories = _categories(db)
         metrics = categorizer.evaluate(model, categorizer.trainable(test_rows), learnable, categories)
-        metrics["payee"] = categorizer.evaluate_payee(model.payee_memory, test_rows)
         record.blob = categorizer.dumps(model)
         record.params = params
         record.metrics = metrics
@@ -216,7 +211,6 @@ def suggest(req: CategorizerSuggestRequest, db: Session = Depends(get_db)):
 
     items = []
     for t, (category_id, confidence) in zip(rows, predictions):
-        suggested_payee = model.payee_memory.suggest(t) if model.payee_memory else None
         category = categories.get(category_id)
         current = categories.get(t.category_id) if t.category_id else None
         items.append(CategorizerSuggestion(
@@ -231,9 +225,7 @@ def suggest(req: CategorizerSuggestRequest, db: Session = Depends(get_db)):
             suggested_category_name=category.name if category else None,
             confidence=confidence,
             high_confidence=confidence >= threshold,
-            suggested_payee=suggested_payee,
             category_changed=category_id != t.category_id,
-            payee_changed=bool(suggested_payee) and suggested_payee != t.payee,
         ))
 
     return CategorizerSuggestResponse(
@@ -241,14 +233,13 @@ def suggest(req: CategorizerSuggestRequest, db: Session = Depends(get_db)):
         threshold=threshold,
         items=items,
         category_changes=sum(1 for i in items if i.category_changed),
-        payee_changes=sum(1 for i in items if i.payee_changed),
         high_confidence_changes=sum(1 for i in items if i.category_changed and i.high_confidence),
     )
 
 
 @router.post("/apply", response_model=CategorizerApplyResponse)
 def apply(req: CategorizerApplyRequest, actor_user_id: int | None = Query(None), db: Session = Depends(get_db)):
-    """Write one category and/or payee per transaction.
+    """Write one category per transaction.
 
     Deliberately not /api/transactions/bulk-update: that endpoint applies the
     same value to every row it touches, which is the opposite of what a list
@@ -261,9 +252,6 @@ def apply(req: CategorizerApplyRequest, actor_user_id: int | None = Query(None),
     """
     if not req.items:
         raise HTTPException(422, "items must not be empty")
-    if any(i.category_id is None and i.payee is None for i in req.items):
-        raise HTTPException(422, "Each item must set a category_id, a payee, or both.")
-
     ids = [i.transaction_id for i in req.items]
     if len(set(ids)) != len(ids):
         raise HTTPException(422, "The same transaction appears more than once.")
@@ -273,7 +261,7 @@ def apply(req: CategorizerApplyRequest, actor_user_id: int | None = Query(None),
     if missing:
         raise HTTPException(404, f"Transaction(s) not found: {missing}")
 
-    category_ids = {i.category_id for i in req.items if i.category_id is not None}
+    category_ids = {i.category_id for i in req.items}
     if category_ids:
         known = {c.id for c in db.query(Category).filter(Category.id.in_(category_ids)).all()}
         unknown = sorted(category_ids - known)
@@ -284,18 +272,10 @@ def apply(req: CategorizerApplyRequest, actor_user_id: int | None = Query(None),
     skipped_ids: list[int] = []
     for item in req.items:
         transaction = transactions[item.transaction_id]
-        fields: dict[str, object] = {}
-        if item.category_id is not None:
-            if transaction.category_id is not None and not req.overwrite_category:
-                # Only the category is refused; a rename asked for in the same
-                # item still goes through, since the two are independent.
-                skipped_ids.append(transaction.id)
-            else:
-                fields["category_id"] = item.category_id
-        if item.payee is not None:
-            fields["payee"] = item.payee
-        if not fields:
+        if transaction.category_id is not None and not req.overwrite_category:
+            skipped_ids.append(transaction.id)
             continue
+        fields = {"category_id": item.category_id}
 
         # Shared with the automatic path a sync takes, so a suggestion ticked
         # here and one applied by a sync leave exactly the same trail.

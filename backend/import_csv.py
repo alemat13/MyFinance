@@ -9,6 +9,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 import auto_categorize
+import transaction_rules
 from import_qif import QIF_DELIMITER, is_qif, qif_to_csv_text
 from models import Account, Category, Transaction
 from rules import RuleViolation
@@ -236,7 +237,41 @@ def preview_import(db: Session, raw: bytes, data: ImportPreviewRequest) -> list[
         ))
 
     _attach_suggestions(db, rows)
+    _attach_rules(db, rows)
     return rows
+
+
+def _attach_rules(db: Session, rows: list[ImportPreviewRow]) -> None:
+    """Fill in what the enabled automatic rules would change on each row.
+
+    Read against the file's own values (and its payee as the raw label, which
+    is what the commit freezes it into), so the screen can show the
+    before/after and commit the rules' result unless the user switches them
+    off. Like the suggestions, a rule that cannot be evaluated must not cost
+    the preview.
+    """
+    candidates = [r for r in rows if r.status != "error"]
+    if not candidates:
+        return
+    try:
+        rules = transaction_rules.load_rules(db)
+        if not rules:
+            return
+        shims = [
+            auto_categorize.Candidate(
+                raw_label=r.payee, payee=r.payee, memo=r.memo, amount=r.amount,
+                account_id=r.account_id, category_id=r.category_id,
+                date=r.transaction_date, accounting_month_offset=0, reconciled=False,
+            )
+            for r in candidates
+        ]
+        outcomes = transaction_rules.evaluate_many(db, rules, shims)
+    except Exception:  # noqa: BLE001 - the preview is worth more than the rules
+        logger.exception("Could not evaluate the automatic rules on the import preview")
+        return
+    names = {c.id: c.name for c in db.query(Category).all()}
+    for row, outcome in zip(candidates, outcomes):
+        row.rules = transaction_rules.outcome_out(outcome, names)
 
 
 def _attach_suggestions(db: Session, rows: list[ImportPreviewRow]) -> None:

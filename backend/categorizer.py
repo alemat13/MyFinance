@@ -1,4 +1,4 @@
-"""Suggests a category and a payee for a transaction, from the household's own history.
+"""Suggests a category for a transaction, from the household's own history.
 
 Business logic only; the endpoints live in routers/categorizer.py.
 
@@ -22,10 +22,9 @@ deliver. Rows with no raw label at all (the migrated history whose Linxo
 export was never obtained) fall back to the payee, which is better than
 nothing and is the one place where the two vocabularies mix.
 
-The payee side is a different animal and is documented on `_PayeeMemory`: a
-gated lookup rather than a model, because 60% of past renames are annotations
-no model could predict, while the recurring merchants that *are* renamed
-consistently can simply be remembered.
+Renaming payees is not this module's job any more: it was a gated lookup of
+the names recurring merchants had been given, and it covered too few rows to
+matter. Automatic rules (transaction_rules.py) replace it.
 
 scikit-learn is imported lazily inside the functions that need it: it costs
 over a second to import and the backend's other 99% of requests never touch
@@ -46,12 +45,6 @@ DEFAULT_CONFIDENCE_THRESHOLD = 0.8
 # Thresholds the training report walks, so the UI can show the trade-off
 # between how many rows get a suggestion and how often it is right.
 REPORT_THRESHOLDS = (0.5, 0.6, 0.7, 0.8, 0.9)
-
-# Payee memory gate (see _PayeeMemory): how many times a merchant must have
-# been seen, and how dominant its most frequent name must be among those
-# sightings, before that name is proposed for a new transaction.
-DEFAULT_PAYEE_MIN_OCCURRENCES = 2
-DEFAULT_PAYEE_MIN_STABILITY = 0.9
 
 _PICKLE_PROTOCOL = 5
 
@@ -104,15 +97,14 @@ class _Model:
     from a client, which is what makes loading a pickle here safe.
     """
 
-    def __init__(self, char_vec, word_vec, cat_enc, classifier, classes, payee_memory=None):
+    def __init__(self, char_vec, word_vec, cat_enc, classifier, classes):
         self.char_vec = char_vec
         self.word_vec = word_vec
         self.cat_enc = cat_enc
         self.classifier = classifier
         self.classes = classes
-        # Carried in the same blob as the category model, so activating or
-        # rolling back a version moves both heads together.
-        self.payee_memory = payee_memory
+        # Models trained before automatic rules also carry a `payee_memory`
+        # attribute (see _PayeeMemory); nothing reads it.
 
     def _matrix(self, rows: list):
         from scipy.sparse import hstack
@@ -142,15 +134,10 @@ class _Model:
         return out
 
 
-def train(rows: list,
-          payee_min_occurrences: int = DEFAULT_PAYEE_MIN_OCCURRENCES,
-          payee_min_stability: float = DEFAULT_PAYEE_MIN_STABILITY) -> tuple["_Model", dict[str, Any]]:
-    """Fit both heads on a selection of transactions.
-
-    The category head needs a category to learn from, so it only reads rows
-    that have one; the payee memory reads every row with a payee, including
-    uncategorised ones. Returns the model and the parameters it was fitted
-    with, for the record kept alongside the stored blob.
+def train(rows: list) -> tuple["_Model", dict[str, Any]]:
+    """Fit the model on a selection of categorised transactions. Returns the
+    model and the parameters it was fitted with, for the record kept
+    alongside the stored blob.
     """
     from sklearn.feature_extraction.text import TfidfVectorizer
     from sklearn.linear_model import SGDClassifier
@@ -188,8 +175,7 @@ def train(rows: list,
                                tol=None, random_state=0)
     classifier.fit(x, y)
 
-    memory = build_payee_memory(rows, payee_min_occurrences, payee_min_stability)
-    model = _Model(char_vec, word_vec, cat_enc, classifier, list(classifier.classes_), memory)
+    model = _Model(char_vec, word_vec, cat_enc, classifier, list(classifier.classes_))
     params = {
         "features": int(x.shape[1]),
         "classes": len(model.classes),
@@ -198,9 +184,6 @@ def train(rows: list,
         "classifier": "sgd_log_loss",
         "alpha": 1e-5,
         "epochs": 30,
-        "payee_min_occurrences": payee_min_occurrences,
-        "payee_min_stability": payee_min_stability,
-        "payee_merchants": len(memory.mapping),
     }
     return model, params
 
@@ -289,80 +272,15 @@ def _baseline(train_rows: list, rows: list, categories: dict[int, Any]) -> dict[
 
 
 class _PayeeMemory:
-    """Proposes the name the household already gave a recurring merchant.
-
-    Not a model and nothing learned: a GROUP BY over past transactions,
-    keyed by `merchant_key`. It earns its place through a gate rather than
-    through cleverness.
-
-    **Why the gate is on stability and not on recurrence.** Measured on the
-    production dataset, 60% of past renames are annotations rather than
-    cleanups — `CARTE 17/05/23 AFD CB*4325` became `Soirée Barcarolle -
-    Pizzas`, which no amount of history can predict. Restricting to merchants
-    seen at least twenty times only brings that down to 43%, and proposing
-    their last seen name is right just 65% of the time, because a recurring
-    merchant gets annotated too. But requiring that one name account for most
-    of a merchant's sightings separates the two populations cleanly: at two
-    sightings and 90% stability the rule covers 23.7% of rows at 91.0%
-    precision, and at five sightings and 90% it covers 17.9% at 95.2%. Below
-    the gate it proposes nothing at all, which is the point — a wrong rename
-    is worse than none, even though `raw_label` keeps the original.
-
-    This covers the deliberate renames of recurring merchants (`PRLV SEPA
-    SFR` → `SFR`). The purely mechanical cleanups (stripping a `CARTE 06/10`
-    prefix) are a different population, handled by the regexes in
-    bank_sync_config.json rather than here.
-    """
+    """Kept only so the models trained before automatic rules replaced it
+    still unpickle (a pickle names its classes). Nothing reads it any more:
+    renaming recurring merchants is now an explicit rule, which the household
+    asked for after this lookup turned out to cover too few rows to matter."""
 
     def __init__(self, mapping: dict[str, str], min_occurrences: int, min_stability: float):
         self.mapping = mapping
         self.min_occurrences = min_occurrences
         self.min_stability = min_stability
-
-    def suggest(self, t) -> str | None:
-        return self.mapping.get(merchant_key(label_text(t)))
-
-
-def build_payee_memory(rows: list, min_occurrences: int, min_stability: float) -> "_PayeeMemory":
-    from collections import Counter, defaultdict
-
-    seen: dict[str, Counter] = defaultdict(Counter)
-    for t in rows:
-        payee = (t.payee or "").strip()
-        key = merchant_key(label_text(t))
-        if payee and key:
-            seen[key][payee] += 1
-
-    mapping = {}
-    for key, names in seen.items():
-        total = sum(names.values())
-        name, count = names.most_common(1)[0]
-        if total >= min_occurrences and count / total >= min_stability:
-            mapping[key] = name
-    return _PayeeMemory(mapping, min_occurrences, min_stability)
-
-
-def evaluate_payee(memory: "_PayeeMemory", rows: list) -> dict[str, Any]:
-    """Coverage and precision of the payee memory on held-out rows.
-
-    Precision is what matters here, not accuracy over everything: the rule
-    stays silent on most rows by design, so a number averaged over rows it
-    never speaks about would say nothing useful.
-    """
-    scored = [t for t in rows if (t.payee or "").strip()]
-    if not scored:
-        return {"tested_rows": 0, "merchants": len(memory.mapping)}
-    proposed = [(t, memory.suggest(t)) for t in scored]
-    covered = [(t, name) for t, name in proposed if name is not None]
-    hits = sum(1 for t, name in covered if name == (t.payee or "").strip())
-    changes = sum(1 for t, name in covered if name != (t.payee or "").strip())
-    return {
-        "tested_rows": len(scored),
-        "merchants": len(memory.mapping),
-        "coverage": len(covered) / len(scored),
-        "precision": hits / len(covered) if covered else 0.0,
-        "would_change": changes,
-    }
 
 
 def trainable(rows: Iterable) -> list:

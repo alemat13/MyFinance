@@ -23,6 +23,7 @@ from routers import (
     imports,
     onedrive,
     split_weights,
+    transaction_rules,
     transactions,
     users,
 )
@@ -107,3 +108,4 @@ app.include_router(bank_sync.router)
 app.include_router(dashboard.router)
 app.include_router(charts.router)
 app.include_router(categorizer.router)
+app.include_router(transaction_rules.router)

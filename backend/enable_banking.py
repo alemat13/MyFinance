@@ -33,6 +33,7 @@ import jwt
 from sqlalchemy.orm import Session
 
 import auto_categorize
+import transaction_rules
 import cache_service
 import split_engine
 from audit import record_transaction_history, splits_created_changes
@@ -524,6 +525,9 @@ def import_transactions(db: Session, link: BankAccountLink, rows: list[dict], da
     # model renames the payee to, and the rows are left unreconciled so they
     # show up for review. A sync with no active model imports as before.
     auto_categorize.file_rows_quietly(db, imported)
+    # Then the automatic rules, every enabled one, systematically: after the
+    # model, so a rule — the household's explicit choice — wins over a guess.
+    transaction_rules.apply_quietly(db, imported, fresh=True)
 
     if created:
         cache_service.invalidate(db, "balances", "charts", "account_totals")

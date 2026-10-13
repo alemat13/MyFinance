@@ -363,7 +363,7 @@ class TransactionDivideResponse(BaseModel):
 TEXT_OPERATORS = {"contains", "equals", "not_equals", "starts_with", "ends_with"}
 NUMERIC_OPERATORS = {"eq", "ne", "gt", "gte", "lt", "lte", "between"}
 DATE_OPERATORS = {"on", "before", "after", "between"}
-TEXT_FIELDS = {"payee", "memo"}
+TEXT_FIELDS = {"payee", "memo", "raw_label"}
 DATE_FIELDS = {"date"}
 NUMERIC_FIELDS = {"amount", "account_id", "category_id"}
 
@@ -375,7 +375,7 @@ OPERATORS_BY_FIELD = {
 
 
 class FilterCondition(BaseModel):
-    field: Literal["payee", "memo", "amount", "date", "account_id", "category_id"]
+    field: Literal["payee", "memo", "raw_label", "amount", "date", "account_id", "category_id"]
     operator: str
     value: str | float | int | None = None
     value2: str | float | int | None = None
@@ -557,10 +557,23 @@ class ImportPreviewRow(BaseModel):
     suggested_category_id: int | None = None
     suggested_category_name: str | None = None
     suggested_confidence: float | None = None
+    # What the enabled automatic rules would do to this row (see
+    # transaction_rules.py), or None when no rule matches. The screen applies
+    # it by default and can switch it off, so the file's own values stay here.
+    rules: "RuleOutcomeOut | None" = None
+
+
+class ImportCommitRow(TransactionCreate):
+    """A row as the import commits it. `raw_label` is the file's own payee,
+    sent back separately because an automatic rule may have renamed `payee`
+    in the preview; absent, the payee is taken as the file's label.
+    `reconciled` is there because a rule may mark a row reconciled."""
+    raw_label: str | None = None
+    reconciled: bool = False
 
 
 class ImportCommitRequest(BaseModel):
-    rows: list[TransactionCreate]
+    rows: list[ImportCommitRow]
 
 
 class ImportCommitResponse(BaseModel):
@@ -586,8 +599,6 @@ class CategorizerTrainRequest(BaseModel):
     train: TransactionSearchRequest
     test: TransactionSearchRequest
     note: str | None = Field(None, max_length=200)
-    payee_min_occurrences: int = Field(2, ge=1, le=100)
-    payee_min_stability: float = Field(0.9, ge=0.5, le=1.0)
 
 
 class CategorizerModelOut(BaseModel):
@@ -625,9 +636,7 @@ class CategorizerSuggestion(BaseModel):
     suggested_category_name: str | None = None
     confidence: float | None = None
     high_confidence: bool = False
-    suggested_payee: str | None = None
     category_changed: bool = False
-    payee_changed: bool = False
 
 
 class CategorizerSuggestResponse(BaseModel):
@@ -635,14 +644,12 @@ class CategorizerSuggestResponse(BaseModel):
     threshold: float
     items: list[CategorizerSuggestion]
     category_changes: int
-    payee_changes: int
     high_confidence_changes: int
 
 
 class CategorizerApplyItem(BaseModel):
     transaction_id: int
-    category_id: int | None = None
-    payee: str | None = Field(None, min_length=1, max_length=200)
+    category_id: int
 
 
 class CategorizerApplyRequest(BaseModel):
@@ -660,6 +667,105 @@ class CategorizerApplyResponse(BaseModel):
     # Rows left alone because they already carried a category and
     # overwrite_category was false.
     skipped_transaction_ids: list[int] = []
+
+
+# ── Automatic rules (see transaction_rules.py) ───────────────────
+
+class RuleActions(BaseModel):
+    """What a rule does to a matching transaction: a bulk edit's fields, plus
+    renaming the payee. Moving to another account and deleting are left out
+    on purpose — too much to happen unseen. An omitted (or None) key leaves
+    that field alone; a rule cannot clear a category."""
+    payee: str | None = Field(None, min_length=1, max_length=200)
+    category_id: int | None = None
+    accounting_month_offset: int | None = Field(None, ge=-3, le=3)
+    reconciled: bool | None = None
+    split_weights: list[SplitWeightCreate] | None = None
+    split_source: Literal["global", "account", "category", "custom"] | None = None
+
+    def is_empty(self) -> bool:
+        return all(getattr(self, f) is None for f in
+                   ("payee", "category_id", "accounting_month_offset", "reconciled", "split_weights"))
+
+
+class RuleBase(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    enabled: bool = True
+    match_mode: Literal["all", "any"] = "all"
+    conditions: list[FilterCondition]
+    actions: RuleActions
+
+
+class RuleCreate(RuleBase):
+    pass
+
+
+class RuleUpdate(RuleBase):
+    pass
+
+
+class RuleOut(RuleBase):
+    id: int
+    position: int
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class RuleOrderRequest(BaseModel):
+    """Every rule's id, in the order they should run."""
+    rule_ids: list[int]
+
+
+class RuleOutcomeOut(BaseModel):
+    """What the rules change on one transaction. Only the fields a rule
+    actually changes are set; `split_weights` set means a rule set the split."""
+    rule_ids: list[int]
+    rule_names: list[str]
+    payee: str | None = None
+    category_id: int | None = None
+    category_name: str | None = None
+    accounting_month_offset: int | None = None
+    reconciled: bool | None = None
+    split_weights: list[SplitWeightCreate] | None = None
+    split_source: str | None = None
+
+
+ImportPreviewRow.model_rebuild()
+
+
+class RulePreviewRequest(BaseModel):
+    """The ticked transactions, and which rules to run on them (by id, in
+    their saved order). `rule_ids` omitted means every enabled rule."""
+    transaction_ids: list[int]
+    rule_ids: list[int] | None = None
+
+
+class RulePreviewItem(BaseModel):
+    transaction_id: int
+    date: _DateType
+    payee: str
+    amount: float
+    current_category_id: int | None = None
+    current_category_name: str | None = None
+    current_accounting_month_offset: int = 0
+    current_reconciled: bool = False
+    outcome: RuleOutcomeOut | None = None
+
+
+class RulePreviewResponse(BaseModel):
+    items: list[RulePreviewItem]
+    changed_count: int
+
+
+class RuleApplyRequest(RulePreviewRequest):
+    pass
+
+
+class RuleApplyResponse(BaseModel):
+    updated_count: int
+    transaction_ids: list[int]
 
 
 # ── Full database backup (export/import) ─────────────────────────
@@ -823,6 +929,20 @@ class BankAccountLinkExport(BaseModel):
     last_imported_count: int = 0
 
 
+class TransactionRuleExport(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    position: int = 0
+    enabled: bool = True
+    match_mode: str = "all"
+    conditions: list[dict]
+    actions: dict
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
 class DatabaseExport(BaseModel):
     schema_version: int
     exported_at: datetime
@@ -844,6 +964,10 @@ class DatabaseExport(BaseModel):
     # archives get uploaded to.
     bank_connections: list[BankConnectionExport] | None = None
     bank_account_links: list[BankAccountLinkExport] | None = None
+    # Automatic rules (transaction_rules.py), restored in overwrite mode only:
+    # their conditions and actions name account and category ids, which a
+    # partial restore renumbers. `None` is an archive from before rules.
+    transaction_rules: list[TransactionRuleExport] | None = None
 
 
 # ── OneDrive automatic backup connection ──────────────────────────
@@ -892,6 +1016,7 @@ class ImportSummary(BaseModel):
     transaction_history: int
     bank_connections: int = 0
     bank_account_links: int = 0
+    transaction_rules: int = 0
 
 
 # ── Bank sync (Enable Banking) ────────────────────────────────────────
