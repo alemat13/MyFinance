@@ -920,6 +920,20 @@ def test_search_sort_by_amount_asc(client, db, sample_account, sample_category):
     assert [item["payee"] for item in data["items"]] == ["Low", "High"]
 
 
+def test_search_date_order_flips_and_breaks_ties_by_id(client, db, sample_account, sample_category):
+    from datetime import date
+    old = _make_transaction(db, sample_account, sample_category, payee="Old", date=date(2026, 1, 1))
+    same_a = _make_transaction(db, sample_account, sample_category, payee="Same A", date=date(2026, 6, 1))
+    same_b = _make_transaction(db, sample_account, sample_category, payee="Same B", date=date(2026, 6, 1))
+
+    def ids(sort_dir, page):
+        response = client.post("/api/transactions/search", json={"sort_dir": sort_dir, "page": page, "page_size": 2})
+        return [t["id"] for t in response.json()["items"]]
+
+    assert ids("desc", 1) + ids("desc", 2) == [same_b.id, same_a.id, old.id]
+    assert ids("asc", 1) + ids("asc", 2) == [old.id, same_a.id, same_b.id]
+
+
 def test_search_filtered_by_user(client, sample_account_with_user, sample_user, sample_category, db):
     _make_transaction(db, sample_account_with_user, sample_category, payee="User Specific")
 
