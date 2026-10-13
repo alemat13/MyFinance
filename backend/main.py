@@ -22,6 +22,7 @@ from routers import (
     dashboard,
     imports,
     onedrive,
+    saved_filters,
     split_weights,
     transaction_rules,
     transactions,
@@ -109,3 +110,4 @@ app.include_router(dashboard.router)
 app.include_router(charts.router)
 app.include_router(categorizer.router)
 app.include_router(transaction_rules.router)
+app.include_router(saved_filters.router)

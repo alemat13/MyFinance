@@ -2,7 +2,7 @@ import { Fragment, useEffect, useState } from 'react'
 import { ArrowDown, ArrowUp, CheckCircle2, Circle } from 'lucide-react'
 import {
   Transaction, TransactionSplit, GlobalSplitWeight,
-  Account, Category, User, TransactionSearchRequest,
+  Account, Category, User, TransactionSearchRequest, SavedFilter,
   fetchAccounts, fetchCategories, fetchUsers, fetchSplitWeights, searchTransactions, updateTransaction,
 } from '../api/client'
 import TransactionDetail from './TransactionDetail'
@@ -14,6 +14,7 @@ import CategoryPicker from './CategoryPicker'
 import AccountPicker from './AccountPicker'
 import TransactionConditions, { ConditionRow, conditionsToFilters } from './TransactionConditions'
 import ExportMenu from './ExportMenu'
+import SavedFilters, { CurrentFilter } from './SavedFilters'
 import { Button, IconButton, Input, Select, Table, Thead, Tbody, Tr, Th, Td, StatusMessage, CategoryBadge, BackButton, ConfirmDialog, Card } from './ui'
 import { formatMoney } from '../utils/currency'
 import { getParam, patchQueryParams } from '../utils/urlState'
@@ -297,6 +298,49 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
     </Button>
   )
 
+  // The filter on screen as "Save filter" stores it, with its date order;
+  // null when no criterion is set.
+  const currentFilter: CurrentFilter = (() => {
+    if (mode === 'advanced') {
+      return conditions.length > 0
+        ? { mode: 'advanced', filters: { match_mode: matchMode, conditions, sort_dir: sortDir } }
+        : null
+    }
+    const filters = {
+      search: searchText, date_from: dateFrom, date_to: dateTo,
+      account_id: filterAccountId, category_id: filterCategoryId,
+      amount_min: amountMin, amount_max: amountMax, reconciled: filterReconciled,
+    }
+    return Object.values(filters).some(v => v !== '' && v !== 0)
+      ? { mode: 'simple', filters: { ...filters, sort_dir: sortDir } }
+      : null
+  })()
+
+  // Puts a saved filter back on screen, skipping the debounce so the list
+  // follows at once.
+  const applySavedFilter = (saved: SavedFilter) => {
+    if (saved.mode === 'advanced') {
+      const rows = (saved.filters.conditions ?? []) as ConditionRow[]
+      setConditions(rows)
+      setDebouncedConditions(rows)
+      setMatchMode(saved.filters.match_mode === 'any' ? 'any' : 'all')
+    } else {
+      const f = saved.filters
+      setSearchText(f.search ?? '')
+      setDebouncedSearch(f.search ?? '')
+      setDateFrom(f.date_from ?? '')
+      setDateTo(f.date_to ?? '')
+      setFilterAccountId(f.account_id ?? 0)
+      setFilterCategoryId(f.category_id ?? 0)
+      setAmountMin(f.amount_min ?? '')
+      setAmountMax(f.amount_max ?? '')
+      setFilterReconciled(f.reconciled ?? '')
+    }
+    if (saved.filters.sort_dir === 'asc' || saved.filters.sort_dir === 'desc') setSortDir(saved.filters.sort_dir)
+    setMode(saved.mode)
+    setPage(1)
+  }
+
   const clearSimpleFilters = () => {
     setSearchText('')
     setDebouncedSearch('')
@@ -380,9 +424,10 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
       </div>
 
       <div className="p-3 mb-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60">
-        <div className="flex gap-2 items-center mb-2">
+        <div className="flex gap-2 items-center flex-wrap mb-2">
           <Button size="sm" variant={mode === 'simple' ? 'primary' : 'secondary'} onClick={() => { setMode('simple'); setPage(1) }}>Simple</Button>
           <Button size="sm" variant={mode === 'advanced' ? 'primary' : 'secondary'} onClick={() => { setMode('advanced'); setPage(1) }}>Advanced</Button>
+          <SavedFilters current={currentFilter} onApply={applySavedFilter} />
           <Button
             size="sm"
             variant="secondary"

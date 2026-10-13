@@ -1052,3 +1052,58 @@ export function applyRules(
     body: JSON.stringify({ transaction_ids: transactionIds, rule_ids: ruleIds }),
   })
 }
+
+// ── Saved filters (Transactions screen) ─────────────────────────
+// The screen's own filter state saved under a name and shown as a button next
+// to Simple/Advanced. Stored server-side so every device sees the same list.
+
+export interface SimpleFilterState {
+  search: string
+  date_from: string
+  date_to: string
+  account_id: number
+  category_id: number
+  amount_min: string
+  amount_max: string
+  reconciled: string
+  /** The date order (Newest/Oldest first) saved with the filter. */
+  sort_dir?: 'asc' | 'desc'
+}
+
+export interface AdvancedFilterState {
+  match_mode: 'all' | 'any'
+  conditions: { field: string; operator: string; value: string; value2: string }[]
+  sort_dir?: 'asc' | 'desc'
+}
+
+export type SavedFilterInput =
+  | { name: string; mode: 'simple'; filters: SimpleFilterState }
+  | { name: string; mode: 'advanced'; filters: AdvancedFilterState }
+
+export type SavedFilter = SavedFilterInput & {
+  id: number
+  position: number
+  created_at: string
+  updated_at: string
+}
+
+export function fetchSavedFilters(): Promise<SavedFilter[]> {
+  return request<SavedFilter[]>('/saved-filters')
+}
+
+export function createSavedFilter(data: SavedFilterInput): Promise<SavedFilter> {
+  return request<SavedFilter>('/saved-filters', { method: 'POST', body: JSON.stringify(data) })
+}
+
+/** Rename (`name`), or replace what it holds (`mode` and `filters` together). */
+export function updateSavedFilter(id: number, data: Partial<SavedFilterInput>): Promise<SavedFilter> {
+  return request<SavedFilter>(`/saved-filters/${id}`, { method: 'PUT', body: JSON.stringify(data) })
+}
+
+export function deleteSavedFilter(id: number): Promise<void> {
+  return request<void>(`/saved-filters/${id}`, { method: 'DELETE' })
+}
+
+export function reorderSavedFilters(filterIds: number[]): Promise<SavedFilter[]> {
+  return request<SavedFilter[]>('/saved-filters/order', { method: 'PUT', body: JSON.stringify({ filter_ids: filterIds }) })
+}

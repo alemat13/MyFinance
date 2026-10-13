@@ -732,6 +732,41 @@ class RuleOrderRequest(BaseModel):
     rule_ids: list[int]
 
 
+# ── Saved filters (Transactions screen) ───────────────────────────
+
+class SavedFilterBase(BaseModel):
+    """`filters` is the screen's own filter state, stored and returned as is
+    (see models.SavedFilter)."""
+    name: str = Field(..., min_length=1, max_length=100)
+    mode: Literal["simple", "advanced"]
+    filters: dict
+
+
+class SavedFilterCreate(SavedFilterBase):
+    pass
+
+
+class SavedFilterUpdate(BaseModel):
+    """Rename, or replace what the filter holds; omitted fields stay."""
+    name: str | None = Field(None, min_length=1, max_length=100)
+    mode: Literal["simple", "advanced"] | None = None
+    filters: dict | None = None
+
+
+class SavedFilterOut(SavedFilterBase):
+    id: int
+    position: int
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class SavedFilterOrderRequest(BaseModel):
+    """Every saved filter's id, in the order the buttons should show."""
+    filter_ids: list[int]
+
+
 class RuleOutcomeOut(BaseModel):
     """What the rules change on one transaction. Only the fields a rule
     actually changes are set; `split_weights` set means a rule set the split."""
@@ -957,6 +992,18 @@ class TransactionRuleExport(BaseModel):
     updated_at: datetime | None = None
 
 
+class SavedFilterExport(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    position: int = 0
+    mode: str
+    filters: dict
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
 class DatabaseExport(BaseModel):
     schema_version: int
     exported_at: datetime
@@ -982,6 +1029,10 @@ class DatabaseExport(BaseModel):
     # their conditions and actions name account and category ids, which a
     # partial restore renumbers. `None` is an archive from before rules.
     transaction_rules: list[TransactionRuleExport] | None = None
+    # Saved filters of the Transactions screen, same overwrite-only contract
+    # as the rules (they name account and category ids). `None` is an archive
+    # from before saved filters.
+    saved_filters: list[SavedFilterExport] | None = None
 
 
 # ── OneDrive automatic backup connection ──────────────────────────
@@ -1031,6 +1082,7 @@ class ImportSummary(BaseModel):
     bank_connections: int = 0
     bank_account_links: int = 0
     transaction_rules: int = 0
+    saved_filters: int = 0
 
 
 # ── Bank sync (Enable Banking) ────────────────────────────────────────

@@ -38,6 +38,19 @@ vi.mock('../../api/client', () => ({
   fetchDivideSiblings: mockFetchDivideSiblings,
   suggestCategories: mockSuggestCategories,
   applyCategorizerSuggestions: mockApplyCategorizerSuggestions,
+  fetchSavedFilters: mockFetchSavedFilters,
+  createSavedFilter: mockCreateSavedFilter,
+  updateSavedFilter: mockUpdateSavedFilter,
+  deleteSavedFilter: mockDeleteSavedFilter,
+  reorderSavedFilters: mockReorderSavedFilters,
+}))
+
+const { mockFetchSavedFilters, mockCreateSavedFilter, mockUpdateSavedFilter, mockDeleteSavedFilter, mockReorderSavedFilters } = vi.hoisted(() => ({
+  mockFetchSavedFilters: vi.fn().mockResolvedValue([]),
+  mockCreateSavedFilter: vi.fn(),
+  mockUpdateSavedFilter: vi.fn(),
+  mockDeleteSavedFilter: vi.fn(),
+  mockReorderSavedFilters: vi.fn(),
 }))
 
 const { mockSuggestCategories, mockApplyCategorizerSuggestions } = vi.hoisted(() => ({
@@ -64,6 +77,7 @@ beforeEach(() => {
   mockFetchSplitWeights.mockResolvedValue([])
   mockFetchTransactionHistory.mockResolvedValue([])
   mockFetchDivideSiblings.mockResolvedValue([])
+  mockFetchSavedFilters.mockResolvedValue([])
   window.history.replaceState(null, '', '/')
   localStorage.removeItem('transactionsSortDir')
 })
@@ -999,4 +1013,116 @@ test('Create rule is disabled until a filter is set', async () => {
   mockFetchCategories.mockResolvedValue([baseCategory])
   renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} onOpenCategorizer={() => {}} onCreateRule={() => {}} />)
   expect(await screen.findByRole('button', { name: 'Create rule' })).toBeDisabled()
+})
+
+// ── Saved filters ────────────────────────────────────────────────
+
+const savedFilter = (id: number, name: string, overrides: any = {}) => ({
+  id, name, position: id, created_at: '', updated_at: '', mode: 'simple',
+  filters: { search: name.toLowerCase(), date_from: '', date_to: '', account_id: 0, category_id: 0,
+             amount_min: '', amount_max: '', reconciled: '', sort_dir: 'desc' },
+  ...overrides,
+})
+
+const renderPage = () => {
+  mockSearchTransactions.mockResolvedValue(searchResult([]))
+  mockFetchAccounts.mockResolvedValue([baseAccount])
+  mockFetchCategories.mockResolvedValue([baseCategory])
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} onOpenCategorizer={() => {}} />)
+}
+
+test('a saved filter is a button that puts its filter back', async () => {
+  mockFetchSavedFilters.mockResolvedValue([
+    savedFilter(1, 'Carrefour'),
+    savedFilter(2, 'Phone', { mode: 'advanced', filters: { match_mode: 'any', conditions: [
+      { field: 'payee', operator: 'contains', value: 'sfr', value2: '' }] } }),
+  ])
+  renderPage()
+  fireEvent.click(await screen.findByRole('button', { name: 'Carrefour' }))
+  expect(screen.getByPlaceholderText('Search payee/memo')).toHaveValue('carrefour')
+  await waitFor(() => expect(mockSearchTransactions).toHaveBeenLastCalledWith(
+    expect.objectContaining({ search: 'carrefour' })))
+  // The active one can be renamed or deleted, and is not saved twice.
+  expect(screen.getByRole('button', { name: 'Rename Carrefour' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Save filter' })).toBeDisabled()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Phone' }))
+  await waitFor(() => expect(mockSearchTransactions).toHaveBeenLastCalledWith(expect.objectContaining({
+    match_mode: 'any', conditions: [expect.objectContaining({ field: 'payee', value: 'sfr' })] })))
+  expect(screen.getByRole('button', { name: 'Delete Phone' })).toBeInTheDocument()
+})
+
+test('Save filter stores the current filter under a name', async () => {
+  mockCreateSavedFilter.mockImplementation(async (data: any) => ({ ...data, id: 7, position: 0, created_at: '', updated_at: '' }))
+  renderPage()
+  const save = await screen.findByRole('button', { name: 'Save filter' })
+  expect(save).toBeDisabled()
+  fireEvent.change(screen.getByPlaceholderText('Search payee/memo'), { target: { value: 'carrefour' } })
+  fireEvent.click(save)
+  fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Courses' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+  await waitFor(() => expect(mockCreateSavedFilter).toHaveBeenCalledWith({
+    name: 'Courses', mode: 'simple',
+    filters: { search: 'carrefour', date_from: '', date_to: '', account_id: 0, category_id: 0,
+               amount_min: '', amount_max: '', reconciled: '', sort_dir: 'desc' },
+  }))
+  expect(await screen.findByRole('button', { name: 'Courses' })).toBeInTheDocument()
+})
+
+test('saving under an existing name replaces that filter', async () => {
+  mockFetchSavedFilters.mockResolvedValue([savedFilter(3, 'Courses')])
+  mockUpdateSavedFilter.mockImplementation(async (id: number, data: any) => ({ ...savedFilter(id, 'Courses'), ...data }))
+  renderPage()
+  await screen.findByRole('button', { name: 'Courses' })
+  fireEvent.change(screen.getByPlaceholderText('Search payee/memo'), { target: { value: 'lidl' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Save filter' }))
+  fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'courses' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Replace' }))
+  await waitFor(() => expect(mockUpdateSavedFilter).toHaveBeenCalledWith(3, expect.objectContaining({
+    mode: 'simple', filters: expect.objectContaining({ search: 'lidl' }) })))
+  expect(mockCreateSavedFilter).not.toHaveBeenCalled()
+})
+
+test('rename and delete the active saved filter', async () => {
+  mockFetchSavedFilters.mockResolvedValue([savedFilter(1, 'Carrefour')])
+  mockUpdateSavedFilter.mockImplementation(async (id: number, data: any) => ({ ...savedFilter(id, 'Carrefour'), ...data }))
+  mockDeleteSavedFilter.mockResolvedValue(undefined)
+  renderPage()
+  fireEvent.click(await screen.findByRole('button', { name: 'Carrefour' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Rename Carrefour' }))
+  fireEvent.change(screen.getByLabelText('New name'), { target: { value: 'Courses' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Rename' }))
+  await waitFor(() => expect(mockUpdateSavedFilter).toHaveBeenCalledWith(1, { name: 'Courses' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Delete Courses' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Confirm delete' }))
+  await waitFor(() => expect(mockDeleteSavedFilter).toHaveBeenCalledWith(1))
+  await waitFor(() => expect(screen.queryByRole('button', { name: 'Courses' })).not.toBeInTheDocument())
+})
+
+test('saved filters reorder by drag and drop', async () => {
+  const list = [savedFilter(1, 'A'), savedFilter(2, 'B'), savedFilter(3, 'C')]
+  mockFetchSavedFilters.mockResolvedValue(list)
+  mockReorderSavedFilters.mockImplementation(async (ids: number[]) => ids.map(id => list.find(f => f.id === id)))
+  renderPage()
+  const c = (await screen.findByRole('button', { name: 'C' })).parentElement!
+  const a = screen.getByRole('button', { name: 'A' }).parentElement!
+  fireEvent.dragStart(c)
+  fireEvent.dragOver(a)
+  fireEvent.drop(a)
+  await waitFor(() => expect(mockReorderSavedFilters).toHaveBeenCalledWith([3, 1, 2]))
+  const names = screen.getAllByRole('button').map(b => b.textContent)
+  expect(names.indexOf('C')).toBeLessThan(names.indexOf('A'))
+})
+
+test('a saved filter keeps its date order', async () => {
+  mockFetchSavedFilters.mockResolvedValue([savedFilter(1, 'Oldest', { mode: 'advanced', filters: {
+    match_mode: 'all', conditions: [{ field: 'payee', operator: 'contains', value: 'sfr', value2: '' }], sort_dir: 'asc' } })])
+  renderPage()
+  fireEvent.click(await screen.findByRole('button', { name: 'Oldest' }))
+  expect(screen.getByRole('button', { name: /Oldest first/ })).toBeInTheDocument()
+  await waitFor(() => expect(mockSearchTransactions).toHaveBeenLastCalledWith(expect.objectContaining({ sort_dir: 'asc' })))
+  // Flipping the order on screen makes it a different filter from the saved one.
+  expect(screen.getByRole('button', { name: 'Save filter' })).toBeDisabled()
+  fireEvent.click(screen.getByRole('button', { name: /Oldest first/ }))
+  expect(screen.getByRole('button', { name: 'Save filter' })).toBeEnabled()
 })
