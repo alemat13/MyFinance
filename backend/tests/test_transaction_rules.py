@@ -236,6 +236,61 @@ def test_a_rule_may_keep_a_row_reconciled_and_set_its_split(client, db, sample_a
     assert shares == {sample_user.id: -500.0, sample_user2.id: -500.0}
 
 
+def test_a_split_tier_follows_the_tier_as_it_is_today(client, db, sample_account, sample_user, sample_user2):
+    t = _txn(db, sample_account.id, "LOYER", amount=-900.0, user_id=sample_user.id)
+    _rule(db, "Rent", [_contains("payee", "loyer")], {"split_tier": "global"})
+    db.add_all([GlobalSplitWeight(user_id=sample_user.id, weight=1),
+                GlobalSplitWeight(user_id=sample_user2.id, weight=2)])
+    db.commit()
+    client.post("/api/rules/apply", json={"transaction_ids": [t.id]})
+    splits = {s.user_id: (s.share_amount, s.source) for s in db.query(TransactionSplit)
+              .filter(TransactionSplit.transaction_id == t.id)}
+    assert splits == {sample_user.id: (-300.0, "global"), sample_user2.id: (-600.0, "global")}
+
+    # The global split changes: the same rule now applies the new one.
+    db.query(GlobalSplitWeight).filter(GlobalSplitWeight.user_id == sample_user2.id).update({"weight": 1})
+    db.commit()
+    client.post("/api/rules/apply", json={"transaction_ids": [t.id]})
+    shares = {s.user_id: s.share_amount for s in db.query(TransactionSplit)
+              .filter(TransactionSplit.transaction_id == t.id)}
+    assert shares == {sample_user.id: -450.0, sample_user2.id: -450.0}
+
+
+def test_a_category_tier_reads_the_category_a_rule_set(db, sample_account, sample_user, sample_user2, phone):
+    row = _txn(db, sample_account.id, "SFR")
+    db.add_all([CategorySplit(category_id=phone.id, user_id=sample_user2.id, weight=1),
+                GlobalSplitWeight(user_id=sample_user.id, weight=1)])
+    db.commit()
+    split = _rule(db, "Split", [_contains("payee", "sfr")], {"split_tier": "category"}, position=0)
+    file = _rule(db, "File", [_contains("payee", "sfr")], {"category_id": phone.id}, position=1)
+    outcome = _evaluate(db, [split, file], row)
+    assert (outcome.split_weights, outcome.split_source) == ({sample_user2.id: 1}, "category")
+
+    # The default tier cascades: no account or category weights → global.
+    default = _rule(db, "Default", [_contains("payee", "sfr")], {"split_tier": "default"}, position=2)
+    outcome = _evaluate(db, [default], row)
+    assert (outcome.split_weights, outcome.split_source) == ({sample_user.id: 1}, "global")
+
+
+def test_an_unconfigured_tier_leaves_the_split_alone(db, sample_account, sample_user):
+    row = _txn(db, sample_account.id, "SFR", user_id=sample_user.id)
+    rule = _rule(db, "Split", [_contains("payee", "sfr")], {"split_tier": "account"})
+    assert not _evaluate(db, [rule], row).changes_anything
+
+
+def test_a_rule_cannot_set_both_weights_and_a_tier(client, sample_user):
+    res = client.post("/api/rules", json={
+        "name": "x", "conditions": [_contains("payee", "a")],
+        "actions": {"split_tier": "global", "split_weights": [{"user_id": sample_user.id, "weight": 1}]},
+    })
+    assert res.status_code == 422
+    res = client.post("/api/rules", json={
+        "name": "x", "conditions": [_contains("payee", "a")], "actions": {"split_tier": "global"},
+    })
+    assert res.status_code == 201
+    assert res.json()["actions"]["split_tier"] == "global"
+
+
 def test_apply_with_picked_rules(client, db, sample_account):
     t = _txn(db, sample_account.id, "SFR")
     _rule(db, "on", [_contains("payee", "sfr")], {"payee": "On"}, position=0)

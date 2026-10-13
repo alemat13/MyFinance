@@ -268,7 +268,7 @@ The automatic rules (`backend/transaction_rules.py`, `routers/transaction_rules.
 | `enabled` | Boolean | Disabled rules never run on their own; they can still be picked when applying rules to a selection |
 | `match_mode` | String(3) | `all` \| `any`, how `conditions` combine |
 | `conditions` | JSON | List of the advanced filter's own `FilterCondition` objects (`field`, `operator`, `value`, `value2`). Evaluated in Python by `transaction_rules._matches()`, which mirrors `filtering.build_condition_expr()` operator for operator, NULLs included, because the import preview runs rules on rows that exist only in a file |
-| `actions` | JSON | `RuleActions`: any of `payee`, `category_id`, `accounting_month_offset`, `reconciled`, `split_weights` (+ `split_source`). Never an account move or a delete |
+| `actions` | JSON | `RuleActions`: any of `payee`, `category_id`, `accounting_month_offset`, `reconciled`, `split_weights` (+ `split_source`), or instead `split_tier` (`global`/`account`/`category`/`default`), a weight tier read when the rule runs rather than weights copied into it, skipped when that tier is unset for the row. Never an account move or a delete |
 | `created_at` / `updated_at` | DateTime | |
 
 A row a rule changes is left `reconciled = false` unless a rule sets `reconciled`, and gets a `transaction_history` row with `source="rule"`. On a bank sync, a rule that sets a category without its own split re-resolves the new row's split through the usual cascade (`fresh=True`), since that row's split was resolved before any category was known; an existing row keeps its split, as with Bulk Edit.

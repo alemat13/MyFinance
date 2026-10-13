@@ -38,7 +38,16 @@ from sqlalchemy.orm import Session
 import cache_service
 import split_engine
 from audit import TRACKED_FIELDS, _jsonify, diff_splits, record_transaction_history
-from models import Category, Transaction, TransactionRule, TransactionSplit, User
+from models import (
+    AccountSplitWeight,
+    Category,
+    CategorySplit,
+    GlobalSplitWeight,
+    Transaction,
+    TransactionRule,
+    TransactionSplit,
+    User,
+)
 from schemas import DATE_FIELDS, TEXT_FIELDS, FilterCondition, RuleActions, RuleOutcomeOut
 
 logger = logging.getLogger(__name__)
@@ -125,17 +134,58 @@ def rule_matches(rule: TransactionRule, state: dict) -> bool:
     return all(results) if rule.match_mode == "all" else any(results)
 
 
+@dataclass
+class Tiers:
+    """The three split-weight tiers as they stand now, read once per batch so
+    a rule naming a tier follows whatever the tier says today."""
+    global_weights: dict[int, int] = field(default_factory=dict)
+    by_account: dict[int, dict[int, int]] = field(default_factory=dict)
+    by_category: dict[int, dict[int, int]] = field(default_factory=dict)
+
+    @classmethod
+    def load(cls, db: Session) -> "Tiers":
+        tiers = cls()
+        for w in db.query(GlobalSplitWeight).filter(GlobalSplitWeight.weight > 0).all():
+            tiers.global_weights[w.user_id] = w.weight
+        for w in db.query(AccountSplitWeight).filter(AccountSplitWeight.weight > 0).all():
+            tiers.by_account.setdefault(w.account_id, {})[w.user_id] = w.weight
+        for w in db.query(CategorySplit).filter(CategorySplit.weight > 0).all():
+            tiers.by_category.setdefault(w.category_id, {})[w.user_id] = w.weight
+        return tiers
+
+    def resolve(self, tier: str, account_id: int | None, category_id: int | None) -> tuple[str, dict[int, int]]:
+        """(source, weights) for a tier on a row; empty weights when that tier
+        is not configured for it. "default" mirrors
+        split_engine.resolve_default_weights()."""
+        account = self.by_account.get(account_id, {}) if account_id is not None else {}
+        category = self.by_category.get(category_id, {}) if category_id is not None else {}
+        if tier == "account":
+            return "account", account
+        if tier == "category":
+            return "category", category
+        if tier == "global":
+            return "global", self.global_weights
+        if account:
+            return "account", account
+        if category:
+            return "category", category
+        return "global", self.global_weights
+
+
 def evaluate(rules: list[TransactionRule], row, *, known_categories: set[int],
-             known_users: set[int]) -> Outcome:
+             known_users: set[int], tiers: Tiers | None = None) -> Outcome:
     """Run the rules over one row (a Transaction or anything carrying the same
     attributes) without touching it.
 
     An action naming a category or user that has since been deleted is
-    skipped rather than written, so a stale rule cannot break a sync.
+    skipped rather than written, so a stale rule cannot break a sync. A split
+    named by tier is resolved once every rule has run, against the row's final
+    account and category, and skipped if that tier is not configured for it.
     """
     original = {f: getattr(row, f, None) for f in _STATE_FIELDS}
     state = dict(original)
     outcome = Outcome()
+    split_tier = None
     for rule in rules:
         if not rule_matches(rule, state):
             continue
@@ -153,8 +203,18 @@ def evaluate(rules: list[TransactionRule], row, *, known_categories: set[int],
             if weights and sum(weights.values()) > 0:
                 outcome.split_weights = weights
                 outcome.split_source = actions.split_source or "custom"
+                split_tier = None
+        if actions.split_tier is not None:
+            split_tier = actions.split_tier
+            outcome.split_weights, outcome.split_source = None, None
         outcome.rule_ids.append(rule.id)
         outcome.rule_names.append(rule.name)
+
+    if split_tier is not None and tiers is not None:
+        source, weights = tiers.resolve(split_tier, state["account_id"], state["category_id"])
+        weights = {uid: w for uid, w in weights.items() if uid in known_users}
+        if weights:
+            outcome.split_weights, outcome.split_source = dict(weights), source
 
     outcome.fields = {
         f: state[f] for f in ("payee", "category_id", "accounting_month_offset", "reconciled")
@@ -166,7 +226,9 @@ def evaluate(rules: list[TransactionRule], row, *, known_categories: set[int],
 def evaluate_many(db: Session, rules: list[TransactionRule], rows: list) -> list[Outcome]:
     known_categories = {row[0] for row in db.query(Category.id).all()}
     known_users = {row[0] for row in db.query(User.id).all()}
-    return [evaluate(rules, row, known_categories=known_categories, known_users=known_users) for row in rows]
+    tiers = Tiers.load(db)
+    return [evaluate(rules, row, known_categories=known_categories, known_users=known_users, tiers=tiers)
+            for row in rows]
 
 
 def outcome_out(outcome: Outcome, category_names: dict[int, str]) -> RuleOutcomeOut | None:

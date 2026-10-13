@@ -1,4 +1,11 @@
-import { RuleActions, RuleOutcome, User } from '../api/client'
+import { RuleActions, RuleOutcome, SplitTier, User } from '../api/client'
+
+export const SPLIT_TIER_LABELS: Record<SplitTier, string> = {
+  global: 'Global split',
+  default: 'Default split (account, else category, else global)',
+  account: "The account's split",
+  category: "The category's split",
+}
 
 export function offsetLabel(offset: number): string {
   if (offset === 0) return 'No shift'
@@ -32,5 +39,6 @@ export function describeActions(
   if (actions.accounting_month_offset != null) lines.push(`Accounting month ${offsetLabel(actions.accounting_month_offset)}`)
   if (actions.reconciled != null) lines.push(actions.reconciled ? 'Mark reconciled' : 'Mark not reconciled')
   if (actions.split_weights && actions.split_weights.length > 0) lines.push(`Split ${splitLabel(actions.split_weights, users)}`)
+  if (actions.split_tier) lines.push(`Split: ${SPLIT_TIER_LABELS[actions.split_tier]}, as set when the rule runs`)
   return lines
 }
