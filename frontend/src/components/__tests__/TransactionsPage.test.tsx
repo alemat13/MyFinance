@@ -65,6 +65,7 @@ beforeEach(() => {
   mockFetchTransactionHistory.mockResolvedValue([])
   mockFetchDivideSiblings.mockResolvedValue([])
   window.history.replaceState(null, '', '/')
+  localStorage.removeItem('transactionsSortDir')
 })
 
 afterEach(() => {
@@ -280,6 +281,38 @@ test('pagination controls change page', async () => {
   await waitFor(() => {
     expect(mockSearchTransactions).toHaveBeenCalledWith(expect.objectContaining({ page: 2 }))
   })
+})
+
+test('the date order toggle flips newest/oldest first and is remembered', async () => {
+  mockSearchTransactions.mockResolvedValue(searchResult([]))
+  mockFetchAccounts.mockResolvedValue([baseAccount])
+  mockFetchCategories.mockResolvedValue([baseCategory])
+
+  const { unmount } = renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} onOpenCategorizer={() => {}} />)
+
+  await waitFor(() => {
+    expect(mockSearchTransactions).toHaveBeenCalledWith(expect.objectContaining({ sort_by: 'date', sort_dir: 'desc' }))
+  })
+
+  fireEvent.click(screen.getByRole('button', { name: /Newest first/ }))
+
+  await waitFor(() => {
+    expect(mockSearchTransactions).toHaveBeenLastCalledWith(expect.objectContaining({ sort_dir: 'asc', page: 1 }))
+  })
+  expect(screen.getByRole('button', { name: /Oldest first/ })).toBeInTheDocument()
+  expect(window.location.search).toContain('sort_dir=asc')
+  expect(localStorage.getItem('transactionsSortDir')).toBe('asc')
+
+  // A later visit without the URL parameter still opens oldest first.
+  unmount()
+  window.history.replaceState(null, '', '/')
+  mockSearchTransactions.mockClear()
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} onOpenCategorizer={() => {}} />)
+
+  await waitFor(() => {
+    expect(mockSearchTransactions).toHaveBeenCalledWith(expect.objectContaining({ sort_dir: 'asc' }))
+  })
+  expect(screen.getByRole('button', { name: /Oldest first/ })).toBeInTheDocument()
 })
 
 test('hydrates simple-mode filters from the URL on mount', async () => {

@@ -232,7 +232,10 @@ Two filtering modes are available:
   simple filters allow. Reconciled status isn't available as an advanced-mode
   condition; use the simple filter for that.
 
-Results can be sorted by any column and paginated (25, 50, or 100 rows per page).
+Results are sorted by date, newest first by default. The **Newest first** / **Oldest first**
+button at the right of the Simple/Advanced buttons flips the order; the app remembers your
+choice for your next visit on that device. Exports and "Select all N" bulk actions cover the
+same rows whichever order is shown. Results are paginated (25, 50, or 100 rows per page).
 Your filters, sort order, and page are all kept in the page URL, so you can bookmark
 or share a specific search.
 

@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState } from 'react'
-import { CheckCircle2, Circle } from 'lucide-react'
+import { ArrowDown, ArrowUp, CheckCircle2, Circle } from 'lucide-react'
 import {
   Transaction, TransactionSplit, GlobalSplitWeight,
   Account, Category, User, TransactionSearchRequest,
@@ -39,6 +39,8 @@ type FilterMode = 'simple' | 'advanced'
 const SORT_BY_VALUES = ['date', 'amount', 'payee', 'created_at'] as const
 const SORT_DIR_VALUES = ['asc', 'desc'] as const
 const PAGE_SIZE_VALUES = [25, 50, 100] as const
+// The date order picked with the Newest/Oldest first toggle, remembered across visits.
+const SORT_DIR_STORAGE_KEY = 'transactionsSortDir'
 
 function loadInitialMode(): FilterMode {
   return getParam('mode') === 'advanced' ? 'advanced' : 'simple'
@@ -73,7 +75,10 @@ function loadInitialSortBy(): typeof SORT_BY_VALUES[number] {
 }
 
 function loadInitialSortDir(): typeof SORT_DIR_VALUES[number] {
-  const val = getParam('sort_dir')
+  let val = getParam('sort_dir')
+  if (val === null) {
+    try { val = localStorage.getItem(SORT_DIR_STORAGE_KEY) } catch { val = null }
+  }
   return (SORT_DIR_VALUES as readonly string[]).includes(val ?? '') ? (val as typeof SORT_DIR_VALUES[number]) : 'desc'
 }
 
@@ -254,6 +259,15 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
   ])
 
   useEffect(() => {
+    try { localStorage.setItem(SORT_DIR_STORAGE_KEY, sortDir) } catch { /* storage unavailable */ }
+  }, [sortDir])
+
+  const toggleSortDir = () => {
+    setSortDir(d => (d === 'desc' ? 'asc' : 'desc'))
+    setPage(1)
+  }
+
+  useEffect(() => {
     const id = setTimeout(() => { setDebouncedSearch(searchText); setPage(1) }, 300)
     return () => clearTimeout(id)
   }, [searchText])
@@ -349,6 +363,16 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
         <div className="flex gap-2 items-center mb-2">
           <Button size="sm" variant={mode === 'simple' ? 'primary' : 'secondary'} onClick={() => { setMode('simple'); setPage(1) }}>Simple</Button>
           <Button size="sm" variant={mode === 'advanced' ? 'primary' : 'secondary'} onClick={() => { setMode('advanced'); setPage(1) }}>Advanced</Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            className="ml-auto"
+            onClick={toggleSortDir}
+            title="Change the date order"
+          >
+            {sortDir === 'desc' ? <ArrowDown className="w-4 h-4" /> : <ArrowUp className="w-4 h-4" />}
+            {sortDir === 'desc' ? 'Newest first' : 'Oldest first'}
+          </Button>
         </div>
 
         {mode === 'simple' ? (
