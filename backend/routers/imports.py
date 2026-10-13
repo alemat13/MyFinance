@@ -25,8 +25,9 @@ from schemas import (
 router = APIRouter(prefix="/api/import")
 _IMPORT_FLUSH_BATCH_SIZE = 500
 # What Transaction.raw_source records for rows this router imports. The
-# preview screen never lets the payee be edited, so the payee a row is
-# committed with is the CSV's own label, frozen into raw_label here.
+# preview screen never lets the payee be edited by hand; an automatic rule may
+# rename it, which is why the row carries the CSV's own label separately as
+# raw_label.
 RAW_SOURCE = "csv_import"
 
 
@@ -106,7 +107,10 @@ def import_commit(data: ImportCommitRequest, actor_user_id: int | None = Query(N
             date=row.date, payee=row.payee, memo=row.memo, amount=row.amount,
             account_id=row.account_id, category_id=row.category_id,
             accounting_month_offset=row.accounting_month_offset,
-            raw_source=RAW_SOURCE, raw_label=row.payee,
+            reconciled=row.reconciled,
+            # The file's own label, even when an automatic rule renamed the
+            # payee in the preview.
+            raw_source=RAW_SOURCE, raw_label=row.raw_label or row.payee,
         )
         db.add(transaction)
         pending_batch.append((transaction, weights, source))

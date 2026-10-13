@@ -558,7 +558,7 @@ test('clicking Categorize asks the model about exactly the selected transactions
   mockFetchAccounts.mockResolvedValue([baseAccount])
   mockFetchCategories.mockResolvedValue([baseCategory])
   mockSuggestCategories.mockResolvedValue({
-    model_id: 1, threshold: 0.8, items: [], category_changes: 0, payee_changes: 0, high_confidence_changes: 0,
+    model_id: 1, threshold: 0.8, items: [], category_changes: 0, high_confidence_changes: 0,
   })
 
   renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} onOpenCategorizer={() => {}} />)

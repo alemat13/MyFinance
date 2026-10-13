@@ -9,6 +9,7 @@ import TransactionDetail from './TransactionDetail'
 import BulkEditModal from './BulkEditModal'
 import BulkDeleteModal from './BulkDeleteModal'
 import CategorizeModal from './CategorizeModal'
+import RulesApplyModal from './RulesApplyModal'
 import CategoryPicker from './CategoryPicker'
 import AccountPicker from './AccountPicker'
 import TransactionConditions, { ConditionRow, conditionsToFilters } from './TransactionConditions'
@@ -29,6 +30,8 @@ interface Props {
   selectedUserId: number | null
   // Where "Categorize" sends the user when no model has been trained yet.
   onOpenCategorizer: () => void
+  // Where "Apply rules" sends the user when no rule exists yet.
+  onOpenRules?: () => void
 }
 
 type FilterMode = 'simple' | 'advanced'
@@ -79,7 +82,7 @@ const splitsDisplay = (splits: TransactionSplit[], currency: string) => {
   return splits.map(s => `${s.user_name} ${formatMoney(s.share_amount, currency)}`).join(' / ')
 }
 
-export default function TransactionsPage({ onBack, selectedUserId, onOpenCategorizer }: Props) {
+export default function TransactionsPage({ onBack, selectedUserId, onOpenCategorizer, onOpenRules }: Props) {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
   const [allAccounts, setAllAccounts] = useState<Account[]>([])
@@ -92,6 +95,7 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [bulkEditOpen, setBulkEditOpen] = useState(false)
   const [categorizeOpen, setCategorizeOpen] = useState(false)
+  const [rulesOpen, setRulesOpen] = useState(false)
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
   const [adminMode] = useState(isAdminMode)
   const [exporting, setExporting] = useState(false)
@@ -400,6 +404,7 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
           )}
           <Button size="sm" onClick={() => setBulkEditOpen(true)}>Bulk Edit</Button>
           <Button size="sm" variant="secondary" onClick={() => setCategorizeOpen(true)}>Categorize</Button>
+          <Button size="sm" variant="secondary" onClick={() => setRulesOpen(true)}>Apply rules</Button>
           {adminMode && (
             <Button size="sm" variant="danger" onClick={() => setBulkDeleteOpen(true)}>Delete selected</Button>
           )}
@@ -621,6 +626,18 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
           onClose={() => setCategorizeOpen(false)}
           onApplied={() => { setCategorizeOpen(false); setSelectedIds(new Set()); loadTransactions() }}
           onOpenCategorizer={onOpenCategorizer}
+        />
+      )}
+
+      {rulesOpen && (
+        <RulesApplyModal
+          transactionIds={[...selectedIds]}
+          transactions={transactions.filter(t => selectedIds.has(t.id))}
+          allUsers={allUsers}
+          selectedUserId={selectedUserId}
+          onClose={() => setRulesOpen(false)}
+          onApplied={() => { setRulesOpen(false); setSelectedIds(new Set()); loadTransactions() }}
+          onOpenRules={onOpenRules}
         />
       )}
 

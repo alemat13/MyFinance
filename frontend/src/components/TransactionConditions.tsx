@@ -28,6 +28,13 @@ export const OPERATORS_BY_FIELD: Record<FilterField, { value: string; label: str
     { value: 'starts_with', label: 'starts with' },
     { value: 'ends_with', label: 'ends with' },
   ],
+  raw_label: [
+    { value: 'contains', label: 'contains' },
+    { value: 'equals', label: 'equals' },
+    { value: 'not_equals', label: 'not equals' },
+    { value: 'starts_with', label: 'starts with' },
+    { value: 'ends_with', label: 'ends with' },
+  ],
   amount: [
     { value: 'eq', label: '=' },
     { value: 'ne', label: '≠' },
@@ -54,7 +61,7 @@ export const OPERATORS_BY_FIELD: Record<FilterField, { value: string; label: str
 }
 
 export const FIELD_LABELS: Record<FilterField, string> = {
-  payee: 'Payee', memo: 'Memo', amount: 'Amount', date: 'Date',
+  payee: 'Payee', memo: 'Memo', raw_label: 'Original label', amount: 'Amount', date: 'Date',
   account_id: 'Account', category_id: 'Category',
 }
 

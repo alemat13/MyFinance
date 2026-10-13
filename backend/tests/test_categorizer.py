@@ -79,29 +79,6 @@ def test_merchant_key_ignores_dates_and_reference_numbers():
             == categorizer.merchant_key("CARTE 11/02 DECATHLON 1375 CB*9999"))
 
 
-def test_payee_memory_keeps_a_stable_name_and_drops_an_unstable_one(db, sample_account):
-    rows = []
-    # Seen four times under one name: stable.
-    for i in range(4):
-        rows.append(_add(db, sample_account.id, "PRLV SEPA SFR", None, date(2026, 1, i + 1), payee="SFR"))
-    # Seen four times under four names: nothing to propose.
-    for i in range(4):
-        rows.append(_add(db, sample_account.id, "VIR SEPA CASH", None, date(2026, 2, i + 1),
-                         payee=f"Cash trip {i}"))
-    db.commit()
-
-    memory = categorizer.build_payee_memory(rows, min_occurrences=2, min_stability=0.9)
-    assert memory.suggest(rows[0]) == "SFR"
-    assert memory.suggest(rows[-1]) is None
-
-
-def test_payee_memory_respects_the_occurrence_gate(db, sample_account):
-    rows = [_add(db, sample_account.id, "PRLV SEPA SFR", None, date(2026, 1, 1), payee="SFR")]
-    db.commit()
-    assert categorizer.build_payee_memory(rows, 2, 0.9).suggest(rows[0]) is None
-    assert categorizer.build_payee_memory(rows, 1, 0.9).suggest(rows[0]) == "SFR"
-
-
 def test_trainable_drops_rows_with_no_category_or_no_text(db, sample_account, categories):
     groceries, _ = categories
     good = _add(db, sample_account.id, "CARTE 01/01 SHOP", groceries.id, date(2026, 1, 1))
@@ -111,6 +88,17 @@ def test_trainable_drops_rows_with_no_category_or_no_text(db, sample_account, ca
     db.add(no_text)
     db.commit()
     assert categorizer.trainable([good, no_category, no_text]) == [good]
+
+
+def test_a_model_trained_with_the_old_payee_memory_still_loads(db, history):
+    """Production holds models pickled with a `payee_memory` attribute; they
+    must keep loading and predicting now that nothing reads it."""
+    rows = db.query(Transaction).filter(Transaction.date <= TRAIN_UNTIL).all()
+    model, _ = categorizer.train(rows)
+    model.payee_memory = categorizer._PayeeMemory({"SUPERMARCHE DU COIN": "Shop"}, 2, 0.9)
+    restored = categorizer.loads(categorizer.dumps(model))
+    target = db.query(Transaction).filter(Transaction.date > TRAIN_UNTIL).first()
+    assert restored.predict([target]) == model.predict([target])
 
 
 def test_a_trained_model_round_trips_through_its_blob(db, history):
@@ -139,7 +127,6 @@ def test_train_stores_a_model_with_metrics_and_leaves_it_inactive(client, db, hi
     assert body["metrics"]["accuracy"] == pytest.approx(1.0)
     assert body["metrics"]["parent_accuracy"] == pytest.approx(1.0)
     assert "baseline" in body["metrics"]
-    assert body["metrics"]["payee"]["merchants"] >= 2
     assert [t["threshold"] for t in body["metrics"]["thresholds"]] == list(categorizer.REPORT_THRESHOLDS)
 
     stored = db.query(CategorizerModel).one()
@@ -272,15 +259,6 @@ def test_suggest_reports_a_category_and_its_confidence(client, db, active_model,
     assert body["category_changes"] == 1
 
 
-def test_suggest_proposes_the_remembered_payee(client, db, active_model, sample_account):
-    target = _add(db, sample_account.id, "CARTE 09/08 SUPERMARCHE DU COIN", None, date(2026, 8, 9),
-                  payee="CARTE 09/08 SUPERMARCHE DU COIN")
-    db.commit()
-    item = client.post("/api/categorizer/suggest", json={"transaction_ids": [target.id]}).json()["items"][0]
-    assert item["suggested_payee"] == "SUPERMARCHE DU COIN"
-    assert item["payee_changed"] is True
-
-
 def test_suggest_accepts_a_selection_and_honours_its_limit(client, active_model):
     body = client.post("/api/categorizer/suggest",
                        json={"selection": {"date_from": "2026-06-01"}, "limit": 3}).json()
@@ -343,22 +321,6 @@ def test_apply_overwrites_when_explicitly_asked(client, db, sample_account, cate
     })
     db.refresh(t)
     assert t.category_id == transport.id
-
-
-def test_apply_can_rename_without_touching_the_category(client, db, sample_account, categories):
-    groceries, _ = categories
-    t = _add(db, sample_account.id, "CARTE 01/01 SFR", groceries.id, date(2026, 1, 1),
-             payee="CARTE 01/01 SFR")
-    db.commit()
-    body = client.post("/api/categorizer/apply", json={
-        "items": [{"transaction_id": t.id, "payee": "SFR"}],
-    }).json()
-    assert body["updated_count"] == 1
-    db.refresh(t)
-    assert t.payee == "SFR"
-    assert t.category_id == groceries.id
-    # The frozen copy is what makes an automatic rename reversible.
-    assert t.raw_label == "CARTE 01/01 SFR"
 
 
 def test_apply_records_history_tagged_as_the_categorizer(client, db, sample_account, categories):
@@ -437,20 +399,3 @@ def test_train_refuses_a_test_selection_it_cannot_score(client, history):
     assert "could not be scored" in response.json()["detail"]
 
 
-def test_apply_still_renames_when_the_category_is_refused(client, db, sample_account, categories):
-    """The two halves of an item are independent: a category the user already
-    set by hand blocks the category, not the rename."""
-    groceries, transport = categories
-    t = _add(db, sample_account.id, "CARTE 01/01 SFR", groceries.id, date(2026, 1, 1),
-             payee="CARTE 01/01 SFR")
-    db.commit()
-
-    body = client.post("/api/categorizer/apply", json={"items": [
-        {"transaction_id": t.id, "category_id": transport.id, "payee": "SFR"},
-    ]}).json()
-
-    assert body["skipped_transaction_ids"] == [t.id]
-    assert body["updated_count"] == 1
-    db.refresh(t)
-    assert t.category_id == groceries.id
-    assert t.payee == "SFR"

@@ -363,3 +363,29 @@ class TransactionHistory(Base):
 
     # For 'updated' rows only: {field: {"old": ..., "new": ...}} for fields that actually changed.
     changes = Column(JSON, nullable=True)
+
+
+class TransactionRule(Base):
+    """One automatic rule: conditions to match and actions to apply (see
+    transaction_rules.py).
+
+    `conditions` is a list of the same condition objects the Transactions
+    screen's advanced filter sends (`FilterCondition`), combined by
+    `match_mode`, so a rule is expressed in filters the user already knows.
+    `actions` is the subset of a bulk edit a rule may carry — never a delete
+    or a move to another account, which stay hand-only. Rules run in
+    `position` order, every matching one applying in turn, so a later rule
+    wins on a field both set. Disabled rules never run on their own but can
+    still be picked when applying rules to a selection by hand.
+    """
+    __tablename__ = "transaction_rules"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(100), nullable=False)
+    position = Column(Integer, nullable=False, default=0)
+    enabled = Column(Boolean, nullable=False, default=True)
+    match_mode = Column(String(3), nullable=False, default="all")  # 'all' | 'any'
+    conditions = Column(JSON, nullable=False)
+    actions = Column(JSON, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
