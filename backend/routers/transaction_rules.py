@@ -10,6 +10,7 @@ from filtering import build_condition_expr
 from models import Category, Transaction, TransactionRule, User
 from rules import RuleViolation, validate_weights
 from schemas import (
+    USER_FIELDS,
     RuleApplyRequest,
     RuleApplyResponse,
     RuleCreate,
@@ -33,6 +34,9 @@ def _validate(db: Session, data: RuleCreate | RuleUpdate) -> None:
         # A rule with no condition would rewrite every transaction it meets.
         raise RuleViolation("A rule needs at least one condition.")
     for condition in data.conditions:
+        if condition.field in USER_FIELDS:
+            # The import preview runs rules on rows that have no split yet.
+            raise RuleViolation("A rule cannot test a person's split, share or balance.")
         if condition.value is None or (isinstance(condition.value, str) and not condition.value.strip()):
             raise RuleViolation(f'The condition on "{condition.field}" has no value.')
         if condition.operator == "between" and condition.value2 is None:

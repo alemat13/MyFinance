@@ -369,25 +369,38 @@ DATE_OPERATORS = {"on", "before", "after", "between"}
 TEXT_FIELDS = {"payee", "memo", "raw_label"}
 DATE_FIELDS = {"date"}
 NUMERIC_FIELDS = {"amount", "account_id", "category_id"}
+# Per-user figures of a transaction, each condition naming the user it reads:
+# their split weight, their share, and their balance (share minus the part of
+# the amount their ownership of the account pays). Searched only: a rule has
+# no use for them, since the import preview runs rules on rows with no split.
+USER_FIELDS = {"split_weight", "split_share", "split_balance"}
 
 OPERATORS_BY_FIELD = {
     **{f: TEXT_OPERATORS for f in TEXT_FIELDS},
     **{f: DATE_OPERATORS for f in DATE_FIELDS},
     **{f: NUMERIC_OPERATORS for f in NUMERIC_FIELDS},
+    **{f: NUMERIC_OPERATORS for f in USER_FIELDS},
 }
 
 
 class FilterCondition(BaseModel):
-    field: Literal["payee", "memo", "raw_label", "amount", "date", "account_id", "category_id"]
+    field: Literal[
+        "payee", "memo", "raw_label", "amount", "date", "account_id", "category_id",
+        "split_weight", "split_share", "split_balance",
+    ]
     operator: str
     value: str | float | int | None = None
     value2: str | float | int | None = None
+    # The user a per-user field (USER_FIELDS) reads; unused by the others.
+    user_id: int | None = None
 
     @model_validator(mode="after")
     def _validate_operator(self):
         allowed = OPERATORS_BY_FIELD[self.field]
         if self.operator not in allowed:
             raise ValueError(f'operator "{self.operator}" not valid for field "{self.field}" (allowed: {sorted(allowed)})')
+        if self.field in USER_FIELDS and self.user_id is None:
+            raise ValueError(f'field "{self.field}" needs a user_id')
         return self
 
 

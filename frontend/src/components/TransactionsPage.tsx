@@ -12,7 +12,7 @@ import CategorizeModal from './CategorizeModal'
 import RulesApplyModal from './RulesApplyModal'
 import CategoryPicker from './CategoryPicker'
 import AccountPicker from './AccountPicker'
-import TransactionConditions, { ConditionRow, conditionsToFilters } from './TransactionConditions'
+import TransactionConditions, { ConditionRow, USER_FIELDS, conditionsToFilters } from './TransactionConditions'
 import ExportMenu from './ExportMenu'
 import SavedFilters, { CurrentFilter } from './SavedFilters'
 import { Button, IconButton, Input, Select, Table, Thead, Tbody, Tr, Th, Td, StatusMessage, CategoryBadge, BackButton, ConfirmDialog, Card } from './ui'
@@ -285,7 +285,9 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
   // to start from, since a rule needs at least one.
   const ruleDraft = (): RuleDraft | null => {
     const draft: RuleDraft = mode === 'advanced'
-      ? { conditions: conditionsToFilters(conditions), match_mode: matchMode }
+      // A rule cannot test a person's split, share or balance (the import
+      // preview runs rules on rows that have none yet), so those are left out.
+      ? { conditions: conditionsToFilters(conditions).filter(c => !USER_FIELDS.includes(c.field)), match_mode: matchMode }
       : { conditions: simpleFiltersToConditions(buildSearchRequest()), match_mode: 'all' }
     return draft.conditions.length > 0 ? draft : null
   }
@@ -478,6 +480,7 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
               onMatchModeChange={m => { setMatchMode(m); setPage(1) }}
               accounts={accounts}
               categories={categories}
+              users={allUsers}
             />
             {createRuleButton && <div className="mt-2">{createRuleButton}</div>}
           </>
