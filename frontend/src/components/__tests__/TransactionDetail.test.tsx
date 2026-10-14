@@ -1,4 +1,4 @@
-import { test, expect, vi, beforeEach } from 'vitest'
+import { test, expect, vi, beforeEach, onTestFinished } from 'vitest'
 import { screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { pickAccount, renderWithProviders } from '../../test-utils'
 import TransactionDetail from '../TransactionDetail'
@@ -70,7 +70,60 @@ test('loads and displays the transaction fields', async () => {
     expect(mockFetchTransaction).toHaveBeenCalledWith(1, null)
   })
   expect(await screen.findByDisplayValue('Test')).toBeInTheDocument()
-  expect(screen.getByDisplayValue('50')).toBeInTheDocument()
+  const core = screen.getByTestId('transaction-core-fields')
+  expect(within(core).getByText('2026-01-15')).toBeInTheDocument()
+  expect(within(core).getByText('$50.00')).toBeInTheDocument()
+  expect(within(core).getByText('Checking')).toBeInTheDocument()
+})
+
+test('date, amount and account are read-only outside admin mode, and not sent on save', async () => {
+  mockFetchTransaction.mockResolvedValue({ ...baseTxn, splits: [{ user_id: 1, user_name: 'Alex', weight: 1, share_amount: 50, source: 'custom' }] })
+  mockUpdateTransaction.mockResolvedValue(baseTxn)
+
+  renderWithProviders(<TransactionDetail {...baseProps} />)
+
+  await screen.findByDisplayValue('Test')
+  expect(screen.queryByPlaceholderText('Amount')).not.toBeInTheDocument()
+  expect(screen.queryByLabelText('Date')).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: /Checking/ })).not.toBeInTheDocument()
+  expect(screen.queryByTestId('transaction-core-editor')).not.toBeInTheDocument()
+
+  fireEvent.click(screen.getByText('Save'))
+  await waitFor(() => expect(mockUpdateTransaction).toHaveBeenCalled())
+  const sent = mockUpdateTransaction.mock.calls[0][1]
+  expect(sent.date).toBeUndefined()
+  expect(sent.amount).toBeUndefined()
+  expect(sent.account_id).toBeUndefined()
+})
+
+test('admin mode makes date, amount and account editable in their own section', async () => {
+  window.history.replaceState(null, '', '/?admin')
+  try {
+    mockFetchTransaction.mockResolvedValue({ ...baseTxn, splits: [{ user_id: 1, user_name: 'Alex', weight: 1, share_amount: 50, source: 'custom' }] })
+    mockUpdateTransaction.mockResolvedValue(baseTxn)
+
+    renderWithProviders(<TransactionDetail {...baseProps} />)
+
+    await screen.findByDisplayValue('Test')
+    const editor = screen.getByTestId('transaction-core-editor')
+    expect(within(editor).getByText('Date, amount and account (admin)')).toBeInTheDocument()
+    expect(screen.queryByTestId('transaction-core-fields')).not.toBeInTheDocument()
+    fireEvent.change(within(editor).getByPlaceholderText('Amount'), { target: { value: '75' } })
+    fireEvent.change(within(editor).getByLabelText('Date'), { target: { value: '2026-02-01' } })
+
+    fireEvent.click(screen.getByText('Save'))
+    await waitFor(() => expect(mockUpdateTransaction).toHaveBeenCalledWith(
+      1, expect.objectContaining({ amount: 75, date: '2026-02-01', account_id: 1 }), null,
+    ))
+  } finally {
+    window.history.replaceState(null, '', '/')
+  }
+})
+
+test('the memo is a wrapping textarea', async () => {
+  mockFetchTransaction.mockResolvedValue({ ...baseTxn, memo: 'A long note' })
+  renderWithProviders(<TransactionDetail {...baseProps} />)
+  expect((await screen.findByDisplayValue('A long note')).tagName).toBe('TEXTAREA')
 })
 
 test('save is rejected when the transaction\'s split is empty, without calling the API', async () => {
@@ -458,7 +511,9 @@ test('excludes archived accounts from the account picker when creating a new tra
   expect(within(listbox).queryByText('Closed Account')).not.toBeInTheDocument()
 })
 
-test('still shows an existing transaction\'s own archived account when editing it', async () => {
+test('still shows an existing transaction\'s own archived account when editing it in admin mode', async () => {
+  window.history.replaceState(null, '', '/?admin')
+  onTestFinished(() => window.history.replaceState(null, '', '/'))
   mockFetchTransaction.mockResolvedValue({ ...baseTxn, account_id: 2, account_name: 'Closed Account' })
 
   renderWithProviders(<TransactionDetail

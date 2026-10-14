@@ -314,19 +314,25 @@ in the page's user switcher:
 Clicking **+ New Transaction** or an existing row both open the same panel. The form
 captures:
 
-- **Date** and an **accounting month** offset — normally a transaction counts toward
-  the reporting month it's dated in, but you can shift it up to 3 months earlier or
-  later (e.g. a paycheck dated the last day of the month that should count toward next
-  month).
-- **Payee**, an optional **memo**, and the **amount** (negative for an expense,
-  positive for income).
-- The **account** it belongs to, and its **category** — picking a category is
+- **Payee**, and an optional **memo** in a full-width box that wraps long text (drag
+  its corner to make it taller).
+- Its **category** — picking a category is
   optional; leaving it as "Uncategorized" (the default) is a valid, final choice, and
   such transactions display with a gray "Uncategorized" badge instead of a category
   name. The category field is a searchable dropdown: subcategories are grouped and
   indented under their parent, the parent itself is also selectable, and typing in the
   search box filters the list by category or parent name. The same picker is used for
   the Transactions screen's category filters.
+- An **accounting month**, last on that line — normally a transaction counts toward
+  the reporting month it's dated in, but you can shift it up to 3 months earlier or
+  later (e.g. a paycheck dated the last day of the month that should count toward next
+  month).
+- The **date**, the **amount** (negative for an expense, positive for income) and the
+  **account** it belongs to. On an existing transaction these three are what the bank
+  or the file reported, so they show as one line of plain text at the top of the panel
+  and can't be changed. They're editable when creating a transaction, and in
+  [admin mode](#admin-mode), where they get their own "Date, amount and account
+  (admin)" section just above the split.
 - A **Split** section, always visible — no separate "customize" step, and **required**:
   a transaction can't be saved with nobody in the split. It shows one integer
   **weight** per involved person, with a read-only euro amount next to each that
@@ -356,8 +362,8 @@ The **Delete** button and the **History** panel only appear once the transaction
 already exists — there's nothing to delete or show history for while you're still
 filling in a new one. Deleting a transaction asks for confirmation first.
 
-Editing an existing transaction also shows a **Reconciled** checkbox next to the
-category field — see the next section for what it means. It's not shown while
+Editing an existing transaction also shows a **Reconciled** checkbox between the
+category field and the accounting month — see the next section for what it means. It's not shown while
 creating a new transaction, since a transaction is always created unreconciled.
 
 #### "As reported by the bank"
@@ -951,6 +957,9 @@ What it shows:
 - **Import Backup**, including the **Partial restore** mode (see [Backup &
   Restore](#backup--restore)).
 - **Re-sync a period** on each mapped bank account (see [Bank Sync](#bank-sync)).
+- Editing an existing transaction's **date, amount and account**, which are otherwise
+  shown as read-only text (see [Adding or editing a
+  transaction](#adding-or-editing-a-transaction)).
 
 Admin mode only hides these screens; it isn't a separate permission. Export a backup
 before using any of them.

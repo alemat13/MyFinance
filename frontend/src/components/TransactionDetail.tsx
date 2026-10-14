@@ -15,6 +15,8 @@ import { useToast } from '../context/ToastContext'
 import { validateTransactionForm, ACCOUNTING_MONTH_OFFSETS, accountingMonthLabel } from '../utils/transactions'
 import { resolveDefaultSplitRows } from '../utils/splitWeights'
 import { formatServerTimestamp } from '../utils/datetime'
+import { formatMoney } from '../utils/currency'
+import { isAdminMode } from '../utils/admin'
 import { categoryNameFor } from '../utils/categoryDisplay'
 import { Modal, Button, Input, Select, StatusMessage, ConfirmDialog, Badge } from './ui'
 
@@ -105,7 +107,12 @@ export default function TransactionDetail({
   const [historyLoading, setHistoryLoading] = useState(transactionId !== null)
   const [historyError, setHistoryError] = useState<string | null>(null)
   const [divideSiblings, setDivideSiblings] = useState<Transaction[]>([])
+  const [adminMode] = useState(isAdminMode)
   const { showToast } = useToast()
+  // Date, amount and account are what the bank (or the migration) reported, so
+  // an existing transaction shows them as plain text. Only creating one, or
+  // admin mode, opens them for editing, in their own section above the split.
+  const coreEditable = transactionId === null || adminMode
 
   useEffect(() => {
     if (transactionId === null) return
@@ -176,7 +183,7 @@ export default function TransactionDetail({
           split_source: splitSource ?? 'custom',
         }, selectedUserId)
       : updateTransaction(transactionId, {
-          ...formData,
+          ...(coreEditable ? formData : { ...formData, date: undefined, amount: undefined, account_id: undefined }),
           category_id: formData.category_id || null,
           split_weights: split.map(r => ({ user_id: r.user_id, weight: r.value })),
           split_source: splitSource ?? 'custom',
@@ -214,27 +221,22 @@ export default function TransactionDetail({
       {error && <StatusMessage error={error} />}
       {!loading && !error && (
         <div className="flex flex-col gap-3">
+          {!coreEditable && (
+            <div className="flex gap-x-3 gap-y-0.5 flex-wrap items-baseline text-sm text-slate-600 dark:text-slate-300" data-testid="transaction-core-fields">
+              <span>{formData.date}</span>
+              <span className="font-semibold text-slate-900 dark:text-slate-100">{formatMoney(formData.amount ?? 0, currency)}</span>
+              <span>{accounts.find(a => a.id === formData.account_id)?.name ?? transaction?.account_name}</span>
+            </div>
+          )}
+
           <div className="flex gap-2 flex-wrap items-end">
-            <Input type="date" value={formData.date ?? ''} onChange={e => setFormData({ ...formData, date: e.target.value })} />
-            <Select
-              value={formData.accounting_month_offset ?? 0}
-              onChange={e => setFormData({ ...formData, accounting_month_offset: parseInt(e.target.value) })}
-              className="min-w-[160px]"
-            >
-              {ACCOUNTING_MONTH_OFFSETS.map(o => (
-                <option key={o} value={o}>{accountingMonthLabel(formData.date ?? '', o)}</option>
-              ))}
-            </Select>
             <Input placeholder="Payee" value={formData.payee ?? ''} onChange={e => setFormData({ ...formData, payee: e.target.value })} />
-            <Input placeholder="Memo" value={formData.memo ?? ''} onChange={e => setFormData({ ...formData, memo: e.target.value || null })} />
-            <Input placeholder="Amount" type="number" step="0.01" value={formData.amount ?? 0} onChange={e => setFormData({ ...formData, amount: parseFloat(e.target.value) || 0 })} className="w-[110px]" />
-            <AccountPicker
-              accounts={pickerAccounts}
-              value={formData.account_id || null}
-              onChange={id => setFormData({ ...formData, account_id: id ?? 0 })}
-              placeholder="Choose account"
-              allowEmpty={false}
-              className="min-w-[140px]"
+            <textarea
+              placeholder="Memo"
+              rows={2}
+              value={formData.memo ?? ''}
+              onChange={e => setFormData({ ...formData, memo: e.target.value || null })}
+              className="basis-full w-full resize-y rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 px-2.5 py-2 text-base md:text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent"
             />
             <CategoryPicker
               categories={categories}
@@ -252,7 +254,37 @@ export default function TransactionDetail({
                 Reconciled
               </label>
             )}
+            <Select
+              aria-label="Accounting month"
+              value={formData.accounting_month_offset ?? 0}
+              onChange={e => setFormData({ ...formData, accounting_month_offset: parseInt(e.target.value) })}
+              className="min-w-[160px]"
+            >
+              {ACCOUNTING_MONTH_OFFSETS.map(o => (
+                <option key={o} value={o}>{accountingMonthLabel(formData.date ?? '', o)}</option>
+              ))}
+            </Select>
           </div>
+
+          {coreEditable && (
+            <div className="pt-2 border-t border-slate-200 dark:border-slate-700" data-testid="transaction-core-editor">
+              {transactionId !== null && (
+                <h4 className="text-sm font-semibold text-red-700 dark:text-red-400 mb-1.5">Date, amount and account (admin)</h4>
+              )}
+              <div className="flex gap-2 flex-wrap items-end">
+                <Input type="date" aria-label="Date" value={formData.date ?? ''} onChange={e => setFormData({ ...formData, date: e.target.value })} />
+                <Input placeholder="Amount" type="number" step="0.01" value={formData.amount ?? 0} onChange={e => setFormData({ ...formData, amount: parseFloat(e.target.value) || 0 })} className="w-[110px]" />
+                <AccountPicker
+                  accounts={pickerAccounts}
+                  value={formData.account_id || null}
+                  onChange={id => setFormData({ ...formData, account_id: id ?? 0 })}
+                  placeholder="Choose account"
+                  allowEmpty={false}
+                  className="min-w-[140px]"
+                />
+              </div>
+            </div>
+          )}
 
           <TransactionSplitFields
             rows={split}
