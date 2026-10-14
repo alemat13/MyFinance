@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import {
-  Transaction, BulkTransactionUpdate, GlobalSplitWeight,
+  Transaction, BulkTransactionUpdate, GlobalSplitWeight, PayeeMode,
   Account, Category, User, TransactionSearchRequest,
   bulkUpdateTransactions, bulkUpdateTransactionsByFilter,
 } from '../api/client'
@@ -31,6 +31,20 @@ interface Props {
   moveAccounts?: Account[]
 }
 
+const PAYEE_MODES: { value: PayeeMode; label: string; placeholder: string }[] = [
+  { value: 'replace', label: 'Replace', placeholder: 'New payee' },
+  { value: 'prepend', label: 'Prepend', placeholder: 'Text to add before' },
+  { value: 'append', label: 'Append', placeholder: 'Text to add after' },
+]
+
+/** The payee a row would get. Prepend/append keep the text as typed, so a
+ * separating space is the user's to include; Replace trims it like the API. */
+function renamedPayee(current: string, text: string, mode: PayeeMode): string {
+  if (mode === 'prepend') return text + current
+  if (mode === 'append') return current + text
+  return text.trim()
+}
+
 const ACCOUNTING_MONTH_OFFSETS = [-3, -2, -1, 0, 1, 2, 3] as const
 
 function formatCount(n: number): string {
@@ -56,6 +70,7 @@ export default function BulkEditModal({
 
   const [renameEnabled, setRenameEnabled] = useState(false)
   const [payee, setPayee] = useState('')
+  const [payeeMode, setPayeeMode] = useState<PayeeMode>('replace')
 
   const [moveEnabled, setMoveEnabled] = useState(false)
   const [moveAccountId, setMoveAccountId] = useState<number | null>(null)
@@ -86,7 +101,9 @@ export default function BulkEditModal({
     }
     const update: BulkTransactionUpdate = {
       ...(categoryEnabled ? { category_id: categoryId } : {}),
-      ...(renameEnabled ? { payee: payee.trim() } : {}),
+      ...(renameEnabled
+        ? payeeMode === 'replace' ? { payee: payee.trim() } : { payee, payee_mode: payeeMode }
+        : {}),
       ...(moveEnabled && moveAccountId != null ? { account_id: moveAccountId } : {}),
       ...(offsetEnabled ? { accounting_month_offset: offset } : {}),
       ...(splitEnabled ? {
@@ -147,15 +164,38 @@ export default function BulkEditModal({
           </label>
           {renameEnabled && (
             <div>
+              <div role="group" aria-label="Rename mode" className="inline-flex rounded-md border border-slate-300 dark:border-slate-600 overflow-hidden mb-2">
+                {PAYEE_MODES.map(m => (
+                  <button
+                    key={m.value}
+                    type="button"
+                    aria-pressed={payeeMode === m.value}
+                    onClick={() => setPayeeMode(m.value)}
+                    className={payeeMode === m.value
+                      ? 'px-3 py-1 text-sm bg-indigo-600 text-white'
+                      : 'px-3 py-1 text-sm bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700'}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
               <Input
-                aria-label="New payee"
-                placeholder="New payee"
+                aria-label={PAYEE_MODES.find(m => m.value === payeeMode)!.placeholder}
+                placeholder={PAYEE_MODES.find(m => m.value === payeeMode)!.placeholder}
                 value={payee}
                 onChange={e => setPayee(e.target.value)}
               />
               <div className="text-xs text-slate-400 mt-1">
-                Every selected transaction gets this payee. Memos and original bank labels are kept.
+                {payeeMode === 'replace'
+                  ? 'Every selected transaction gets this payee.'
+                  : `Added ${payeeMode === 'prepend' ? 'before' : 'after'} each transaction's own payee, exactly as typed (include a space if you want one).`}
+                {' '}Memos and original bank labels are kept.
               </div>
+              {payeeMode !== 'replace' && previewTransaction && payee.trim() !== '' && (
+                <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  e.g. <span className="font-medium text-slate-700 dark:text-slate-200 whitespace-pre-wrap">{renamedPayee(previewTransaction.payee, payee, payeeMode)}</span>
+                </div>
+              )}
             </div>
           )}
         </div>

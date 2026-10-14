@@ -403,3 +403,64 @@ def test_bulk_update_payee_by_filter_renames_every_matching_row(client, db, samp
     assert response.status_code == 200
     for t in matching:
         assert client.get(f"/api/transactions/{t.id}").json()["payee"] == "Amazon"
+
+
+def test_bulk_update_payee_prepend_and_append_keep_each_row_own_payee(client, db, sample_account, sample_category):
+    t1 = _make_transaction(db, sample_account, sample_category, payee="SNCF", memo="Train Lyon")
+    t2 = _make_transaction(db, sample_account, sample_category, payee="Uber")
+
+    response = client.put(
+        "/api/transactions/bulk-update",
+        json={"transaction_ids": [t1.id, t2.id], "update": {"payee": "Pro - ", "payee_mode": "prepend"}},
+    )
+    assert response.status_code == 200
+    assert client.get(f"/api/transactions/{t1.id}").json()["payee"] == "Pro - SNCF"
+    assert client.get(f"/api/transactions/{t2.id}").json()["payee"] == "Pro - Uber"
+
+    response = client.put(
+        "/api/transactions/bulk-update",
+        json={"transaction_ids": [t1.id], "update": {"payee": " (remboursé)", "payee_mode": "append"}},
+    )
+    assert response.status_code == 200
+    first = client.get(f"/api/transactions/{t1.id}").json()
+    assert first["payee"] == "Pro - SNCF (remboursé)"
+    assert first["memo"] == "Train Lyon"
+
+    history = client.get(f"/api/transactions/{t1.id}/history").json()
+    assert {"payee": {"old": "Pro - SNCF", "new": "Pro - SNCF (remboursé)"}} in [h["changes"] for h in history]
+
+
+def test_bulk_update_payee_append_by_filter(client, db, sample_account, sample_category):
+    matching = [_make_transaction(db, sample_account, sample_category, payee=f"Amazon {i}") for i in range(3)]
+
+    response = client.put(
+        "/api/transactions/bulk-update",
+        json={"filter": {"search": "amazon", "page": 1, "page_size": 1}, "expected_count": 3,
+              "update": {"payee": " *", "payee_mode": "append"}},
+    )
+    assert response.status_code == 200
+    for i, t in enumerate(matching):
+        assert client.get(f"/api/transactions/{t.id}").json()["payee"] == f"Amazon {i} *"
+
+
+def test_bulk_update_payee_append_too_long_422_and_no_mutation(client, db, sample_account, sample_category):
+    t1 = _make_transaction(db, sample_account, sample_category, payee="x" * 195)
+    t2 = _make_transaction(db, sample_account, sample_category, payee="Short")
+
+    response = client.put(
+        "/api/transactions/bulk-update",
+        json={"transaction_ids": [t1.id, t2.id], "update": {"payee": " suffix", "payee_mode": "append"}},
+    )
+    assert response.status_code == 422
+    assert client.get(f"/api/transactions/{t2.id}").json()["payee"] == "Short"
+
+
+@pytest.mark.parametrize("mode", ["prepend", "append"])
+def test_bulk_update_blank_affix_422(client, db, sample_account, sample_category, mode):
+    t1 = _make_transaction(db, sample_account, sample_category, payee="Boulangerie")
+    response = client.put(
+        "/api/transactions/bulk-update",
+        json={"transaction_ids": [t1.id], "update": {"payee": "  ", "payee_mode": mode}},
+    )
+    assert response.status_code == 422
+    assert client.get(f"/api/transactions/{t1.id}").json()["payee"] == "Boulangerie"

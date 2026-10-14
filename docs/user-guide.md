@@ -478,7 +478,14 @@ the list, so nothing you didn't see counted gets edited.
   type a new payee to give every selected transaction that same name (for example to
   turn a batch of `CARTE 12/09 SNCF`, `PRLV SNCF CONNECT`… into plain `SNCF`). Only
   the payee changes: memos and the original bank label are kept, and the change shows
-  in each transaction's history. The name can't be left blank.
+  in each transaction's history. The name can't be left blank. Three buttons above
+  the text pick what it does: **Replace** (the default) sets it as the payee;
+  **Prepend** adds it in front of each transaction's own payee and **Append** after
+  it, so each one keeps its own name (`SNCF` with `Pro - ` prepended becomes
+  `Pro - SNCF`). The text is added exactly as typed, so include the space you want
+  between it and the payee; a line under the box shows the result on the first
+  selected transaction. The whole edit is refused if it would make any payee longer
+  than 200 characters.
 - **Accounting month** — leave this off to keep each transaction's own accounting
   month; turn it on to shift all of them by the same offset (e.g. +1 month). Because
   the shift is relative to each transaction's own date, transactions with different
