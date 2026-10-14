@@ -279,6 +279,33 @@ test('renaming sends only the trimmed payee', async () => {
   expect(mockBulkUpdateTransactions).toHaveBeenCalledWith([1, 2], { payee: 'Starbucks' }, null)
 })
 
+test('prepend sends the text as typed with its mode and previews the first row', async () => {
+  mockBulkUpdateTransactions.mockResolvedValue({ updated_count: 2, transaction_ids: [1, 2] })
+  renderWithProviders(<BulkEditModal {...baseProps} />)
+
+  fireEvent.click(screen.getByText('Rename'))
+  fireEvent.click(screen.getByRole('button', { name: 'Prepend' }))
+  fireEvent.change(screen.getByLabelText('Text to add before'), { target: { value: 'Pro - ' } })
+  expect(screen.getByText('Pro - Coffee')).toBeInTheDocument()
+  fireEvent.click(submitButton())
+
+  await waitFor(() => expect(mockBulkUpdateTransactions).toHaveBeenCalledWith(
+    [1, 2], { payee: 'Pro - ', payee_mode: 'prepend' }, null))
+})
+
+test('append sends the text as typed with its mode', async () => {
+  mockBulkUpdateTransactions.mockResolvedValue({ updated_count: 2, transaction_ids: [1, 2] })
+  renderWithProviders(<BulkEditModal {...baseProps} />)
+
+  fireEvent.click(screen.getByText('Rename'))
+  fireEvent.click(screen.getByRole('button', { name: 'Append' }))
+  fireEvent.change(screen.getByLabelText('Text to add after'), { target: { value: ' (pro)' } })
+  fireEvent.click(submitButton())
+
+  await waitFor(() => expect(mockBulkUpdateTransactions).toHaveBeenCalledWith(
+    [1, 2], { payee: ' (pro)', payee_mode: 'append' }, null))
+})
+
 test('rename keeps submit disabled while the new payee is blank', () => {
   renderWithProviders(<BulkEditModal {...baseProps} />)
 

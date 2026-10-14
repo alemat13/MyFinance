@@ -296,9 +296,13 @@ class BulkTransactionUpdate(BaseModel):
     reconciled has no null-clearing semantics (it's a plain bool, not nullable
     on the model) — omit it to leave reconciled status untouched. payee
     renames every selected transaction to the same text (stripped; blank or
-    null is refused, a payee can't be cleared); the memo is never touched."""
+    null is refused, a payee can't be cleared); the memo is never touched.
+    payee_mode says what to do with that text: "replace" (the default) sets
+    it as the payee, "prepend"/"append" add it before/after each row's own
+    payee, taken as typed (unstripped) so a separating space can be part of it."""
     category_id: Optional[int] = None
     payee: Optional[str] = None
+    payee_mode: Literal["replace", "prepend", "append"] = "replace"
     # Admin mode only on screen: moves every selected transaction to this
     # account, keeping each one's own split as it is.
     account_id: Optional[int] = None
