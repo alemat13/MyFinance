@@ -96,6 +96,8 @@ def test_reorder(client, db):
     {"name": "Half between", "conditions": [{"field": "amount", "operator": "between", "value": 1}],
      "actions": {"payee": "X"}},
     {"name": "Empty split", "conditions": [_contains("payee", "x")], "actions": {"split_weights": []}},
+    {"name": "Per-user share", "conditions": [{"field": "split_share", "user_id": 1, "operator": "gt", "value": 0}],
+     "actions": {"payee": "X"}},
 ])
 def test_create_refuses_an_unusable_rule(client, body):
     assert client.post("/api/rules", json=body).status_code == 422

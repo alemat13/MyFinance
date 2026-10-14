@@ -221,12 +221,15 @@ export interface TransactionDivideResponse {
 }
 
 export type FilterField = 'payee' | 'memo' | 'raw_label' | 'amount' | 'date' | 'account_id' | 'category_id'
+  | 'split_weight' | 'split_share' | 'split_balance'
 
 export interface FilterCondition {
   field: FilterField
   operator: string
   value?: string | number | null
   value2?: string | number | null
+  // The user a per-user field (split_weight/split_share/split_balance) reads.
+  user_id?: number | null
 }
 
 export interface TransactionSearchRequest {

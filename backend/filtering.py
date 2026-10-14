@@ -1,10 +1,10 @@
 from datetime import date
 
-from sqlalchemy import and_, func, or_
+from sqlalchemy import Numeric, and_, cast, func, or_, select
 from sqlalchemy.orm import Session
 
 from models import AccountUser, Transaction, TransactionSplit
-from schemas import DATE_FIELDS, TEXT_FIELDS, FilterCondition
+from schemas import DATE_FIELDS, TEXT_FIELDS, USER_FIELDS, FilterCondition
 
 FIELD_COLUMN_MAP = {
     "payee": Transaction.payee,
@@ -76,7 +76,40 @@ def _date_expr(column, condition: FilterCondition):
     raise ValueError(f'unsupported date operator: {condition.operator}')
 
 
+def _split_column(column, user_id: int):
+    """One of the user's split columns on the transaction, 0 when the split
+    leaves them out (as the Transactions screen shows it)."""
+    return func.coalesce(
+        select(column)
+        .where(TransactionSplit.transaction_id == Transaction.id, TransactionSplit.user_id == user_id)
+        .correlate(Transaction)
+        .scalar_subquery(),
+        0,
+    )
+
+
+def _user_column(field: str, user_id: int):
+    if field == "split_weight":
+        return _split_column(TransactionSplit.weight, user_id)
+    share = _split_column(TransactionSplit.share_amount, user_id)
+    if field == "split_share":
+        return share
+    # Balance, as utils/transactions.ts's balanceFor() shows it: the share
+    # minus the part of the amount the user's ownership of the account pays.
+    # Rounded to cents so "=" matches what is on screen despite float drift.
+    ownership = func.coalesce(
+        select(AccountUser.ownership_percentage)
+        .where(AccountUser.account_id == Transaction.account_id, AccountUser.user_id == user_id)
+        .correlate(Transaction)
+        .scalar_subquery(),
+        0,
+    )
+    return func.round(cast(share - Transaction.amount * ownership / 100, Numeric), 2)
+
+
 def build_condition_expr(condition: FilterCondition):
+    if condition.field in USER_FIELDS:
+        return _numeric_expr(_user_column(condition.field, condition.user_id), condition)
     column = FIELD_COLUMN_MAP[condition.field]
     if condition.field in TEXT_FIELDS:
         return _text_expr(column, condition)

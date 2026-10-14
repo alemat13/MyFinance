@@ -230,7 +230,13 @@ Two filtering modes are available:
   date, account, or category, each with its own operator (contains, equals, between,
   greater/less than, etc.) — useful for more precise or compound searches than the
   simple filters allow. Reconciled status isn't available as an advanced-mode
-  condition; use the simple filter for that.
+  condition; use the simple filter for that. Three conditions read one person's own
+  figures on a transaction, picked from a second dropdown: **Split weight of**,
+  **Share of** and **Balance of** (share minus the part of the amount that person's
+  ownership of the account pays, the same Balance as in the list), with =, ≠, <, >,
+  ≤, ≥ or between. A person left out of a transaction's split counts as weight 0 and
+  share 0, so "Split weight of Olivia = 0" lists the transactions she has no part in.
+  They work in saved filters too.
 
 **Saved filters.** Once a filter (simple or advanced) is set the way you like, click
 **Save filter** and give it a name: it becomes a button right after **Simple** and
@@ -809,7 +815,8 @@ transactions you have in mind, then click **Create rule** (next to **Clear** in 
 filter, under the conditions in the Advanced one). The Rules screen opens on a new rule
 whose conditions are the filters you set; you add the actions and save. From the Simple
 filter, the search box becomes "Payee contains" (a rule can't say "payee or memo"), and
-the Reconciled filter is left out, since a rule has no such condition. A rule built this
+the Reconciled filter is left out, since a rule has no such condition; so are the
+Advanced filter's per-person Split weight, Share and Balance conditions. A rule built this
 way keeps any date filter you had set, so remove it if the rule should also catch future
 transactions. The button is greyed out until at least one filter is set.
 
