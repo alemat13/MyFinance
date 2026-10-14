@@ -36,6 +36,7 @@ router = APIRouter(prefix="/api/transactions")
 
 # Rows per commit in bulk-update; see the comment where it is used.
 BULK_UPDATE_CHUNK_SIZE = 1500
+PAYEE_MAX_LENGTH = Transaction.__table__.c.payee.type.length
 
 
 @router.get("", response_model=list[TransactionOut])
@@ -233,6 +234,7 @@ def bulk_update_transactions(data: BulkUpdateTransactionsRequest, actor_user_id:
     # int conversion before this route is ever tried.
     update_data = data.update.model_dump(exclude_unset=True)
     split_weights_provided = "split_weights" in update_data
+    payee_mode = update_data.pop("payee_mode", "replace")
     non_split_fields = {k: v for k, v in update_data.items() if k not in ("split_weights", "split_source")}
 
     if not non_split_fields and not split_weights_provided:
@@ -243,11 +245,24 @@ def bulk_update_transactions(data: BulkUpdateTransactionsRequest, actor_user_id:
         if non_split_fields["account_id"] is None:
             raise HTTPException(422, "account_id cannot be cleared")
         _validate_bulk_move(db, target_ids, non_split_fields["account_id"])
+    payee_affix = None
     if "payee" in non_split_fields:
-        payee = (non_split_fields["payee"] or "").strip()
-        if not payee:
+        payee = non_split_fields["payee"] or ""
+        if not payee.strip():
             raise HTTPException(422, "payee cannot be blank")
-        non_split_fields["payee"] = payee
+        if payee_mode == "replace":
+            non_split_fields["payee"] = payee.strip()
+        else:
+            # Prepend/append: each row keeps its own payee around the text, so
+            # it can't be one value set on every row like the other fields.
+            payee_affix = non_split_fields.pop("payee")
+            longest = (
+                db.query(func.max(func.length(Transaction.payee)))
+                .filter(Transaction.id.in_(target_ids)).scalar() or 0
+            ) if target_ids else 0
+            if longest + len(payee_affix) > PAYEE_MAX_LENGTH:
+                raise HTTPException(
+                    422, f"payee would exceed {PAYEE_MAX_LENGTH} characters on at least one transaction")
 
     weights = None
     if split_weights_provided:
@@ -274,8 +289,13 @@ def bulk_update_transactions(data: BulkUpdateTransactionsRequest, actor_user_id:
         )
         for transaction in transactions:
             old_values = {f: getattr(transaction, f) for f in non_split_fields if f in TRACKED_FIELDS}
+            if payee_affix is not None:
+                old_values["payee"] = transaction.payee
             for field, value in non_split_fields.items():
                 setattr(transaction, field, value)
+            if payee_affix is not None:
+                transaction.payee = (payee_affix + transaction.payee if payee_mode == "prepend"
+                                     else transaction.payee + payee_affix)
             changes = {
                 f: {"old": _jsonify(old), "new": _jsonify(getattr(transaction, f))}
                 for f, old in old_values.items() if old != getattr(transaction, f)

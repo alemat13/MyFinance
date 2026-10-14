@@ -180,10 +180,15 @@ export interface TransactionUpdate {
 // Only include a key here when its section is meant to be applied to every
 // selected transaction — an omitted key leaves that field untouched on all
 // of them, mirroring the backend's exclude_unset contract.
+export type PayeeMode = 'replace' | 'prepend' | 'append'
+
 export interface BulkTransactionUpdate {
   category_id?: number | null
   // Renames every selected transaction (payee only, never the memo).
   payee?: string
+  // What to do with `payee`: set it (default), or add it before/after each
+  // row's own payee, as typed (a separating space is part of the text).
+  payee_mode?: PayeeMode
   // Admin mode only: moves the selection to this account, splits unchanged.
   account_id?: number
   accounting_month_offset?: number
