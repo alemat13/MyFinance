@@ -827,6 +827,46 @@ def test_search_match_mode_all_vs_any(client, db, sample_account, sample_categor
     assert payees == {"Alpha", "Beta"}
 
 
+def test_search_advanced_per_user_split_fields(client, sample_account_with_user, sample_category, sample_user, sample_user2):
+    # sample_user owns the account outright; the split is 3:1 between the two.
+    def make(payee, weights):
+        response = client.post("/api/transactions", json={
+            "account_id": sample_account_with_user.id, "category_id": sample_category.id,
+            "date": "2026-01-15", "payee": payee, "amount": -100.0,
+            "split_weights": [{"user_id": uid, "weight": w} for uid, w in weights],
+        })
+        assert response.status_code == 201
+
+    make("Shared", [(sample_user.id, 3), (sample_user2.id, 1)])
+    make("Mine only", [(sample_user.id, 1)])
+
+    def payees(field, user, operator, value, value2=None):
+        condition = {"field": field, "user_id": user.id, "operator": operator, "value": value}
+        if value2 is not None:
+            condition["value2"] = value2
+        response = client.post("/api/transactions/search", json={"conditions": [condition]})
+        assert response.status_code == 200, response.json()
+        return {item["payee"] for item in response.json()["items"]}
+
+    assert payees("split_weight", sample_user, "eq", 3) == {"Shared"}
+    # Left out of a split reads as a weight and a share of 0.
+    assert payees("split_weight", sample_user2, "eq", 0) == {"Mine only"}
+    assert payees("split_share", sample_user2, "lt", 0) == {"Shared"}
+    assert payees("split_share", sample_user, "between", -80, -70) == {"Shared"}
+    # Balance = share - amount x ownership: owner -75 - (-100) = +25, the other one -25.
+    assert payees("split_balance", sample_user, "eq", 25) == {"Shared"}
+    assert payees("split_balance", sample_user2, "eq", -25) == {"Shared"}
+    assert payees("split_balance", sample_user, "eq", 0) == {"Mine only"}
+    assert payees("split_balance", sample_user, "gt", 0) == {"Shared"}
+
+
+def test_search_per_user_field_without_user_422(client):
+    response = client.post("/api/transactions/search", json={
+        "conditions": [{"field": "split_share", "operator": "gt", "value": 0}],
+    })
+    assert response.status_code == 422
+
+
 def test_search_invalid_operator_for_field_422(client):
     response = client.post("/api/transactions/search", json={
         "conditions": [{"field": "payee", "operator": "gt", "value": "x"}],
