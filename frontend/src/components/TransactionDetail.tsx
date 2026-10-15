@@ -230,7 +230,7 @@ export default function TransactionDetail({
           )}
 
           <div className="flex gap-2 flex-wrap items-end">
-            <Input placeholder="Payee" value={formData.payee ?? ''} onChange={e => setFormData({ ...formData, payee: e.target.value })} />
+            <Input className="basis-full w-full" placeholder="Payee" value={formData.payee ?? ''} onChange={e => setFormData({ ...formData, payee: e.target.value })} />
             <textarea
               placeholder="Memo"
               rows={2}
