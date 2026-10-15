@@ -26,6 +26,7 @@ from schemas import (
     TransactionDivideResponse,
     TransactionHistoryOut,
     TransactionOut,
+    TransactionRawFieldsUpdate,
     TransactionSearchRequest,
     TransactionSearchResponse,
     TransactionUpdate,
@@ -401,6 +402,27 @@ def update_transaction(transaction_id: int, data: TransactionUpdate, actor_user_
         record_transaction_history(db, transaction, "updated", actor_user_id, changes=changes)
     cache_service.invalidate(db, "balances", "charts", "account_totals")
     db.commit()
+    return get_transaction_out(db, transaction.id)
+
+
+@router.put("/{transaction_id}/raw", response_model=TransactionOut)
+def update_transaction_raw_fields(transaction_id: int, data: TransactionRawFieldsUpdate, actor_user_id: int | None = Query(None), db: Session = Depends(get_db)):
+    # Admin mode's edit of the "As reported by the bank" section. Kept apart
+    # from PUT /{id} so the raw fields stay out of TransactionUpdate: nothing
+    # else may rewrite them. They feed no balance, chart or split, so no cache
+    # namespace is invalidated; external_id (the sync's dedup key) is untouched.
+    transaction = db.query(Transaction).filter(Transaction.id == transaction_id).first()
+    if not transaction:
+        raise HTTPException(404, "Transaction not found")
+    changes = {}
+    for field, value in data.model_dump(exclude_unset=True).items():
+        old = getattr(transaction, field)
+        if old != value:
+            setattr(transaction, field, value)
+            changes[field] = {"old": _jsonify(old), "new": _jsonify(value)}
+    if changes:
+        record_transaction_history(db, transaction, "updated", actor_user_id, source="admin", changes=changes)
+        db.commit()
     return get_transaction_out(db, transaction.id)
 
 

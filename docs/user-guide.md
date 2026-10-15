@@ -388,8 +388,12 @@ actually said, before you renamed anything:
   by the day it was made, so a transfer sent on a Saturday shows that Saturday as its date
   and the following Monday here. Transactions synced before 25 September 2026 leave it empty.
 
-None of these can be edited, here or anywhere else: they are a record of what the
-source said, not fields of your own. A row is simply left out when the source didn't
+Outside [admin mode](#admin-mode) none of these can be edited: they are a record of what
+the source said, not fields of your own. In admin mode the section is always shown, even
+empty, with an **Edit bank fields** button: every field above, plus the source, becomes an
+input. **Save bank fields** sends only what you changed (an emptied field is cleared) and
+adds an "updated · admin" line to the transaction's History. It changes nothing else: not
+the payee, date, amount, split or any balance. A row is simply left out when the source didn't
 supply it, and the whole section is hidden for a transaction that has none of them —
 anything you typed in by hand, for instance. A CSV import only ever fills in the
 **Original label**, since a CSV carries none of the rest. The badge next to the heading
@@ -975,6 +979,8 @@ What it shows:
 - Editing an existing transaction's **date, amount and account**, which are otherwise
   shown as read-only text (see [Adding or editing a
   transaction](#adding-or-editing-a-transaction)).
+- Editing a transaction's **As reported by the bank** fields (see ["As reported by the
+  bank"](#as-reported-by-the-bank)).
 
 Admin mode only hides these screens; it isn't a separate permission. Export a backup
 before using any of them.
