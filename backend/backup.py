@@ -44,7 +44,7 @@ _SERIAL_PK_TABLES = [
 # seconds, so carrying it in every archive would cost more than it saves —
 # but dropping it on a restore would silently throw away the active model, so
 # it is kept where it is. No FK points at either, so leaving them out of
-# drop_all()/create_all() is safe.
+# the overwrite restore's wipe is safe.
 _PRESERVED_ON_OVERWRITE = {OneDriveBackupSettings.__tablename__, CategorizerModel.__tablename__}
 
 
@@ -130,8 +130,9 @@ def parse_zip_bytes(content: bytes) -> DatabaseExport:
 
 def _validate_referential_integrity(data: DatabaseExport) -> None:
     """Overwrite-mode-only pre-check: reject a payload with dangling FK
-    references before drop_all() runs, since DDL can't be rolled back
-    together with a subsequent failed insert phase."""
+    references with a readable 422 before anything is written. The restore
+    itself is one transaction, so a reference this misses still rolls back
+    rather than leaving the database half-written."""
     user_ids = {u.id for u in data.users}
     account_ids = {a.id for a in data.accounts}
     category_ids = {c.id for c in data.categories}
@@ -185,13 +186,20 @@ def import_database(db: Session, data: DatabaseExport, mode: Literal["overwrite"
 
     bind = db.get_bind()
     _validate_referential_integrity(data)
-    tables = [t for t in Base.metadata.sorted_tables if t.name not in _PRESERVED_ON_OVERWRITE]
-    Base.metadata.drop_all(bind=bind, tables=tables)
+    # Only creates tables that don't exist yet (a fresh local database); an
+    # existing table, and the schema Alembic gave it, is left as it is.
     Base.metadata.create_all(bind=bind)
 
+    # The wipe and the reinsert are one transaction: rows are deleted, not
+    # tables dropped, so a failure anywhere below rolls back to the data as it
+    # was. Dropping tables first used to commit the wipe on its own, and any
+    # insert that then failed left the database empty.
+    tables = [t for t in Base.metadata.sorted_tables if t.name not in _PRESERVED_ON_OVERWRITE]
     ImportSession = sessionmaker(bind=bind)
     session = ImportSession()
     try:
+        for table in reversed(tables):
+            session.execute(table.delete())
         session.add_all(User(**u.model_dump()) for u in data.users)
         archived_totals: dict[int, float] = {}
         for t in data.transactions:
@@ -237,8 +245,8 @@ def import_database(db: Session, data: DatabaseExport, mode: Literal["overwrite"
         saved_filters = data.saved_filters or []
         session.add_all(SavedFilter(**f.model_dump(exclude_none=True)) for f in saved_filters)
         # Bulk restore bypasses every per-site invalidation by design. A no-op
-        # here in practice (drop_all/create_all already emptied the table),
-        # kept so the restore stays correct if that ever changes.
+        # here in practice (the wipe above already emptied the table), kept so
+        # the restore stays correct if that ever changes.
         cache_service.invalidate_all(session)
         session.commit()
     except Exception:

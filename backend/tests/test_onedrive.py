@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 from cryptography.fernet import Fernet
@@ -316,19 +317,40 @@ def test_verify_scheduler_secret():
     assert onedrive.verify_scheduler_secret(None) is False
 
 
-def test_auth_start_redirects_to_microsoft(client):
+def _start(client):
+    """Runs /auth/start and returns the `state` it sent to Microsoft; the
+    test client keeps the cookie it set, like the browser would."""
     response = client.get("/api/onedrive/auth/start", follow_redirects=False)
     assert response.status_code in (302, 307)
-    assert "login.microsoftonline.com" in response.headers["location"]
+    query = parse_qs(urlparse(response.headers["location"]).query)
+    return query["state"][0]
+
+
+def test_auth_start_redirects_to_microsoft_with_state_and_pkce(client):
+    response = client.get("/api/onedrive/auth/start", follow_redirects=False)
+    assert response.status_code in (302, 307)
+    location = response.headers["location"]
+    assert "login.microsoftonline.com" in location
+    query = parse_qs(urlparse(location).query)
+    assert query["code_challenge_method"] == ["S256"]
+    state, _, verifier = client.cookies.get("onedrive_oauth").strip('"').partition(".")
+    assert query["state"] == [state]
+    assert query["code_challenge"] == [onedrive.pkce_challenge(verifier)]
 
 
 def test_auth_callback_success(client, monkeypatch):
-    monkeypatch.setattr(onedrive, "exchange_code_for_tokens", lambda code: {
-        "access_token": "access-1", "refresh_token": "refresh-1", "expires_in": 3600,
-    })
+    verifiers = []
+
+    def _exchange(code, code_verifier):
+        verifiers.append(code_verifier)
+        return {"access_token": "access-1", "refresh_token": "refresh-1", "expires_in": 3600}
+
+    monkeypatch.setattr(onedrive, "exchange_code_for_tokens", _exchange)
     monkeypatch.setattr(onedrive, "fetch_account_email", lambda token: "user@example.com")
 
-    response = client.get("/api/onedrive/auth/callback?code=abc123", follow_redirects=False)
+    state = _start(client)
+    expected_verifier = client.cookies.get("onedrive_oauth").strip('"').partition(".")[2]
+    response = client.get(f"/api/onedrive/auth/callback?code=abc123&state={state}", follow_redirects=False)
     assert response.status_code in (302, 307)
     assert "onedrive=connected" in response.headers["location"]
 
@@ -336,6 +358,7 @@ def test_auth_callback_success(client, monkeypatch):
     data = settings_response.json()
     assert data["connected"] is True
     assert data["account_email"] == "user@example.com"
+    assert verifiers == [expected_verifier]
 
 
 def test_auth_callback_error_param_redirects_with_error(client):
@@ -345,11 +368,44 @@ def test_auth_callback_error_param_redirects_with_error(client):
 
 
 def test_auth_callback_token_exchange_failure_redirects_with_error(client, monkeypatch):
-    def _boom(code):
+    def _boom(code, code_verifier):
         raise onedrive.OneDriveError("bad code")
 
     monkeypatch.setattr(onedrive, "exchange_code_for_tokens", _boom)
 
-    response = client.get("/api/onedrive/auth/callback?code=bad", follow_redirects=False)
+    state = _start(client)
+    response = client.get(f"/api/onedrive/auth/callback?code=bad&state={state}", follow_redirects=False)
     assert response.status_code in (302, 307)
+    assert "onedrive=error" in response.headers["location"]
+
+
+def _never_exchange(monkeypatch):
+    def _fail(code, code_verifier):
+        raise AssertionError("must not exchange a code the browser did not ask for")
+
+    monkeypatch.setattr(onedrive, "exchange_code_for_tokens", _fail)
+
+
+def test_auth_callback_without_started_flow_is_refused(client, monkeypatch):
+    """A crafted link carrying someone else's code, opened by a browser that
+    never started a connection, must not connect anything."""
+    _never_exchange(monkeypatch)
+    response = client.get("/api/onedrive/auth/callback?code=attacker&state=whatever", follow_redirects=False)
+    assert response.status_code in (302, 307)
+    assert "onedrive=error" in response.headers["location"]
+    assert client.get("/api/onedrive/settings").json()["connected"] is False
+
+
+def test_auth_callback_with_mismatched_state_is_refused(client, monkeypatch):
+    _never_exchange(monkeypatch)
+    _start(client)
+    response = client.get("/api/onedrive/auth/callback?code=attacker&state=forged", follow_redirects=False)
+    assert "onedrive=error" in response.headers["location"]
+    assert client.get("/api/onedrive/settings").json()["connected"] is False
+
+
+def test_auth_callback_without_state_is_refused(client, monkeypatch):
+    _never_exchange(monkeypatch)
+    _start(client)
+    response = client.get("/api/onedrive/auth/callback?code=attacker", follow_redirects=False)
     assert "onedrive=error" in response.headers["location"]
