@@ -213,7 +213,9 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
           const blob = new Blob([buildCsv(headers, rows)], { type: 'text/csv;charset=utf-8;' })
           downloadBlob(blob, `myfinance-transactions-${timestamp}.csv`)
         } else {
-          const blob = await buildXlsxBlob(headers, rows)
+          const blob = await buildXlsxBlob(headers, rows, {
+            Date: 'dd/mm/yyyy', 'Accounting Month': 'mm/yyyy',
+          })
           downloadBlob(blob, `myfinance-transactions-${timestamp}.xlsx`)
         }
       })

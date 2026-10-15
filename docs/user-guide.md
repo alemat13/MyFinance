@@ -309,6 +309,10 @@ in the page's user switcher:
   formula as **Balance** above (their share minus what their account ownership
   already covers).
 
+In the Excel file, **Date** and **Accounting Month** are real Excel dates (shown as
+`dd/mm/yyyy` and `mm/yyyy`), so you can sort, filter and group by them, and amounts
+are real numbers. The CSV keeps them as `YYYY-MM-DD` / `YYYY-MM` text.
+
 ### Adding or editing a transaction
 
 Clicking **+ New Transaction** or an existing row both open the same panel. The form
