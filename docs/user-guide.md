@@ -961,6 +961,12 @@ Two charts are shown:
   clicking "Overview" in it returns to the top-level view.
 - **Net income per month** — green income bars and red expense bars per month, plus a
   black line tracing the net (income minus expense) per month.
+  Under the chart, a summary table lists each month's income, expense and net (plus an
+  Uncategorized column when some month has uncategorized transactions), with an
+  **Average** row at the bottom. The average is taken over every month of the range, a
+  month with no transactions counting as zero. 🏅 marks the month with the best net and
+  🔻 the one with the worst (no marker when every month's net is the same). On a phone the
+  table rounds to whole units so every column fits.
 
 ## Admin mode
 
