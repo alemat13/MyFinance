@@ -84,3 +84,29 @@ def test_invalidate_all_clears_every_namespace(db):
     db.commit()
 
     assert db.query(AggregateCache).count() == 0
+
+
+
+def test_get_or_compute_survives_concurrent_miss(db):
+    """Another request storing the same key between our lookup and our write
+    (two parallel GET /api/accounts) must not turn this read into a 409."""
+    from sqlalchemy import event
+
+    from tests.conftest import TestingSessionLocal
+
+    fired = []
+
+    def other_request_stores_it_first(session, flush_context, instances):
+        if fired:
+            return
+        fired.append(1)
+        other = TestingSessionLocal()
+        other.add(AggregateCache(cache_key="account_totals", namespace="account_totals", payload="[1]"))
+        other.commit()
+        other.close()
+
+    event.listen(db, "before_flush", other_request_stores_it_first)
+
+    assert cache_service.get_or_compute(db, "account_totals", {}, lambda: [1]) == [1]
+    event.remove(db, "before_flush", other_request_stores_it_first)
+    assert db.query(AggregateCache).count() == 1
