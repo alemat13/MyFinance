@@ -17,6 +17,7 @@ aggregation never requires touching this file.
 import json
 from typing import Any, Callable
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from models import AggregateCache
@@ -41,7 +42,14 @@ def get_or_compute(db: Session, namespace: str, params: dict[str, Any], compute:
 
     value = compute()
     db.merge(AggregateCache(cache_key=key, namespace=namespace, payload=json.dumps(value)))
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # Two requests missed the same key at once (the Transactions screen
+        # fetches accounts twice in parallel, for instance) and the other one
+        # stored it first. Its payload is the same aggregate, so keep ours and
+        # move on rather than failing a read with a 409.
+        db.rollback()
     return value
 
 
