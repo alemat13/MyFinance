@@ -6,6 +6,7 @@ import {
 import { describeOutcome } from '../utils/rules'
 import { Button, Input, Select, Card, Table, Thead, Tbody, Tr, Th, Td, Badge, StatusMessage, BackButton } from './ui'
 import AccountPicker from './AccountPicker'
+import { formatMoney } from '../utils/currency'
 
 interface Props {
   onBack: () => void
@@ -99,7 +100,8 @@ export default function CsvImportPage({ onBack, selectedUserId }: Props) {
     })
       .then(previewRows => {
         setRows(previewRows)
-        setSkipped(new Set())
+        // Rows already in MyFinance start unticked: they are left out unless re-ticked.
+        setSkipped(new Set(previewRows.filter(r => r.status === 'possible_duplicate').map(r => r.row_number)))
         setRowCategoryOverride({})
         setRowAccountOverride({})
         setRulesOn(true)
@@ -133,12 +135,24 @@ export default function CsvImportPage({ onBack, selectedUserId }: Props) {
 
   const effectiveStatus = (row: ImportPreviewRow) => {
     if (row.status === 'error') return 'error'
-    if (!resolvedCategoryId(row)) return 'needs_category'
     if (row.status === 'possible_duplicate') return 'possible_duplicate'
+    if (!resolvedCategoryId(row)) return 'needs_category'
     return 'ok'
   }
 
+  const duplicateCount = rows.filter(r => r.status === 'possible_duplicate').length
   const activeRows = rows.filter(r => !skipped.has(r.row_number))
+  // The balance each account would show once the ticked rows are imported,
+  // recomputed as rows are ticked or unticked or moved to another account.
+  const balanceAfterImport = Array.from(new Set(rows.filter(r => r.status !== 'error').map(resolvedAccountId)))
+    .map(id => accounts.find(a => a.id === id))
+    .filter((a): a is Account => a !== undefined)
+    .map(account => {
+      const added = activeRows
+        .filter(r => r.status !== 'error' && resolvedAccountId(r) === account.id)
+        .reduce((sum, r) => sum + (r.amount ?? 0), 0)
+      return { account, added: Math.round(added * 100) / 100, after: Math.round((account.balance + added) * 100) / 100 }
+    })
   const canCommit = activeRows.length > 0 && activeRows.every(r => effectiveStatus(r) !== 'error')
 
   const commit = () => {
@@ -370,6 +384,12 @@ export default function CsvImportPage({ onBack, selectedUserId }: Props) {
               </div>
             </Card>
           )}
+          {duplicateCount > 0 && (
+            <p className="mb-2 text-[13px] text-slate-500 dark:text-slate-400">
+              {duplicateCount} row(s) look like transactions already in MyFinance (same account, date and amount)
+              and are unticked, so they won't be imported. Tick one to import it anyway.
+            </p>
+          )}
           <div className="mb-3">
             <Table>
               <Thead>
@@ -499,6 +519,19 @@ export default function CsvImportPage({ onBack, selectedUserId }: Props) {
               </Tbody>
             </Table>
           </div>
+          {balanceAfterImport.length > 0 && (
+            <Card className="p-3 mb-3 max-w-xl" data-testid="balance-after-import">
+              <div className="text-[13px] font-medium text-slate-700 dark:text-slate-200 mb-1">Balance after import</div>
+              {balanceAfterImport.map(({ account, added, after }) => (
+                <div key={account.id} className="flex flex-wrap gap-x-3 text-[13px] text-slate-600 dark:text-slate-300">
+                  <span className="font-medium">{account.name}</span>
+                  <span>now {formatMoney(account.balance, account.currency)}</span>
+                  <span>{added >= 0 ? '+' : '−'} {formatMoney(Math.abs(added), account.currency)}</span>
+                  <span className="font-semibold">= {formatMoney(after, account.currency)}</span>
+                </div>
+              ))}
+            </Card>
+          )}
           <div className="flex gap-2">
             <Button onClick={commit} disabled={!canCommit || committing}>
               {committing ? 'Importing...' : `Commit ${activeRows.length} transaction(s)`}

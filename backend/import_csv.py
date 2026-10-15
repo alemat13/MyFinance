@@ -3,6 +3,7 @@ import io
 import json
 import logging
 import unicodedata
+from collections import Counter
 from datetime import date, datetime
 from pathlib import Path
 
@@ -172,10 +173,15 @@ def preview_import(db: Session, raw: bytes, data: ImportPreviewRequest) -> list[
     for raw_row in raw_rows:
         resolved_account_ids.add(_resolve_account(raw_row, data, accounts_by_name)[0])
 
-    existing_keys = {
-        (t.account_id, t.date, round(t.amount, 2), t.payee)
-        for t in db.query(Transaction).filter(Transaction.account_id.in_(resolved_account_ids)).all()
-    }
+    # Matched on account, date and amount only: the payee is the user's to rename
+    # (by hand or by a rule), so an already-imported row rarely still carries the
+    # file's wording. Counted rather than a set, so two identical purchases on the
+    # same day are only both flagged when both already exist.
+    existing_counts: Counter[tuple[int | None, date, float]] = Counter(
+        (account_id, row_date, round(amount, 2))
+        for account_id, row_date, amount in db.query(Transaction.account_id, Transaction.date, Transaction.amount)
+        .filter(Transaction.account_id.in_(resolved_account_ids))
+    )
 
     weights_cache: dict[tuple[int | None, int | None], tuple[str | None, dict[int, int]]] = {}
 
@@ -203,11 +209,15 @@ def preview_import(db: Session, raw: bytes, data: ImportPreviewRequest) -> list[
                 # QIF writes a subcategory as "Parent:Child"; MyFinance names are unique on their own.
                 category = categories_by_name.get(raw_category.rsplit(":", 1)[1].strip().lower())
 
+        # A duplicate outranks a missing category: a file without categories (every
+        # QIF) would otherwise never have a duplicate flagged at all.
+        duplicate_key = (account_id, row_date, round(amount, 2))
         status = "ok"
-        if category is None:
-            status = "needs_category"
-        elif (account_id, row_date, round(amount, 2), payee) in existing_keys:
+        if existing_counts[duplicate_key] > 0:
+            existing_counts[duplicate_key] -= 1
             status = "possible_duplicate"
+        elif category is None:
+            status = "needs_category"
 
         preview_split = []
         if category is not None:
