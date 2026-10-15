@@ -314,8 +314,8 @@ in the page's user switcher:
 Clicking **+ New Transaction** or an existing row both open the same panel. The form
 captures:
 
-- **Payee**, and an optional **memo** in a full-width box that wraps long text (drag
-  its corner to make it taller).
+- **Payee** and an optional **memo**, each in a full-width box (the memo wraps long
+  text; drag its corner to make it taller).
 - Its **category** — picking a category is
   optional; leaving it as "Uncategorized" (the default) is a valid, final choice, and
   such transactions display with a gray "Uncategorized" badge instead of a category
