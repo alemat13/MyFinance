@@ -597,8 +597,12 @@ hand. It's a four-step wizard:
    exports' "Nom du compte"), it's auto-detected too — rows are then routed to the
    matching account instead of the single default one.
 3. **Review** — every row is shown with a status badge: **OK**, **Needs category**
-   (non-blocking — it can still be imported without one), **Possible duplicate** (looks
-   like a transaction that already exists), or **Error**. A row whose account name didn't
+   (non-blocking — it can still be imported without one), **Possible duplicate** (a
+   transaction with the same account, date and amount already exists, whatever its payee
+   has since been renamed to; such rows start unticked, so they are left out unless you
+   tick them back), or **Error**. Below the table, **Balance after import** shows, for
+   each account the file's rows go to, its current balance, what the ticked rows add, and
+   the resulting balance; it updates as you tick, untick or move rows. A row whose account name didn't
    match any existing account additionally shows an **Account not matched** notice — it
    falls back to the default account but you can pick the right one from a dropdown. You
    can override the category or account per row, or check a box to skip importing that
