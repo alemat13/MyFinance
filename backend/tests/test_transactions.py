@@ -807,6 +807,13 @@ def test_search_advanced_date_operators(client, db, sample_account, sample_categ
         assert (total == 1) == should_match, f"{operator} {value} expected match={should_match}"
 
 
+def test_search_between_missing_second_bound_is_422_not_500(client):
+    for field, value in (("date", "2026-09-01"), ("amount", 1)):
+        body = {"conditions": [{"field": field, "operator": "between", "value": value}]}
+        response = client.post("/api/transactions/search", json=body)
+        assert response.status_code == 422, (field, response.text)
+
+
 def test_search_match_mode_all_vs_any(client, db, sample_account, sample_category):
     t1 = _make_transaction(db, sample_account, sample_category, payee="Alpha", amount=10.0)
     t2 = _make_transaction(db, sample_account, sample_category, payee="Beta", amount=999.0)
