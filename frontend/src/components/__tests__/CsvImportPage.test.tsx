@@ -22,7 +22,7 @@ vi.mock('../../api/client', () => ({
   commitImport: mockCommitImport,
 }))
 
-const account = { id: 1, name: 'Checking', type: 'Checking', balance: 100, created_at: '', users: [] }
+const account = { id: 1, name: 'Checking', type: 'Checking', balance: 100, currency: 'EUR', created_at: '', users: [] }
 const category = { id: 1, name: 'Groceries', type: 'Expense', splits: [] }
 
 const fullyDetected: ImportDetectResponse = {
@@ -262,6 +262,15 @@ test('possible duplicates start unticked and are left out of the commit', async 
   expect(screen.getByText(/1 row\(s\) look like transactions already in MyFinance/)).toBeInTheDocument()
   const boxes = screen.getAllByRole('checkbox') as HTMLInputElement[]
   expect(boxes.map(b => b.checked)).toEqual([false, true])
+
+  // The account's balance once imported follows what is ticked.
+  const balance = screen.getByTestId('balance-after-import')
+  expect(balance).toHaveTextContent('now €100.00')
+  expect(balance).toHaveTextContent('= €95.00')
+  fireEvent.click(boxes[0])
+  expect(balance).toHaveTextContent('= €52.50')
+  fireEvent.click(boxes[0])
+  expect(balance).toHaveTextContent('= €95.00')
 
   fireEvent.click(screen.getByText(/Commit 1 transaction/))
   await waitFor(() => {
