@@ -99,7 +99,8 @@ export default function CsvImportPage({ onBack, selectedUserId }: Props) {
     })
       .then(previewRows => {
         setRows(previewRows)
-        setSkipped(new Set())
+        // Rows already in MyFinance start unticked: they are left out unless re-ticked.
+        setSkipped(new Set(previewRows.filter(r => r.status === 'possible_duplicate').map(r => r.row_number)))
         setRowCategoryOverride({})
         setRowAccountOverride({})
         setRulesOn(true)
@@ -133,11 +134,12 @@ export default function CsvImportPage({ onBack, selectedUserId }: Props) {
 
   const effectiveStatus = (row: ImportPreviewRow) => {
     if (row.status === 'error') return 'error'
-    if (!resolvedCategoryId(row)) return 'needs_category'
     if (row.status === 'possible_duplicate') return 'possible_duplicate'
+    if (!resolvedCategoryId(row)) return 'needs_category'
     return 'ok'
   }
 
+  const duplicateCount = rows.filter(r => r.status === 'possible_duplicate').length
   const activeRows = rows.filter(r => !skipped.has(r.row_number))
   const canCommit = activeRows.length > 0 && activeRows.every(r => effectiveStatus(r) !== 'error')
 
@@ -369,6 +371,12 @@ export default function CsvImportPage({ onBack, selectedUserId }: Props) {
                 )}
               </div>
             </Card>
+          )}
+          {duplicateCount > 0 && (
+            <p className="mb-2 text-[13px] text-slate-500 dark:text-slate-400">
+              {duplicateCount} row(s) look like transactions already in MyFinance (same account, date and amount)
+              and are unticked, so they won't be imported. Tick one to import it anyway.
+            </p>
           )}
           <div className="mb-3">
             <Table>

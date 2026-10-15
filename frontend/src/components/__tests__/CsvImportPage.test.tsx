@@ -246,6 +246,31 @@ test('commits active rows and shows a success message with a way back', async ()
   expect(onBack).toHaveBeenCalled()
 })
 
+test('possible duplicates start unticked and are left out of the commit', async () => {
+  mockPreviewImport.mockResolvedValue([
+    { row_number: 1, transaction_date: '2026-01-15', payee: 'Whole Foods', memo: null, amount: -42.5, account_id: 1, account_name: null, account_matched: true, category_id: null, category_name: null, status: 'possible_duplicate', error_message: null, preview_split: [] },
+    { row_number: 2, transaction_date: '2026-01-16', payee: 'Bakery', memo: null, amount: -5, account_id: 1, account_name: null, account_matched: true, category_id: 1, category_name: 'Groceries', status: 'ok', error_message: null, preview_split: [] },
+  ])
+  mockCommitImport.mockResolvedValue({ created_count: 1, transaction_ids: [6] })
+
+  await goToConfirm()
+  fireEvent.click(screen.getByText('Preview'))
+
+  await waitFor(() => {
+    expect(screen.getByText('Possible duplicate')).toBeInTheDocument()
+  })
+  expect(screen.getByText(/1 row\(s\) look like transactions already in MyFinance/)).toBeInTheDocument()
+  const boxes = screen.getAllByRole('checkbox') as HTMLInputElement[]
+  expect(boxes.map(b => b.checked)).toEqual([false, true])
+
+  fireEvent.click(screen.getByText(/Commit 1 transaction/))
+  await waitFor(() => {
+    expect(mockCommitImport).toHaveBeenCalledWith([
+      expect.objectContaining({ payee: 'Bakery' }),
+    ], null)
+  })
+})
+
 const SUGGESTION_ROWS = [
   {
     row_number: 1, transaction_date: '2026-01-15', payee: 'Whole Foods', memo: null, amount: -42.5,

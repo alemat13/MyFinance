@@ -424,3 +424,43 @@ def test_import_commit_batches_flush_across_partial_batch(client, sample_account
     assert len(committed) == 5
     for transaction in committed:
         assert len(transaction["splits"]) == 1
+
+
+def test_import_preview_duplicate_ignores_renamed_payee_and_missing_category(client, sample_account, sample_category, db):
+    """A row already imported and since renamed (by hand or a rule) is still a duplicate,
+    and a file without categories (every QIF) still gets its duplicates flagged."""
+    from datetime import date
+    from models import Transaction
+    db.add(Transaction(
+        date=date(2026, 1, 15), payee="Picard [Joint]", amount=-42.50,
+        account_id=sample_account.id, category_id=sample_category.id,
+    ))
+    db.commit()
+
+    text = "Date,Label,Amount\n2026-01-15,PICARD SA 879,-42.50\n2026-01-16,PICARD SA 879,-42.50\n"
+    response = client.post(
+        "/api/import/preview",
+        files=_csv_file(text),
+        data={**PREVIEW_FORM, "account_id": sample_account.id, "category_col": ""},
+    )
+    assert response.status_code == 200
+    rows = response.json()
+    assert [r["status"] for r in rows] == ["possible_duplicate", "needs_category"]
+
+
+def test_import_preview_duplicate_counts_identical_rows(client, sample_account, sample_category, db):
+    """Two identical purchases the same day in the file, one already in MyFinance: only one is a duplicate."""
+    from datetime import date
+    from models import Transaction
+    db.add(Transaction(
+        date=date(2026, 1, 15), payee="Whole Foods", amount=-42.50,
+        account_id=sample_account.id, category_id=sample_category.id,
+    ))
+    db.commit()
+
+    text = "Date,Label,Amount,Category\n2026-01-15,Whole Foods,-42.50,Test Salary\n2026-01-15,Whole Foods,-42.50,Test Salary\n"
+    response = client.post(
+        "/api/import/preview", files=_csv_file(text), data={**PREVIEW_FORM, "account_id": sample_account.id},
+    )
+    assert response.status_code == 200
+    assert [r["status"] for r in response.json()] == ["possible_duplicate", "ok"]
