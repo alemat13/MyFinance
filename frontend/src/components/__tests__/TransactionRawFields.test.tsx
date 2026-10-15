@@ -1,8 +1,14 @@
-import { test, expect } from 'vitest'
-import { screen, fireEvent } from '@testing-library/react'
+import { test, expect, vi } from 'vitest'
+import { screen, fireEvent, waitFor } from '@testing-library/react'
 import { renderWithProviders } from '../../test-utils'
 import TransactionRawFields from '../TransactionRawFields'
 import type { Transaction } from '../../api/client'
+import * as api from '../../api/client'
+
+vi.mock('../../api/client', async importOriginal => ({
+  ...(await importOriginal<typeof import('../../api/client')>()),
+  updateTransactionRawFields: vi.fn(),
+}))
 
 const baseTxn: Transaction = {
   id: 1, date: '2026-01-15', payee: 'Courses de la semaine', memo: null, amount: -42.5,
@@ -108,4 +114,49 @@ test('shows the booking date alongside the purchase date', () => {
 
   expect(screen.getByText('Booking date')).toBeInTheDocument()
   expect(screen.getByText('2026-09-21')).toBeInTheDocument()
+})
+
+test('admin mode shows the section even when empty, with an Edit button', () => {
+  renderWithProviders(<TransactionRawFields transaction={baseTxn} adminMode />)
+  expect(screen.getByRole('button', { name: /As reported by the bank/ })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Edit bank fields' })).toBeInTheDocument()
+})
+
+test('no Edit button outside admin mode', () => {
+  renderWithProviders(<TransactionRawFields transaction={{ ...baseTxn, raw_label: 'LIBELLE' }} />)
+  expect(screen.queryByRole('button', { name: 'Edit bank fields' })).not.toBeInTheDocument()
+})
+
+test('admin edit sends only the changed fields, blank as null', async () => {
+  const saved = { ...baseTxn, raw_label: 'NOUVEAU', raw_counterparty: null, raw_source: 'csv_import' as const }
+  vi.mocked(api.updateTransactionRawFields).mockResolvedValue(saved)
+  const onSaved = vi.fn()
+  renderWithProviders(
+    <TransactionRawFields
+      transaction={{ ...baseTxn, raw_label: 'ANCIEN', raw_counterparty: 'SNCF' }}
+      adminMode
+      actorUserId={7}
+      onSaved={onSaved}
+    />,
+  )
+  fireEvent.click(screen.getByRole('button', { name: 'Edit bank fields' }))
+  fireEvent.change(screen.getByLabelText('Original label'), { target: { value: 'NOUVEAU' } })
+  fireEvent.change(screen.getByLabelText('Counterparty'), { target: { value: '  ' } })
+  fireEvent.change(screen.getByLabelText('Source'), { target: { value: 'csv_import' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Save bank fields' }))
+
+  await waitFor(() => expect(onSaved).toHaveBeenCalledWith(saved))
+  expect(api.updateTransactionRawFields).toHaveBeenCalledWith(
+    1, { raw_source: 'csv_import', raw_label: 'NOUVEAU', raw_counterparty: null }, 7,
+  )
+  expect(screen.queryByRole('button', { name: 'Save bank fields' })).not.toBeInTheDocument()
+})
+
+test('admin edit with nothing changed sends nothing', () => {
+  vi.mocked(api.updateTransactionRawFields).mockClear()
+  renderWithProviders(<TransactionRawFields transaction={{ ...baseTxn, raw_label: 'A' }} adminMode />)
+  fireEvent.click(screen.getByRole('button', { name: 'Edit bank fields' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Save bank fields' }))
+  expect(api.updateTransactionRawFields).not.toHaveBeenCalled()
+  expect(screen.getByRole('button', { name: 'Edit bank fields' })).toBeInTheDocument()
 })

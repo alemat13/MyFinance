@@ -347,7 +347,7 @@ class TransactionHistory(Base):
     # changed_by_user_id (DELETE /api/users/{id} is a real hard delete too).
     transaction_id = Column(Integer, nullable=False, index=True)
     action = Column(String(20), nullable=False)  # 'created' | 'updated' | 'deleted'
-    source = Column(String(20), nullable=True)  # 'manual' | 'csv_import' (created only) | 'divide' (created or updated)
+    source = Column(String(20), nullable=True)  # 'manual' | 'csv_import' (created only) | 'divide' (created or updated) | 'admin' (raw fields edited)
     changed_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     changed_by_user_id = Column(Integer, nullable=True)
 

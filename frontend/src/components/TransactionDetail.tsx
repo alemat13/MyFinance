@@ -55,6 +55,7 @@ const HISTORY_SOURCE_LABELS: Record<string, string> = {
   bank_sync: 'bank sync',
   categorizer: 'auto',
   divide: 'divide',
+  admin: 'admin',
 }
 
 interface SplitSnapshotEntry {
@@ -331,7 +332,17 @@ export default function TransactionDetail({
             </div>
           )}
 
-          {transaction && <TransactionRawFields transaction={transaction} />}
+          {transaction && (
+            <TransactionRawFields
+              transaction={transaction}
+              adminMode={adminMode}
+              actorUserId={selectedUserId}
+              onSaved={saved => {
+                setTransaction(saved)
+                fetchTransactionHistory(saved.id).then(setHistoryEntries).catch(() => {})
+              }}
+            />
+          )}
 
           {transactionId !== null && (
             <div className="pt-2 border-t border-slate-200 dark:border-slate-700">

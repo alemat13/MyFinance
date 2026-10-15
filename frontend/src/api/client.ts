@@ -136,8 +136,9 @@ export interface Transaction {
   accounting_month: string
   reconciled: boolean
   divide_group_id: number | null
-  // What the source reported before any renaming. Read-only everywhere:
-  // there is no matching field on TransactionCreate/TransactionUpdate.
+  // What the source reported before any renaming. No matching field on
+  // TransactionCreate/TransactionUpdate: only admin mode rewrites them, via
+  // updateTransactionRawFields().
   // Optional like category_color/icon above — the API always sends them, but
   // declaring them required would force every fixture and every hand-built
   // Transaction to spell out seven nulls it does not care about.
@@ -528,6 +529,17 @@ export function createTransaction(data: TransactionCreate, actorUserId?: number 
 export function updateTransaction(id: number, data: TransactionUpdate, actorUserId?: number | null): Promise<Transaction> {
   const params = actorUserId ? `?actor_user_id=${actorUserId}` : ''
   return request<Transaction>(`/transactions/${id}${params}`, { method: 'PUT', body: JSON.stringify(data) })
+}
+
+export type TransactionRawFields = Pick<Transaction,
+  'raw_source' | 'raw_label' | 'raw_counterparty' | 'raw_transaction_code' |
+  'raw_merchant_category_code' | 'raw_merchant_location' | 'raw_initiated_date' | 'raw_booking_date'>
+
+/** Admin mode only: rewrites the "As reported by the bank" fields. A key left
+ * out is untouched, null (or a blank string) clears it. */
+export function updateTransactionRawFields(id: number, data: TransactionRawFields, actorUserId?: number | null): Promise<Transaction> {
+  const params = actorUserId ? `?actor_user_id=${actorUserId}` : ''
+  return request<Transaction>(`/transactions/${id}/raw${params}`, { method: 'PUT', body: JSON.stringify(data) })
 }
 
 export function deleteTransaction(id: number, actorUserId?: number | null): Promise<void> {

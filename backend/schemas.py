@@ -288,6 +288,33 @@ class TransactionUpdate(BaseModel):
     split_source: Literal["global", "account", "category", "custom"] | None = None
 
 
+class TransactionRawFieldsUpdate(BaseModel):
+    """Admin-mode edit of a transaction's raw, as-reported fields (the
+    "As reported by the bank" section). Same exclude_unset contract as
+    TransactionUpdate: an omitted key is left untouched, an explicit null (or
+    a blank string) clears it. Lengths mirror the columns, so Postgres never
+    sees a value it would truncate or refuse."""
+    raw_source: Optional[Literal["enable_banking", "csv_import", "linxo_export"]] = None
+    raw_label: Optional[str] = None
+    raw_counterparty: Optional[str] = Field(None, max_length=200)
+    raw_transaction_code: Optional[str] = Field(None, max_length=60)
+    raw_merchant_category_code: Optional[str] = Field(None, max_length=10)
+    raw_merchant_location: Optional[str] = Field(None, max_length=120)
+    raw_initiated_date: Optional[_DateType] = None
+    raw_booking_date: Optional[_DateType] = None
+
+    @field_validator(
+        "raw_label", "raw_counterparty", "raw_transaction_code",
+        "raw_merchant_category_code", "raw_merchant_location", mode="before",
+    )
+    @classmethod
+    def _blank_is_null(cls, value):
+        if isinstance(value, str):
+            value = value.strip()
+            return value or None
+        return value
+
+
 class BulkTransactionUpdate(BaseModel):
     """Same "field omitted vs explicitly null" contract as TransactionUpdate,
     via exclude_unset: only include a key here when its section is meant to be
