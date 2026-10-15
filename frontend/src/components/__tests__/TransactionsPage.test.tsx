@@ -127,7 +127,7 @@ test('groups same-day transactions under one date header, sorted by date by defa
   expect(screen.getAllByText(formatDateGroupHeader('2026-01-14'))).toHaveLength(1)
 })
 
-test('shows error state on fetch failure', async () => {
+test('a failed search shows its error above the list and keeps the filter bar', async () => {
   mockSearchTransactions.mockRejectedValue(new Error('Failed to load'))
   mockFetchAccounts.mockResolvedValue([])
   mockFetchCategories.mockResolvedValue([])
@@ -135,8 +135,11 @@ test('shows error state on fetch failure', async () => {
   renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} onOpenCategorizer={() => {}} />)
 
   await waitFor(() => {
-    expect(screen.getByText('Error: Failed to load')).toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent('Failed to load')
   })
+  // The filter is still there to change or clear.
+  expect(screen.getByRole('button', { name: 'Simple' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Advanced' })).toBeInTheDocument()
 })
 
 test('clicking + New Transaction opens the detail panel in create mode', async () => {

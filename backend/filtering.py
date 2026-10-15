@@ -20,10 +20,21 @@ FIELD_COLUMN_MAP = {
 def _coerce_date(value) -> date:
     if isinstance(value, date):
         return value
+    if value is None or value == "":
+        raise ValueError("a date condition needs a date")
     try:
         return date.fromisoformat(str(value))
     except ValueError:
         raise ValueError(f'invalid date value: {value!r}')
+
+
+def _coerce_number(value) -> float:
+    if value is None or value == "":
+        raise ValueError("a number condition needs a number")
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        raise ValueError(f'invalid number value: {value!r}')
 
 
 def _text_expr(column, condition: FilterCondition):
@@ -43,9 +54,9 @@ def _text_expr(column, condition: FilterCondition):
 
 
 def _numeric_expr(column, condition: FilterCondition):
-    value = float(condition.value)
+    value = _coerce_number(condition.value)
     if condition.operator == "between":
-        value2 = float(condition.value2)
+        value2 = _coerce_number(condition.value2)
         return column.between(min(value, value2), max(value, value2))
     if condition.operator == "eq":
         return column == value

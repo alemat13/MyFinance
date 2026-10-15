@@ -88,19 +88,35 @@ function coerceValue(field: FilterField, value: string): string | number {
 }
 
 const isUserField = (field: FilterField) => USER_FIELDS.includes(field)
+
+/** Whether a value typed into a condition is complete enough to send. A date
+ *  input reports a half-typed year as a real date ("2" of 2026 reads as
+ *  0002-09-01), so a date counts only once its year has four digits from
+ *  1000 on; a number only once it parses. */
+function isCompleteValue(field: FilterField, value: string): boolean {
+  if (value === '') return false
+  if (field === 'date') {
+    const m = /^(\d{4})-\d{2}-\d{2}$/.exec(value)
+    return !!m && parseInt(m[1]) >= 1000 && !Number.isNaN(Date.parse(value))
+  }
+  if (NUMERIC_FIELDS.includes(field)) return !Number.isNaN(parseFloat(value))
+  return true
+}
 // Fields where the user types a number.
 const isNumberInput = (field: FilterField) => field === 'amount' || isUserField(field)
 
-/** Drops the rows the user started but left empty, so a half-typed condition
- *  never narrows a selection behind their back. */
+/** Drops the rows the user started but left empty or half-typed (a "between"
+ *  missing its second bound included), so a condition being typed never
+ *  narrows a selection behind their back nor reaches the API incomplete. */
 export function conditionsToFilters(conditions: ConditionRow[]): FilterCondition[] {
   return conditions
-    .filter(c => c.value !== '' && (!isUserField(c.field) || !!c.userId))
+    .filter(c => isCompleteValue(c.field, c.value) && (!isUserField(c.field) || !!c.userId))
+    .filter(c => c.operator !== 'between' || isCompleteValue(c.field, c.value2))
     .map(c => ({
       field: c.field,
       operator: c.operator,
       value: coerceValue(c.field, c.value),
-      value2: c.operator === 'between' && c.value2 !== '' ? coerceValue(c.field, c.value2) : undefined,
+      value2: c.operator === 'between' ? coerceValue(c.field, c.value2) : undefined,
       ...(isUserField(c.field) ? { user_id: parseInt(c.userId!) } : {}),
     }))
 }

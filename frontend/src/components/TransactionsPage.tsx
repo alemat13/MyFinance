@@ -99,6 +99,9 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
   const [allUsers, setAllUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // A failed search (a filter the server refuses) is shown above the list
+  // rather than in place of the page, so the filter stays there to fix or clear.
+  const [searchError, setSearchError] = useState<string | null>(null)
   const [globalWeights, setGlobalWeights] = useState<GlobalSplitWeight[]>([])
   const [detailTarget, setDetailTarget] = useState<number | 'new' | null>(() => loadInitialInt('transaction', 0) || null)
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
@@ -180,8 +183,16 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
         setTotal(res.total)
         setTotalPages(res.total_pages)
         setSelectedIds(new Set())
+        setSearchError(null)
       })
-      .catch(err => { console.error(err); setError(err.message) })
+      .catch(err => {
+        console.error(err)
+        setTransactions([])
+        setTotal(0)
+        setTotalPages(1)
+        setSelectedIds(new Set())
+        setSearchError(err.message)
+      })
       .finally(() => setLoading(false))
   }
 
@@ -490,6 +501,11 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
       </div>
 
       <StatusMessage loading={loading} />
+      {!loading && searchError && (
+        <p role="alert" className="mb-3 text-sm text-negative">
+          This filter could not be applied ({searchError}). Change or clear it to see transactions again.
+        </p>
+      )}
 
       {!loading && selectedIds.size > 0 && (
         <div className="flex flex-wrap items-center gap-2 mb-2 p-2 rounded-md bg-accent/10 border border-accent/30">

@@ -25,6 +25,23 @@ test('a per-user condition with no user is left out', () => {
   expect(conditionsToFilters([{ field: 'split_share', operator: 'gt', value: '1', value2: '' }])).toEqual([])
 })
 
+test('a half-typed date or a between missing its second bound is left out', () => {
+  const rows: ConditionRow[] = [
+    // A date input reports the "2" of 2026 as year 0002.
+    { field: 'date', operator: 'after', value: '0002-09-01', value2: '' },
+    { field: 'date', operator: 'between', value: '2026-09-01', value2: '' },
+    { field: 'date', operator: 'between', value: '2026-09-01', value2: '0020-09-30' },
+    { field: 'amount', operator: 'between', value: '1', value2: '' },
+    { field: 'amount', operator: 'gt', value: '-', value2: '' },
+  ]
+  expect(conditionsToFilters(rows)).toEqual([])
+  expect(conditionsToFilters([
+    { field: 'date', operator: 'between', value: '2026-09-01', value2: '2026-09-30' },
+  ])).toEqual([
+    { field: 'date', operator: 'between', value: '2026-09-01', value2: '2026-09-30' },
+  ])
+})
+
 test('picking a per-user field preselects the first user and lets another be chosen', () => {
   const onChange = vi.fn()
   const row: ConditionRow = { field: 'payee', operator: 'contains', value: '', value2: '' }
