@@ -265,7 +265,7 @@ def test_import_overwrite_dangling_fk_returns_422_without_wiping_data(client, sa
     response = _post_import(client, zip_bytes, mode="overwrite")
     assert response.status_code == 422
 
-    # Existing data must be untouched since validation runs before drop_all().
+    # Existing data must be untouched since validation runs before any write.
     accounts = client.get("/api/accounts").json()
     assert len(accounts) == 1
     assert accounts[0]["id"] == sample_account.id
@@ -571,3 +571,26 @@ def test_partial_restore_of_a_full_export_appends_a_second_copy(client, db, samp
     assert db.query(Account).filter_by(name=sample_account.name).count() == 2
     assert db.query(Category).count() == 1
     assert db.query(Transaction).count() == 2
+
+
+def test_import_overwrite_failing_mid_restore_keeps_the_existing_data(
+    client, db, sample_account, sample_category, sample_user, sample_user2,
+):
+    """An archive that passes the reference checks but fails on insert (here
+    a duplicate user id) must roll the whole restore back, wipe included —
+    not leave the database empty."""
+    transaction = _seed_full_graph(db, sample_account, sample_category, sample_user, sample_user2)
+    payload = _unzip_payload(client.get("/api/backup/export").content)
+    payload["users"].append(dict(payload["users"][0], name="Duplicate id"))
+
+    response = _post_import(client, _zip_payload(payload), mode="overwrite")
+    assert response.status_code == 409
+
+    db.expire_all()
+    assert db.query(User).count() == 2
+    assert db.query(Account).count() == 1
+    assert db.query(Category).count() == 1
+    assert db.query(Transaction).one().id == transaction.id
+    assert db.query(TransactionSplit).count() == 1
+    assert db.query(TransactionHistory).count() == 1
+    assert db.query(AccountUser).count() == 1

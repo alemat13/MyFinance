@@ -5,6 +5,8 @@ global OneDriveBackupSettings row (see models.py). No restore path here;
 restoring from a downloaded archive still goes through backup.py/the
 existing Import Backup UI only.
 """
+import base64
+import hashlib
 import hmac
 import os
 import re
@@ -66,7 +68,13 @@ def _auth_header(access_token: str) -> dict:
     return {"Authorization": f"Bearer {access_token}"}
 
 
-def build_authorize_url(state: str) -> str:
+def pkce_challenge(code_verifier: str) -> str:
+    """S256 PKCE challenge for `code_verifier` (RFC 7636)."""
+    digest = hashlib.sha256(code_verifier.encode()).digest()
+    return base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
+
+
+def build_authorize_url(state: str, code_verifier: str) -> str:
     params = {
         "client_id": os.environ.get("ONEDRIVE_CLIENT_ID", ""),
         "redirect_uri": os.environ.get("ONEDRIVE_REDIRECT_URI", ""),
@@ -74,6 +82,8 @@ def build_authorize_url(state: str) -> str:
         "response_mode": "query",
         "scope": SCOPE,
         "state": state,
+        "code_challenge": pkce_challenge(code_verifier),
+        "code_challenge_method": "S256",
     }
     return f"{AUTHORIZE_URL}?{urlencode(params)}"
 
@@ -85,13 +95,14 @@ def _token_request(data: dict) -> dict:
     return response.json()
 
 
-def exchange_code_for_tokens(code: str) -> dict:
+def exchange_code_for_tokens(code: str, code_verifier: str) -> dict:
     return _token_request({
         "client_id": os.environ.get("ONEDRIVE_CLIENT_ID", ""),
         "client_secret": os.environ.get("ONEDRIVE_CLIENT_SECRET", ""),
         "redirect_uri": os.environ.get("ONEDRIVE_REDIRECT_URI", ""),
         "grant_type": "authorization_code",
         "code": code,
+        "code_verifier": code_verifier,
         "scope": SCOPE,
     })
 
@@ -115,8 +126,8 @@ def _persist_tokens(db: Session, settings: OneDriveBackupSettings, token_data: d
     db.commit()
 
 
-def complete_connection(db: Session, settings: OneDriveBackupSettings, code: str) -> None:
-    token_data = exchange_code_for_tokens(code)
+def complete_connection(db: Session, settings: OneDriveBackupSettings, code: str, code_verifier: str) -> None:
+    token_data = exchange_code_for_tokens(code, code_verifier)
     _persist_tokens(db, settings, token_data)
     access_token = decrypt_token(settings.access_token_encrypted)
     settings.account_email = fetch_account_email(access_token)
