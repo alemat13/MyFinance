@@ -1,6 +1,7 @@
 import { Account, Category, FilterCondition, FilterField, User } from '../api/client'
 import CategoryPicker from './CategoryPicker'
 import AccountPicker from './AccountPicker'
+import { UNCATEGORIZED_ID } from '../utils/categoryHierarchy'
 import { Button, Select, Input } from './ui'
 
 /** One row of the advanced filter, as the UI holds it: every value a string,
@@ -115,7 +116,8 @@ export function conditionsToFilters(conditions: ConditionRow[]): FilterCondition
     .map(c => ({
       field: c.field,
       operator: c.operator,
-      value: coerceValue(c.field, c.value),
+      // "Uncategorized" is sent as no category at all (IS NULL / IS NOT NULL).
+      value: c.field === 'category_id' && c.value === String(UNCATEGORIZED_ID) ? null : coerceValue(c.field, c.value),
       value2: c.operator === 'between' ? coerceValue(c.field, c.value2) : undefined,
       ...(isUserField(c.field) ? { user_id: parseInt(c.userId!) } : {}),
     }))
@@ -192,7 +194,7 @@ export default function TransactionConditions({
               categories={categories}
               value={c.value ? parseInt(c.value) : null}
               onChange={id => updateValue(i, 'value', id != null ? String(id) : '')}
-              placeholder="Category"
+              anyLabel="Choose category"
               className="min-w-[140px]"
             />
           ) : (

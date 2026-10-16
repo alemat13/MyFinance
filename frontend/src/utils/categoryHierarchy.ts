@@ -5,6 +5,12 @@ import { Category } from '../api/client'
 // income/expense figure.
 export const CATEGORY_TYPES = ['Income', 'Expense', 'Transfer, other'] as const
 
+/** Stands for "no category" where a picker picks a filter value (the simple
+ *  filter, an advanced condition) and null already means "nothing chosen".
+ *  Never sent to the API: the simple filter sends `uncategorized: true`, a
+ *  condition a null value. */
+export const UNCATEGORIZED_ID = -1
+
 export interface CategoryGroup {
   parent: Category
   children: Category[]

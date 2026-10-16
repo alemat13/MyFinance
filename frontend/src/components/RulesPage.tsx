@@ -10,6 +10,7 @@ import TransactionConditions, {
 } from './TransactionConditions'
 import TransactionSplitFields from './TransactionSplitFields'
 import CategoryPicker from './CategoryPicker'
+import { UNCATEGORIZED_ID } from '../utils/categoryHierarchy'
 import { SplitRow } from './SplitEditor'
 import { BackButton, Badge, Button, Card, ConfirmDialog, IconButton, Input, Modal, Select, StatusMessage } from './ui'
 import { useToast } from '../context/ToastContext'
@@ -30,7 +31,7 @@ function toRows(conditions: FilterCondition[]): ConditionRow[] {
   return conditions.map(c => ({
     field: c.field,
     operator: c.operator,
-    value: c.value == null ? '' : String(c.value),
+    value: c.value == null ? (c.field === 'category_id' ? String(UNCATEGORIZED_ID) : '') : String(c.value),
     value2: c.value2 == null ? '' : String(c.value2),
   }))
 }
@@ -39,7 +40,7 @@ function describeCondition(c: FilterCondition, accounts: Account[], categories: 
   const op = OPERATORS_BY_FIELD[c.field].find(o => o.value === c.operator)?.label ?? c.operator
   const show = (v: string | number | null | undefined) => {
     if (c.field === 'account_id') return accounts.find(a => a.id === Number(v))?.name ?? `#${v}`
-    if (c.field === 'category_id') return categories.find(x => x.id === Number(v))?.name ?? `#${v}`
+    if (c.field === 'category_id') return v == null ? 'Uncategorized' : categories.find(x => x.id === Number(v))?.name ?? `#${v}`
     return typeof v === 'string' ? `"${v}"` : String(v)
   }
   return `${FIELD_LABELS[c.field]} ${op} ${show(c.value)}${c.operator === 'between' ? ` and ${show(c.value2)}` : ''}`

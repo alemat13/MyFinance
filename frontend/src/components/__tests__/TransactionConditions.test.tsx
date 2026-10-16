@@ -70,3 +70,9 @@ test('without users the per-user fields are not offered', () => {
   expect(screen.queryByRole('option', { name: 'Share of' })).toBeNull()
   expect(screen.getByRole('option', { name: 'Amount' })).toBeTruthy()
 })
+
+test('a Category is Uncategorized condition is sent with no category', () => {
+  expect(conditionsToFilters([{ field: 'category_id', operator: 'eq', value: '-1', value2: '' }])).toEqual([
+    { field: 'category_id', operator: 'eq', value: null, value2: undefined },
+  ])
+})

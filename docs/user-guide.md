@@ -188,6 +188,11 @@ subcategories shows a count ("N subcategories") and an expand/collapse arrow; cl
 it reveals the subcategories indented underneath, along with a **+ Add subcategory**
 action that opens the New Category form pre-filled with that parent.
 
+Categories are listed most used first, here and in every category dropdown: top-level
+categories by how many transactions they hold (their subcategories' included), and
+under each one its subcategories by their own count. Equal counts fall back to
+alphabetical order.
+
 - **+ New Category** (and Edit) lets you set a name, a type picked from
   **Income**, **Expense** or **Transfer, other** (the Charts page counts only Income and
   Expense; a Transfer, other category stays out of its income and expense figures), an optional **parent category**, a **color** and an
@@ -224,12 +229,14 @@ transactions.
 Two filtering modes are available:
 
 - **Simple filters**: free-text search over payee/memo, a date range, account and
-  category dropdowns, a min/max amount range, and a **Reconciled** filter (Any /
+  category dropdowns (the category one offers **All categories**, the default, and
+  **Uncategorized**, which lists only the transactions with no category), a min/max amount range, and a **Reconciled** filter (Any /
   Reconciled only / Unreconciled only — see [Reconciling transactions](#reconciling-transactions)
   below). **Clear** resets all of these.
 - **Advanced filters**: build arbitrary AND/OR conditions across payee, memo, amount,
   date, account, or category, each with its own operator (contains, equals, between,
-  greater/less than, etc.) — useful for more precise or compound searches than the
+  greater/less than, etc.; "Category is **Uncategorized**" lists the transactions with
+  no category, "Category is not Uncategorized" the ones that have one) — useful for more precise or compound searches than the
   simple filters allow. Reconciled status isn't available as an advanced-mode
   condition; use the simple filter for that. Three conditions read one person's own
   figures on a transaction, picked from a second dropdown: **Split weight of**,

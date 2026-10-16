@@ -119,6 +119,10 @@ def _user_column(field: str, user_id: int):
 
 
 def build_condition_expr(condition: FilterCondition):
+    if condition.field == "category_id" and condition.value is None and condition.operator in ("eq", "ne"):
+        # "Category is / is not" with no category: the uncategorized rows.
+        column = Transaction.category_id
+        return column.is_(None) if condition.operator == "eq" else column.isnot(None)
     if condition.field in USER_FIELDS:
         return _numeric_expr(_user_column(condition.field, condition.user_id), condition)
     column = FIELD_COLUMN_MAP[condition.field]
@@ -175,6 +179,8 @@ def apply_transaction_filters(query, req, db: Session):
         query = query.filter(Transaction.account_id == req.account_id)
     if req.category_id is not None:
         query = query.filter(Transaction.category_id == req.category_id)
+    if req.uncategorized:
+        query = query.filter(Transaction.category_id.is_(None))
     if req.amount_min is not None:
         query = query.filter(Transaction.amount >= req.amount_min)
     if req.amount_max is not None:

@@ -106,7 +106,7 @@ def file_rows(db: Session, transactions: list, *, actor_user_id: int | None = No
             changed += 1
 
     if changed:
-        cache_service.invalidate(db, "balances", "charts", "account_totals")
+        cache_service.invalidate(db, "balances", "charts", "account_totals", "category_usage")
     return changed
 
 
