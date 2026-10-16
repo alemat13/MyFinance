@@ -313,3 +313,26 @@ def test_delete_category_after_removing_subcategories_succeeds(client):
     client.delete(f"/api/categories/{child['id']}")
     response = client.delete(f"/api/categories/{parent['id']}")
     assert response.status_code == 204
+
+
+def test_create_category_accepts_each_fixed_type(client):
+    for i, type_ in enumerate(("Income", "Expense", "Transfer, other")):
+        r = client.post("/api/categories", json={"name": f"Fixed {i}", "type": type_})
+        assert r.status_code == 201, r.text
+        assert r.json()["type"] == type_
+
+
+def test_create_category_free_text_type_422(client):
+    r = client.post("/api/categories", json={"name": "Typo", "type": "income"})
+    assert r.status_code == 422
+
+
+def test_update_category_free_text_type_422(client, sample_category):
+    r = client.put(f"/api/categories/{sample_category.id}", json={"type": "Transfer"})
+    assert r.status_code == 422
+
+
+def test_backup_category_export_maps_unknown_type_to_transfer_other():
+    from schemas import CategoryExport
+    assert CategoryExport(id=1, name="Old", type="Transfer").type == "Transfer, other"
+    assert CategoryExport(id=2, name="Pay", type="Income").type == "Income"

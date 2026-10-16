@@ -65,7 +65,7 @@ test.describe('Categories CRUD', () => {
     // Create top-level category
     await page.getByRole('button', { name: '+ New Category' }).click()
     await page.getByPlaceholder('Name').fill(parentName)
-    await page.getByPlaceholder('Type (Income / Expense / Transfer)').fill('Expense')
+    await page.getByLabel('New category type').selectOption('Expense')
     await page.getByRole('button', { name: 'Save', exact: true }).click()
     await expect(page.locator('tbody tr').filter({ hasText: parentName })).toBeVisible()
 
