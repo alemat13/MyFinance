@@ -9,17 +9,24 @@ payment days after it was made, and an alert keyed on `date` would miss it.
 
 Sending is plain SMTP (smtplib, no new dependency), so any transactional
 email provider works; `SMTP_HOST`/`SMTP_PORT`/`SMTP_USERNAME`/`SMTP_PASSWORD`
-say which, `ALERT_FROM_ADDRESS` is the sender. Like the OneDrive backup and
-the bank sync, nothing runs on a timer here (Cloud Run has no long-lived
-process): Cloud Scheduler calls `POST /api/alerts/run-due` every hour with
-`X-Alerts-Scheduler-Secret`, and `due_frequencies()` decides what is due.
+say which, `ALERT_FROM_ADDRESS` is the sender.
+
+Nothing runs on a timer of its own: alerts ride the bank sync, so an email
+never goes out just before the transactions it should have listed arrive.
+`POST /api/bank-sync/run-due` (Cloud Scheduler, 0h/6h/12h/18h Paris) calls
+`run_quietly(db)` once its links have synced, and `due_frequencies()` decides
+what that call sends: the daily alert once a day (the 6h sync), the weekly
+one on Sunday evening (the 18h sync), the monthly one on the last day of the
+month (the 18h sync). A sync started by hand calls `run_quietly(db,
+manual=True)`, which also sends the daily alert of whoever has something new
+since their last one, whatever the time.
 """
-import hmac
 import html
+import logging
 import os
 import smtplib
 import ssl
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from email.message import EmailMessage
 from email.utils import formataddr, make_msgid
 from zoneinfo import ZoneInfo
@@ -28,11 +35,17 @@ from sqlalchemy.orm import Session, joinedload
 
 from models import AccountUser, EmailAlert, Transaction, User
 
+logger = logging.getLogger(__name__)
+
 FREQUENCIES = ("daily", "weekly", "monthly")
-# Alerts follow the household's own clock: a daily alert is "yesterday's
-# new transactions, in the morning", in Paris whatever Cloud Run's UTC says.
+# Alerts follow the household's own clock, in Paris whatever Cloud Run's UTC
+# says. Each frequency falls due at a boundary: every day at DAILY_AT, every
+# Sunday at PERIOD_END_AT, and the last day of every month at PERIOD_END_AT.
+# Half an hour ahead of the 6h and 18h syncs that should send them, so a
+# scheduler call landing a few seconds early still counts.
 LOCAL_TZ = ZoneInfo("Europe/Paris")
-SEND_HOUR = 7
+DAILY_AT = time(5, 30)
+PERIOD_END_AT = time(17, 30)
 # Period a first alert covers, when that frequency has never been sent.
 FIRST_WINDOW = {"daily": timedelta(days=1), "weekly": timedelta(days=7), "monthly": timedelta(days=31)}
 # An email lists at most this many rows (the most recent first) and counts
@@ -59,13 +72,6 @@ def from_address() -> str:
     return os.environ.get("ALERT_FROM_ADDRESS", "myfinance@olivex.fr")
 
 
-def verify_scheduler_secret(provided: str | None) -> bool:
-    expected = os.environ.get("ALERTS_SCHEDULER_SECRET")
-    if not expected or not provided:
-        return False
-    return hmac.compare_digest(provided, expected)
-
-
 def get_or_create(db: Session, user: User) -> EmailAlert:
     alert = db.get(EmailAlert, user.id)
     if alert is None:
@@ -77,44 +83,53 @@ def get_or_create(db: Session, user: User) -> EmailAlert:
 
 # ── Scheduling ────────────────────────────────────────────────────────
 
-def _period_key(frequency: str, local: datetime) -> tuple:
-    if frequency == "daily":
-        return (local.date(),)
-    if frequency == "weekly":
-        iso = local.isocalendar()
-        return (iso.year, iso.week)
-    return (local.year, local.month)
+def _last_day_of_month(day: date) -> date:
+    following = (day.replace(day=28) + timedelta(days=4)).replace(day=1)
+    return following - timedelta(days=1)
 
 
-def _period_start(frequency: str, local: datetime) -> date:
+def last_boundary(frequency: str, now: datetime) -> datetime:
+    """The latest moment at or before `now` (naive UTC) at which
+    `frequency` fell due, as naive UTC."""
+    local_now = now.replace(tzinfo=timezone.utc).astimezone(LOCAL_TZ)
+    today = local_now.date()
+
+    def at(day: date, hour: time) -> datetime:
+        return datetime.combine(day, hour, LOCAL_TZ)
+
     if frequency == "daily":
-        return local.date()
-    if frequency == "weekly":
-        return local.date() - timedelta(days=local.weekday())
-    return local.date().replace(day=1)
+        boundary = at(today, DAILY_AT)
+        if boundary > local_now:
+            boundary = at(today - timedelta(days=1), DAILY_AT)
+    elif frequency == "weekly":
+        sunday = today - timedelta(days=(today.weekday() + 1) % 7)
+        boundary = at(sunday, PERIOD_END_AT)
+        if boundary > local_now:
+            boundary = at(sunday - timedelta(days=7), PERIOD_END_AT)
+    else:
+        boundary = at(_last_day_of_month(today), PERIOD_END_AT)
+        if boundary > local_now:
+            boundary = at(_last_day_of_month(today.replace(day=1) - timedelta(days=1)), PERIOD_END_AT)
+    return boundary.astimezone(timezone.utc).replace(tzinfo=None)
 
 
 def is_due(frequency: str, last_sent_at: datetime | None, now: datetime) -> bool:
-    """Due once per local day / ISO week / month, from SEND_HOUR on the first
-    day of it (so a weekly alert goes out on Monday morning, a monthly one on
-    the 1st). A call that comes later in the period (the scheduler was down)
-    still sends it, once."""
-    local_now = now.replace(tzinfo=timezone.utc).astimezone(LOCAL_TZ)
-    start = datetime.combine(_period_start(frequency, local_now), datetime.min.time(), LOCAL_TZ)
-    if local_now < start.replace(hour=SEND_HOUR):
-        return False
-    if last_sent_at is None:
-        return True
-    local_last = last_sent_at.replace(tzinfo=timezone.utc).astimezone(LOCAL_TZ)
-    return _period_key(frequency, local_last) != _period_key(frequency, local_now)
+    """Due when a boundary has passed since the last alert of that
+    frequency. A sync that comes later (the scheduler was down) still sends
+    it, once, covering everything since the last one."""
+    return last_sent_at is None or last_sent_at < last_boundary(frequency, now)
 
 
-def due_frequencies(alert: EmailAlert, now: datetime) -> list[str]:
+def due_frequencies(alert: EmailAlert, now: datetime, manual: bool = False) -> list[str]:
+    """`manual` (a sync started by hand) makes the daily alert due whatever
+    the time: that is when the person wants to hear about what just came
+    in. Weekly and monthly keep to their boundaries."""
     if not alert.email:
         return []
     return [
         f for f in FREQUENCIES
-        if getattr(alert, f) and is_due(f, getattr(alert, f"last_{f}_sent_at"), now)
+        if getattr(alert, f)
+        and ((manual and f == "daily") or is_due(f, getattr(alert, f"last_{f}_sent_at"), now))
     ]
 
 
@@ -258,7 +273,7 @@ def send_alert(db: Session, user: User, alert: EmailAlert, frequency: str, now: 
     return sent
 
 
-def run_due_alerts(db: Session, now: datetime | None = None) -> tuple[int, int]:
+def run_due_alerts(db: Session, now: datetime | None = None, manual: bool = False) -> tuple[int, int]:
     """Sends every alert that's due. Returns (emails sent, alerts failed).
     Each user commits on their own, so one bad address can't stop the
     others; a failure leaves that window where it was, for the next call."""
@@ -267,7 +282,7 @@ def run_due_alerts(db: Session, now: datetime | None = None) -> tuple[int, int]:
     failed = 0
     alerts = db.query(EmailAlert).all()
     for alert in alerts:
-        frequencies = due_frequencies(alert, now)
+        frequencies = due_frequencies(alert, now, manual)
         if not frequencies:
             continue
         user = db.get(User, alert.user_id)
@@ -287,6 +302,19 @@ def run_due_alerts(db: Session, now: datetime | None = None) -> tuple[int, int]:
                 failed += 1
             db.commit()
     return sent, failed
+
+
+def run_quietly(db: Session, manual: bool = False) -> None:
+    """For the bank sync: an alert that can't go out must never fail the
+    sync that triggered it, the same rule as the categorizer and the rules.
+    Without SMTP configured there is nothing to try."""
+    if not smtp_configured():
+        return
+    try:
+        run_due_alerts(db, manual=manual)
+    except Exception:
+        db.rollback()
+        logger.exception("Email alerts failed after a bank sync")
 
 
 def send_test(db: Session, user: User, alert: EmailAlert, now: datetime | None = None) -> int:

@@ -1,11 +1,11 @@
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 import email_alerts
 from database import get_db
 from models import User
 from rules import validate_alert_email
-from schemas import EmailAlertOut, EmailAlertRunResult, EmailAlertTestResult, EmailAlertUpdate
+from schemas import EmailAlertOut, EmailAlertTestResult, EmailAlertUpdate
 
 router = APIRouter(prefix="/api/alerts")
 
@@ -63,17 +63,3 @@ def send_test(user_id: int, db: Session = Depends(get_db)):
     except Exception as exc:
         raise HTTPException(502, f"The email could not be sent: {exc}"[:500])
     return EmailAlertTestResult(sent_to=alert.email, transaction_count=count)
-
-
-@router.post("/run-due", response_model=EmailAlertRunResult)
-def run_due(
-    db: Session = Depends(get_db),
-    x_alerts_scheduler_secret: str | None = Header(None, alias="X-Alerts-Scheduler-Secret"),
-):
-    """Called every hour by Cloud Scheduler, not by the app (Cloud Run has
-    no long-lived process to run a timer in); email_alerts.is_due() decides
-    what actually goes out."""
-    if not email_alerts.verify_scheduler_secret(x_alerts_scheduler_secret):
-        raise HTTPException(403, "Invalid scheduler secret")
-    sent, failed = email_alerts.run_due_alerts(db)
-    return EmailAlertRunResult(sent=sent, failed=failed)

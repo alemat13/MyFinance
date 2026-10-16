@@ -903,9 +903,9 @@ On a card:
 
 - **Send to**: the address the alerts go to. It starts as the person's email from the
   Users screen and can be any address.
-- **Daily**: every morning around 7:00 (Paris time), what arrived the day before.
-- **Weekly**: Monday morning, what arrived during the week before.
-- **Monthly**: on the 1st, what arrived during the month before.
+- **Daily**: every morning, right after the 6:00 bank sync, what arrived since the last one. Pressing **Sync now** on the Bank Sync screen also sends it, during the day, to whoever has something new.
+- **Weekly**: Sunday evening, right after the 18:00 bank sync, what arrived during the week.
+- **Monthly**: on the last day of the month, right after the 18:00 bank sync, what arrived during the month.
 
 Tick any combination and press **Save**. A frequency counts from the moment you switch it
 on: the first email only holds what arrives after that, never your whole history. When
@@ -918,8 +918,8 @@ days), so you can check the address and see what it looks like. It doesn't chang
 next real alert goes out. Save your changes first: the button waits until you have.
 
 Under the buttons, each active frequency shows the moment it is counting from. If an
-email couldn't be sent, the reason shows in red and the same alert is tried again an hour
-later. If sending hasn't been set up on the server, a yellow notice says so: the settings
+email couldn't be sent, the reason shows in red and the same alert is tried again with the next
+bank sync. If sending hasn't been set up on the server, a yellow notice says so: the settings
 can still be saved but nothing goes out.
 
 Alert settings are part of a backup and come back with an **Overwrite** restore. Deleting

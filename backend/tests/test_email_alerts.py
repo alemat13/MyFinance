@@ -23,36 +23,48 @@ def _tx(db, account, payee, amount, created_at, day=date(2026, 10, 14)):
 
 # ── Scheduling ────────────────────────────────────────────────────────
 
-# 2026-10-16 is a Friday; Paris is UTC+2 until 25 October.
-FRI_0400_UTC = datetime(2026, 10, 16, 4, 0)   # 06:00 in Paris
+# 2026-10-16 is a Friday; Paris is UTC+2 until 25 October, UTC+1 after.
+# The bank sync runs at 0h/6h/12h/18h Paris.
+FRI_0400_UTC = datetime(2026, 10, 16, 4, 0)   # 06:00 in Paris, the morning sync
 FRI_0500_UTC = datetime(2026, 10, 16, 5, 0)   # 07:00 in Paris
 
 
-def test_daily_waits_for_seven_in_the_morning_paris_time():
-    yesterday = datetime(2026, 10, 15, 5, 0)
-    assert not email_alerts.is_due("daily", yesterday, FRI_0400_UTC)
-    assert email_alerts.is_due("daily", yesterday, FRI_0500_UTC)
+def test_daily_goes_out_with_the_morning_sync_once_a_day():
+    yesterday_morning = datetime(2026, 10, 15, 4, 0)
+    midnight_sync = datetime(2026, 10, 15, 22, 0)   # Friday 00:00 in Paris
+    assert not email_alerts.is_due("daily", yesterday_morning, midnight_sync)
+    assert email_alerts.is_due("daily", yesterday_morning, FRI_0400_UTC)
+    for later_sync in (datetime(2026, 10, 16, 10, 0), datetime(2026, 10, 16, 16, 0)):
+        assert not email_alerts.is_due("daily", FRI_0400_UTC, later_sync)
 
 
-def test_daily_is_sent_once_per_day():
-    assert not email_alerts.is_due("daily", FRI_0500_UTC, FRI_0500_UTC + timedelta(hours=10))
+def test_a_manual_sync_sends_the_daily_alert_whatever_the_time():
+    alert = EmailAlert(user_id=1, email="a@b.fr", daily=True, weekly=True, monthly=True,
+                       last_daily_sent_at=FRI_0400_UTC, last_weekly_sent_at=FRI_0400_UTC,
+                       last_monthly_sent_at=FRI_0400_UTC)
+    noon = datetime(2026, 10, 16, 10, 0)
+    assert email_alerts.due_frequencies(alert, noon) == []
+    assert email_alerts.due_frequencies(alert, noon, manual=True) == ["daily"]
 
 
-def test_weekly_goes_out_on_monday_and_catches_up_later_in_the_week():
-    last_monday = datetime(2026, 10, 12, 5, 0)
-    assert not email_alerts.is_due("weekly", last_monday, FRI_0500_UTC)
-    next_monday = datetime(2026, 10, 19, 5, 0)
-    assert email_alerts.is_due("weekly", last_monday, next_monday)
-    # Scheduler down on Monday: the week's alert still goes out on Tuesday.
-    assert email_alerts.is_due("weekly", last_monday, next_monday + timedelta(days=1))
+def test_weekly_goes_out_with_the_sunday_evening_sync():
+    tuesday = datetime(2026, 10, 13, 8, 0)
+    assert not email_alerts.is_due("weekly", tuesday, datetime(2026, 10, 18, 10, 0))  # Sunday 12:00
+    sunday_evening = datetime(2026, 10, 18, 16, 0)                                    # Sunday 18:00
+    assert email_alerts.is_due("weekly", tuesday, sunday_evening)
+    assert not email_alerts.is_due("weekly", sunday_evening, datetime(2026, 10, 19, 4, 0))
+    # Scheduler down on Sunday evening: the week's alert goes out with the next sync.
+    assert email_alerts.is_due("weekly", tuesday, datetime(2026, 10, 18, 22, 0))
 
 
-def test_monthly_goes_out_on_the_first():
-    sent_oct_1 = datetime(2026, 10, 1, 5, 0)
-    assert not email_alerts.is_due("monthly", sent_oct_1, FRI_0500_UTC)
-    # 1 November 07:00 in Paris is 06:00 UTC (winter time).
-    assert not email_alerts.is_due("monthly", sent_oct_1, datetime(2026, 11, 1, 5, 30))
-    assert email_alerts.is_due("monthly", sent_oct_1, datetime(2026, 11, 1, 6, 0))
+def test_monthly_goes_out_on_the_last_day_evening():
+    early_october = datetime(2026, 10, 2, 8, 0)
+    assert not email_alerts.is_due("monthly", early_october, datetime(2026, 10, 31, 11, 0))  # 31st 12:00
+    # 31 October 18:00 in Paris is 17:00 UTC (winter time since the 25th).
+    assert email_alerts.is_due("monthly", early_october, datetime(2026, 10, 31, 17, 0))
+    assert not email_alerts.is_due("monthly", datetime(2026, 10, 31, 17, 0), datetime(2026, 11, 15, 17, 0))
+    # February: the last day is the 28th.
+    assert email_alerts.is_due("monthly", datetime(2027, 2, 1, 8), datetime(2027, 2, 28, 17, 0))
 
 
 # ── Settings API ──────────────────────────────────────────────────────
@@ -232,13 +244,29 @@ def test_test_email_needs_smtp(client, db, sample_user, monkeypatch):
     assert client.post(f"/api/alerts/users/{sample_user.id}/test").status_code == 503
 
 
-def test_run_due_needs_the_scheduler_secret(client, monkeypatch):
-    monkeypatch.setenv("ALERTS_SCHEDULER_SECRET", "s3cret")
-    assert client.post("/api/alerts/run-due").status_code == 403
-    assert client.post("/api/alerts/run-due", headers={"X-Alerts-Scheduler-Secret": "wrong"}).status_code == 403
-    response = client.post("/api/alerts/run-due", headers={"X-Alerts-Scheduler-Secret": "s3cret"})
+def test_the_scheduled_bank_sync_sends_due_alerts(client, db, sample_user, sample_account_with_user, outbox, monkeypatch):
+    import enable_banking
+    monkeypatch.setenv("BANK_SYNC_SCHEDULER_SECRET", "s3cret")
+    monkeypatch.setattr(enable_banking, "run_due_syncs", lambda db: (0, 0))
+    _tx(db, sample_account_with_user, "Carrefour", -1.0, datetime(2026, 1, 2))
+    db.add(EmailAlert(user_id=sample_user.id, email="me@olivex.fr", daily=True, last_daily_sent_at=datetime(2026, 1, 1)))
+    db.commit()
+    response = client.post("/api/bank-sync/run-due", headers={"X-Bank-Sync-Scheduler-Secret": "s3cret"})
     assert response.status_code == 200
-    assert response.json() == {"sent": 0, "failed": 0}
+    assert [m["Subject"] for m in outbox] == ["MyFinance – 1 new transaction (daily alert)"]
+
+
+def test_a_failing_alert_never_fails_the_sync(client, db, sample_user, monkeypatch):
+    import enable_banking
+    monkeypatch.setenv("SMTP_HOST", "smtp.example.com")
+    monkeypatch.setenv("BANK_SYNC_SCHEDULER_SECRET", "s3cret")
+    monkeypatch.setattr(enable_banking, "run_due_syncs", lambda db: (1, 3))
+    def boom(db, now=None, manual=False):
+        raise RuntimeError("database gone")
+    monkeypatch.setattr(email_alerts, "run_due_alerts", boom)
+    response = client.post("/api/bank-sync/run-due", headers={"X-Bank-Sync-Scheduler-Secret": "s3cret"})
+    assert response.status_code == 200
+    assert response.json()["created_count"] == 3
 
 
 def test_backup_round_trips_alerts(client, db, sample_user):

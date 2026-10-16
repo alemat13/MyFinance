@@ -18,9 +18,9 @@ interface Props {
 }
 
 const FREQUENCIES: { key: AlertFrequency; label: string; hint: string }[] = [
-  { key: 'daily', label: 'Daily', hint: 'Every morning, what arrived the day before' },
-  { key: 'weekly', label: 'Weekly', hint: 'Monday morning, what arrived the week before' },
-  { key: 'monthly', label: 'Monthly', hint: 'On the 1st, what arrived the month before' },
+  { key: 'daily', label: 'Daily', hint: 'After the morning bank sync, and after each Sync now' },
+  { key: 'weekly', label: 'Weekly', hint: 'Sunday evening, what arrived during the week' },
+  { key: 'monthly', label: 'Monthly', hint: 'On the last day of the month, in the evening' },
 ]
 
 function AlertCard({ user, initial }: { user: User; initial: EmailAlert }) {

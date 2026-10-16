@@ -1166,11 +1166,6 @@ class EmailAlertTestResult(BaseModel):
     transaction_count: int
 
 
-class EmailAlertRunResult(BaseModel):
-    sent: int
-    failed: int
-
-
 class EmailAlertExport(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
