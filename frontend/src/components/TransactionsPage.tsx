@@ -18,6 +18,7 @@ import SavedFilters, { CurrentFilter } from './SavedFilters'
 import { Button, IconButton, Input, Select, Table, Thead, Tbody, Tr, Th, Td, StatusMessage, CategoryBadge, BackButton, ConfirmDialog, Card } from './ui'
 import { formatMoney } from '../utils/currency'
 import { getParam, patchQueryParams } from '../utils/urlState'
+import { UNCATEGORIZED_ID } from '../utils/categoryHierarchy'
 import { isAdminMode } from '../utils/admin'
 import { RuleDraft, simpleFiltersToConditions } from '../utils/rules'
 import { myShareFor, balanceFor, formatDateGroupHeader } from '../utils/transactions'
@@ -168,7 +169,8 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
       date_from: dateFrom || undefined,
       date_to: dateTo || undefined,
       account_id: filterAccountId || undefined,
-      category_id: filterCategoryId || undefined,
+      category_id: filterCategoryId > 0 ? filterCategoryId : undefined,
+      uncategorized: filterCategoryId === UNCATEGORIZED_ID || undefined,
       amount_min: amountMin !== '' ? parseFloat(amountMin) : undefined,
       amount_max: amountMax !== '' ? parseFloat(amountMax) : undefined,
       reconciled: filterReconciled === '' ? undefined : filterReconciled === 'true',
@@ -471,7 +473,7 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
               categories={categories}
               value={filterCategoryId || null}
               onChange={id => { setFilterCategoryId(id ?? 0); setPage(1) }}
-              placeholder="Category"
+              anyLabel="All categories"
               className="min-w-[140px]"
             />
             <Input placeholder="Min amount" type="number" step="0.01" value={amountMin} onChange={e => { setAmountMin(e.target.value); setPage(1) }} className="w-[110px]" />

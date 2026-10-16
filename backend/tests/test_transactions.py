@@ -995,3 +995,23 @@ def test_search_filtered_by_user_no_match(client, sample_user):
     response = client.post("/api/transactions/search", json={"user_id": sample_user.id})
     assert response.status_code == 200
     assert response.json()["total"] == 0
+
+
+def test_search_simple_uncategorized(client, db, sample_account, sample_category):
+    _make_transaction(db, sample_account, sample_category, payee="Filed")
+    _make_transaction(db, sample_account, sample_category, payee="Loose", category_id=None)
+
+    data = client.post("/api/transactions/search", json={"uncategorized": True}).json()
+    assert [t["payee"] for t in data["items"]] == ["Loose"]
+
+
+def test_search_advanced_category_is_none(client, db, sample_account, sample_category):
+    _make_transaction(db, sample_account, sample_category, payee="Filed")
+    _make_transaction(db, sample_account, sample_category, payee="Loose", category_id=None)
+
+    def payees(operator):
+        body = {"conditions": [{"field": "category_id", "operator": operator, "value": None}]}
+        return [t["payee"] for t in client.post("/api/transactions/search", json=body).json()["items"]]
+
+    assert payees("eq") == ["Loose"]
+    assert payees("ne") == ["Filed"]

@@ -147,6 +147,9 @@ def test_operators_mirror_the_filter(db, sample_account):
     # As in SQL, a condition on an empty field never matches, not even "is not".
     assert not match(field="memo", operator="not_equals", value="x")
     assert not match(field="category_id", operator="ne", value=1)
+    # No category named: "is" matches an uncategorized row, "is not" a filed one.
+    assert match(field="category_id", operator="eq", value=None)
+    assert not match(field="category_id", operator="ne", value=None)
 
 
 def test_match_mode_any_and_all(db, sample_account):

@@ -283,7 +283,7 @@ def apply(req: CategorizerApplyRequest, actor_user_id: int | None = Query(None),
             updated_ids.append(transaction.id)
 
     if updated_ids:
-        cache_service.invalidate(db, "balances", "charts", "account_totals")
+        cache_service.invalidate(db, "balances", "charts", "account_totals", "category_usage")
     db.commit()
     return CategorizerApplyResponse(
         updated_count=len(updated_ids),

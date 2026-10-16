@@ -95,6 +95,10 @@ def _coerce_date(value) -> date:
 
 def _matches(condition: FilterCondition, state: dict) -> bool:
     current = state.get(condition.field)
+    if condition.field == "category_id" and condition.value is None and condition.operator in ("eq", "ne"):
+        # Mirrors filtering.build_condition_expr(): no category named means
+        # "is uncategorized" / "has a category".
+        return (current is None) == (condition.operator == "eq")
     if current is None:
         return False
     op = condition.operator
@@ -315,7 +319,7 @@ def apply_to(db: Session, transactions: list[Transaction], rules: list[Transacti
         if write(db, transaction, outcome, actor_user_id, fresh=fresh):
             changed.append(transaction.id)
     if changed:
-        cache_service.invalidate(db, "balances", "charts", "account_totals")
+        cache_service.invalidate(db, "balances", "charts", "account_totals", "category_usage")
     return changed
 
 
@@ -341,5 +345,5 @@ def apply_quietly(db: Session, transactions: list[Transaction], *, fresh: bool =
         if write(db, transaction, outcome, None, fresh=fresh):
             changed += 1
     if changed:
-        cache_service.invalidate(db, "balances", "charts", "account_totals")
+        cache_service.invalidate(db, "balances", "charts", "account_totals", "category_usage")
     return changed
