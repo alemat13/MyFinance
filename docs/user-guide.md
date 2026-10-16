@@ -188,8 +188,9 @@ subcategories shows a count ("N subcategories") and an expand/collapse arrow; cl
 it reveals the subcategories indented underneath, along with a **+ Add subcategory**
 action that opens the New Category form pre-filled with that parent.
 
-- **+ New Category** (and Edit) lets you set a name, a type (free text — commonly
-  Income, Expense, or Transfer), an optional **parent category**, a **color** and an
+- **+ New Category** (and Edit) lets you set a name, a type picked from
+  **Income**, **Expense** or **Transfer, other** (the Charts page counts only Income and
+  Expense; a Transfer, other category stays out of its income and expense figures), an optional **parent category**, a **color** and an
   **icon** (pick from a curated set of finance-themed icons), and an optional
   **default split weight**: a set of per-user integer weights used to prefill the
   split on any new transaction in this category — this is the middle of the three

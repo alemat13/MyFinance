@@ -43,7 +43,7 @@ def test_charts_only_counts_current_user_share(client, sample_account, sample_ca
 
 
 def test_charts_excludes_transfer_category(client, sample_account, sample_user, db):
-    transfer_cat = Category(name="Transfer Cat", type="Transfer")
+    transfer_cat = Category(name="Transfer Cat", type="Transfer, other")
     db.add(transfer_cat)
     db.commit()
     t = Transaction(
@@ -423,7 +423,7 @@ def test_charts_by_month_category_excludes_income(client, sample_account, sample
 
 
 def test_charts_by_month_category_excludes_transfer(client, sample_account, sample_user, db):
-    transfer_cat = Category(name="Transfer Cat 2", type="Transfer")
+    transfer_cat = Category(name="Transfer Cat 2", type="Transfer, other")
     db.add(transfer_cat)
     db.commit()
     _add_split(db, sample_account, transfer_cat.id, -200.0, sample_user)

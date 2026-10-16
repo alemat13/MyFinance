@@ -11,7 +11,7 @@ import {
   Button, Input, Select, Table, Thead, Tbody, Tr, Th, Td, StatusMessage, ConfirmDialog,
   CategoryBadge, IconPicker, ColorPicker, BackButton,
 } from './ui'
-import { groupCategoriesByParent, isValidParentCandidate } from '../utils/categoryHierarchy'
+import { CATEGORY_TYPES, groupCategoriesByParent, isValidParentCandidate } from '../utils/categoryHierarchy'
 
 interface Props {
   onBack: () => void
@@ -101,11 +101,14 @@ export default function CategoriesList({ onBack }: Props) {
             </Td>
             <Td>
               <div className="flex flex-col gap-1">
-                <Input
+                <Select
+                  aria-label="Category type"
                   value={editData.type ?? ''}
                   disabled={typeLocked}
                   onChange={e => setEditData({ ...editData, type: e.target.value })}
-                />
+                >
+                  {CATEGORY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                </Select>
                 <Select
                   value={editData.parent_id ?? 0}
                   disabled={editingHasChildren}
@@ -207,12 +210,15 @@ export default function CategoriesList({ onBack }: Props) {
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
             </Select>
-            <Input
-              placeholder="Type (Income / Expense / Transfer)"
+            <Select
+              aria-label="New category type"
               value={newData.type}
               disabled={!!newData.parent_id}
               onChange={e => setNewData({ ...newData, type: e.target.value })}
-            />
+            >
+              <option value="" disabled>Type…</option>
+              {CATEGORY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+            </Select>
             <Button onClick={saveNew}>Save</Button>
             <Button variant="secondary" onClick={cancelNew}>Cancel</Button>
           </div>
