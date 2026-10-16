@@ -13,3 +13,6 @@ pyjwt==2.15.1
 # lazily there: it costs over a second to import, and almost no request needs
 # it. Pulls scipy/numpy, ~205 MB in the image — the real price of the feature.
 scikit-learn==1.9.1
+# Europe/Paris for the email alerts schedule (email_alerts.py): slim images may
+# ship without the system zoneinfo database.
+tzdata==2025.2

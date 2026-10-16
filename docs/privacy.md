@@ -36,13 +36,15 @@ automatisée, pas d'analyse comportementale.
 ## Avec qui elles sont partagées
 
 Avec personne. Les données ne sont ni vendues, ni louées, ni transmises à des
-tiers. Trois prestataires techniques interviennent, et uniquement à ce titre :
+tiers. Quatre prestataires techniques interviennent, et uniquement à ce titre :
 
 - **Enable Banking**, prestataire agréé d'agrégation de comptes (DSP2), qui
   transmet les données bancaires à l'application.
 - **Google Cloud**, qui héberge l'application et sa base de données.
 - **Microsoft OneDrive**, si la sauvegarde automatique est activée, pour stocker
   une archive chiffrée de la base dans l'espace personnel du propriétaire.
+- **Brevo** (ou le service d'envoi d'emails configuré), si un utilisateur active
+  les alertes par email, pour lui envoyer la liste de ses nouvelles transactions.
 
 ## Où elles sont stockées, et combien de temps
 
