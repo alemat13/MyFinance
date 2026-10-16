@@ -64,7 +64,7 @@ test('can open and submit new category form', async () => {
   fireEvent.click(screen.getByText('+ New Category'))
 
   fireEvent.change(screen.getByPlaceholderText('Name'), { target: { value: 'Food' } })
-  fireEvent.change(screen.getByPlaceholderText('Type (Income / Expense / Transfer)'), { target: { value: 'Expense' } })
+  fireEvent.change(screen.getByLabelText('New category type'), { target: { value: 'Expense' } })
 
   fireEvent.click(screen.getByText('Save'))
 
@@ -146,7 +146,7 @@ test('can add a default split weight row and submit', async () => {
 
   fireEvent.click(screen.getByText('+ New Category'))
   fireEvent.change(screen.getByPlaceholderText('Name'), { target: { value: 'Mortgage' } })
-  fireEvent.change(screen.getByPlaceholderText('Type (Income / Expense / Transfer)'), { target: { value: 'Expense' } })
+  fireEvent.change(screen.getByLabelText('New category type'), { target: { value: 'Expense' } })
 
   fireEvent.click(screen.getByRole('button', { name: 'Add user' }))
   const weightInput = screen.getByDisplayValue('0')
@@ -175,7 +175,7 @@ test('allows a default split weight that does not sum to any target', async () =
 
   fireEvent.click(screen.getByText('+ New Category'))
   fireEvent.change(screen.getByPlaceholderText('Name'), { target: { value: 'Mortgage' } })
-  fireEvent.change(screen.getByPlaceholderText('Type (Income / Expense / Transfer)'), { target: { value: 'Expense' } })
+  fireEvent.change(screen.getByLabelText('New category type'), { target: { value: 'Expense' } })
 
   fireEvent.click(screen.getByRole('button', { name: 'Add user' }))
   fireEvent.change(screen.getByDisplayValue('0'), { target: { value: '30' } })
@@ -201,7 +201,7 @@ test('rejects a default split weight with all-zero weights', async () => {
 
   fireEvent.click(screen.getByText('+ New Category'))
   fireEvent.change(screen.getByPlaceholderText('Name'), { target: { value: 'Mortgage' } })
-  fireEvent.change(screen.getByPlaceholderText('Type (Income / Expense / Transfer)'), { target: { value: 'Expense' } })
+  fireEvent.change(screen.getByLabelText('New category type'), { target: { value: 'Expense' } })
 
   fireEvent.click(screen.getByRole('button', { name: 'Add user' }))
   fireEvent.click(screen.getByText('Save'))
@@ -221,7 +221,7 @@ test('rejects a default split weight with a negative weight', async () => {
 
   fireEvent.click(screen.getByText('+ New Category'))
   fireEvent.change(screen.getByPlaceholderText('Name'), { target: { value: 'Mortgage' } })
-  fireEvent.change(screen.getByPlaceholderText('Type (Income / Expense / Transfer)'), { target: { value: 'Expense' } })
+  fireEvent.change(screen.getByLabelText('New category type'), { target: { value: 'Expense' } })
 
   fireEvent.click(screen.getByRole('button', { name: 'Add user' }))
   fireEvent.change(screen.getByDisplayValue('0'), { target: { value: '-5' } })
@@ -275,7 +275,7 @@ test('clicking + Add subcategory prefills the parent and locks the type', async 
   fireEvent.click(screen.getByTitle('Expand'))
   fireEvent.click(screen.getByText('+ Add subcategory'))
 
-  const typeInput = screen.getByPlaceholderText('Type (Income / Expense / Transfer)')
+  const typeInput = screen.getByLabelText('New category type')
   expect(typeInput).toHaveValue('Expense')
   expect(typeInput).toBeDisabled()
 

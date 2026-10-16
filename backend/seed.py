@@ -45,7 +45,7 @@ def seed():
         Category(name="Groceries", type="Expense", color="#d97706", icon="ShoppingCart"),
         Category(name="Dining Out", type="Expense", color="#ea580c", icon="Utensils"),
         Category(name="Utilities", type="Expense", color="#4f46e5", icon="Tv"),
-        Category(name="Transfer", type="Transfer", color="#64748b", icon="ArrowLeftRight"),
+        Category(name="Transfer", type="Transfer, other", color="#64748b", icon="ArrowLeftRight"),
     ]
     session.add_all(categories)
     session.flush()

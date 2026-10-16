@@ -1,5 +1,10 @@
 import { Category } from '../api/client'
 
+// The only category types the backend accepts (schemas.CATEGORY_TYPES). Charts
+// count `Income` and `Expense`; `Transfer, other` stays out of every
+// income/expense figure.
+export const CATEGORY_TYPES = ['Income', 'Expense', 'Transfer, other'] as const
+
 export interface CategoryGroup {
   parent: Category
   children: Category[]

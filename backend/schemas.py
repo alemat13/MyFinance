@@ -159,9 +159,21 @@ class CategoryOut(BaseModel):
     splits: list[CategorySplitOut] = []
 
 
+# The only category types accepted. Charts count Income and Expense; anything
+# filed under "Transfer, other" stays out of every income/expense figure.
+# Alembic 0020 moved every older free-text value onto this list.
+CATEGORY_TYPES = ("Income", "Expense", "Transfer, other")
+CategoryType = Literal["Income", "Expense", "Transfer, other"]
+
+
+def normalize_category_type(value):
+    """Maps a type outside CATEGORY_TYPES onto the last one, as Alembic 0020 did."""
+    return value if value in CATEGORY_TYPES else CATEGORY_TYPES[-1]
+
+
 class CategoryCreate(BaseModel):
     name: str
-    type: str
+    type: CategoryType
     color: str | None = None
     icon: str | None = None
     parent_id: int | None = None
@@ -180,7 +192,7 @@ class CategoryCreate(BaseModel):
 
 class CategoryUpdate(BaseModel):
     name: Optional[str] = None
-    type: Optional[str] = None
+    type: Optional[CategoryType] = None
     color: Optional[str] = None
     icon: Optional[str] = None
     parent_id: int | None = None
@@ -896,6 +908,12 @@ class CategoryExport(BaseModel):
     color: str | None = None
     icon: str | None = None
     parent_id: int | None = None
+
+    @field_validator("type")
+    @classmethod
+    def _normalize_type(cls, value: str) -> str:
+        # An archive written before Alembic 0020 can carry a free-text type.
+        return normalize_category_type(value)
 
 
 class AccountUserExport(BaseModel):

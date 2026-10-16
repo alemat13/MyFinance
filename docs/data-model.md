@@ -132,7 +132,7 @@ Financial accounts (checking, savings, credit card, etc.).
 |--------|------|-------|
 | `id` | Integer | Primary key, autoincrement |
 | `name` | String(100) | Required |
-| `type` | String(50) | Required |
+| `type` | String(50) | Required. One of `Income`, `Expense`, `Transfer, other` (`schemas.CATEGORY_TYPES`, enforced by the API, not the DB; Alembic `0020` moved any older free-text value to `Transfer, other`, and a backup archive's unknown type is mapped the same way on restore). Charts count only `Income` and `Expense` |
 | `balance_offset` | Float | Default: 0.0. **Internal** — never exposed by the API. The balance a client sees is `balance_offset + sum(that account's transaction amounts)`, so it tracks activity instead of staying frozen. When a user enters a balance (on create, or by editing the Balance field), the backend stores `entered balance − current transaction total` here, so the account shows exactly what they typed until its next transaction |
 | `currency` | String(3) | ISO 4217 code, e.g. `EUR`, `USD`. Default: `EUR` |
 | `created_at` | DateTime | Default: current UTC time |
