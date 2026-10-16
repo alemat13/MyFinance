@@ -15,7 +15,7 @@ from models import (
     Account, Category, Transaction, User, AccountUser,
     CategorySplit, GlobalSplitWeight, AccountSplitWeight, TransactionSplit, TransactionHistory,
     BankConnection, BankAccountLink, CategorizerModel, OneDriveBackupSettings, TransactionRule,
-    SavedFilter,
+    SavedFilter, EmailAlert,
 )
 from schemas import (
     DatabaseExport, ImportSummary,
@@ -23,7 +23,7 @@ from schemas import (
     CategorySplitExport, GlobalSplitWeightExport, AccountSplitWeightExport, TransactionExport,
     TransactionSplitExport, TransactionHistoryExport,
     BankConnectionExport, BankAccountLinkExport, TransactionRuleExport,
-    SavedFilterExport,
+    SavedFilterExport, EmailAlertExport,
 )
 
 SCHEMA_VERSION = 1
@@ -90,6 +90,7 @@ def build_export(db: Session) -> DatabaseExport:
         bank_account_links=[BankAccountLinkExport.model_validate(l) for l in db.query(BankAccountLink).all()],
         transaction_rules=[TransactionRuleExport.model_validate(r) for r in db.query(TransactionRule).all()],
         saved_filters=[SavedFilterExport.model_validate(f) for f in db.query(SavedFilter).all()],
+        email_alerts=[EmailAlertExport.model_validate(a) for a in db.query(EmailAlert).all()],
     )
 
 
@@ -168,6 +169,8 @@ def _validate_referential_integrity(data: DatabaseExport) -> None:
         _check("bank_account_links.connection_id", link.connection_id, connection_ids)
         if link.account_id is not None:
             _check("bank_account_links.account_id", link.account_id, account_ids)
+    for alert in data.email_alerts or []:
+        _check("email_alerts.user_id", alert.user_id, user_ids)
 
 
 def _reset_postgres_sequences(bind) -> None:
@@ -244,6 +247,8 @@ def import_database(db: Session, data: DatabaseExport, mode: Literal["overwrite"
         )
         saved_filters = data.saved_filters or []
         session.add_all(SavedFilter(**f.model_dump(exclude_none=True)) for f in saved_filters)
+        email_alerts = data.email_alerts or []
+        session.add_all(EmailAlert(**a.model_dump()) for a in email_alerts)
         # Bulk restore bypasses every per-site invalidation by design. A no-op
         # here in practice (the wipe above already emptied the table), kept so
         # the restore stays correct if that ever changes.
@@ -274,6 +279,7 @@ def import_database(db: Session, data: DatabaseExport, mode: Literal["overwrite"
         bank_account_links=len(bank_account_links),
         transaction_rules=len(transaction_rules),
         saved_filters=len(saved_filters),
+        email_alerts=len(email_alerts),
     )
 
 

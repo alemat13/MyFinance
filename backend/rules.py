@@ -104,6 +104,18 @@ def validate_not_divide_sibling(transaction) -> None:
         raise RuleViolation("This transaction is already part of a divided transaction; edit or divide the original part instead")
 
 
+def validate_alert_email(email: str | None, any_frequency_on: bool) -> None:
+    """An alert needs somewhere to go. A deliberately loose check (one @, a
+    dot in the domain, no spaces): the real test is the test email."""
+    if email is None:
+        if any_frequency_on:
+            raise RuleViolation("Enter the email address the alerts should go to")
+        return
+    local, at, domain = email.partition("@")
+    if not at or not local or "." not in domain or "@" in domain or any(c.isspace() for c in email) or len(email) > 200:
+        raise RuleViolation("This is not a valid email address")
+
+
 def validate_onedrive_folder_path(folder_path: str) -> None:
     if not folder_path or not folder_path.strip():
         raise RuleViolation("Folder path cannot be empty")

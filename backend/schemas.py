@@ -1098,6 +1098,10 @@ class DatabaseExport(BaseModel):
     # as the rules (they name account and category ids). `None` is an archive
     # from before saved filters.
     saved_filters: list[SavedFilterExport] | None = None
+    # Each user's email alert settings, same overwrite-only contract (a
+    # partial restore doesn't recreate users). `None` is an archive from
+    # before email alerts.
+    email_alerts: list["EmailAlertExport"] | None = None
 
 
 # ── OneDrive automatic backup connection ──────────────────────────
@@ -1132,6 +1136,52 @@ class OneDriveBackupRunResult(BaseModel):
     error: str | None = None
 
 
+# ── Email alerts on new transactions ──────────────────────────────
+# One row per user (see models.EmailAlert / email_alerts.py).
+
+class EmailAlertOut(BaseModel):
+    user_id: int
+    email: str | None = None
+    daily: bool
+    weekly: bool
+    monthly: bool
+    last_daily_sent_at: datetime | None = None
+    last_weekly_sent_at: datetime | None = None
+    last_monthly_sent_at: datetime | None = None
+    last_status: Literal["success", "failed"] | None = None
+    last_error: str | None = None
+    # Whether the server can send at all (SMTP_HOST set), so the screen can
+    # say so instead of letting an alert be saved that never goes out.
+    sending_configured: bool = False
+    from_address: str = ""
+    model_config = ConfigDict(from_attributes=True)
+
+
+class EmailAlertUpdate(BaseModel):
+    email: str | None = None
+    daily: bool = False
+    weekly: bool = False
+    monthly: bool = False
+
+
+class EmailAlertTestResult(BaseModel):
+    sent_to: str
+    transaction_count: int
+
+
+class EmailAlertExport(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    user_id: int
+    email: str | None = None
+    daily: bool = False
+    weekly: bool = False
+    monthly: bool = False
+    last_daily_sent_at: datetime | None = None
+    last_weekly_sent_at: datetime | None = None
+    last_monthly_sent_at: datetime | None = None
+
+
 class ImportSummary(BaseModel):
     mode: Literal["overwrite", "partial"]
     users: int
@@ -1148,6 +1198,7 @@ class ImportSummary(BaseModel):
     bank_account_links: int = 0
     transaction_rules: int = 0
     saved_filters: int = 0
+    email_alerts: int = 0
 
 
 # ── Bank sync (Enable Banking) ────────────────────────────────────────
@@ -1215,3 +1266,6 @@ class BankSyncRunResult(BaseModel):
     created_count: int = 0
     status: Literal["success", "failed"] | None = None
     error: str | None = None
+
+
+DatabaseExport.model_rebuild()
