@@ -245,6 +245,8 @@ export interface TransactionSearchRequest {
   date_to?: string
   account_id?: number
   category_id?: number
+  // Only the transactions with no category.
+  uncategorized?: boolean
   amount_min?: number
   amount_max?: number
   reconciled?: boolean

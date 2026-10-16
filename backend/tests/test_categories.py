@@ -336,3 +336,39 @@ def test_backup_category_export_maps_unknown_type_to_transfer_other():
     from schemas import CategoryExport
     assert CategoryExport(id=1, name="Old", type="Transfer").type == "Transfer, other"
     assert CategoryExport(id=2, name="Pay", type="Income").type == "Income"
+
+
+def test_categories_listed_most_used_first(client, db, sample_account, sample_user):
+    from datetime import date
+    from models import Category, Transaction
+
+    food = Category(name="Food", type="Expense")
+    home = Category(name="Home", type="Expense")
+    rare = Category(name="Aaa rare", type="Expense")
+    db.add_all([food, home, rare])
+    db.flush()
+    bakery = Category(name="Bakery", type="Expense", parent_id=food.id)
+    market = Category(name="Market", type="Expense", parent_id=food.id)
+    rent = Category(name="Rent", type="Expense", parent_id=home.id)
+    db.add_all([bakery, market, rent])
+    db.flush()
+    # Home has 3 on its own; Food has 1 + 1 (Bakery) + 2 (Market) = 4.
+    for cat, n in [(home, 3), (food, 1), (bakery, 1), (market, 2)]:
+        for _ in range(n):
+            db.add(Transaction(date=date(2026, 1, 1), payee="x", amount=-1.0,
+                               account_id=sample_account.id, category_id=cat.id))
+    db.commit()
+
+    names = [c["name"] for c in client.get("/api/categories").json()]
+    assert names == ["Food", "Market", "Bakery", "Home", "Rent", "Aaa rare"]
+
+    # Cached: recategorising through the API invalidates it.
+    for _ in range(2):
+        tx = client.post("/api/transactions", json={
+            "date": "2026-01-02", "payee": "y", "amount": -1.0,
+            "account_id": sample_account.id, "category_id": rent.id,
+            "split_weights": [{"user_id": sample_user.id, "weight": 1}],
+        })
+        assert tx.status_code == 201, tx.text
+    names = [c["name"] for c in client.get("/api/categories").json()]
+    assert names[:3] == ["Home", "Rent", "Food"]

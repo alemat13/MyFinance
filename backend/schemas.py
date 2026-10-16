@@ -456,6 +456,9 @@ class TransactionSearchRequest(BaseModel):
     date_to: date | None = None
     account_id: int | None = None
     category_id: int | None = None
+    # Only the transactions with no category (category_id is then ignored by
+    # the screen, which never sends both).
+    uncategorized: bool = False
     amount_min: float | None = None
     amount_max: float | None = None
     reconciled: bool | None = None
