@@ -1129,3 +1129,44 @@ export function deleteSavedFilter(id: number): Promise<void> {
 export function reorderSavedFilters(filterIds: number[]): Promise<SavedFilter[]> {
   return request<SavedFilter[]>('/saved-filters/order', { method: 'PUT', body: JSON.stringify({ filter_ids: filterIds }) })
 }
+
+export type AlertFrequency = 'daily' | 'weekly' | 'monthly'
+
+export interface EmailAlert {
+  user_id: number
+  email: string | null
+  daily: boolean
+  weekly: boolean
+  monthly: boolean
+  last_daily_sent_at: string | null
+  last_weekly_sent_at: string | null
+  last_monthly_sent_at: string | null
+  last_status: 'success' | 'failed' | null
+  last_error: string | null
+  sending_configured: boolean
+  from_address: string
+}
+
+export interface EmailAlertUpdate {
+  email: string | null
+  daily: boolean
+  weekly: boolean
+  monthly: boolean
+}
+
+export interface EmailAlertTestResult {
+  sent_to: string
+  transaction_count: number
+}
+
+export function fetchEmailAlert(userId: number): Promise<EmailAlert> {
+  return request<EmailAlert>(`/alerts/users/${userId}`)
+}
+
+export function updateEmailAlert(userId: number, data: EmailAlertUpdate): Promise<EmailAlert> {
+  return request<EmailAlert>(`/alerts/users/${userId}`, { method: 'PUT', body: JSON.stringify(data) })
+}
+
+export function sendTestEmailAlert(userId: number): Promise<EmailAlertTestResult> {
+  return request<EmailAlertTestResult>(`/alerts/users/${userId}/test`, { method: 'POST' })
+}

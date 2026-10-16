@@ -411,3 +411,30 @@ class SavedFilter(Base):
     filters = Column(JSON, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+class EmailAlert(Base):
+    """One user's email alert on new transactions (see email_alerts.py): at
+    most one row per user, holding the address it goes to and which of the
+    three frequencies are on. A transaction is "new" by its `created_at`, the
+    moment it reached MyFinance (bank sync, import or by hand), not by its
+    `date`, which a bank can report days late.
+
+    `last_*_sent_at` is the end of the window the last alert of that
+    frequency covered (naive UTC, like `transactions.created_at`): the next
+    one starts there, so no transaction is reported twice or skipped. It only
+    moves on a successful send, so a failed one is retried by the next
+    scheduler call.
+    """
+    __tablename__ = "email_alerts"
+
+    user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
+    email = Column(String(200), nullable=True)
+    daily = Column(Boolean, nullable=False, default=False)
+    weekly = Column(Boolean, nullable=False, default=False)
+    monthly = Column(Boolean, nullable=False, default=False)
+    last_daily_sent_at = Column(DateTime, nullable=True)
+    last_weekly_sent_at = Column(DateTime, nullable=True)
+    last_monthly_sent_at = Column(DateTime, nullable=True)
+    last_status = Column(String(20), nullable=True)  # 'success' | 'failed'
+    last_error = Column(Text, nullable=True)

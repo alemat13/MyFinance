@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 import cache_service
 import split_engine
 from database import get_db
-from models import AccountSplitWeight, CategorySplit, GlobalSplitWeight, Transaction, TransactionSplit, User
+from models import AccountSplitWeight, CategorySplit, EmailAlert, GlobalSplitWeight, Transaction, TransactionSplit, User
 from schemas import UserCreate, UserOut, UserUpdate
 
 router = APIRouter(prefix="/api/users")
@@ -90,5 +90,6 @@ def delete_user(user_id: int, db: Session = Depends(get_db)):
     # Re-resolving another user's transactions above can change
     # share_amount rows even when this user themself had no split anywhere.
     cache_service.invalidate(db, "balances", "charts")
+    db.query(EmailAlert).filter(EmailAlert.user_id == user_id).delete()
     db.delete(user)
     db.commit()

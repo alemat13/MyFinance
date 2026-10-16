@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
+import email_alerts
 import enable_banking
 from database import get_db
 from models import BankAccountLink, BankConnection
@@ -175,6 +176,9 @@ def sync_link_now(link_id: int, db: Session = Depends(get_db)):
     if link.account_id is None:
         raise HTTPException(422, "Link this bank account to a MyFinance account first")
     created = enable_banking.sync_link(db, link)
+    # A sync started by hand sends the daily alert of whoever has something
+    # new, whatever the time (see email_alerts.due_frequencies).
+    email_alerts.run_quietly(db, manual=True)
     return BankSyncRunResult(
         ran=True,
         synced_links=1,
@@ -215,4 +219,7 @@ def run_due(
     if not enable_banking.verify_scheduler_secret(x_bank_sync_scheduler_secret):
         raise HTTPException(403, "Invalid scheduler secret")
     synced, created = enable_banking.run_due_syncs(db)
+    # Alerts ride this schedule rather than one of their own, so they always
+    # go out after the sync that brings the transactions they list.
+    email_alerts.run_quietly(db)
     return BankSyncRunResult(ran=synced > 0, synced_links=synced, created_count=created)

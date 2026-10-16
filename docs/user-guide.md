@@ -17,10 +17,11 @@ people *using* the app to track household finances — for schema/database detai
 9. [Bank Sync](#bank-sync)
 10. [Auto-categorization](#auto-categorization)
 11. [Rules](#rules)
-12. [Backup & Restore](#backup--restore)
-13. [Charts](#charts)
-14. [Admin mode](#admin-mode)
-15. [Appendix: Validation Rules & Tips](#appendix-validation-rules--tips)
+12. [Email alerts](#email-alerts)
+13. [Backup & Restore](#backup--restore)
+14. [Charts](#charts)
+15. [Admin mode](#admin-mode)
+16. [Appendix: Validation Rules & Tips](#appendix-validation-rules--tips)
 
 ## Getting Started
 
@@ -45,8 +46,8 @@ Every screen shares the same header:
 
 MyFinance shows four primary destinations — **Dashboard**, **Transactions**,
 **Accounts**, and **Charts** — plus a **More** button for everything else (Categories,
-Users, Split Weights, Import, Bank Sync, Auto-categorization, Rules, Backup & Restore, and
-Help). On a phone, the primary
+Users, Split Weights, Import, Bank Sync, Auto-categorization, Rules, Email alerts, Backup &
+Restore, and Help). On a phone, the primary
 destinations sit in a tab bar fixed to the bottom of the screen and **More** opens a
 sheet that slides up from the bottom; on a wider screen, the same buttons sit in a bar
 under the header, with **More** opening a panel from the right instead. Either way, the
@@ -897,6 +898,39 @@ change, with the names of the rules that matched. Rows the rules change start ti
 rows they leave alone are listed but can't be ticked. The button says how many
 transactions will actually be written. With no rule yet, the panel offers a way to the
 Rules screen.
+
+## Email alerts
+
+**More → Email alerts** lets each person get an email listing the transactions that
+arrived in MyFinance on their own accounts (the accounts where they have an ownership
+share), whether they came from Bank Sync, an import or were typed in. The screen shows one
+card per person, or only the person picked in the header.
+
+On a card:
+
+- **Send to**: the address the alerts go to. It starts as the person's email from the
+  Users screen and can be any address.
+- **Daily**: every morning, right after the 6:00 bank sync, what arrived since the last one. Pressing **Sync now** on the Bank Sync screen also sends it, during the day, to whoever has something new.
+- **Weekly**: Sunday evening, right after the 18:00 bank sync, what arrived during the week.
+- **Monthly**: on the last day of the month, right after the 18:00 bank sync, what arrived during the month.
+
+Tick any combination and press **Save**. A frequency counts from the moment you switch it
+on: the first email only holds what arrives after that, never your whole history. When
+nothing new arrived, no email is sent. Each email has the number of new transactions, the
+money in and out, and a table (date, account, payee, category, amount) of up to 100 of
+them, the most recent first.
+
+**Send a test email** sends, right away, what a weekly alert would hold (the last 7
+days), so you can check the address and see what it looks like. It doesn't change when the
+next real alert goes out. Save your changes first: the button waits until you have.
+
+Under the buttons, each active frequency shows the moment it is counting from. If an
+email couldn't be sent, the reason shows in red and the same alert is tried again with the next
+bank sync. If sending hasn't been set up on the server, a yellow notice says so: the settings
+can still be saved but nothing goes out.
+
+Alert settings are part of a backup and come back with an **Overwrite** restore. Deleting
+a person deletes their alerts.
 
 ## Backup & Restore
 

@@ -20,6 +20,7 @@ from routers import (
     categorizer,
     charts,
     dashboard,
+    email_alerts,
     imports,
     onedrive,
     saved_filters,
@@ -111,3 +112,4 @@ app.include_router(charts.router)
 app.include_router(categorizer.router)
 app.include_router(transaction_rules.router)
 app.include_router(saved_filters.router)
+app.include_router(email_alerts.router)

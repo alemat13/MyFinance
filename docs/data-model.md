@@ -3,6 +3,7 @@
 ```mermaid
 erDiagram
     users ||--o{ account_users : "owns"
+    users ||--o| email_alerts : "is alerted by"
     accounts ||--o{ account_users : "has"
     accounts ||--o{ transactions : contains
     categories |o--o{ transactions : categorizes
@@ -284,6 +285,18 @@ The Transactions screen's saved filters (`routers/saved_filters.py`): a filter s
 | `mode` | String(10) | `simple` \| `advanced`, the filter it was saved from |
 | `filters` | JSON | That filter exactly as the screen holds it, stored and returned as is, never read by the backend: `simple` → `search`, `date_from`, `date_to`, `account_id`, `category_id`, `amount_min`, `amount_max`, `reconciled`; `advanced` → `match_mode` and the condition rows (`field`, `operator`, `value`, `value2`). Both also carry `sort_dir` (`asc` \| `desc`), the date order saved with the filter |
 | `created_at` / `updated_at` | DateTime | |
+
+### `email_alerts`
+Each user's email alert on new transactions (`backend/email_alerts.py`, `routers/email_alerts.py`, Alembic `0021`): at most one row per user, created the first time their settings are saved on the Email alerts screen. A transaction is "new" by its `created_at` (when it reached MyFinance: bank sync, import or typed in), not its `date`, and only on accounts the user owns (`ownership_percentage > 0`). Sent at the end of the bank sync, never on a schedule of their own: the scheduled `POST /api/bank-sync/run-due` (0h/6h/12h/18h Paris) sends whatever is due — daily with the 6h sync, weekly with the Sunday 18h sync, monthly with the 18h sync of the month's last day, a missed one with the next sync — and a sync started by hand also sends the daily alert of whoever has something new. An email lists at most 100 rows, most recent first, and counts the rest; a window with nothing new sends nothing. Sent over SMTP (`SMTP_HOST`/`SMTP_PORT`/`SMTP_USERNAME`/`SMTP_PASSWORD`) from `ALERT_FROM_ADDRESS`. Deleting a user deletes their row. Part of the backup archive (`email_alerts`), restored in overwrite mode only; `None` is an archive from before alerts.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `user_id` | Integer | Primary key, FK → `users.id` |
+| `email` | String(200) | Nullable; where the alerts go. Defaults on screen to the user's own `email`. Required as soon as one frequency is on |
+| `daily` / `weekly` / `monthly` | Boolean | Default: `false`; any combination |
+| `last_daily_sent_at` / `last_weekly_sent_at` / `last_monthly_sent_at` | DateTime | Nullable, naive UTC: the end of the window the last alert of that frequency covered, and the start of the next. Set to the moment a frequency is switched on, so its first email holds only what arrives from then on. Moves on a successful send (or an empty window), never on a failed one, so a failure is retried by the next sync |
+| `last_status` | String(20) | Nullable; `success` or `failed`, of the last run that had something due |
+| `last_error` | Text | Nullable; set when `last_status` is `failed`, naming the frequency |
 
 ### `onedrive_backup_settings`
 Single global row (`id=1`) driving the OneDrive automatic backup connection (`backend/onedrive.py`) — one connection for the whole household database, not per-user, and not part of the account/transaction ER diagram above. Not part of `backup`'s export/import archive either: it's app configuration, not domain data, and its refresh token opens the very drive those archives are uploaded to. An overwrite restore leaves this table alone (it's left out of the restore's wipe), so restoring never disconnects OneDrive. Token columns are Fernet-encrypted at rest and never returned by the API.

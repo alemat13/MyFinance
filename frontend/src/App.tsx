@@ -16,6 +16,7 @@ import UsersList from './components/UsersList'
 import SplitWeightsSettings from './components/SplitWeightsSettings'
 import CsvImportPage from './components/CsvImportPage'
 import BackupPage from './components/BackupPage'
+import EmailAlertsPage from './components/EmailAlertsPage'
 import BankSyncPage from './components/BankSyncPage'
 import CategorizerPage from './components/CategorizerPage'
 import RulesPage from './components/RulesPage'
@@ -198,6 +199,7 @@ export default function App() {
       {view === 'rules' && (
         <RulesPage onBack={() => navigateToView('dashboard')} draft={ruleDraft} onDraftUsed={() => setRuleDraft(null)} />
       )}
+      {view === 'alerts' && <EmailAlertsPage onBack={() => navigateToView('dashboard')} selectedUserId={selectedUserId} />}
       {view === 'backup' && <BackupPage onBack={() => navigateToView('dashboard')} />}
       {view === 'charts' && <ChartsPage onBack={() => navigateToView('dashboard')} selectedUserId={selectedUserId} />}
       {view === 'help' && <HelpPage onBack={() => navigateToView('dashboard')} />}
