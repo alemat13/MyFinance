@@ -66,6 +66,7 @@ export function simpleFiltersToConditions(f: TransactionSearchRequest): FilterCo
   if (f.search?.trim()) out.push({ field: 'payee', operator: 'contains', value: f.search.trim() })
   if (f.account_id) out.push({ field: 'account_id', operator: 'eq', value: f.account_id })
   if (f.category_id) out.push({ field: 'category_id', operator: 'eq', value: f.category_id })
+  if (f.uncategorized) out.push({ field: 'category_id', operator: 'eq', value: null })
   if (f.amount_min != null && f.amount_max != null) {
     out.push({ field: 'amount', operator: 'between', value: f.amount_min, value2: f.amount_max })
   } else if (f.amount_min != null) {

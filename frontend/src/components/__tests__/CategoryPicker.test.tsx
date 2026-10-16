@@ -101,3 +101,18 @@ test('allowUncategorized=false hides the Uncategorized option', () => {
   fireEvent.click(screen.getByText('Salary'))
   expect(screen.queryByText('Uncategorized')).not.toBeInTheDocument()
 })
+
+test('as a filter, null reads "All categories" and Uncategorized is its own choice', () => {
+  const onChange = vi.fn()
+  renderWithProviders(<CategoryPicker categories={categories} value={null} onChange={onChange} anyLabel="All categories" />)
+  expect(screen.queryByText('Uncategorized')).not.toBeInTheDocument()
+  fireEvent.click(screen.getByText('All categories'))
+  fireEvent.click(screen.getByText('Uncategorized'))
+  expect(onChange).toHaveBeenCalledWith(-1)
+})
+
+test('as a filter, the Uncategorized choice shows in the trigger', () => {
+  renderWithProviders(<CategoryPicker categories={categories} value={-1} onChange={() => {}} anyLabel="All categories" />)
+  expect(screen.getByText('Uncategorized')).toBeInTheDocument()
+  expect(screen.queryByText('All categories')).not.toBeInTheDocument()
+})

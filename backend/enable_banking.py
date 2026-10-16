@@ -530,7 +530,7 @@ def import_transactions(db: Session, link: BankAccountLink, rows: list[dict], da
     transaction_rules.apply_quietly(db, imported, fresh=True)
 
     if created:
-        cache_service.invalidate(db, "balances", "charts", "account_totals")
+        cache_service.invalidate(db, "balances", "charts", "account_totals", "category_usage")
     db.commit()
     return created
 

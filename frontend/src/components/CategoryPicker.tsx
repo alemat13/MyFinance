@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { Category } from '../api/client'
 import { CategoryBadge } from './ui'
-import { groupCategoriesByParent, matchesSearch } from '../utils/categoryHierarchy'
+import { UNCATEGORIZED_ID, groupCategoriesByParent, matchesSearch } from '../utils/categoryHierarchy'
 
 interface CategoryPickerProps {
   categories: Category[]
@@ -11,13 +11,16 @@ interface CategoryPickerProps {
   allowUncategorized?: boolean
   placeholder?: string
   className?: string
+  /** For a filter: null is then this label ("All categories"), and an extra
+   *  "Uncategorized" choice picks UNCATEGORIZED_ID. */
+  anyLabel?: string
 }
 
 const triggerClasses =
   'flex items-center justify-between gap-2 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent cursor-pointer'
 
 export default function CategoryPicker({
-  categories, value, onChange, allowUncategorized = true, placeholder = 'Uncategorized', className = '',
+  categories, value, onChange, allowUncategorized = true, placeholder = 'Uncategorized', className = '', anyLabel,
 }: CategoryPickerProps) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
@@ -71,7 +74,11 @@ export default function CategoryPicker({
   return (
     <div className={`relative ${className}`} ref={ref}>
       <button type="button" className={`${triggerClasses} min-w-[160px] w-full`} onClick={() => setOpen(o => !o)}>
-        {selected ? <CategoryBadge name={selected.name} color={selected.color} icon={selected.icon} /> : <CategoryBadge name={null} />}
+        {selected
+          ? <CategoryBadge name={selected.name} color={selected.color} icon={selected.icon} />
+          : anyLabel && value !== UNCATEGORIZED_ID
+            ? <span className="text-slate-500 dark:text-slate-400 truncate">{anyLabel}</span>
+            : <CategoryBadge name={null} />}
         <ChevronDown size={14} className="text-slate-400 shrink-0" />
       </button>
       {open && (
@@ -86,13 +93,22 @@ export default function CategoryPicker({
             />
           </div>
           <div className="max-h-72 overflow-y-auto py-1">
-            {allowUncategorized && !searching && (
+            {(anyLabel || allowUncategorized) && !searching && (
               <button
                 type="button"
                 onClick={() => select(null)}
                 className={`flex w-full items-center px-2 py-1.5 text-sm text-left hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer ${value == null ? 'bg-slate-50 dark:bg-slate-700' : ''}`}
               >
-                {placeholder}
+                {anyLabel ?? placeholder}
+              </button>
+            )}
+            {anyLabel && !searching && (
+              <button
+                type="button"
+                onClick={() => select(UNCATEGORIZED_ID)}
+                className={`flex w-full items-center px-2 py-1.5 text-sm text-left hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer ${value === UNCATEGORIZED_ID ? 'bg-slate-50 dark:bg-slate-700' : ''}`}
+              >
+                <CategoryBadge name={null} />
               </button>
             )}
             {visibleGroups.length === 0 && (
