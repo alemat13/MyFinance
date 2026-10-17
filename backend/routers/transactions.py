@@ -21,6 +21,7 @@ from schemas import (
     BulkDeleteTransactionsResponse,
     BulkUpdateTransactionsRequest,
     BulkUpdateTransactionsResponse,
+    PayeeSuggestionOut,
     TransactionCreate,
     TransactionDivideRequest,
     TransactionDivideResponse,
@@ -113,6 +114,53 @@ def search_transactions(req: TransactionSearchRequest, db: Session = Depends(get
     return TransactionSearchResponse(
         items=items, total=total, page=page, page_size=page_size, total_pages=total_pages,
     )
+
+
+# Rows read per suggestion request before de-duplicating. A merchant you pay
+# every week fills this with one (payee, category) pair, so it is the number
+# of recent matches looked at, not the number returned.
+PAYEE_SUGGESTION_SCAN = 400
+
+
+@router.get("/payee-suggestions", response_model=list[PayeeSuggestionOut])
+def payee_suggestions(
+    q: str = Query(..., min_length=1),
+    limit: int = Query(8, ge=1, le=50),
+    db: Session = Depends(get_db),
+):
+    """The most recent payees containing `q`, one entry per (payee, category).
+
+    Backs the Payee field's autocompletion in the transaction form: picking an
+    entry fills both the payee and the category it was last filed under.
+    """
+    needle = q.strip().lower()
+    if not needle:
+        return []
+    escaped = needle.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    rows = (
+        db.query(Transaction.payee, Transaction.category_id, Category.name, Transaction.date,
+                 Transaction.amount, Account.currency)
+        .join(Account, Transaction.account_id == Account.id)
+        .outerjoin(Category, Transaction.category_id == Category.id)
+        .filter(func.lower(Transaction.payee).like(f"%{escaped}%", escape="\\"))
+        .order_by(Transaction.date.desc(), Transaction.id.desc())
+        .limit(PAYEE_SUGGESTION_SCAN)
+        .all()
+    )
+    seen: set[tuple[str, int | None]] = set()
+    suggestions: list[PayeeSuggestionOut] = []
+    for payee, category_id, category_name, txn_date, amount, currency in rows:
+        key = (payee.strip().lower(), category_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        suggestions.append(PayeeSuggestionOut(
+            payee=payee, category_id=category_id, category_name=category_name,
+            date=txn_date, amount=amount, currency=currency,
+        ))
+        if len(suggestions) >= limit:
+            break
+    return suggestions
 
 
 @router.post("", response_model=TransactionOut, status_code=201)
