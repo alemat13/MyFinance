@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
   Transaction, TransactionUpdate, TransactionHistoryEntry, GlobalSplitWeight, SplitSource,
-  Account, Category, User,
+  Account, Category, User, Tag,
   fetchTransaction, createTransaction, updateTransaction, deleteTransaction, fetchTransactionHistory,
   fetchDivideSiblings,
 } from '../api/client'
@@ -12,6 +12,7 @@ import CategoryPicker from './CategoryPicker'
 import PayeeInput from './PayeeInput'
 import AccountPicker from './AccountPicker'
 import TransactionRawFields from './TransactionRawFields'
+import TagPicker from './TagPicker'
 import { useToast } from '../context/ToastContext'
 import { validateTransactionForm, ACCOUNTING_MONTH_OFFSETS, accountingMonthLabel } from '../utils/transactions'
 import { resolveDefaultSplitRows } from '../utils/splitWeights'
@@ -25,6 +26,9 @@ interface Props {
   transactionId: number | null
   accounts: Account[]
   categories: Category[]
+  tags?: Tag[]
+  // A tag created from the form, for the caller to add to its list.
+  onTagCreated?: (tag: Tag) => void
   allUsers: User[]
   globalWeights: GlobalSplitWeight[]
   selectedUserId: number | null
@@ -57,6 +61,7 @@ const HISTORY_SOURCE_LABELS: Record<string, string> = {
   categorizer: 'auto',
   divide: 'divide',
   admin: 'admin',
+  rule: 'rule',
 }
 
 interface SplitSnapshotEntry {
@@ -77,6 +82,18 @@ const describeSplitsChange = (change: { old: SplitSnapshotEntry[] | null; new: S
 const describeCategoryChange = (change: { old: unknown; new: unknown }, categories: Category[]) =>
   `category: ${categoryNameFor(change.old as number | null, categories)} → ${categoryNameFor(change.new as number | null, categories)}`
 
+// Tag names as they were then, so a tag renamed or deleted since still reads right.
+const describeTagsChange = (change: { old: unknown; new: unknown }) => {
+  const before = (change.old as string[] | null) ?? []
+  const after = (change.new as string[] | null) ?? []
+  const added = after.filter(n => !before.includes(n))
+  const removed = before.filter(n => !after.includes(n))
+  return [
+    added.length > 0 ? `tags added: ${added.join(', ')}` : null,
+    removed.length > 0 ? `tags removed: ${removed.join(', ')}` : null,
+  ].filter(Boolean).join(', ')
+}
+
 const describeReconciledChange = (change: { old: unknown; new: unknown }) =>
   `Reconciled: ${change.old ? 'Yes' : 'No'} → ${change.new ? 'Yes' : 'No'}`
 
@@ -89,12 +106,14 @@ const describeHistoryChanges = (changes: TransactionHistoryEntry['changes'], use
           ? describeCategoryChange(value, categories)
           : field === 'reconciled'
           ? describeReconciledChange(value)
+          : field === 'tags'
+          ? describeTagsChange(value)
           : `${field}: ${value.old ?? '—'} → ${value.new ?? '—'}`
       ).join(', ')
     : ''
 
 export default function TransactionDetail({
-  transactionId, accounts, categories, allUsers, globalWeights, selectedUserId, onClose, onSaved, onDeleted,
+  transactionId, accounts, categories, tags = [], onTagCreated, allUsers, globalWeights, selectedUserId, onClose, onSaved, onDeleted,
   onNavigateToTransaction,
 }: Props) {
   const [transaction, setTransaction] = useState<Transaction | null>(null)
@@ -103,6 +122,7 @@ export default function TransactionDetail({
   const [formData, setFormData] = useState<TransactionUpdate>(() => transactionId === null ? emptyFormData : {})
   const [split, setSplit] = useState<SplitRow[]>([])
   const [splitSource, setSplitSource] = useState<SplitSource | null>(null)
+  const [tagIds, setTagIds] = useState<number[]>([])
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [dividing, setDividing] = useState(false)
   const [historyEntries, setHistoryEntries] = useState<TransactionHistoryEntry[]>([])
@@ -139,6 +159,7 @@ export default function TransactionDetail({
         // buttons are the only way to pull a tier's weights into this form.
         setSplit(t.splits.map(s => ({ user_id: s.user_id, value: s.weight })))
         setSplitSource(t.splits[0]?.source ?? null)
+        setTagIds((t.tags ?? []).map(tag => tag.id))
       })
       .catch(err => setError(err.message))
       .finally(() => setLoading(false))
@@ -183,12 +204,14 @@ export default function TransactionDetail({
           accounting_month_offset: formData.accounting_month_offset,
           split_weights: split.map(r => ({ user_id: r.user_id, weight: r.value })),
           split_source: splitSource ?? 'custom',
+          tag_ids: tagIds,
         }, selectedUserId)
       : updateTransaction(transactionId, {
           ...(coreEditable ? formData : { ...formData, date: undefined, amount: undefined, account_id: undefined }),
           category_id: formData.category_id || null,
           split_weights: split.map(r => ({ user_id: r.user_id, weight: r.value })),
           split_source: splitSource ?? 'custom',
+          tag_ids: tagIds,
         }, selectedUserId)
     request.then(() => onSaved()).catch(err => showToast(err.message))
   }
@@ -273,6 +296,13 @@ export default function TransactionDetail({
               ))}
             </Select>
           </div>
+
+          <TagPicker
+            tags={tags}
+            value={tagIds}
+            onChange={setTagIds}
+            onCreated={onTagCreated}
+          />
 
           {coreEditable && (
             <div className="pt-2 border-t border-slate-200 dark:border-slate-700" data-testid="transaction-core-editor">

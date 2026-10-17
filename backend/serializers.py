@@ -8,7 +8,7 @@ from models import Account, Category, Transaction, User
 from schemas import (
     AccountOut, AccountSplitWeightOut, AccountUserOut,
     CategoryOut, CategorySplitOut,
-    TransactionOut, TransactionSplitOut,
+    TagRef, TransactionOut, TransactionSplitOut,
 )
 
 
@@ -95,6 +95,7 @@ def build_transaction_out_from_row(
         raw_initiated_date=t.raw_initiated_date,
         raw_booking_date=t.raw_booking_date,
         splits=build_transaction_splits_out(t),
+        tags=[TagRef(id=tag.id, name=tag.name, color=tag.color) for tag in t.tags],
     )
 
 

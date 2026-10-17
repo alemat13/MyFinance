@@ -108,11 +108,36 @@ class Transaction(Base):
     account = relationship("Account", back_populates="transactions")
     category = relationship("Category", back_populates="transactions")
     splits = relationship("TransactionSplit", back_populates="transaction", cascade="all, delete-orphan")
+    # Free labels, several per transaction and shared by many (see Tag).
+    tags = relationship("Tag", secondary="transaction_tags", order_by="Tag.name")
 
     __table_args__ = (
         Index("ix_transactions_account_id_date", "account_id", "date"),
         Index("ix_transactions_account_id_external_id", "account_id", "external_id", unique=True),
     )
+
+
+class Tag(Base):
+    """A free label on transactions, many-to-many through transaction_tags:
+    a transaction carries any number of tags and a tag any number of
+    transactions. Unlike a category it means nothing to balances, charts or
+    splits; it only groups rows for searching (a trip, a project, a refund
+    to chase). Names are unique, compared as typed."""
+    __tablename__ = "tags"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(50), nullable=False, unique=True)
+    color = Column(String(7), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class TransactionTag(Base):
+    """One tag on one transaction. Written through Transaction.tags; mapped
+    as its own class so a backup can read and restore the pairs directly."""
+    __tablename__ = "transaction_tags"
+
+    transaction_id = Column(Integer, ForeignKey("transactions.id", ondelete="CASCADE"), primary_key=True)
+    tag_id = Column(Integer, ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True, index=True)
 
 
 class User(Base):

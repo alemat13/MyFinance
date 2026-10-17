@@ -170,6 +170,7 @@ export default function CsvImportPage({ onBack, selectedUserId }: Props) {
         ...(rule?.accounting_month_offset != null ? { accounting_month_offset: rule.accounting_month_offset } : {}),
         ...(rule?.reconciled != null ? { reconciled: rule.reconciled } : {}),
         ...(rule?.split_weights ? { split_weights: rule.split_weights, split_source: rule.split_source ?? 'custom' } : {}),
+        ...(rule?.add_tag_ids?.length ? { tag_ids: rule.add_tag_ids } : {}),
       }
     })
     setCommitting(true)

@@ -1,13 +1,14 @@
 import { useState } from 'react'
 import {
   Transaction, BulkTransactionUpdate, GlobalSplitWeight, PayeeMode,
-  Account, Category, User, TransactionSearchRequest,
+  Account, Category, User, Tag, TransactionSearchRequest,
   bulkUpdateTransactions, bulkUpdateTransactionsByFilter,
 } from '../api/client'
 import { SplitRow } from './SplitEditor'
 import TransactionSplitFields from './TransactionSplitFields'
 import CategoryPicker from './CategoryPicker'
 import AccountPicker from './AccountPicker'
+import TagPicker from './TagPicker'
 import { useToast } from '../context/ToastContext'
 import { Modal, Button, Select, Input } from './ui'
 
@@ -16,6 +17,8 @@ interface Props {
   transactions: Transaction[]
   accounts: Account[]
   categories: Category[]
+  tags?: Tag[]
+  onTagCreated?: (tag: Tag) => void
   allUsers: User[]
   globalWeights: GlobalSplitWeight[]
   selectedUserId: number | null
@@ -58,7 +61,7 @@ function offsetLabel(offset: number): string {
 }
 
 export default function BulkEditModal({
-  transactionIds, transactions, accounts, categories, allUsers, globalWeights, selectedUserId, onClose, onSaved,
+  transactionIds, transactions, accounts, categories, tags = [], onTagCreated, allUsers, globalWeights, selectedUserId, onClose, onSaved,
   searchFilter, matchingTotal, moveAccounts,
 }: Props) {
   const canSelectAllMatching = searchFilter != null && matchingTotal != null && matchingTotal > transactionIds.length
@@ -82,6 +85,10 @@ export default function BulkEditModal({
   const [splitRows, setSplitRows] = useState<SplitRow[]>([])
   const [splitSource, setSplitSource] = useState<'global' | 'account' | 'category' | 'custom' | null>(null)
 
+  const [tagsEnabled, setTagsEnabled] = useState(false)
+  const [tagMode, setTagMode] = useState<'add' | 'remove'>('add')
+  const [tagIds, setTagIds] = useState<number[]>([])
+
   const [reconciledEnabled, setReconciledEnabled] = useState(false)
   const [reconciledValue, setReconciledValue] = useState(true)
 
@@ -91,7 +98,8 @@ export default function BulkEditModal({
   const currencies = [...new Set(transactions.map(t => t.currency))]
   const previewTransaction = transactions[0]
 
-  const canSave = (categoryEnabled || renameEnabled || moveEnabled || offsetEnabled || splitEnabled || reconciledEnabled)
+  const canSave = (categoryEnabled || renameEnabled || moveEnabled || offsetEnabled || splitEnabled || reconciledEnabled
+    || (tagsEnabled && tagIds.length > 0))
     && !(moveEnabled && moveAccountId == null)
     && !(renameEnabled && payee.trim() === '')
 
@@ -111,6 +119,9 @@ export default function BulkEditModal({
         split_source: (splitSource ?? 'custom') as 'custom',
       } : {}),
       ...(reconciledEnabled ? { reconciled: reconciledValue } : {}),
+      ...(tagsEnabled && tagIds.length > 0
+        ? tagMode === 'add' ? { add_tag_ids: tagIds } : { remove_tag_ids: tagIds }
+        : {}),
     }
     setSaving(true)
     const call = allMatching && searchFilter && matchingTotal != null
@@ -196,6 +207,36 @@ export default function BulkEditModal({
                   e.g. <span className="font-medium text-slate-700 dark:text-slate-200 whitespace-pre-wrap">{renamedPayee(previewTransaction.payee, payee, payeeMode)}</span>
                 </div>
               )}
+            </div>
+          )}
+        </div>
+
+        <div className="border border-slate-200 dark:border-slate-700 rounded-md p-3">
+          <label className="flex items-center gap-2 text-sm font-medium mb-2">
+            <input type="checkbox" checked={tagsEnabled} onChange={e => setTagsEnabled(e.target.checked)} />
+            Tags
+          </label>
+          {tagsEnabled && (
+            <div className="flex flex-col gap-2">
+              <Select
+                aria-label="Tag action"
+                value={tagMode}
+                onChange={e => setTagMode(e.target.value as 'add' | 'remove')}
+                className="w-auto self-start"
+              >
+                <option value="add">Add</option>
+                <option value="remove">Remove</option>
+              </Select>
+              <TagPicker
+                aria-label={tagMode === 'add' ? 'Tags to add' : 'Tags to remove'}
+                placeholder={tagMode === 'add' ? 'Tags to add…' : 'Tags to remove…'}
+                tags={tags}
+                value={tagIds}
+                onChange={setTagIds}
+                onCreated={onTagCreated}
+                allowCreate={tagMode === 'add'}
+              />
+              <div className="text-xs text-slate-400">Each transaction keeps its other tags.</div>
             </div>
           )}
         </div>

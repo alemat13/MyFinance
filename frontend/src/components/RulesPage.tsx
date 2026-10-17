@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { ArrowDown, ArrowUp } from 'lucide-react'
 import {
-  Account, Category, FilterCondition, GlobalSplitWeight, Rule, RuleActions, RuleInput, SplitSource, SplitTier, User,
-  createRule, deleteRule, fetchAccounts, fetchCategories, fetchRules, fetchSplitWeights, fetchUsers,
+  Account, Category, FilterCondition, GlobalSplitWeight, Rule, RuleActions, RuleInput, SplitSource, SplitTier, Tag, User,
+  createRule, deleteRule, fetchAccounts, fetchCategories, fetchRules, fetchSplitWeights, fetchTags, fetchUsers,
   reorderRules, searchTransactions, updateRule,
 } from '../api/client'
 import TransactionConditions, {
@@ -10,6 +10,8 @@ import TransactionConditions, {
 } from './TransactionConditions'
 import TransactionSplitFields from './TransactionSplitFields'
 import CategoryPicker from './CategoryPicker'
+import TagPicker from './TagPicker'
+import { UNTAGGED_ID } from '../utils/tags'
 import { UNCATEGORIZED_ID } from '../utils/categoryHierarchy'
 import { SplitRow } from './SplitEditor'
 import { BackButton, Badge, Button, Card, ConfirmDialog, IconButton, Input, Modal, Select, StatusMessage } from './ui'
@@ -31,16 +33,19 @@ function toRows(conditions: FilterCondition[]): ConditionRow[] {
   return conditions.map(c => ({
     field: c.field,
     operator: c.operator,
-    value: c.value == null ? (c.field === 'category_id' ? String(UNCATEGORIZED_ID) : '') : String(c.value),
+    value: c.value == null
+      ? (c.field === 'category_id' ? String(UNCATEGORIZED_ID) : c.field === 'tag_id' ? String(UNTAGGED_ID) : '')
+      : String(c.value),
     value2: c.value2 == null ? '' : String(c.value2),
   }))
 }
 
-function describeCondition(c: FilterCondition, accounts: Account[], categories: Category[]): string {
+function describeCondition(c: FilterCondition, accounts: Account[], categories: Category[], tags: Tag[]): string {
   const op = OPERATORS_BY_FIELD[c.field].find(o => o.value === c.operator)?.label ?? c.operator
   const show = (v: string | number | null | undefined) => {
     if (c.field === 'account_id') return accounts.find(a => a.id === Number(v))?.name ?? `#${v}`
     if (c.field === 'category_id') return v == null ? 'Uncategorized' : categories.find(x => x.id === Number(v))?.name ?? `#${v}`
+    if (c.field === 'tag_id') return v == null ? 'No tag' : `#${tags.find(x => x.id === Number(v))?.name ?? v}`
     return typeof v === 'string' ? `"${v}"` : String(v)
   }
   return `${FIELD_LABELS[c.field]} ${op} ${show(c.value)}${c.operator === 'between' ? ` and ${show(c.value2)}` : ''}`
@@ -51,6 +56,8 @@ interface EditorProps {
   draft?: RuleDraft | null
   accounts: Account[]
   categories: Category[]
+  tags: Tag[]
+  onTagCreated: (tag: Tag) => void
   allUsers: User[]
   globalWeights: GlobalSplitWeight[]
   onClose: () => void
@@ -58,7 +65,9 @@ interface EditorProps {
 }
 
 /** Create or edit one rule: the advanced filter's conditions, then the actions. */
-function RuleEditor({ rule, draft, accounts, categories, allUsers, globalWeights, onClose, onSaved }: EditorProps) {
+function RuleEditor({
+  rule, draft, accounts, categories, tags, onTagCreated, allUsers, globalWeights, onClose, onSaved,
+}: EditorProps) {
   const actions: RuleActions = rule?.actions ?? {}
   const [name, setName] = useState(rule?.name ?? '')
   const [enabled, setEnabled] = useState(rule?.enabled ?? true)
@@ -81,6 +90,8 @@ function RuleEditor({ rule, draft, accounts, categories, allUsers, globalWeights
   const [splitSource, setSplitSource] = useState<SplitSource | null>(actions.split_source ?? null)
   const [reconciledEnabled, setReconciledEnabled] = useState(actions.reconciled != null)
   const [reconciled, setReconciled] = useState(actions.reconciled ?? true)
+  const [tagsEnabled, setTagsEnabled] = useState(!!actions.add_tag_ids?.length)
+  const [addTagIds, setAddTagIds] = useState<number[]>(actions.add_tag_ids ?? [])
 
   const [matching, setMatching] = useState<number | null | 'error'>(null)
   const [saving, setSaving] = useState(false)
@@ -103,6 +114,7 @@ function RuleEditor({ rule, draft, accounts, categories, allUsers, globalWeights
   }, [filtersKey])
 
   const anyAction = payeeEnabled || categoryEnabled || offsetEnabled || splitEnabled || reconciledEnabled
+    || (tagsEnabled && addTagIds.length > 0)
   const canSave = name.trim() !== '' && filters.length > 0 && anyAction
     && !(payeeEnabled && payee.trim() === '') && !(categoryEnabled && categoryId == null)
     && !(splitEnabled && splitMode === 'fixed' && splitRows.length === 0)
@@ -118,6 +130,7 @@ function RuleEditor({ rule, draft, accounts, categories, allUsers, globalWeights
         ...(categoryEnabled && categoryId != null ? { category_id: categoryId } : {}),
         ...(offsetEnabled ? { accounting_month_offset: offset } : {}),
         ...(reconciledEnabled ? { reconciled } : {}),
+        ...(tagsEnabled && addTagIds.length > 0 ? { add_tag_ids: addTagIds } : {}),
         ...(splitEnabled && splitMode !== 'fixed' ? { split_tier: splitMode } : {}),
         ...(splitEnabled && splitMode === 'fixed' ? {
           split_weights: splitRows.map(r => ({ user_id: r.user_id, weight: r.value })),
@@ -164,6 +177,7 @@ function RuleEditor({ rule, draft, accounts, categories, allUsers, globalWeights
             onMatchModeChange={setMatchMode}
             accounts={accounts}
             categories={categories}
+            tags={tags}
           />
           <p className="text-xs text-slate-600 dark:text-slate-300 mt-2">
             {filters.length === 0
@@ -195,6 +209,19 @@ function RuleEditor({ rule, draft, accounts, categories, allUsers, globalWeights
             </label>
             {categoryEnabled && (
               <div className="mt-2"><CategoryPicker categories={categories} value={categoryId} onChange={setCategoryId} /></div>
+            )}
+          </div>
+
+          <div className={section}>
+            <label className={actionLabel}>
+              <input type="checkbox" checked={tagsEnabled} onChange={e => setTagsEnabled(e.target.checked)} />
+              Add tags
+            </label>
+            {tagsEnabled && (
+              <div className="mt-2 max-w-sm">
+                <TagPicker tags={tags} value={addTagIds} onChange={setAddTagIds} onCreated={onTagCreated} />
+                <div className="text-xs text-slate-400 mt-1">Added to the tags the transaction already has.</div>
+              </div>
             )}
           </div>
 
@@ -287,6 +314,7 @@ export default function RulesPage({ onBack, draft, onDraftUsed }: Props) {
   const [categories, setCategories] = useState<Category[]>([])
   const [allUsers, setAllUsers] = useState<User[]>([])
   const [globalWeights, setGlobalWeights] = useState<GlobalSplitWeight[]>([])
+  const [tags, setTags] = useState<Tag[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [editing, setEditing] = useState<Rule | 'new' | null>(draft ? 'new' : null)
@@ -299,8 +327,10 @@ export default function RulesPage({ onBack, draft, onDraftUsed }: Props) {
   const load = () => fetchRules().then(setRules).catch(err => setError(err.message))
 
   useEffect(() => {
-    Promise.all([fetchRules(), fetchAccounts(), fetchCategories(), fetchUsers(), fetchSplitWeights()])
-      .then(([r, a, c, u, w]) => { setRules(r); setAccounts(a); setCategories(c); setAllUsers(u); setGlobalWeights(w) })
+    Promise.all([fetchRules(), fetchAccounts(), fetchCategories(), fetchUsers(), fetchSplitWeights(), fetchTags()])
+      .then(([r, a, c, u, w, t]) => {
+        setRules(r); setAccounts(a); setCategories(c); setAllUsers(u); setGlobalWeights(w); setTags(t)
+      })
       .catch(err => setError(err.message))
       .finally(() => setLoading(false))
   }, [])
@@ -327,6 +357,7 @@ export default function RulesPage({ onBack, draft, onDraftUsed }: Props) {
   }
 
   const categoryName = (id: number) => categories.find(c => c.id === id)?.name ?? `#${id}`
+  const tagName = (id: number) => `#${tags.find(t => t.id === id)?.name ?? id}`
 
   if (error) return <StatusMessage error={error} />
 
@@ -338,7 +369,7 @@ export default function RulesPage({ onBack, draft, onDraftUsed }: Props) {
         <Button onClick={() => setEditing('new')}>+ New rule</Button>
       </div>
       <p className="text-sm text-slate-600 dark:text-slate-300 mb-4">
-        A rule files, renames or splits the transactions that match its conditions. Enabled rules run on their own on
+        A rule files, renames, tags or splits the transactions that match its conditions. Enabled rules run on their own on
         every bank sync, are proposed on the Import screen, and can be run on a selection from Transactions. They run
         top to bottom, each one on the result of the ones above, so the lower rule wins when two change the same thing.
         Rules run after automatic categorization and win over it.
@@ -369,12 +400,12 @@ export default function RulesPage({ onBack, draft, onDraftUsed }: Props) {
                 </div>
                 <div className="text-[13px] text-slate-600 dark:text-slate-300 mt-1">
                   <span className="text-slate-500 dark:text-slate-400">When </span>
-                  {rule.conditions.map(c => describeCondition(c, accounts, categories))
+                  {rule.conditions.map(c => describeCondition(c, accounts, categories, tags))
                     .join(rule.match_mode === 'all' ? ' and ' : ' or ')}
                 </div>
                 <div className="text-[13px] text-slate-600 dark:text-slate-300">
                   <span className="text-slate-500 dark:text-slate-400">Then </span>
-                  {describeActions(rule.actions, allUsers, categoryName).join(', ')}
+                  {describeActions(rule.actions, allUsers, categoryName, tagName).join(', ')}
                 </div>
               </div>
               <div className="flex flex-col sm:flex-row gap-1 shrink-0 items-end">
@@ -397,6 +428,8 @@ export default function RulesPage({ onBack, draft, onDraftUsed }: Props) {
           draft={editing === 'new' ? initialDraft : null}
           accounts={accounts}
           categories={categories}
+          tags={tags}
+          onTagCreated={tag => setTags(ts => [...ts, tag].sort((a, b) => a.name.localeCompare(b.name)))}
           allUsers={allUsers}
           globalWeights={globalWeights}
           onClose={() => { setEditing(null); setInitialDraft(null) }}
