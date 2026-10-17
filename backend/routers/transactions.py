@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session, selectinload
 
 import cache_service
 import split_engine
+import tags as tag_service
 from audit import TRACKED_FIELDS, _jsonify, diff_splits, record_transaction_history, splits_created_changes
 from database import get_db
 from filtering import apply_transaction_filters, build_where_clause, visible_transaction_filter
@@ -47,7 +48,7 @@ def get_transactions(user_id: int | None = Query(None), db: Session = Depends(ge
         db.query(Transaction, Account.name, Account.currency, Category.name, Category.color, Category.icon)
         .join(Account, Transaction.account_id == Account.id)
         .outerjoin(Category, Transaction.category_id == Category.id)
-        .options(selectinload(Transaction.splits).joinedload(TransactionSplit.user))
+        .options(selectinload(Transaction.splits).joinedload(TransactionSplit.user), selectinload(Transaction.tags))
     )
     if user_id is not None:
         query = query.filter(visible_transaction_filter(db, user_id))
@@ -64,7 +65,7 @@ def search_transactions(req: TransactionSearchRequest, db: Session = Depends(get
         db.query(Transaction, Account.name, Account.currency, Category.name, Category.color, Category.icon)
         .join(Account, Transaction.account_id == Account.id)
         .outerjoin(Category, Transaction.category_id == Category.id)
-        .options(selectinload(Transaction.splits).joinedload(TransactionSplit.user))
+        .options(selectinload(Transaction.splits).joinedload(TransactionSplit.user), selectinload(Transaction.tags))
     )
     try:
         query = apply_transaction_filters(query, req, db)
@@ -183,6 +184,7 @@ def create_transaction(data: TransactionCreate, actor_user_id: int | None = Quer
         validate_weights(data.split_weights)
         weights = {w.user_id: w.weight for w in data.split_weights}
         split_source = data.split_source or "custom"
+    new_tags = tag_service.load_tags(db, data.tag_ids)
 
     transaction = Transaction(
         date=data.date, payee=data.payee, memo=data.memo, amount=data.amount,
@@ -192,8 +194,12 @@ def create_transaction(data: TransactionCreate, actor_user_id: int | None = Quer
     db.add(transaction)
     db.flush()
     split_engine.apply_split(db, transaction, weights, source=split_source)
+    changes = splits_created_changes(weights, split_source) or {}
+    if new_tags:
+        tag_service.set_tags(transaction, new_tags)
+        changes["tags"] = tag_service.created_change(new_tags)
     record_transaction_history(db, transaction, "created", actor_user_id, source="manual",
-                                changes=splits_created_changes(weights, split_source))
+                                changes=changes or None)
     cache_service.invalidate(db, "balances", "charts", "account_totals", "category_usage")
     db.commit()
     return get_transaction_out(db, transaction.id)
@@ -284,11 +290,17 @@ def bulk_update_transactions(data: BulkUpdateTransactionsRequest, actor_user_id:
     update_data = data.update.model_dump(exclude_unset=True)
     split_weights_provided = "split_weights" in update_data
     payee_mode = update_data.pop("payee_mode", "replace")
+    add_tag_ids = update_data.pop("add_tag_ids", None) or []
+    remove_tag_ids = update_data.pop("remove_tag_ids", None) or []
     non_split_fields = {k: v for k, v in update_data.items() if k not in ("split_weights", "split_source")}
 
-    if not non_split_fields and not split_weights_provided:
+    if not non_split_fields and not split_weights_provided and not add_tag_ids and not remove_tag_ids:
         raise HTTPException(422, "At least one field must be set to apply")
 
+    if set(add_tag_ids) & set(remove_tag_ids):
+        raise HTTPException(422, "A tag cannot be both added and removed")
+    add_tags = tag_service.load_tags(db, add_tag_ids)
+    remove_tags = tag_service.load_tags(db, remove_tag_ids)
     target_ids = _resolve_bulk_target_ids(db, data.transaction_ids, data.filter, data.expected_count)
     if "account_id" in non_split_fields:
         if non_split_fields["account_id"] is None:
@@ -332,7 +344,7 @@ def bulk_update_transactions(data: BulkUpdateTransactionsRequest, actor_user_id:
         transactions = (
             db.query(Transaction)
             .filter(Transaction.id.in_(chunk_ids))
-            .options(selectinload(Transaction.splits))
+            .options(selectinload(Transaction.splits), selectinload(Transaction.tags))
             .order_by(Transaction.id)
             .all()
         )
@@ -357,6 +369,11 @@ def bulk_update_transactions(data: BulkUpdateTransactionsRequest, actor_user_id:
                 if splits_diff:
                     changes["splits"] = splits_diff
                 split_engine.apply_split(db, transaction, weights, source)
+
+            if add_tags or remove_tags:
+                tags_change = tag_service.add_remove_tags(transaction, add_tags, remove_tags)
+                if tags_change:
+                    changes["tags"] = tags_change
 
             if changes:
                 record_transaction_history(db, transaction, "updated", actor_user_id, changes=changes)
@@ -411,6 +428,8 @@ def update_transaction(transaction_id: int, data: TransactionUpdate, actor_user_
     split_weights_provided = "split_weights" in update_data
     update_data.pop("split_weights", None)
     update_data.pop("split_source", None)
+    tags_provided = "tag_ids" in update_data
+    new_tags = tag_service.load_tags(db, update_data.pop("tag_ids", None)) if tags_provided else None
 
     old_values = {f: getattr(transaction, f) for f in update_data if f in TRACKED_FIELDS}
     for field, value in update_data.items():
@@ -446,6 +465,10 @@ def update_transaction(transaction_id: int, data: TransactionUpdate, actor_user_
         changes["splits"] = splits_diff
 
     split_engine.apply_split(db, transaction, weights, source)
+    if new_tags is not None:
+        tags_change = tag_service.set_tags(transaction, new_tags)
+        if tags_change:
+            changes["tags"] = tags_change
     if changes:
         record_transaction_history(db, transaction, "updated", actor_user_id, changes=changes)
     cache_service.invalidate(db, "balances", "charts", "account_totals", "category_usage")
@@ -550,8 +573,13 @@ def divide_transaction(transaction_id: int, data: TransactionDivideRequest, acto
         db.add(new_transaction)
         db.flush()
         split_engine.apply_split(db, new_transaction, weights, split_source)
+        # Every part keeps the tags of the transaction it was divided from.
+        part_changes = splits_created_changes(weights, split_source) or {}
+        if transaction.tags:
+            tag_service.set_tags(new_transaction, list(transaction.tags))
+            part_changes["tags"] = tag_service.created_change(list(transaction.tags))
         record_transaction_history(db, new_transaction, "created", actor_user_id, source="divide",
-                                    changes=splits_created_changes(weights, split_source))
+                                    changes=part_changes or None)
         created.append(new_transaction)
 
     cache_service.invalidate(db, "balances", "charts", "account_totals", "category_usage")

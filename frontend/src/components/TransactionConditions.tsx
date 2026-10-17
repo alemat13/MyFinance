@@ -1,7 +1,8 @@
-import { Account, Category, FilterCondition, FilterField, User } from '../api/client'
+import { Account, Category, FilterCondition, FilterField, TagRef, User } from '../api/client'
 import CategoryPicker from './CategoryPicker'
 import AccountPicker from './AccountPicker'
 import { UNCATEGORIZED_ID } from '../utils/categoryHierarchy'
+import { UNTAGGED_ID } from '../utils/tags'
 import { Button, Select, Input } from './ui'
 
 /** One row of the advanced filter, as the UI holds it: every value a string,
@@ -31,7 +32,7 @@ const NUMERIC_OPERATORS = [
  *  ownership of the account pays), as the Transactions screen shows them.
  *  Offered only where the builder is given the users (not in rules). */
 export const USER_FIELDS: FilterField[] = ['split_weight', 'split_share', 'split_balance']
-const NUMERIC_FIELDS: FilterField[] = ['amount', 'account_id', 'category_id', ...USER_FIELDS]
+const NUMERIC_FIELDS: FilterField[] = ['amount', 'account_id', 'category_id', 'tag_id', ...USER_FIELDS]
 
 export const OPERATORS_BY_FIELD: Record<FilterField, { value: string; label: string }[]> = {
   payee: [
@@ -73,12 +74,17 @@ export const OPERATORS_BY_FIELD: Record<FilterField, { value: string; label: str
   split_weight: NUMERIC_OPERATORS,
   split_share: NUMERIC_OPERATORS,
   split_balance: NUMERIC_OPERATORS,
+  tag_id: [
+    { value: 'eq', label: 'is' },
+    { value: 'ne', label: 'is not' },
+  ],
 }
 
 export const FIELD_LABELS: Record<FilterField, string> = {
   payee: 'Payee', memo: 'Memo', raw_label: 'Original label', amount: 'Amount', date: 'Date',
   account_id: 'Account', category_id: 'Category',
   split_weight: 'Split weight of', split_share: 'Share of', split_balance: 'Balance of',
+  tag_id: 'Tag',
 }
 
 export const emptyCondition: ConditionRow = { field: 'payee', operator: 'contains', value: '', value2: '' }
@@ -117,7 +123,10 @@ export function conditionsToFilters(conditions: ConditionRow[]): FilterCondition
       field: c.field,
       operator: c.operator,
       // "Uncategorized" is sent as no category at all (IS NULL / IS NOT NULL).
-      value: c.field === 'category_id' && c.value === String(UNCATEGORIZED_ID) ? null : coerceValue(c.field, c.value),
+      // So is "No tag": "Tag is No tag" is the untagged rows.
+      value: (c.field === 'category_id' && c.value === String(UNCATEGORIZED_ID))
+        || (c.field === 'tag_id' && c.value === String(UNTAGGED_ID))
+        ? null : coerceValue(c.field, c.value),
       value2: c.operator === 'between' ? coerceValue(c.field, c.value2) : undefined,
       ...(isUserField(c.field) ? { user_id: parseInt(c.userId!) } : {}),
     }))
@@ -130,6 +139,8 @@ interface Props {
   onMatchModeChange: (mode: 'all' | 'any') => void
   accounts: Account[]
   categories: Category[]
+  // Given, the Tag field is offered.
+  tags?: TagRef[]
   // Given, the per-user fields are offered too, one condition per user.
   users?: User[]
 }
@@ -138,10 +149,11 @@ interface Props {
  *  and the auto-categorization screen so a training selection is expressed in
  *  exactly the filters the user already knows. */
 export default function TransactionConditions({
-  conditions, onChange, matchMode, onMatchModeChange, accounts, categories, users,
+  conditions, onChange, matchMode, onMatchModeChange, accounts, categories, tags, users,
 }: Props) {
   const fields = (Object.keys(OPERATORS_BY_FIELD) as FilterField[])
     .filter(f => !isUserField(f) || (users && users.length > 0))
+    .filter(f => f !== 'tag_id' || tags !== undefined)
   const updateField = (i: number, field: FilterField) => {
     onChange(conditions.map((c, idx) => {
       if (idx !== i) return c
@@ -197,6 +209,13 @@ export default function TransactionConditions({
               anyLabel="Choose category"
               className="min-w-[140px]"
             />
+          ) : c.field === 'tag_id' ? (
+            <Select aria-label="Tag value" value={c.value} onChange={e => updateValue(i, 'value', e.target.value)}
+                    className="min-w-[140px]">
+              <option value="">Choose tag</option>
+              <option value={UNTAGGED_ID}>No tag</option>
+              {(tags ?? []).map(t => <option key={t.id} value={t.id}>#{t.name}</option>)}
+            </Select>
           ) : (
             <Input
               type={isNumberInput(c.field) ? 'number' : c.field === 'date' ? 'date' : 'text'}

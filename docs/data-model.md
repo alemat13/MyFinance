@@ -15,6 +15,8 @@ erDiagram
     users ||--o{ account_split_weights : "weighted as"
     transactions ||--o{ transaction_splits : "split into"
     users ||--o{ transaction_splits : "owes"
+    transactions ||--o{ transaction_tags : "tagged"
+    tags ||--o{ transaction_tags : "on"
 
     transaction_history {
         int id PK
@@ -94,6 +96,18 @@ erDiagram
         boolean reconciled "manually set, default false"
         datetime created_at
         int divide_group_id "nullable, NOT a FK; anchor transaction's own id, shared by every part of a divide"
+    }
+
+    tags {
+        int id PK
+        string name "UNIQUE (case-insensitive in the API), no , ; |"
+        string color "nullable, e.g. #4f46e5"
+        datetime created_at
+    }
+
+    transaction_tags {
+        int transaction_id PK,FK "ON DELETE CASCADE"
+        int tag_id PK,FK "indexed, ON DELETE CASCADE"
     }
 
     transaction_splits {
@@ -285,6 +299,9 @@ The Transactions screen's saved filters (`routers/saved_filters.py`): a filter s
 | `mode` | String(10) | `simple` \| `advanced`, the filter it was saved from |
 | `filters` | JSON | That filter exactly as the screen holds it, stored and returned as is, never read by the backend: `simple` → `search`, `date_from`, `date_to`, `account_id`, `category_id`, `amount_min`, `amount_max`, `reconciled`; `advanced` → `match_mode` and the condition rows (`field`, `operator`, `value`, `value2`). Both also carry `sort_dir` (`asc` \| `desc`), the date order saved with the filter |
 | `created_at` / `updated_at` | DateTime | |
+
+### `tags` and `transaction_tags`
+Free labels on transactions (`backend/tags.py`, `routers/tags.py`, Alembic `0022`), many-to-many: `transaction_tags` holds one row per (transaction, tag), written through `Transaction.tags`. A tag feeds no balance, chart, split or cache namespace; it is searched (simple filter `tag_id`/`untagged`, advanced condition `tag_id` with `eq`/`ne`, a null value meaning "no tag at all", like an uncategorized `category_id`), set by hand (`tag_ids` on create/update, replacing the whole set), in bulk (`add_tag_ids`/`remove_tag_ids` on bulk-update, each row keeping its others), and by rules (`RuleActions.add_tag_ids`, add only). Every change to a transaction's tags writes a `changes.tags` entry (`{"old": [names], "new": [names]}`, names as they were then) in `transaction_history`, including the removals done by deleting a tag (`DELETE /api/tags/{id}`). Divide parts inherit the original's tags. In the backup archive (`tags`, `transaction_tags`), restored by both modes: a partial restore reuses an existing tag of the same name; `None` is an archive from before tags. Exported in the Transactions CSV/Excel as one `Tags` column, names separated by `, `, which is why a name can't contain `,`, `;` or `|`.
 
 ### `email_alerts`
 Each user's email alert on new transactions (`backend/email_alerts.py`, `routers/email_alerts.py`, Alembic `0021`): at most one row per user, created the first time their settings are saved on the Email alerts screen. A transaction is "new" by its `created_at` (when it reached MyFinance: bank sync, import or typed in), not its `date`, and only on accounts the user owns (`ownership_percentage > 0`). Sent at the end of the bank sync, never on a schedule of their own: the scheduled `POST /api/bank-sync/run-due` (0h/6h/12h/18h Paris) sends whatever is due — daily with the 6h sync, weekly with the Sunday 18h sync, monthly with the 18h sync of the month's last day, a missed one with the next sync — and a sync started by hand also sends the daily alert of whoever has something new. An email lists at most 100 rows, most recent first, and counts the rest; a window with nothing new sends nothing. Sent over SMTP (`SMTP_HOST`/`SMTP_PORT`/`SMTP_USERNAME`/`SMTP_PASSWORD`) from `ALERT_FROM_ADDRESS`. Deleting a user deletes their row. Part of the backup archive (`email_alerts`), restored in overwrite mode only; `None` is an archive from before alerts.

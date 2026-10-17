@@ -280,8 +280,9 @@ def _attach_rules(db: Session, rows: list[ImportPreviewRow]) -> None:
         logger.exception("Could not evaluate the automatic rules on the import preview")
         return
     names = {c.id: c.name for c in db.query(Category).all()}
+    tag_names = transaction_rules.tag_names(db)
     for row, outcome in zip(candidates, outcomes):
-        row.rules = transaction_rules.outcome_out(outcome, names)
+        row.rules = transaction_rules.outcome_out(outcome, names, tag_names)
 
 
 def _attach_suggestions(db: Session, rows: list[ImportPreviewRow]) -> None:

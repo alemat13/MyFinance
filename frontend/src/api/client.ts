@@ -119,6 +119,18 @@ export interface UserBalance {
   net_position: number
 }
 
+/** A free label on transactions, many-to-many: a transaction carries any
+ *  number of tags. Means nothing to balances, charts or splits. */
+export interface TagRef {
+  id: number
+  name: string
+  color?: string | null
+}
+
+export interface Tag extends TagRef {
+  transaction_count: number
+}
+
 export interface Transaction {
   id: number
   date: string
@@ -151,6 +163,8 @@ export interface Transaction {
   raw_initiated_date?: string | null
   raw_booking_date?: string | null
   splits: TransactionSplit[]
+  // Optional for the same reason as the raw fields: the API always sends it.
+  tags?: TagRef[]
 }
 
 export interface TransactionCreate {
@@ -163,6 +177,7 @@ export interface TransactionCreate {
   accounting_month_offset?: number
   split_weights?: SplitWeightCreate[] | null
   split_source?: SplitSource | null
+  tag_ids?: number[]
 }
 
 export interface TransactionUpdate {
@@ -176,6 +191,8 @@ export interface TransactionUpdate {
   reconciled?: boolean
   split_weights?: SplitWeightCreate[] | null
   split_source?: SplitSource | null
+  // Replaces the whole set of tags; omitted leaves them alone.
+  tag_ids?: number[]
 }
 
 // Only include a key here when its section is meant to be applied to every
@@ -196,6 +213,9 @@ export interface BulkTransactionUpdate {
   reconciled?: boolean
   split_weights?: SplitWeightCreate[] | null
   split_source?: SplitSource | null
+  // Tags added to / removed from every selected row, which keeps its others.
+  add_tag_ids?: number[]
+  remove_tag_ids?: number[]
 }
 
 export interface BulkUpdateTransactionsResponse {
@@ -227,7 +247,7 @@ export interface TransactionDivideResponse {
 }
 
 export type FilterField = 'payee' | 'memo' | 'raw_label' | 'amount' | 'date' | 'account_id' | 'category_id'
-  | 'split_weight' | 'split_share' | 'split_balance'
+  | 'split_weight' | 'split_share' | 'split_balance' | 'tag_id'
 
 export interface FilterCondition {
   field: FilterField
@@ -247,6 +267,9 @@ export interface TransactionSearchRequest {
   category_id?: number
   // Only the transactions with no category.
   uncategorized?: boolean
+  // Only the transactions carrying this tag, or (untagged) carrying none.
+  tag_id?: number
+  untagged?: boolean
   amount_min?: number
   amount_max?: number
   reconciled?: boolean
@@ -1002,6 +1025,8 @@ export interface RuleActions {
   /** A weight tier read when the rule runs (not copied into the rule), so a
    *  later change to that tier carries through. Exclusive with split_weights. */
   split_tier?: SplitTier | null
+  /** Tags added to a matching transaction, which keeps the ones it has. */
+  add_tag_ids?: number[] | null
 }
 
 export type SplitTier = 'global' | 'account' | 'category' | 'default'
@@ -1033,6 +1058,9 @@ export interface RuleOutcome {
   reconciled: boolean | null
   split_weights: { user_id: number; weight: number }[] | null
   split_source: SplitSource | null
+  /** Tags a rule adds that the row does not carry yet. */
+  add_tag_ids?: number[] | null
+  add_tag_names?: string[] | null
 }
 
 export interface RulePreviewItem {
@@ -1102,6 +1130,8 @@ export interface SimpleFilterState {
   amount_min: string
   amount_max: string
   reconciled: string
+  /** A tag id, UNTAGGED_ID for "no tag", 0 for any (absent in older saved filters). */
+  tag_id?: number
   /** The date order (Newest/Oldest first) saved with the filter. */
   sort_dir?: 'asc' | 'desc'
 }
@@ -1183,4 +1213,23 @@ export function updateEmailAlert(userId: number, data: EmailAlertUpdate): Promis
 
 export function sendTestEmailAlert(userId: number): Promise<EmailAlertTestResult> {
   return request<EmailAlertTestResult>(`/alerts/users/${userId}/test`, { method: 'POST' })
+}
+
+// ── Tags ────────────────────────────────────────────────────────
+
+export function fetchTags(): Promise<Tag[]> {
+  return request<Tag[]>('/tags')
+}
+
+export function createTag(data: { name: string; color?: string | null }): Promise<Tag> {
+  return request<Tag>('/tags', { method: 'POST', body: JSON.stringify(data) })
+}
+
+export function updateTag(id: number, data: { name?: string; color?: string | null }): Promise<Tag> {
+  return request<Tag>(`/tags/${id}`, { method: 'PUT', body: JSON.stringify(data) })
+}
+
+export function deleteTag(id: number, actorUserId?: number | null): Promise<void> {
+  const query = actorUserId ? `?actor_user_id=${actorUserId}` : ''
+  return request<void>(`/tags/${id}${query}`, { method: 'DELETE' })
 }

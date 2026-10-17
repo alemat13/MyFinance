@@ -20,6 +20,7 @@ import EmailAlertsPage from './components/EmailAlertsPage'
 import BankSyncPage from './components/BankSyncPage'
 import CategorizerPage from './components/CategorizerPage'
 import RulesPage from './components/RulesPage'
+import TagsPage from './components/TagsPage'
 import { RuleDraft } from './utils/rules'
 import ChartsPage from './components/ChartsPage'
 import HelpPage from './components/HelpPage'
@@ -93,10 +94,11 @@ export default function App() {
   // account. TransactionsPage reads its filters from the query string on mount, so
   // we set account_id (and clear every other simple/advanced filter, which may be
   // left over from an earlier visit) before switching the view.
-  const navigateToAccountTransactions = (accountId: number) => {
+  const navigateToFilteredTransactions = (filter: { account_id?: number; tag_id?: number }) => {
     navigateQueryParams({
       view: 'transactions',
-      account_id: String(accountId),
+      account_id: filter.account_id ? String(filter.account_id) : undefined,
+      tag_id: filter.tag_id ? String(filter.tag_id) : undefined,
       mode: undefined,
       q: undefined,
       date_from: undefined,
@@ -112,6 +114,7 @@ export default function App() {
     })
     setView('transactions')
   }
+  const navigateToAccountTransactions = (accountId: number) => navigateToFilteredTransactions({ account_id: accountId })
 
   const handleSelectUser = (userId: number | null) => {
     setSelectedUserId(userId)
@@ -198,6 +201,13 @@ export default function App() {
       {view === 'categorizer' && <CategorizerPage onBack={() => navigateToView('dashboard')} />}
       {view === 'rules' && (
         <RulesPage onBack={() => navigateToView('dashboard')} draft={ruleDraft} onDraftUsed={() => setRuleDraft(null)} />
+      )}
+      {view === 'tags' && (
+        <TagsPage
+          onBack={() => navigateToView('dashboard')}
+          selectedUserId={selectedUserId}
+          onOpenTransactions={tagId => navigateToFilteredTransactions({ tag_id: tagId })}
+        />
       )}
       {view === 'alerts' && <EmailAlertsPage onBack={() => navigateToView('dashboard')} selectedUserId={selectedUserId} />}
       {view === 'backup' && <BackupPage onBack={() => navigateToView('dashboard')} />}

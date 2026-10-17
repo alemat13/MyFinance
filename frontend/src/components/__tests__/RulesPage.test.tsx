@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   fetchUsers: vi.fn(),
   fetchSplitWeights: vi.fn(),
   searchTransactions: vi.fn(),
+  fetchTags: vi.fn(),
 }))
 
 vi.mock('../../api/client', () => mocks)
@@ -35,6 +36,7 @@ beforeEach(() => {
   mocks.fetchUsers.mockResolvedValue([{ id: 1, name: 'Alex' }])
   mocks.fetchSplitWeights.mockResolvedValue([])
   mocks.searchTransactions.mockResolvedValue({ items: [], total: 12, page: 1, page_size: 1 })
+  mocks.fetchTags.mockResolvedValue([{ id: 5, name: 'Trip', color: null, transaction_count: 3 }])
 })
 
 test('lists the rules in order with what they match and do', async () => {
@@ -118,4 +120,27 @@ test('a draft from the Transactions filters opens a new rule with its conditions
   expect(await screen.findByDisplayValue('netflix')).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Save rule' })).toBeInTheDocument()
   expect(onDraftUsed).toHaveBeenCalled()
+})
+
+test('a rule can add tags, and tests a tag', async () => {
+  mocks.fetchRules.mockResolvedValue([rule({
+    conditions: [{ field: 'tag_id', operator: 'eq', value: null }], actions: { add_tag_ids: [5] },
+  })])
+  mocks.createRule.mockResolvedValue(rule({ id: 3 }))
+  renderWithProviders(<RulesPage onBack={() => {}} />)
+  expect(await screen.findByText('Tag is No tag')).toBeInTheDocument()
+  expect(screen.getByText('Add tags #Trip')).toBeInTheDocument()
+
+  fireEvent.click(screen.getByText('+ New rule'))
+  fireEvent.change(screen.getByPlaceholderText('e.g. SFR phone bill'), { target: { value: 'Hotels' } })
+  const valueInputs = screen.getAllByRole('textbox')
+  fireEvent.change(valueInputs[valueInputs.length - 1], { target: { value: 'hotel' } })
+  fireEvent.click(screen.getByLabelText('Add tags'))
+  fireEvent.focus(screen.getByLabelText('Tags'))
+  fireEvent.click(await screen.findByRole('option', { name: /Trip/ }))
+  fireEvent.click(screen.getByRole('button', { name: 'Save rule' }))
+
+  await waitFor(() => expect(mocks.createRule).toHaveBeenCalledWith(expect.objectContaining({
+    name: 'Hotels', actions: { add_tag_ids: [5] },
+  })))
 })

@@ -38,18 +38,20 @@ from sqlalchemy.orm import Session
 
 import cache_service
 import split_engine
+import tags as tag_service
 from audit import TRACKED_FIELDS, _jsonify, diff_splits, record_transaction_history
 from models import (
     AccountSplitWeight,
     Category,
     CategorySplit,
     GlobalSplitWeight,
+    Tag,
     Transaction,
     TransactionRule,
     TransactionSplit,
     User,
 )
-from schemas import DATE_FIELDS, TEXT_FIELDS, FilterCondition, RuleActions, RuleOutcomeOut
+from schemas import DATE_FIELDS, TAG_FIELDS, TEXT_FIELDS, FilterCondition, RuleActions, RuleOutcomeOut
 
 logger = logging.getLogger(__name__)
 
@@ -70,12 +72,14 @@ class Outcome:
     fields: dict = field(default_factory=dict)
     split_weights: dict[int, int] | None = None
     split_source: str | None = None
+    # Tags a rule adds that the row did not carry, in the order added.
+    add_tag_ids: list[int] = field(default_factory=list)
     rule_ids: list[int] = field(default_factory=list)
     rule_names: list[str] = field(default_factory=list)
 
     @property
     def changes_anything(self) -> bool:
-        return bool(self.fields) or self.split_weights is not None
+        return bool(self.fields) or self.split_weights is not None or bool(self.add_tag_ids)
 
 
 def load_rules(db: Session, rule_ids: list[int] | None = None) -> list[TransactionRule]:
@@ -94,6 +98,13 @@ def _coerce_date(value) -> date:
 
 
 def _matches(condition: FilterCondition, state: dict) -> bool:
+    if condition.field in TAG_FIELDS:
+        # Mirrors filtering.build_condition_expr(): with no tag named, "is"
+        # means "carries no tag" and "is not" "carries some tag".
+        tag_ids = state.get("tag_ids") or set()
+        if condition.value in (None, ""):
+            return bool(tag_ids) == (condition.operator == "ne")
+        return (int(float(condition.value)) in tag_ids) == (condition.operator == "eq")
     current = state.get(condition.field)
     if condition.field == "category_id" and condition.value is None and condition.operator in ("eq", "ne"):
         # Mirrors filtering.build_condition_expr(): no category named means
@@ -178,7 +189,8 @@ class Tiers:
 
 
 def evaluate(rules: list[TransactionRule], row, *, known_categories: set[int],
-             known_users: set[int], tiers: Tiers | None = None) -> Outcome:
+             known_users: set[int], tiers: Tiers | None = None,
+             known_tags: set[int] | None = None) -> Outcome:
     """Run the rules over one row (a Transaction or anything carrying the same
     attributes) without touching it.
 
@@ -189,6 +201,9 @@ def evaluate(rules: list[TransactionRule], row, *, known_categories: set[int],
     """
     original = {f: getattr(row, f, None) for f in _STATE_FIELDS}
     state = dict(original)
+    # A row read from a file (the import preview) carries no tag yet.
+    original_tags = {t.id for t in getattr(row, "tags", None) or []}
+    state["tag_ids"] = set(original_tags)
     outcome = Outcome()
     split_tier = None
     for rule in rules:
@@ -212,6 +227,10 @@ def evaluate(rules: list[TransactionRule], row, *, known_categories: set[int],
         if actions.split_tier is not None:
             split_tier = actions.split_tier
             outcome.split_weights, outcome.split_source = None, None
+        for tag_id in actions.add_tag_ids or []:
+            if (known_tags is None or tag_id in known_tags) and tag_id not in state["tag_ids"]:
+                state["tag_ids"].add(tag_id)
+                outcome.add_tag_ids.append(tag_id)
         outcome.rule_ids.append(rule.id)
         outcome.rule_names.append(rule.name)
 
@@ -231,12 +250,19 @@ def evaluate(rules: list[TransactionRule], row, *, known_categories: set[int],
 def evaluate_many(db: Session, rules: list[TransactionRule], rows: list) -> list[Outcome]:
     known_categories = {row[0] for row in db.query(Category.id).all()}
     known_users = {row[0] for row in db.query(User.id).all()}
+    known_tags = {row[0] for row in db.query(Tag.id).all()}
     tiers = Tiers.load(db)
-    return [evaluate(rules, row, known_categories=known_categories, known_users=known_users, tiers=tiers)
+    return [evaluate(rules, row, known_categories=known_categories, known_users=known_users, tiers=tiers,
+                     known_tags=known_tags)
             for row in rows]
 
 
-def outcome_out(outcome: Outcome, category_names: dict[int, str]) -> RuleOutcomeOut | None:
+def tag_names(db: Session) -> dict[int, str]:
+    return {t.id: t.name for t in db.query(Tag).all()}
+
+
+def outcome_out(outcome: Outcome, category_names: dict[int, str],
+                tag_names: dict[int, str] | None = None) -> RuleOutcomeOut | None:
     """An outcome as the API reports it, or None when it changes nothing."""
     if not outcome.changes_anything:
         return None
@@ -254,6 +280,8 @@ def outcome_out(outcome: Outcome, category_names: dict[int, str]) -> RuleOutcome
             if outcome.split_weights is not None else None
         ),
         split_source=outcome.split_source,
+        add_tag_ids=list(outcome.add_tag_ids) or None,
+        add_tag_names=[(tag_names or {}).get(t, str(t)) for t in outcome.add_tag_ids] or None,
     )
 
 
@@ -299,6 +327,12 @@ def write(db: Session, transaction: Transaction, outcome: Outcome, actor_user_id
         if splits_diff:
             changes["splits"] = splits_diff
             split_engine.apply_split(db, transaction, weights, source)
+
+    if outcome.add_tag_ids:
+        tags_change = tag_service.add_remove_tags(
+            transaction, tag_service.load_tags(db, outcome.add_tag_ids), [])
+        if tags_change:
+            changes["tags"] = tags_change
 
     if not changes:
         return False

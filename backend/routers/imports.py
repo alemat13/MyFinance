@@ -4,6 +4,7 @@ from starlette.concurrency import run_in_threadpool
 
 import cache_service
 import split_engine
+import tags as tag_service
 from audit import record_transaction_history, splits_created_changes
 from database import get_db
 from import_csv import MAX_IMPORT_ROWS, detect_import_settings, preview_import
@@ -74,6 +75,7 @@ def import_commit(data: ImportCommitRequest, actor_user_id: int | None = Query(N
             f"{MAX_IMPORT_ROWS}-row import limit. Split it into smaller batches and import them separately."
         )
 
+    tags_by_id = {t.id: t for t in tag_service.load_tags(db, [i for row in data.rows for i in row.tag_ids or []])}
     for row in data.rows:
         if row.split_weights is not None:
             validate_transaction_weights_present(row.split_weights)
@@ -81,14 +83,18 @@ def import_commit(data: ImportCommitRequest, actor_user_id: int | None = Query(N
 
     weights_cache: dict[tuple[int | None, int | None], tuple[str | None, dict[int, int]]] = {}
     transaction_ids: list[int] = []
-    pending_batch: list[tuple[Transaction, dict[int, int] | None, str]] = []
+    pending_batch: list[tuple[Transaction, dict[int, int] | None, str, list]] = []
 
     def flush_pending_batch() -> None:
         db.flush()
-        for transaction, weights, source in pending_batch:
+        for transaction, weights, source, row_tags in pending_batch:
             split_engine.apply_split(db, transaction, weights or None, source)
+            changes = splits_created_changes(weights, source) or {}
+            if row_tags:
+                tag_service.set_tags(transaction, row_tags)
+                changes["tags"] = tag_service.created_change(row_tags)
             record_transaction_history(db, transaction, "created", actor_user_id, source="csv_import",
-                                        changes=splits_created_changes(weights, source))
+                                        changes=changes or None)
             transaction_ids.append(transaction.id)
         pending_batch.clear()
 
@@ -113,7 +119,9 @@ def import_commit(data: ImportCommitRequest, actor_user_id: int | None = Query(N
             raw_source=RAW_SOURCE, raw_label=row.raw_label or row.payee,
         )
         db.add(transaction)
-        pending_batch.append((transaction, weights, source))
+        row_tags = [tags_by_id[i] for i in sorted(set(row.tag_ids or []))]
+
+        pending_batch.append((transaction, weights, source, row_tags))
         if len(pending_batch) >= _IMPORT_FLUSH_BATCH_SIZE:
             flush_pending_batch()
 

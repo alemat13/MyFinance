@@ -25,6 +25,7 @@ from routers import (
     onedrive,
     saved_filters,
     split_weights,
+    tags,
     transaction_rules,
     transactions,
     users,
@@ -113,3 +114,4 @@ app.include_router(categorizer.router)
 app.include_router(transaction_rules.router)
 app.include_router(saved_filters.router)
 app.include_router(email_alerts.router)
+app.include_router(tags.router)

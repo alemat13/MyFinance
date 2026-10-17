@@ -32,6 +32,7 @@ vi.mock('../../api/client', () => ({
   fetchDivideSiblings: mockFetchDivideSiblings,
   divideTransaction: mockDivideTransaction,
   fetchPayeeSuggestions: mockFetchPayeeSuggestions,
+  createTag: vi.fn(),
 }))
 
 const baseAccount = { id: 1, name: 'Checking', type: 'Checking', balance: 100, currency: 'USD', created_at: '2026-01-01', archived: false, users: [], split_weights: [] }
@@ -759,4 +760,31 @@ test('payee autocompletion suggests recent payees and applies payee and category
   fireEvent.click(screen.getByRole('button', { name: 'Save' }))
   await waitFor(() => expect(mockUpdateTransaction).toHaveBeenCalled())
   expect(mockUpdateTransaction.mock.calls[0][1]).toMatchObject({ payee: 'Carrefour Market', category_id: 2 })
+})
+
+test('edits the tags and shows tag changes in the history', async () => {
+  mockFetchTransaction.mockResolvedValue({
+    ...baseTxn, tags: [{ id: 3, name: 'Refund', color: null }],
+    splits: [{ user_id: 1, user_name: 'Alex', weight: 1, share_amount: 50, source: 'custom' }],
+  })
+  mockFetchTransactionHistory.mockResolvedValue([{
+    id: 1, transaction_id: 1, action: 'updated', source: null, changed_at: '2026-01-16T10:00:00',
+    changed_by_user_id: null, changed_by_user_name: 'Alex', date: null, payee: null, memo: null, amount: null,
+    account_id: null, category_id: null, changes: { tags: { old: ['Old'], new: ['Refund'] } },
+  }])
+  mockUpdateTransaction.mockResolvedValue(baseTxn)
+  const tags = [
+    { id: 3, name: 'Refund', color: null, transaction_count: 1 },
+    { id: 4, name: 'Trip', color: null, transaction_count: 0 },
+  ]
+  renderWithProviders(<TransactionDetail {...baseProps} tags={tags} />)
+
+  expect(await screen.findByText('tags added: Refund, tags removed: Old')).toBeInTheDocument()
+  fireEvent.click(screen.getByLabelText('Remove tag Refund'))
+  fireEvent.focus(screen.getByLabelText('Tags'))
+  fireEvent.click(screen.getByRole('option', { name: /Trip/ }))
+  fireEvent.click(screen.getByText('Save'))
+
+  await waitFor(() => expect(mockUpdateTransaction).toHaveBeenCalledWith(
+    1, expect.objectContaining({ tag_ids: [4] }), null))
 })
