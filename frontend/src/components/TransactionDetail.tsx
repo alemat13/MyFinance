@@ -9,6 +9,7 @@ import { SplitRow } from './SplitEditor'
 import TransactionSplitFields from './TransactionSplitFields'
 import TransactionDivideModal from './TransactionDivideModal'
 import CategoryPicker from './CategoryPicker'
+import PayeeInput from './PayeeInput'
 import AccountPicker from './AccountPicker'
 import TransactionRawFields from './TransactionRawFields'
 import { useToast } from '../context/ToastContext'
@@ -231,7 +232,13 @@ export default function TransactionDetail({
           )}
 
           <div className="flex gap-2 flex-wrap items-end">
-            <Input className="basis-full w-full" placeholder="Payee" value={formData.payee ?? ''} onChange={e => setFormData({ ...formData, payee: e.target.value })} />
+            <PayeeInput
+              className="basis-full w-full"
+              value={formData.payee ?? ''}
+              categories={categories}
+              onChange={payee => setFormData(f => ({ ...f, payee }))}
+              onPick={s => setFormData(f => ({ ...f, payee: s.payee, category_id: s.category_id }))}
+            />
             <textarea
               placeholder="Memo"
               rows={2}

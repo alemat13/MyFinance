@@ -275,6 +275,18 @@ class TransactionOut(BaseModel):
     splits: list[TransactionSplitOut] = []
 
 
+class PayeeSuggestionOut(BaseModel):
+    """One autocompletion entry for the Payee field: a payee as last used, the
+    category it was filed under then, and that most recent transaction's date
+    and amount so two similar entries can be told apart."""
+    payee: str
+    category_id: Optional[int] = None
+    category_name: Optional[str] = None
+    date: _DateType
+    amount: float
+    currency: str
+
+
 class TransactionCreate(BaseModel):
     date: _DateType
     payee: str

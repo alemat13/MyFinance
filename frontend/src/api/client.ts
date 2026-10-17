@@ -518,6 +518,20 @@ export function searchTransactions(req: TransactionSearchRequest): Promise<Trans
   return request<TransactionSearchResponse>('/transactions/search', { method: 'POST', body: JSON.stringify(req) })
 }
 
+export interface PayeeSuggestion {
+  payee: string
+  category_id: number | null
+  category_name: string | null
+  date: string
+  amount: number
+  currency: string
+}
+
+export function fetchPayeeSuggestions(q: string, limit = 8): Promise<PayeeSuggestion[]> {
+  const params = new URLSearchParams({ q, limit: String(limit) })
+  return request<PayeeSuggestion[]>(`/transactions/payee-suggestions?${params}`)
+}
+
 export function fetchTransaction(id: number, userId?: number | null): Promise<Transaction> {
   const params = userId ? `?user_id=${userId}` : ''
   return request<Transaction>(`/transactions/${id}${params}`)
