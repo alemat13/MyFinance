@@ -12,7 +12,7 @@ function selectCategoryInForm(categoryName: string) {
   fireEvent.click(within(formContainer).getByText(categoryName))
 }
 
-const { mockFetchTransaction, mockCreateTransaction, mockUpdateTransaction, mockDeleteTransaction, mockFetchTransactionHistory, mockFetchDivideSiblings, mockDivideTransaction } = vi.hoisted(() => ({
+const { mockFetchTransaction, mockCreateTransaction, mockUpdateTransaction, mockDeleteTransaction, mockFetchTransactionHistory, mockFetchDivideSiblings, mockDivideTransaction, mockFetchPayeeSuggestions } = vi.hoisted(() => ({
   mockFetchTransaction: vi.fn(),
   mockCreateTransaction: vi.fn(),
   mockUpdateTransaction: vi.fn(),
@@ -20,6 +20,7 @@ const { mockFetchTransaction, mockCreateTransaction, mockUpdateTransaction, mock
   mockFetchTransactionHistory: vi.fn(),
   mockFetchDivideSiblings: vi.fn(),
   mockDivideTransaction: vi.fn(),
+  mockFetchPayeeSuggestions: vi.fn(),
 }))
 
 vi.mock('../../api/client', () => ({
@@ -30,6 +31,7 @@ vi.mock('../../api/client', () => ({
   fetchTransactionHistory: mockFetchTransactionHistory,
   fetchDivideSiblings: mockFetchDivideSiblings,
   divideTransaction: mockDivideTransaction,
+  fetchPayeeSuggestions: mockFetchPayeeSuggestions,
 }))
 
 const baseAccount = { id: 1, name: 'Checking', type: 'Checking', balance: 100, currency: 'USD', created_at: '2026-01-01', archived: false, users: [], split_weights: [] }
@@ -59,6 +61,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   mockFetchTransactionHistory.mockResolvedValue([])
   mockFetchDivideSiblings.mockResolvedValue([])
+  mockFetchPayeeSuggestions.mockResolvedValue([])
 })
 
 test('loads and displays the transaction fields', async () => {
@@ -621,7 +624,7 @@ test('can select a non-default accounting month offset when creating a transacti
   fireEvent.change(screen.getByPlaceholderText('Payee'), { target: { value: 'New Payee' } })
   fireEvent.change(screen.getByPlaceholderText('Amount'), { target: { value: '100' } })
 
-  fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: '1' } })
+  fireEvent.change(screen.getByRole('combobox', { name: 'Accounting month' }), { target: { value: '1' } })
   pickAccount(screen.getByRole('button', { name: 'Choose account' }), 'Checking')
   selectCategoryInForm('Salary')
 
@@ -724,4 +727,36 @@ test('hides the source section for a transaction that has no raw fields', async 
 
   await waitFor(() => expect(mockFetchTransaction).toHaveBeenCalled())
   expect(screen.queryByRole('button', { name: /As reported by the bank/ })).not.toBeInTheDocument()
+})
+
+test('payee autocompletion suggests recent payees and applies payee and category', async () => {
+  const groceries = { id: 2, name: 'Groceries', type: 'Expense', splits: [] }
+  mockFetchTransaction.mockResolvedValue({ ...baseTxn, splits: [{ user_id: 1, user_name: 'Alex', weight: 1, share_amount: 50, source: 'custom' }] })
+  mockUpdateTransaction.mockResolvedValue(baseTxn)
+  mockFetchPayeeSuggestions.mockResolvedValue([
+    { payee: 'Carrefour Market', category_id: 2, category_name: 'Groceries', date: '2026-09-05', amount: -42.5, currency: 'USD' },
+    { payee: 'Carrefour', category_id: null, category_name: null, date: '2026-08-01', amount: -10, currency: 'USD' },
+  ])
+
+  renderWithProviders(<TransactionDetail {...baseProps} categories={[baseCategory, groceries]} />)
+  const input = await screen.findByDisplayValue('Test')
+
+  // One character is not enough to ask for suggestions.
+  fireEvent.change(input, { target: { value: 'c' } })
+  await new Promise(r => setTimeout(r, 400))
+  expect(mockFetchPayeeSuggestions).not.toHaveBeenCalled()
+
+  fireEvent.change(input, { target: { value: 'carre' } })
+  const list = await screen.findByRole('listbox', { name: 'Payee suggestions' })
+  expect(mockFetchPayeeSuggestions).toHaveBeenCalledWith('carre')
+  expect(within(list).getByText('Groceries')).toBeInTheDocument()
+  expect(within(list).getByText('Uncategorized')).toBeInTheDocument()
+
+  fireEvent.mouseDown(within(list).getByText('Carrefour Market'))
+  expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+  expect(screen.getByDisplayValue('Carrefour Market')).toBeInTheDocument()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+  await waitFor(() => expect(mockUpdateTransaction).toHaveBeenCalled())
+  expect(mockUpdateTransaction.mock.calls[0][1]).toMatchObject({ payee: 'Carrefour Market', category_id: 2 })
 })
