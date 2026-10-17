@@ -242,6 +242,50 @@ class UserBalanceOut(BaseModel):
     net_position: float
 
 
+class TagRef(BaseModel):
+    """A tag as a transaction carries it."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    color: Optional[str] = None
+
+
+class TagOut(TagRef):
+    """A tag as the tag list shows it, with how many transactions carry it."""
+    transaction_count: int = 0
+
+
+class TagCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=50)
+    color: Optional[str] = None
+
+    @field_validator("name")
+    @classmethod
+    def _strip_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        value = value.strip()
+        if not value:
+            raise ValueError("A tag needs a name.")
+        if any(c in value for c in ",;|"):
+            # They separate several tags in one cell of an exported/imported CSV.
+            raise ValueError("A tag name cannot contain , ; or |")
+        return value
+
+    @field_validator("color")
+    @classmethod
+    def _check_color(cls, value):
+        if value is not None and not _COLOR_RE.match(value):
+            raise ValueError("color must be a #RRGGBB hex value")
+        return value
+
+
+class TagUpdate(TagCreate):
+    """Rename or recolour; omitted fields stay (exclude_unset)."""
+    name: Optional[str] = Field(None, min_length=1, max_length=50)
+
+
 class TransactionOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -273,6 +317,7 @@ class TransactionOut(BaseModel):
     raw_initiated_date: Optional[date] = None
     raw_booking_date: Optional[date] = None
     splits: list[TransactionSplitOut] = []
+    tags: list[TagRef] = []
 
 
 class PayeeSuggestionOut(BaseModel):
@@ -297,6 +342,8 @@ class TransactionCreate(BaseModel):
     accounting_month_offset: int = Field(0, ge=-3, le=3)
     split_weights: list[SplitWeightCreate] | None = None
     split_source: Literal["global", "account", "category", "custom"] | None = None
+    # The transaction's tags, by id; omitted or empty means none.
+    tag_ids: list[int] | None = None
 
 
 class TransactionUpdate(BaseModel):
@@ -310,6 +357,8 @@ class TransactionUpdate(BaseModel):
     reconciled: Optional[bool] = None
     split_weights: list[SplitWeightCreate] | None = None
     split_source: Literal["global", "account", "category", "custom"] | None = None
+    # Replaces the whole set of tags; omitted leaves them, [] removes them all.
+    tag_ids: list[int] | None = None
 
 
 class TransactionRawFieldsUpdate(BaseModel):
@@ -361,6 +410,10 @@ class BulkTransactionUpdate(BaseModel):
     reconciled: Optional[bool] = None
     split_weights: list[SplitWeightCreate] | None = None
     split_source: Literal["global", "account", "category", "custom"] | None = None
+    # Tags added to / removed from every selected transaction, each row
+    # keeping its other tags. A tag in both lists is refused.
+    add_tag_ids: list[int] | None = None
+    remove_tag_ids: list[int] | None = None
 
 
 class BulkUpdateTransactionsRequest(BaseModel):
@@ -424,6 +477,10 @@ DATE_OPERATORS = {"on", "before", "after", "between"}
 TEXT_FIELDS = {"payee", "memo", "raw_label"}
 DATE_FIELDS = {"date"}
 NUMERIC_FIELDS = {"amount", "account_id", "category_id"}
+# "Has tag" / "does not have tag"; with no tag named, "has no tag at all" /
+# "has at least one tag", like the uncategorized case of category_id.
+TAG_FIELDS = {"tag_id"}
+TAG_OPERATORS = {"eq", "ne"}
 # Per-user figures of a transaction, each condition naming the user it reads:
 # their split weight, their share, and their balance (share minus the part of
 # the amount their ownership of the account pays). Searched only: a rule has
@@ -435,13 +492,14 @@ OPERATORS_BY_FIELD = {
     **{f: DATE_OPERATORS for f in DATE_FIELDS},
     **{f: NUMERIC_OPERATORS for f in NUMERIC_FIELDS},
     **{f: NUMERIC_OPERATORS for f in USER_FIELDS},
+    **{f: TAG_OPERATORS for f in TAG_FIELDS},
 }
 
 
 class FilterCondition(BaseModel):
     field: Literal[
         "payee", "memo", "raw_label", "amount", "date", "account_id", "category_id",
-        "split_weight", "split_share", "split_balance",
+        "split_weight", "split_share", "split_balance", "tag_id",
     ]
     operator: str
     value: str | float | int | None = None
@@ -471,6 +529,9 @@ class TransactionSearchRequest(BaseModel):
     # Only the transactions with no category (category_id is then ignored by
     # the screen, which never sends both).
     uncategorized: bool = False
+    # Only the transactions carrying this tag, or (untagged) carrying none.
+    tag_id: int | None = None
+    untagged: bool = False
     amount_min: float | None = None
     amount_max: float | None = None
     reconciled: bool | None = None
@@ -761,6 +822,8 @@ class RuleActions(BaseModel):
     # "default" is the usual account > category > global cascade. Exclusive
     # with split_weights.
     split_tier: Literal["global", "account", "category", "default"] | None = None
+    # Tags added to a matching transaction, which keeps the ones it has.
+    add_tag_ids: list[int] | None = None
 
     @model_validator(mode="after")
     def _one_kind_of_split(self):
@@ -770,7 +833,8 @@ class RuleActions(BaseModel):
 
     def is_empty(self) -> bool:
         return all(getattr(self, f) is None for f in
-                   ("payee", "category_id", "accounting_month_offset", "reconciled", "split_weights", "split_tier"))
+                   ("payee", "category_id", "accounting_month_offset", "reconciled", "split_weights", "split_tier")) \
+            and not self.add_tag_ids
 
 
 class RuleBase(BaseModel):
@@ -850,6 +914,9 @@ class RuleOutcomeOut(BaseModel):
     reconciled: bool | None = None
     split_weights: list[SplitWeightCreate] | None = None
     split_source: str | None = None
+    # Tags the rules add that the row does not carry yet.
+    add_tag_ids: list[int] | None = None
+    add_tag_names: list[str] | None = None
 
 
 ImportPreviewRow.model_rebuild()
@@ -1069,6 +1136,22 @@ class TransactionRuleExport(BaseModel):
     updated_at: datetime | None = None
 
 
+class TagExport(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    color: str | None = None
+    created_at: datetime | None = None
+
+
+class TransactionTagExport(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    transaction_id: int
+    tag_id: int
+
+
 class SavedFilterExport(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -1114,6 +1197,11 @@ class DatabaseExport(BaseModel):
     # partial restore doesn't recreate users). `None` is an archive from
     # before email alerts.
     email_alerts: list["EmailAlertExport"] | None = None
+    # Tags and which transactions carry them. Restored by both modes (a
+    # partial restore reuses a tag of the same name). `None` is an archive
+    # from before tags.
+    tags: list[TagExport] | None = None
+    transaction_tags: list[TransactionTagExport] | None = None
 
 
 # ── OneDrive automatic backup connection ──────────────────────────
@@ -1211,6 +1299,8 @@ class ImportSummary(BaseModel):
     transaction_rules: int = 0
     saved_filters: int = 0
     email_alerts: int = 0
+    tags: int = 0
+    transaction_tags: int = 0
 
 
 # ── Bank sync (Enable Banking) ────────────────────────────────────────

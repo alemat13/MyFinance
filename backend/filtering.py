@@ -3,8 +3,8 @@ from datetime import date
 from sqlalchemy import Numeric, and_, cast, func, or_, select
 from sqlalchemy.orm import Session
 
-from models import AccountUser, Transaction, TransactionSplit
-from schemas import DATE_FIELDS, TEXT_FIELDS, USER_FIELDS, FilterCondition
+from models import AccountUser, Transaction, TransactionSplit, TransactionTag
+from schemas import DATE_FIELDS, TAG_FIELDS, TEXT_FIELDS, USER_FIELDS, FilterCondition
 
 FIELD_COLUMN_MAP = {
     "payee": Transaction.payee,
@@ -118,7 +118,20 @@ def _user_column(field: str, user_id: int):
     return func.round(cast(share - Transaction.amount * ownership / 100, Numeric), 2)
 
 
+def _tag_expr(tag_id: int | None, has: bool):
+    """Carries the tag (or, with no tag named, carries any tag), or not."""
+    carrying = select(TransactionTag.transaction_id).where(TransactionTag.transaction_id == Transaction.id)
+    if tag_id is not None:
+        carrying = carrying.where(TransactionTag.tag_id == tag_id)
+    exists = carrying.correlate(Transaction).exists()
+    return exists if has else ~exists
+
+
 def build_condition_expr(condition: FilterCondition):
+    if condition.field in TAG_FIELDS:
+        tag_id = None if condition.value in (None, "") else int(_coerce_number(condition.value))
+        # "Tag is" with no tag named: has at least one tag; "is not": has none.
+        return _tag_expr(tag_id, condition.operator == "eq")
     if condition.field == "category_id" and condition.value is None and condition.operator in ("eq", "ne"):
         # "Category is / is not" with no category: the uncategorized rows.
         column = Transaction.category_id
@@ -181,6 +194,10 @@ def apply_transaction_filters(query, req, db: Session):
         query = query.filter(Transaction.category_id == req.category_id)
     if req.uncategorized:
         query = query.filter(Transaction.category_id.is_(None))
+    if req.tag_id is not None:
+        query = query.filter(_tag_expr(req.tag_id, True))
+    if req.untagged:
+        query = query.filter(_tag_expr(None, False))
     if req.amount_min is not None:
         query = query.filter(Transaction.amount >= req.amount_min)
     if req.amount_max is not None:

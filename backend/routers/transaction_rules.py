@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 import transaction_rules
 from database import get_db
 from filtering import build_condition_expr
-from models import Category, Transaction, TransactionRule, User
+from models import Category, Tag, Transaction, TransactionRule, User
 from rules import RuleViolation, validate_weights
 from schemas import (
     USER_FIELDS,
@@ -37,7 +37,9 @@ def _validate(db: Session, data: RuleCreate | RuleUpdate) -> None:
         if condition.field in USER_FIELDS:
             # The import preview runs rules on rows that have no split yet.
             raise RuleViolation("A rule cannot test a person's split, share or balance.")
-        if condition.value is None or (isinstance(condition.value, str) and not condition.value.strip()):
+        if condition.field == "tag_id" and condition.value is None:
+            pass  # "has some tag" / "has no tag"
+        elif condition.value is None or (isinstance(condition.value, str) and not condition.value.strip()):
             raise RuleViolation(f'The condition on "{condition.field}" has no value.')
         if condition.operator == "between" and condition.value2 is None:
             raise RuleViolation(f'The "between" condition on "{condition.field}" needs two values.')
@@ -54,6 +56,11 @@ def _validate(db: Session, data: RuleCreate | RuleUpdate) -> None:
     if actions.category_id is not None:
         if db.query(Category.id).filter(Category.id == actions.category_id).first() is None:
             raise HTTPException(404, f"Category {actions.category_id} not found")
+    if actions.add_tag_ids:
+        tag_ids = set(actions.add_tag_ids)
+        known = {row[0] for row in db.query(Tag.id).filter(Tag.id.in_(tag_ids)).all()}
+        if tag_ids - known:
+            raise HTTPException(404, f"Tag(s) not found: {sorted(tag_ids - known)}")
     if actions.split_weights is not None:
         if not actions.split_weights:
             raise RuleViolation("A split needs at least one person; leave the split action off instead.")
@@ -128,6 +135,7 @@ def preview_rules(req: RulePreviewRequest, db: Session = Depends(get_db)):
     rows, rules = _selection(db, req)
     outcomes = transaction_rules.evaluate_many(db, rules, rows)
     names = {c.id: c.name for c in db.query(Category).all()}
+    tag_names = transaction_rules.tag_names(db)
     items = [
         RulePreviewItem(
             transaction_id=t.id,
@@ -138,7 +146,7 @@ def preview_rules(req: RulePreviewRequest, db: Session = Depends(get_db)):
             current_category_name=names.get(t.category_id) if t.category_id else None,
             current_accounting_month_offset=t.accounting_month_offset or 0,
             current_reconciled=bool(t.reconciled),
-            outcome=transaction_rules.outcome_out(o, names),
+            outcome=transaction_rules.outcome_out(o, names, tag_names),
         )
         for t, o in zip(rows, outcomes)
     ]

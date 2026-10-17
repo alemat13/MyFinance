@@ -15,7 +15,7 @@ from models import (
     Account, Category, Transaction, User, AccountUser,
     CategorySplit, GlobalSplitWeight, AccountSplitWeight, TransactionSplit, TransactionHistory,
     BankConnection, BankAccountLink, CategorizerModel, OneDriveBackupSettings, TransactionRule,
-    SavedFilter, EmailAlert,
+    SavedFilter, EmailAlert, Tag, TransactionTag,
 )
 from schemas import (
     DatabaseExport, ImportSummary,
@@ -23,7 +23,7 @@ from schemas import (
     CategorySplitExport, GlobalSplitWeightExport, AccountSplitWeightExport, TransactionExport,
     TransactionSplitExport, TransactionHistoryExport,
     BankConnectionExport, BankAccountLinkExport, TransactionRuleExport,
-    SavedFilterExport, EmailAlertExport,
+    SavedFilterExport, EmailAlertExport, TagExport, TransactionTagExport,
 )
 
 SCHEMA_VERSION = 1
@@ -34,7 +34,7 @@ ZIP_ENTRY_NAME = "backup.json"
 _SERIAL_PK_TABLES = [
     "users", "accounts", "categories", "transactions", "transaction_history",
     "bank_connections", "bank_account_links", "transaction_rules",
-    "saved_filters",
+    "saved_filters", "tags",
 ]
 
 # Survive an overwrite restore untouched, and are never in an archive. The
@@ -91,6 +91,8 @@ def build_export(db: Session) -> DatabaseExport:
         transaction_rules=[TransactionRuleExport.model_validate(r) for r in db.query(TransactionRule).all()],
         saved_filters=[SavedFilterExport.model_validate(f) for f in db.query(SavedFilter).all()],
         email_alerts=[EmailAlertExport.model_validate(a) for a in db.query(EmailAlert).all()],
+        tags=[TagExport.model_validate(t) for t in db.query(Tag).all()],
+        transaction_tags=[TransactionTagExport.model_validate(tt) for tt in db.query(TransactionTag).all()],
     )
 
 
@@ -171,6 +173,10 @@ def _validate_referential_integrity(data: DatabaseExport) -> None:
             _check("bank_account_links.account_id", link.account_id, account_ids)
     for alert in data.email_alerts or []:
         _check("email_alerts.user_id", alert.user_id, user_ids)
+    tag_ids = {t.id for t in data.tags or []}
+    for tt in data.transaction_tags or []:
+        _check("transaction_tags.transaction_id", tt.transaction_id, transaction_ids)
+        _check("transaction_tags.tag_id", tt.tag_id, tag_ids)
 
 
 def _reset_postgres_sequences(bind) -> None:
@@ -249,6 +255,12 @@ def import_database(db: Session, data: DatabaseExport, mode: Literal["overwrite"
         session.add_all(SavedFilter(**f.model_dump(exclude_none=True)) for f in saved_filters)
         email_alerts = data.email_alerts or []
         session.add_all(EmailAlert(**a.model_dump()) for a in email_alerts)
+        # An archive from before tags (None) restores with none.
+        tags = data.tags or []
+        transaction_tags = data.transaction_tags or []
+        session.add_all(Tag(**t.model_dump(exclude_none=True)) for t in tags)
+        session.flush()
+        session.add_all(TransactionTag(**tt.model_dump()) for tt in transaction_tags)
         # Bulk restore bypasses every per-site invalidation by design. A no-op
         # here in practice (the wipe above already emptied the table), kept so
         # the restore stays correct if that ever changes.
@@ -280,6 +292,8 @@ def import_database(db: Session, data: DatabaseExport, mode: Literal["overwrite"
         transaction_rules=len(transaction_rules),
         saved_filters=len(saved_filters),
         email_alerts=len(email_alerts),
+        tags=len(tags),
+        transaction_tags=len(transaction_tags),
     )
 
 
@@ -348,6 +362,13 @@ def import_partial(db: Session, data: DatabaseExport) -> ImportSummary:
     for cs in category_splits:
         _user_exists("category_splits.user_id", cs.user_id)
     history = [h for h in data.transaction_history if h.transaction_id in archive_transaction_ids]
+    # Tags are matched by name (ignoring case), like categories: an archive
+    # tag that already exists here is reused, the others are created.
+    archive_tag_ids = {t.id for t in data.tags or []}
+    transaction_tags = [
+        tt for tt in data.transaction_tags or []
+        if tt.transaction_id in archive_transaction_ids and tt.tag_id in archive_tag_ids
+    ]
 
     # Bank ids keep a later sync from re-importing a row; the unique index on
     # (account_id, external_id) would reject a restored row whose bank id an
@@ -439,6 +460,20 @@ def import_partial(db: Session, data: DatabaseExport) -> ImportSummary:
             TransactionSplit(**s.model_dump(exclude={"transaction_id"}), transaction_id=transaction_map[s.transaction_id])
             for s in data.transaction_splits
         )
+        existing_tags = {t.name.lower(): t for t in db.query(Tag).all()}
+        tag_map: dict[int, int] = {}
+        created_tags = 0
+        for t in data.tags or []:
+            tag = existing_tags.get(t.name.lower())
+            if tag is None:
+                tag = Tag(**t.model_dump(exclude={"id"}, exclude_none=True))
+                db.add(tag)
+                db.flush()
+                existing_tags[t.name.lower()] = tag
+                created_tags += 1
+            tag_map[t.id] = tag.id
+        pairs = {(transaction_map[tt.transaction_id], tag_map[tt.tag_id]) for tt in transaction_tags}
+        db.add_all(TransactionTag(transaction_id=tid, tag_id=gid) for tid, gid in sorted(pairs))
         # History snapshots point at the restored rows' new ids; an account or
         # category id the archive doesn't recreate is kept as it was, like the
         # transactions themselves.
@@ -470,4 +505,6 @@ def import_partial(db: Session, data: DatabaseExport) -> ImportSummary:
         transactions=len(data.transactions),
         transaction_splits=len(data.transaction_splits),
         transaction_history=len(history),
+        tags=created_tags,
+        transaction_tags=len(pairs),
     )
