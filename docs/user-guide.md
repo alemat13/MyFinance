@@ -537,9 +537,9 @@ the list, so nothing you didn't see counted gets edited.
   between it and the payee; a line under the box shows the result on the first
   selected transaction. The whole edit is refused if it would make any payee longer
   than 200 characters.
-- **Add or remove tags** — pick tags to add and tags to remove; every selected
-  transaction keeps its other tags. A tag that doesn't exist yet can be created from the
-  "Tags to add" box. Like the other changes, it works with **Select all N transactions**.
+- **Tags** — choose **Add** or **Remove** in the drop-down, then pick the tags; every
+  selected transaction keeps its other tags. With **Add**, a tag that doesn't exist yet
+  can be created from the box. Like the other changes, it works with **Select all N transactions**.
 - **Accounting month** — leave this off to keep each transaction's own accounting
   month; turn it on to shift all of them by the same offset (e.g. +1 month). Because
   the shift is relative to each transaction's own date, transactions with different

@@ -86,8 +86,8 @@ export default function BulkEditModal({
   const [splitSource, setSplitSource] = useState<'global' | 'account' | 'category' | 'custom' | null>(null)
 
   const [tagsEnabled, setTagsEnabled] = useState(false)
-  const [addTagIds, setAddTagIds] = useState<number[]>([])
-  const [removeTagIds, setRemoveTagIds] = useState<number[]>([])
+  const [tagMode, setTagMode] = useState<'add' | 'remove'>('add')
+  const [tagIds, setTagIds] = useState<number[]>([])
 
   const [reconciledEnabled, setReconciledEnabled] = useState(false)
   const [reconciledValue, setReconciledValue] = useState(true)
@@ -98,9 +98,8 @@ export default function BulkEditModal({
   const currencies = [...new Set(transactions.map(t => t.currency))]
   const previewTransaction = transactions[0]
 
-  const tagsChosen = addTagIds.length > 0 || removeTagIds.length > 0
   const canSave = (categoryEnabled || renameEnabled || moveEnabled || offsetEnabled || splitEnabled || reconciledEnabled
-    || (tagsEnabled && tagsChosen))
+    || (tagsEnabled && tagIds.length > 0))
     && !(moveEnabled && moveAccountId == null)
     && !(renameEnabled && payee.trim() === '')
 
@@ -120,8 +119,9 @@ export default function BulkEditModal({
         split_source: (splitSource ?? 'custom') as 'custom',
       } : {}),
       ...(reconciledEnabled ? { reconciled: reconciledValue } : {}),
-      ...(tagsEnabled && addTagIds.length > 0 ? { add_tag_ids: addTagIds } : {}),
-      ...(tagsEnabled && removeTagIds.length > 0 ? { remove_tag_ids: removeTagIds } : {}),
+      ...(tagsEnabled && tagIds.length > 0
+        ? tagMode === 'add' ? { add_tag_ids: tagIds } : { remove_tag_ids: tagIds }
+        : {}),
     }
     setSaving(true)
     const call = allMatching && searchFilter && matchingTotal != null
@@ -214,25 +214,27 @@ export default function BulkEditModal({
         <div className="border border-slate-200 dark:border-slate-700 rounded-md p-3">
           <label className="flex items-center gap-2 text-sm font-medium mb-2">
             <input type="checkbox" checked={tagsEnabled} onChange={e => setTagsEnabled(e.target.checked)} />
-            Add or remove tags
+            Tags
           </label>
           {tagsEnabled && (
             <div className="flex flex-col gap-2">
+              <Select
+                aria-label="Tag action"
+                value={tagMode}
+                onChange={e => setTagMode(e.target.value as 'add' | 'remove')}
+                className="w-auto self-start"
+              >
+                <option value="add">Add</option>
+                <option value="remove">Remove</option>
+              </Select>
               <TagPicker
-                aria-label="Tags to add"
-                placeholder="Tags to add…"
-                tags={tags.filter(t => !removeTagIds.includes(t.id))}
-                value={addTagIds}
-                onChange={setAddTagIds}
+                aria-label={tagMode === 'add' ? 'Tags to add' : 'Tags to remove'}
+                placeholder={tagMode === 'add' ? 'Tags to add…' : 'Tags to remove…'}
+                tags={tags}
+                value={tagIds}
+                onChange={setTagIds}
                 onCreated={onTagCreated}
-              />
-              <TagPicker
-                aria-label="Tags to remove"
-                placeholder="Tags to remove…"
-                tags={tags.filter(t => !addTagIds.includes(t.id))}
-                value={removeTagIds}
-                onChange={setRemoveTagIds}
-                allowCreate={false}
+                allowCreate={tagMode === 'add'}
               />
               <div className="text-xs text-slate-400">Each transaction keeps its other tags.</div>
             </div>
