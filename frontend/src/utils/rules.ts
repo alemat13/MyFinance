@@ -26,12 +26,14 @@ export function describeOutcome(outcome: RuleOutcome, users: User[]): string[] {
   if (outcome.accounting_month_offset !== null) lines.push(`Accounting month → ${offsetLabel(outcome.accounting_month_offset)}`)
   if (outcome.reconciled !== null) lines.push(outcome.reconciled ? 'Marked reconciled' : 'Marked not reconciled')
   if (outcome.split_weights) lines.push(`Split → ${splitLabel(outcome.split_weights, users)}`)
+  if (outcome.add_tag_names && outcome.add_tag_names.length > 0) lines.push(`Tags + ${outcome.add_tag_names.map(n => `#${n}`).join(' ')}`)
   return lines
 }
 
 /** One line per action of a saved rule, for the rules list. */
 export function describeActions(
   actions: RuleActions, users: User[], categoryName: (id: number) => string,
+  tagName: (id: number) => string = id => `#${id}`,
 ): string[] {
   const lines: string[] = []
   if (actions.payee) lines.push(`Rename payee to "${actions.payee}"`)
@@ -40,6 +42,9 @@ export function describeActions(
   if (actions.reconciled != null) lines.push(actions.reconciled ? 'Mark reconciled' : 'Mark not reconciled')
   if (actions.split_weights && actions.split_weights.length > 0) lines.push(`Split ${splitLabel(actions.split_weights, users)}`)
   if (actions.split_tier) lines.push(`Split: ${SPLIT_TIER_LABELS[actions.split_tier]}, as set when the rule runs`)
+  if (actions.add_tag_ids && actions.add_tag_ids.length > 0) {
+    lines.push(`Add tags ${actions.add_tag_ids.map(tagName).join(' ')}`)
+  }
   return lines
 }
 
@@ -67,6 +72,8 @@ export function simpleFiltersToConditions(f: TransactionSearchRequest): FilterCo
   if (f.account_id) out.push({ field: 'account_id', operator: 'eq', value: f.account_id })
   if (f.category_id) out.push({ field: 'category_id', operator: 'eq', value: f.category_id })
   if (f.uncategorized) out.push({ field: 'category_id', operator: 'eq', value: null })
+  if (f.tag_id) out.push({ field: 'tag_id', operator: 'eq', value: f.tag_id })
+  if (f.untagged) out.push({ field: 'tag_id', operator: 'eq', value: null })
   if (f.amount_min != null && f.amount_max != null) {
     out.push({ field: 'amount', operator: 'between', value: f.amount_min, value2: f.amount_max })
   } else if (f.amount_min != null) {

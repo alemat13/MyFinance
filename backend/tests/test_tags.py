@@ -120,8 +120,8 @@ def test_search_by_tag_simple_and_advanced(client, db, sample_account, trip, ref
     assert ids({"untagged": True}) == [c.id]
     assert ids({"conditions": [{"field": "tag_id", "operator": "eq", "value": refund.id}]}) == [b.id]
     assert ids({"conditions": [{"field": "tag_id", "operator": "ne", "value": refund.id}]}) == [a.id, c.id]
-    assert ids({"conditions": [{"field": "tag_id", "operator": "eq", "value": None}]}) == [a.id, b.id]
-    assert ids({"conditions": [{"field": "tag_id", "operator": "ne", "value": None}]}) == [c.id]
+    assert ids({"conditions": [{"field": "tag_id", "operator": "eq", "value": None}]}) == [c.id]
+    assert ids({"conditions": [{"field": "tag_id", "operator": "ne", "value": None}]}) == [a.id, b.id]
 
 
 # ── Bulk ─────────────────────────────────────────────────────────

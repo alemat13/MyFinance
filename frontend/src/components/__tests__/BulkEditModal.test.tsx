@@ -3,14 +3,16 @@ import { screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { pickAccount, renderWithProviders } from '../../test-utils'
 import BulkEditModal from '../BulkEditModal'
 
-const { mockBulkUpdateTransactions, mockBulkUpdateTransactionsByFilter } = vi.hoisted(() => ({
+const { mockBulkUpdateTransactions, mockBulkUpdateTransactionsByFilter, mockCreateTag } = vi.hoisted(() => ({
   mockBulkUpdateTransactions: vi.fn(),
   mockBulkUpdateTransactionsByFilter: vi.fn(),
+  mockCreateTag: vi.fn(),
 }))
 
 vi.mock('../../api/client', () => ({
   bulkUpdateTransactions: mockBulkUpdateTransactions,
   bulkUpdateTransactionsByFilter: mockBulkUpdateTransactionsByFilter,
+  createTag: mockCreateTag,
 }))
 
 const baseCategory = { id: 1, name: 'Salary', type: 'Income', splits: [] }
@@ -313,4 +315,28 @@ test('rename keeps submit disabled while the new payee is blank', () => {
   expect(submitButton()).toBeDisabled()
   fireEvent.change(screen.getByLabelText('New payee'), { target: { value: '   ' } })
   expect(submitButton()).toBeDisabled()
+})
+
+test('adds and removes tags in bulk, creating a new one on the way', async () => {
+  mockBulkUpdateTransactions.mockResolvedValue({ updated_count: 2, transaction_ids: [1, 2] })
+  mockCreateTag.mockResolvedValue({ id: 9, name: 'Trip', color: null, transaction_count: 0 })
+  const onTagCreated = vi.fn()
+  const tags = [{ id: 3, name: 'Refund', color: null, transaction_count: 4 }]
+  renderWithProviders(<BulkEditModal {...baseProps} tags={tags} onTagCreated={onTagCreated} />)
+
+  fireEvent.click(screen.getByText('Add or remove tags'))
+  expect(submitButton()).toBeDisabled()
+  const add = screen.getByLabelText('Tags to add')
+  fireEvent.change(add, { target: { value: 'Trip' } })
+  fireEvent.keyDown(add, { key: 'Enter' })
+  await waitFor(() => expect(onTagCreated).toHaveBeenCalled())
+  expect(mockCreateTag).toHaveBeenCalledWith({ name: 'Trip' })
+
+  const remove = screen.getByLabelText('Tags to remove')
+  fireEvent.change(remove, { target: { value: 'ref' } })
+  fireEvent.keyDown(remove, { key: 'Enter' })
+  fireEvent.click(submitButton())
+
+  await waitFor(() => expect(mockBulkUpdateTransactions).toHaveBeenCalledWith(
+    [1, 2], { add_tag_ids: [9], remove_tag_ids: [3] }, null))
 })

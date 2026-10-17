@@ -2,8 +2,8 @@ import { Fragment, useEffect, useState } from 'react'
 import { ArrowDown, ArrowUp, CheckCircle2, Circle } from 'lucide-react'
 import {
   Transaction, TransactionSplit, GlobalSplitWeight,
-  Account, Category, User, TransactionSearchRequest, SavedFilter,
-  fetchAccounts, fetchCategories, fetchUsers, fetchSplitWeights, searchTransactions, updateTransaction,
+  Account, Category, User, Tag, TransactionSearchRequest, SavedFilter,
+  fetchAccounts, fetchCategories, fetchUsers, fetchSplitWeights, fetchTags, searchTransactions, updateTransaction,
 } from '../api/client'
 import TransactionDetail from './TransactionDetail'
 import BulkEditModal from './BulkEditModal'
@@ -14,11 +14,13 @@ import CategoryPicker from './CategoryPicker'
 import AccountPicker from './AccountPicker'
 import TransactionConditions, { ConditionRow, USER_FIELDS, conditionsToFilters } from './TransactionConditions'
 import ExportMenu from './ExportMenu'
+import TagChips from './TagChips'
 import SavedFilters, { CurrentFilter } from './SavedFilters'
 import { Button, IconButton, Input, Select, Table, Thead, Tbody, Tr, Th, Td, StatusMessage, CategoryBadge, BackButton, ConfirmDialog, Card } from './ui'
 import { formatMoney } from '../utils/currency'
 import { getParam, patchQueryParams } from '../utils/urlState'
 import { UNCATEGORIZED_ID } from '../utils/categoryHierarchy'
+import { UNTAGGED_ID, joinTagNames } from '../utils/tags'
 import { isAdminMode } from '../utils/admin'
 import { RuleDraft, simpleFiltersToConditions } from '../utils/rules'
 import { myShareFor, balanceFor, formatDateGroupHeader } from '../utils/transactions'
@@ -98,6 +100,7 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
   const [allAccounts, setAllAccounts] = useState<Account[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [allUsers, setAllUsers] = useState<User[]>([])
+  const [tags, setTags] = useState<Tag[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   // A failed search (a filter the server refuses) is shown above the list
@@ -120,6 +123,7 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
   const [dateTo, setDateTo] = useState(() => getParam('date_to') ?? '')
   const [filterAccountId, setFilterAccountId] = useState(() => loadInitialInt('account_id', 0))
   const [filterCategoryId, setFilterCategoryId] = useState(() => loadInitialInt('category_id', 0))
+  const [filterTagId, setFilterTagId] = useState(() => loadInitialInt('tag_id', 0))
   const [amountMin, setAmountMin] = useState(() => getParam('amount_min') ?? '')
   const [amountMax, setAmountMax] = useState(() => getParam('amount_max') ?? '')
   const [filterReconciled, setFilterReconciled] = useState(() => getParam('reconciled') ?? '')
@@ -142,13 +146,15 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
       fetchCategories(),
       fetchUsers(),
       fetchSplitWeights(),
+      fetchTags(),
     ])
-      .then(([accts, allAccts, cats, users, weights]) => {
+      .then(([accts, allAccts, cats, users, weights, tagList]) => {
         setAccounts(accts)
         setAllAccounts(allAccts)
         setCategories(cats)
         setAllUsers(users)
         setGlobalWeights(weights)
+        setTags(tagList)
       })
       .catch(err => { console.error(err); setError(err.message) })
   }
@@ -171,6 +177,8 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
       account_id: filterAccountId || undefined,
       category_id: filterCategoryId > 0 ? filterCategoryId : undefined,
       uncategorized: filterCategoryId === UNCATEGORIZED_ID || undefined,
+      tag_id: filterTagId > 0 ? filterTagId : undefined,
+      untagged: filterTagId === UNTAGGED_ID || undefined,
       amount_min: amountMin !== '' ? parseFloat(amountMin) : undefined,
       amount_max: amountMax !== '' ? parseFloat(amountMax) : undefined,
       reconciled: filterReconciled === '' ? undefined : filterReconciled === 'true',
@@ -201,14 +209,14 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
   const buildExportData = (items: Transaction[]) => {
     const headers = [
       'ID', 'Date', 'Payee', 'Memo', 'Amount', 'Currency', 'Account', 'Category',
-      'Accounting Month', 'Reconciled', 'Divide Group ID',
+      'Accounting Month', 'Reconciled', 'Divide Group ID', 'Tags',
       ...allUsers.map(u => `Weight ${u.name}`),
       ...allUsers.map(u => `Share ${u.name}`),
       ...allUsers.map(u => `Balance ${u.name}`),
     ]
     const rows = items.map(t => [
       t.id, t.date, t.payee, t.memo ?? '', t.amount, t.currency, t.account_name, t.category_name ?? '',
-      t.accounting_month, t.reconciled ? 'Yes' : 'No', t.divide_group_id ?? '',
+      t.accounting_month, t.reconciled ? 'Yes' : 'No', t.divide_group_id ?? '', joinTagNames(t.tags),
       ...allUsers.map(u => t.splits.find(s => s.user_id === u.id)?.weight ?? ''),
       ...allUsers.map(u => myShareFor(t, u.id)),
       ...allUsers.map(u => balanceFor(t, u.id, allAccounts)),
@@ -237,7 +245,7 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
   }
 
   useEffect(loadTransactions, [
-    selectedUserId, mode, debouncedSearch, dateFrom, dateTo, filterAccountId, filterCategoryId,
+    selectedUserId, mode, debouncedSearch, dateFrom, dateTo, filterAccountId, filterCategoryId, filterTagId,
     amountMin, amountMax, filterReconciled, JSON.stringify(debouncedConditions), matchMode, page, pageSize, sortBy, sortDir,
   ])
 
@@ -253,7 +261,7 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
       patchQueryParams({
         ...common,
         q: undefined, date_from: undefined, date_to: undefined,
-        account_id: undefined, category_id: undefined, amount_min: undefined, amount_max: undefined,
+        account_id: undefined, category_id: undefined, tag_id: undefined, amount_min: undefined, amount_max: undefined,
         reconciled: undefined,
         match: matchMode === 'all' ? undefined : matchMode,
         conditions: debouncedConditions.length === 0 ? undefined : encodeURIComponent(JSON.stringify(debouncedConditions)),
@@ -267,13 +275,14 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
         date_to: dateTo || undefined,
         account_id: filterAccountId ? String(filterAccountId) : undefined,
         category_id: filterCategoryId ? String(filterCategoryId) : undefined,
+        tag_id: filterTagId ? String(filterTagId) : undefined,
         amount_min: amountMin || undefined,
         amount_max: amountMax || undefined,
         reconciled: filterReconciled || undefined,
       })
     }
   }, [
-    mode, debouncedSearch, dateFrom, dateTo, filterAccountId, filterCategoryId,
+    mode, debouncedSearch, dateFrom, dateTo, filterAccountId, filterCategoryId, filterTagId,
     amountMin, amountMax, filterReconciled, JSON.stringify(debouncedConditions), matchMode, page, pageSize, sortBy, sortDir,
   ])
 
@@ -327,6 +336,8 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
       search: searchText, date_from: dateFrom, date_to: dateTo,
       account_id: filterAccountId, category_id: filterCategoryId,
       amount_min: amountMin, amount_max: amountMax, reconciled: filterReconciled,
+      // Only when set, so a filter saved before tags existed still reads as active.
+      ...(filterTagId ? { tag_id: filterTagId } : {}),
     }
     return Object.values(filters).some(v => v !== '' && v !== 0)
       ? { mode: 'simple', filters: { ...filters, sort_dir: sortDir } }
@@ -349,6 +360,7 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
       setDateTo(f.date_to ?? '')
       setFilterAccountId(f.account_id ?? 0)
       setFilterCategoryId(f.category_id ?? 0)
+      setFilterTagId(f.tag_id ?? 0)
       setAmountMin(f.amount_min ?? '')
       setAmountMax(f.amount_max ?? '')
       setFilterReconciled(f.reconciled ?? '')
@@ -365,6 +377,7 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
     setDateTo('')
     setFilterAccountId(0)
     setFilterCategoryId(0)
+    setFilterTagId(0)
     setAmountMin('')
     setAmountMax('')
     setFilterReconciled('')
@@ -476,6 +489,11 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
               anyLabel="All categories"
               className="min-w-[140px]"
             />
+            <Select aria-label="Tag" value={filterTagId} onChange={e => { setFilterTagId(parseInt(e.target.value)); setPage(1) }} className="min-w-[130px]">
+              <option value={0}>All tags</option>
+              <option value={UNTAGGED_ID}>No tag</option>
+              {tags.map(t => <option key={t.id} value={t.id}>#{t.name}</option>)}
+            </Select>
             <Input placeholder="Min amount" type="number" step="0.01" value={amountMin} onChange={e => { setAmountMin(e.target.value); setPage(1) }} className="w-[110px]" />
             <Input placeholder="Max amount" type="number" step="0.01" value={amountMax} onChange={e => { setAmountMax(e.target.value); setPage(1) }} className="w-[110px]" />
             <Select value={filterReconciled} onChange={e => { setFilterReconciled(e.target.value); setPage(1) }} className="min-w-[150px]">
@@ -495,6 +513,7 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
               onMatchModeChange={m => { setMatchMode(m); setPage(1) }}
               accounts={accounts}
               categories={categories}
+              tags={tags}
               users={allUsers}
             />
             {createRuleButton && <div className="mt-2">{createRuleButton}</div>}
@@ -580,6 +599,7 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
                         <CategoryBadge name={t.category_name} color={t.category_color} icon={t.category_icon} />
                         <span className="text-xs text-slate-500 dark:text-slate-400 truncate">{t.account_name}</span>
                       </div>
+                      {t.tags && t.tags.length > 0 && <div className="mt-1"><TagChips tags={t.tags} /></div>}
                       {showMyColumns && (
                         <div className="flex justify-between gap-2 text-xs text-slate-500 dark:text-slate-400 mt-1.5">
                           <span>My share: <span className={myShare! >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}>{formatMoney(myShare!, t.currency)}</span></span>
@@ -660,6 +680,7 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
                     </IconButton>
                     {t.payee}
                   </span>
+                  {t.tags && t.tags.length > 0 && <div className="ml-7 mt-0.5"><TagChips tags={t.tags} /></div>}
                 </Td>
                 <Td><CategoryBadge name={t.category_name} color={t.category_color} icon={t.category_icon} /></Td>
                 <Td>{t.account_name}</Td>
@@ -724,6 +745,8 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
           transactionId={detailTarget === 'new' ? null : detailTarget}
           accounts={accounts}
           categories={categories}
+          tags={tags}
+          onTagCreated={tag => setTags(ts => [...ts, tag].sort((a, b) => a.name.localeCompare(b.name)))}
           allUsers={allUsers}
           globalWeights={globalWeights}
           selectedUserId={selectedUserId}
@@ -763,6 +786,8 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
           transactions={transactions.filter(t => selectedIds.has(t.id))}
           accounts={accounts}
           categories={categories}
+          tags={tags}
+          onTagCreated={tag => setTags(ts => [...ts, tag].sort((a, b) => a.name.localeCompare(b.name)))}
           allUsers={allUsers}
           globalWeights={globalWeights}
           selectedUserId={selectedUserId}

@@ -10,18 +10,19 @@ people *using* the app to track household finances — for schema/database detai
 2. [Dashboard](#dashboard)
 3. [Accounts](#accounts)
 4. [Categories](#categories)
-5. [Transactions](#transactions)
-6. [Users](#users)
-7. [Split Weights](#split-weights)
-8. [Import](#import)
-9. [Bank Sync](#bank-sync)
-10. [Auto-categorization](#auto-categorization)
-11. [Rules](#rules)
-12. [Email alerts](#email-alerts)
-13. [Backup & Restore](#backup--restore)
-14. [Charts](#charts)
-15. [Admin mode](#admin-mode)
-16. [Appendix: Validation Rules & Tips](#appendix-validation-rules--tips)
+5. [Tags](#tags)
+6. [Transactions](#transactions)
+7. [Users](#users)
+8. [Split Weights](#split-weights)
+9. [Import](#import)
+10. [Bank Sync](#bank-sync)
+11. [Auto-categorization](#auto-categorization)
+12. [Rules](#rules)
+13. [Email alerts](#email-alerts)
+14. [Backup & Restore](#backup--restore)
+15. [Charts](#charts)
+16. [Admin mode](#admin-mode)
+17. [Appendix: Validation Rules & Tips](#appendix-validation-rules--tips)
 
 ## Getting Started
 
@@ -46,7 +47,7 @@ Every screen shares the same header:
 
 MyFinance shows four primary destinations — **Dashboard**, **Transactions**,
 **Accounts**, and **Charts** — plus a **More** button for everything else (Categories,
-Users, Split Weights, Import, Bank Sync, Auto-categorization, Rules, Email alerts, Backup &
+Tags, Users, Split Weights, Import, Bank Sync, Auto-categorization, Rules, Email alerts, Backup &
 Restore, and Help). On a phone, the primary
 destinations sit in a tab bar fixed to the bottom of the screen and **More** opens a
 sheet that slides up from the bottom; on a wider screen, the same buttons sit in a bar
@@ -220,6 +221,24 @@ alphabetical order.
 - You can't delete a category that still has transactions assigned to it, or one that
   still has subcategories — delete or reassign those first.
 
+## Tags
+
+Tags are free labels you put on transactions — a trip, a project, a refund to chase —
+to find them again later. Unlike a category, a transaction can carry **several tags**,
+and a tag means nothing to balances, charts or splits. Tags show as small coloured
+`#name` pills under the payee in the Transactions list (on a phone, at the bottom of
+each card).
+
+**More → Tags** lists every tag with how many transactions carry it (click the count to
+open Transactions filtered on that tag). From there you add a tag, pick its colour,
+rename it, or delete it. Deleting a tag removes it from every transaction carrying it,
+each one getting a line in its history; the transactions themselves stay. Tag names are
+unique (ignoring upper/lower case) and can't contain `,`, `;` or `|`.
+
+Tags are put on transactions in the transaction form, in bulk with Bulk Edit, and by
+[rules](#rules); the Tag box in each of them also creates a tag that doesn't exist yet
+(type its name and press Enter, or pick **Create tag "…"**).
+
 ## Transactions
 
 The most detailed screen in the app — this is where you record and review individual
@@ -231,13 +250,16 @@ Two filtering modes are available:
 
 - **Simple filters**: free-text search over payee/memo, a date range, account and
   category dropdowns (the category one offers **All categories**, the default, and
-  **Uncategorized**, which lists only the transactions with no category), a min/max amount range, and a **Reconciled** filter (Any /
+  **Uncategorized**, which lists only the transactions with no category), a **Tag** dropdown
+  (**All tags**, **No tag** for the transactions without any, or one tag), a min/max amount range, and a **Reconciled** filter (Any /
   Reconciled only / Unreconciled only — see [Reconciling transactions](#reconciling-transactions)
   below). **Clear** resets all of these.
 - **Advanced filters**: build arbitrary AND/OR conditions across payee, memo, amount,
   date, account, or category, each with its own operator (contains, equals, between,
   greater/less than, etc.; "Category is **Uncategorized**" lists the transactions with
-  no category, "Category is not Uncategorized" the ones that have one) — useful for more precise or compound searches than the
+  no category, "Category is not Uncategorized" the ones that have one; likewise "Tag is
+  #trip" / "Tag is not #trip", and "Tag is **No tag**" for the untagged transactions, "Tag
+  is not No tag" for the ones carrying at least one) — useful for more precise or compound searches than the
   simple filters allow. Reconciled status isn't available as an advanced-mode
   condition; use the simple filter for that. Three conditions read one person's own
   figures on a transaction, picked from a second dropdown: **Split weight of**,
@@ -276,7 +298,9 @@ wasn't somebody typing says so next to the action — `created · bank sync`,
 `updated · divide` — so a category you didn't choose yourself is always traceable to
 what put it there. Changes to the transaction's own split weights — set on
 creation or edited later — are tracked here too, shown as each involved user's weight
-before and after the change, and the same applies to reconciled status changes.
+before and after the change, and the same applies to reconciled status changes and to
+tags (`tags added: …`, `tags removed: …`, whether by hand, in bulk, by a rule or by
+deleting the tag).
 
 When a specific user is selected (not "All Users"), the table adds two columns after
 **Amount**:
@@ -306,7 +330,8 @@ formats contain identical data — only the file format differs.
 The downloaded file (named `myfinance-transactions-<timestamp>.csv` or
 `myfinance-transactions-<timestamp>.xlsx` depending on which you pick) includes every
 transaction field — ID, Date, Payee, Memo, Amount, Currency, Account, Category,
-Accounting Month, Reconciled, Divide Group ID — plus three columns per household
+Accounting Month, Reconciled, Divide Group ID, Tags (the transaction's tag names,
+separated by commas) — plus three columns per household
 user, always present regardless of which user (or "All Users") is currently selected
 in the page's user switcher:
 
@@ -342,6 +367,8 @@ captures:
   indented under their parent, the parent itself is also selectable, and typing in the
   search box filters the list by category or parent name. The same picker is used for
   the Transactions screen's category filters.
+- Its **tags**, in the box under that line: start typing to pick an existing tag, or
+  press Enter to create a new one; the × on a tag removes it. See [Tags](#tags).
 - An **accounting month**, last on that line — normally a transaction counts toward
   the reporting month it's dated in, but you can shift it up to 3 months earlier or
   later (e.g. a paycheck dated the last day of the month that should count toward next
@@ -443,7 +470,8 @@ date) simply peel an amount off into its own row.
   and every part needs a non-zero amount and a payee before **Divide** is enabled.
 - Confirming replaces the original transaction with the parts: the first part reuses
   the original transaction's own id (so its History trail and any bookmarked link to
-  it keep working), and the rest become new transactions. Each part's own
+  it keep working), and the rest become new transactions, each carrying the original
+  transaction's tags. Each part's own
   person-split (see [Split Weights](#split-weights)) is filled in automatically from
   the usual category/account/global cascade — open any part afterward to fine-tune it
   like any other transaction.
@@ -485,7 +513,7 @@ at least one row is selected, a bar appears above the table showing how many are
 selected, with **Bulk Edit**, **Categorize**, **Apply rules** and **Clear selection** buttons, plus
 **Delete selected** in [admin mode](#admin-mode).
 
-**Bulk Edit** opens a dialog with five independent, optional changes you can apply
+**Bulk Edit** opens a dialog with six independent, optional changes you can apply
 together in a single save. When every transaction on the page is selected and the
 current filters match more than one page, the dialog shows **Select all N
 transactions** next to the selected count: click it to apply the edit to every
@@ -509,6 +537,9 @@ the list, so nothing you didn't see counted gets edited.
   between it and the payee; a line under the box shows the result on the first
   selected transaction. The whole edit is refused if it would make any payee longer
   than 200 characters.
+- **Add or remove tags** — pick tags to add and tags to remove; every selected
+  transaction keeps its other tags. A tag that doesn't exist yet can be created from the
+  "Tags to add" box. Like the other changes, it works with **Select all N transactions**.
 - **Accounting month** — leave this off to keep each transaction's own accounting
   month; turn it on to shift all of them by the same offset (e.g. +1 month). Because
   the shift is relative to each transaction's own date, transactions with different
@@ -525,7 +556,7 @@ the list, so nothing you didn't see counted gets edited.
   the quickest way to point a whole batch of imported or reviewed transactions at
   once.
 
-In [admin mode](#admin-mode) the dialog has a sixth change, **Move to another
+In [admin mode](#admin-mode) the dialog has a seventh change, **Move to another
 account**: every selected transaction moves to the account you pick, each keeping its
 own split. A bank-synced transaction moved away from its account can come back on the
 old account at the next sync if it is less than a week old, since that sync asks the
@@ -843,7 +874,7 @@ client: **when** a transaction matches its conditions, **then** it changes it. R
 on their own screen, under **More → Rules**.
 
 **Conditions** are the same as the Transactions screen's Advanced filter — payee, memo,
-amount, date, account, category — plus **Original label**, the bank's (or the file's)
+amount, date, account, category, tag — plus **Original label**, the bank's (or the file's)
 own wording before any cleanup or renaming, which is the steadiest way to recognise a
 merchant. Combine them with **ALL** or **ANY**. As you type, the editor says how many
 existing transactions match today, the quickest check that a condition says what you
@@ -860,8 +891,11 @@ Advanced filter's per-person Split weight, Share and Balance conditions. A rule 
 way keeps any date filter you had set, so remove it if the rule should also catch future
 transactions. The button is greyed out until at least one filter is set.
 
-**Actions** are one or more of: **Rename payee**, **Set category**, **Shift accounting
-month**, **Set split**, and **Mark as reconciled / not reconciled**. **Set split** offers
+**Actions** are one or more of: **Rename payee**, **Set category**, **Add tags** (added to
+the tags the transaction already has; a rule never removes a tag), **Shift accounting
+month**, **Set split**, and **Mark as reconciled / not reconciled**. A rule can test a tag an
+earlier rule added. On the Import screen, the tags rules add are written with the imported
+transactions. **Set split** offers
 the **Global split**, the **Default split** (the account's split, else the category's, else
 the global one), the **account's** or the **category's** split, or **Fixed weights** (the
 same weights editor as Bulk Edit). The first four are looked up each time the rule runs,
@@ -956,6 +990,8 @@ a person deletes their alerts.
     weights, each transaction keeps its split, and the transactions' history comes
     along. Users, global split weights and bank connections are never touched. Restoring
     a whole export this way therefore creates a second copy of every account in it.
+- A backup includes your tags and which transactions carry them. A **Partial restore**
+  brings them along with its transactions, reusing a tag of the same name when one exists.
 - A backup includes your bank connections (see [Bank sync](#bank-sync)) but never the
   OneDrive connection below, and restoring one leaves the OneDrive connection as it was.
 

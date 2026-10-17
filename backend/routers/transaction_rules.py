@@ -38,7 +38,7 @@ def _validate(db: Session, data: RuleCreate | RuleUpdate) -> None:
             # The import preview runs rules on rows that have no split yet.
             raise RuleViolation("A rule cannot test a person's split, share or balance.")
         if condition.field == "tag_id" and condition.value is None:
-            pass  # "has some tag" / "has no tag"
+            pass  # "has no tag" / "has some tag"
         elif condition.value is None or (isinstance(condition.value, str) and not condition.value.strip()):
             raise RuleViolation(f'The condition on "{condition.field}" has no value.')
         if condition.operator == "between" and condition.value2 is None:

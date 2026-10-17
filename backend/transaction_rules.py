@@ -99,11 +99,12 @@ def _coerce_date(value) -> date:
 
 def _matches(condition: FilterCondition, state: dict) -> bool:
     if condition.field in TAG_FIELDS:
-        # Mirrors filtering._tag_expr(): with no tag named, "is" means
-        # "carries some tag" and "is not" "carries none".
+        # Mirrors filtering.build_condition_expr(): with no tag named, "is"
+        # means "carries no tag" and "is not" "carries some tag".
         tag_ids = state.get("tag_ids") or set()
-        has = bool(tag_ids) if condition.value in (None, "") else int(float(condition.value)) in tag_ids
-        return has == (condition.operator == "eq")
+        if condition.value in (None, ""):
+            return bool(tag_ids) == (condition.operator == "ne")
+        return (int(float(condition.value)) in tag_ids) == (condition.operator == "eq")
     current = state.get(condition.field)
     if condition.field == "category_id" and condition.value is None and condition.operator in ("eq", "ne"):
         # Mirrors filtering.build_condition_expr(): no category named means

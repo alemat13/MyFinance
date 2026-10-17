@@ -129,9 +129,11 @@ def _tag_expr(tag_id: int | None, has: bool):
 
 def build_condition_expr(condition: FilterCondition):
     if condition.field in TAG_FIELDS:
-        tag_id = None if condition.value in (None, "") else int(_coerce_number(condition.value))
-        # "Tag is" with no tag named: has at least one tag; "is not": has none.
-        return _tag_expr(tag_id, condition.operator == "eq")
+        if condition.value in (None, ""):
+            # "Tag is / is not" with no tag named, like the uncategorized
+            # category: the rows with no tag at all / with at least one.
+            return _tag_expr(None, condition.operator == "ne")
+        return _tag_expr(int(_coerce_number(condition.value)), condition.operator == "eq")
     if condition.field == "category_id" and condition.value is None and condition.operator in ("eq", "ne"):
         # "Category is / is not" with no category: the uncategorized rows.
         column = Transaction.category_id

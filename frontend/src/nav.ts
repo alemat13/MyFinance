@@ -1,17 +1,18 @@
 import {
   LayoutDashboard, Wallet, Tags, ArrowLeftRight, Users as UsersIcon,
-  Scale, Upload, Database, BarChart3, HelpCircle, Landmark, Sparkles, Wand2, Bell,
+  Scale, Upload, Database, BarChart3, HelpCircle, Landmark, Sparkles, Wand2, Bell, Hash,
 } from 'lucide-react'
 
 export type View =
   | 'dashboard' | 'accounts' | 'categories' | 'transactions' | 'users'
   | 'split-settings' | 'import' | 'backup' | 'charts' | 'help' | 'bank-sync'
-  | 'categorizer' | 'rules' | 'alerts'
+  | 'categorizer' | 'rules' | 'alerts' | 'tags'
 
 export const viewLabels: Record<View, string> = {
   dashboard: 'Dashboard',
   accounts: 'Accounts',
   categories: 'Categories',
+  tags: 'Tags',
   transactions: 'Transactions',
   users: 'Users',
   'split-settings': 'Split Weights',
@@ -29,6 +30,7 @@ export const viewIcons: Record<View, typeof LayoutDashboard> = {
   dashboard: LayoutDashboard,
   accounts: Wallet,
   categories: Tags,
+  tags: Hash,
   transactions: ArrowLeftRight,
   users: UsersIcon,
   'split-settings': Scale,
@@ -45,4 +47,4 @@ export const viewIcons: Record<View, typeof LayoutDashboard> = {
 // The 4 views that get a permanent, always-visible slot in the nav (bottom
 // tab bar on mobile, top bar on desktop); everything else lives behind "More".
 export const PRIMARY_VIEWS: View[] = ['dashboard', 'transactions', 'accounts', 'charts']
-export const MORE_VIEWS: View[] = ['categories', 'users', 'split-settings', 'import', 'bank-sync', 'categorizer', 'rules', 'alerts', 'backup', 'help']
+export const MORE_VIEWS: View[] = ['categories', 'tags', 'users', 'split-settings', 'import', 'bank-sync', 'categorizer', 'rules', 'alerts', 'backup', 'help']

@@ -20,6 +20,7 @@ const { mockSearchTransactions, mockFetchAccounts, mockFetchCategories, mockCrea
   mockBulkDeleteTransactionsByFilter: vi.fn(),
   mockFetchDivideSiblings: vi.fn().mockResolvedValue([]),
 }))
+const mockFetchTags = vi.hoisted(() => vi.fn().mockResolvedValue([]))
 
 vi.mock('../../api/client', () => ({
   searchTransactions: mockSearchTransactions,
@@ -36,6 +37,7 @@ vi.mock('../../api/client', () => ({
   bulkDeleteTransactions: mockBulkDeleteTransactions,
   bulkDeleteTransactionsByFilter: mockBulkDeleteTransactionsByFilter,
   fetchDivideSiblings: mockFetchDivideSiblings,
+  fetchTags: mockFetchTags,
   suggestCategories: mockSuggestCategories,
   applyCategorizerSuggestions: mockApplyCategorizerSuggestions,
   fetchSavedFilters: mockFetchSavedFilters,
@@ -78,6 +80,7 @@ beforeEach(() => {
   mockFetchTransactionHistory.mockResolvedValue([])
   mockFetchDivideSiblings.mockResolvedValue([])
   mockFetchSavedFilters.mockResolvedValue([])
+  mockFetchTags.mockResolvedValue([])
   window.history.replaceState(null, '', '/')
   localStorage.removeItem('transactionsSortDir')
 })
@@ -856,7 +859,9 @@ test('Export CSV re-requests the current filtered view unpaginated', async () =>
 })
 
 test('downloads a CSV with one Weight/Share/Balance column per household user', async () => {
-  mockSearchTransactions.mockResolvedValue(searchResult([groceryOnJoint]))
+  mockSearchTransactions.mockResolvedValue(searchResult([{
+    ...groceryOnJoint, tags: [{ id: 1, name: 'Trip' }, { id: 2, name: 'Work' }],
+  }]))
   mockFetchAccounts.mockResolvedValue([jointAccount])
   mockFetchCategories.mockResolvedValue([baseCategory])
   mockFetchUsers.mockResolvedValue(bobAndAlice)
@@ -873,10 +878,10 @@ test('downloads a CSV with one Weight/Share/Balance column per household user', 
 
   const text: string = await blob.text()
   expect(text).toContain(
-    'ID,Date,Payee,Memo,Amount,Currency,Account,Category,Accounting Month,Reconciled,Divide Group ID,'
+    'ID,Date,Payee,Memo,Amount,Currency,Account,Category,Accounting Month,Reconciled,Divide Group ID,Tags,'
     + 'Weight Bob,Weight Alice,Share Bob,Share Alice,Balance Bob,Balance Alice',
   )
-  expect(text).toContain('1,2026-01-15,Grocery,,-100,USD,Joint,Salary,2026-01,No,,55,45,-55,-45,-5,5')
+  expect(text).toContain('1,2026-01-15,Grocery,,-100,USD,Joint,Salary,2026-01,No,,"Trip, Work",55,45,-55,-45,-5,5')
 })
 
 test('downloads an Excel file with the same data as the CSV export', async () => {
@@ -901,7 +906,7 @@ test('downloads an Excel file with the same data as the CSV export', async () =>
 
   expect(rows[0]).toEqual([
     'ID', 'Date', 'Payee', 'Memo', 'Amount', 'Currency', 'Account', 'Category',
-    'Accounting Month', 'Reconciled', 'Divide Group ID',
+    'Accounting Month', 'Reconciled', 'Divide Group ID', 'Tags',
     'Weight Bob', 'Weight Alice', 'Share Bob', 'Share Alice', 'Balance Bob', 'Balance Alice',
   ])
   expect(rows[1][0]).toBe(1)
@@ -1128,4 +1133,20 @@ test('a saved filter keeps its date order', async () => {
   expect(screen.getByRole('button', { name: 'Save filter' })).toBeDisabled()
   fireEvent.click(screen.getByRole('button', { name: /Oldest first/ }))
   expect(screen.getByRole('button', { name: 'Save filter' })).toBeEnabled()
+})
+
+test('the Tag filter searches by tag, or for transactions with none', async () => {
+  mockSearchTransactions.mockResolvedValue(searchResult([{ ...groceryOnJoint, tags: [{ id: 4, name: 'Trip', color: null }] }]))
+  mockFetchAccounts.mockResolvedValue([jointAccount])
+  mockFetchCategories.mockResolvedValue([baseCategory])
+  mockFetchTags.mockResolvedValue([{ id: 4, name: 'Trip', color: null, transaction_count: 1 }])
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={1} onOpenCategorizer={() => {}} />)
+  // The row shows its tags.
+  expect(await screen.findByText('#Trip', { selector: '[data-testid="tag-chip"]' })).toBeInTheDocument()
+
+  fireEvent.change(screen.getByLabelText('Tag'), { target: { value: '4' } })
+  await waitFor(() => expect(mockSearchTransactions).toHaveBeenLastCalledWith(expect.objectContaining({ tag_id: 4 })))
+  fireEvent.change(screen.getByLabelText('Tag'), { target: { value: '-1' } })
+  await waitFor(() => expect(mockSearchTransactions).toHaveBeenLastCalledWith(
+    expect.objectContaining({ untagged: true, tag_id: undefined })))
 })

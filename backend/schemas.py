@@ -478,7 +478,7 @@ TEXT_FIELDS = {"payee", "memo", "raw_label"}
 DATE_FIELDS = {"date"}
 NUMERIC_FIELDS = {"amount", "account_id", "category_id"}
 # "Has tag" / "does not have tag"; with no tag named, "has no tag at all" /
-# "has at least one tag", like the uncategorized case of category_id.
+# "has at least one tag" (is / is not), like the uncategorized category_id.
 TAG_FIELDS = {"tag_id"}
 TAG_OPERATORS = {"eq", "ne"}
 # Per-user figures of a transaction, each condition naming the user it reads:
