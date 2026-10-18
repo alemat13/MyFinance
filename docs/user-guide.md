@@ -260,8 +260,14 @@ Two filtering modes are available:
   no category, "Category is not Uncategorized" the ones that have one; likewise "Tag is
   #trip" / "Tag is not #trip", and "Tag is **No tag**" for the untagged transactions, "Tag
   is not No tag" for the ones carrying at least one) — useful for more precise or compound searches than the
-  simple filters allow. Reconciled status isn't available as an advanced-mode
-  condition; use the simple filter for that. Three conditions read one person's own
+  simple filters allow. Also offered: **Reconciled** is Yes / No; **Accounting month
+  shift** (the −3…+3 months set on a transaction, so "≠ 0" lists every shifted one);
+  **Added on**, the day the transaction reached MyFinance (a bank sync, an import or
+  by hand), which is not its own date; and the bank's fields from the "As reported by
+  the bank" section: **Original label**, **Counterparty**, **Bank transaction code /
+  type**, **Merchant category code**, **Merchant location**, **Purchase date** and
+  **Booking date**. A condition on a field the transaction leaves empty never matches,
+  not even "not equals". Three conditions read one person's own
   figures on a transaction, picked from a second dropdown: **Split weight of**,
   **Share of** and **Balance of** (share minus the part of the amount that person's
   ownership of the account pays, the same Balance as in the list), with =, ≠, <, >,
@@ -887,7 +893,9 @@ client: **when** a transaction matches its conditions, **then** it changes it. R
 on their own screen, under **More → Rules**.
 
 **Conditions** are the same as the Transactions screen's Advanced filter — payee, memo,
-amount, date, account, category, tag — plus **Original label**, the bank's (or the file's)
+amount, date, account, category, tag, reconciled, accounting month shift and the bank's
+fields — except the per-person ones and **Added on** (a transaction being imported has
+not been added yet). The most useful is **Original label**, the bank's (or the file's)
 own wording before any cleanup or renaming, which is the steadiest way to recognise a
 merchant. Combine them with **ALL** or **ANY**. As you type, the editor says how many
 existing transactions match today, the quickest check that a condition says what you

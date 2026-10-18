@@ -480,9 +480,16 @@ class TransactionDivideResponse(BaseModel):
 TEXT_OPERATORS = {"contains", "equals", "not_equals", "starts_with", "ends_with"}
 NUMERIC_OPERATORS = {"eq", "ne", "gt", "gte", "lt", "lte", "between"}
 DATE_OPERATORS = {"on", "before", "after", "between"}
-TEXT_FIELDS = {"payee", "memo", "raw_label"}
-DATE_FIELDS = {"date"}
-NUMERIC_FIELDS = {"amount", "account_id", "category_id"}
+TEXT_FIELDS = {
+    "payee", "memo", "raw_label",
+    "raw_counterparty", "raw_transaction_code", "raw_merchant_category_code", "raw_merchant_location",
+}
+# created_at is when the row reached MyFinance ("Added on"), compared by day.
+DATE_FIELDS = {"date", "raw_initiated_date", "raw_booking_date", "created_at"}
+NUMERIC_FIELDS = {"amount", "account_id", "category_id", "accounting_month_offset"}
+# "Reconciled is Yes / No"; the value is a boolean (or "true"/"false").
+BOOL_FIELDS = {"reconciled"}
+BOOL_OPERATORS = {"eq"}
 # "Has tag" / "does not have tag"; with no tag named, "has no tag at all" /
 # "has at least one tag" (is / is not), like the uncategorized category_id.
 TAG_FIELDS = {"tag_id"}
@@ -499,6 +506,7 @@ OPERATORS_BY_FIELD = {
     **{f: NUMERIC_OPERATORS for f in NUMERIC_FIELDS},
     **{f: NUMERIC_OPERATORS for f in USER_FIELDS},
     **{f: TAG_OPERATORS for f in TAG_FIELDS},
+    **{f: BOOL_OPERATORS for f in BOOL_FIELDS},
 }
 
 
@@ -506,9 +514,12 @@ class FilterCondition(BaseModel):
     field: Literal[
         "payee", "memo", "raw_label", "amount", "date", "account_id", "category_id",
         "split_weight", "split_share", "split_balance", "tag_id",
+        "reconciled", "accounting_month_offset", "created_at",
+        "raw_counterparty", "raw_transaction_code", "raw_merchant_category_code", "raw_merchant_location",
+        "raw_initiated_date", "raw_booking_date",
     ]
     operator: str
-    value: str | float | int | None = None
+    value: bool | str | float | int | None = None
     value2: str | float | int | None = None
     # The user a per-user field (USER_FIELDS) reads; unused by the others.
     user_id: int | None = None
