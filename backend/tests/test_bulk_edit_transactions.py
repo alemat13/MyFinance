@@ -464,3 +464,44 @@ def test_bulk_update_blank_affix_422(client, db, sample_account, sample_category
     )
     assert response.status_code == 422
     assert client.get(f"/api/transactions/{t1.id}").json()["payee"] == "Boulangerie"
+
+
+def test_bulk_update_payee_regex_rewrites_matches_with_groups(client, db, sample_account, sample_category):
+    t1 = _make_transaction(db, sample_account, sample_category, payee="PRLV SEPA FREE MOBILE", memo="Forfait")
+    t2 = _make_transaction(db, sample_account, sample_category, payee="Boulangerie")
+
+    response = client.put(
+        "/api/transactions/bulk-update",
+        json={"transaction_ids": [t1.id, t2.id], "update": {
+            "payee": r"^prlv sepa (\w+) (\w+)$", "payee_mode": "regex",
+            "payee_replacement": "$2 ($1) $$", "payee_ignore_case": True}},
+    )
+    assert response.status_code == 200
+    first = client.get(f"/api/transactions/{t1.id}").json()
+    assert first["payee"] == "MOBILE (FREE) $"
+    assert first["memo"] == "Forfait"
+    assert client.get(f"/api/transactions/{t2.id}").json()["payee"] == "Boulangerie"
+    history = client.get(f"/api/transactions/{t1.id}/history").json()
+    assert {"payee": {"old": "PRLV SEPA FREE MOBILE", "new": "MOBILE (FREE) $"}} in [h["changes"] for h in history]
+    assert [h for h in client.get(f"/api/transactions/{t2.id}/history").json() if "payee" in (h["changes"] or {})] == []
+
+
+def test_bulk_update_payee_regex_strips_and_deletes_text(client, db, sample_account, sample_category):
+    t1 = _make_transaction(db, sample_account, sample_category, payee="CARTE 12/09 Carrefour")
+    response = client.put(
+        "/api/transactions/bulk-update",
+        json={"transaction_ids": [t1.id], "update": {"payee": r"CARTE \d\d/\d\d", "payee_mode": "regex"}},
+    )
+    assert response.status_code == 200
+    assert client.get(f"/api/transactions/{t1.id}").json()["payee"] == "Carrefour"
+
+
+@pytest.mark.parametrize("pattern", ["(unclosed", ".*"])
+def test_bulk_update_payee_regex_invalid_or_blanking_422_and_no_mutation(client, db, sample_account, sample_category, pattern):
+    t1 = _make_transaction(db, sample_account, sample_category, payee="Boulangerie")
+    response = client.put(
+        "/api/transactions/bulk-update",
+        json={"transaction_ids": [t1.id], "update": {"payee": pattern, "payee_mode": "regex"}},
+    )
+    assert response.status_code == 422
+    assert client.get(f"/api/transactions/{t1.id}").json()["payee"] == "Boulangerie"

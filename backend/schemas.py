@@ -399,10 +399,16 @@ class BulkTransactionUpdate(BaseModel):
     null is refused, a payee can't be cleared); the memo is never touched.
     payee_mode says what to do with that text: "replace" (the default) sets
     it as the payee, "prepend"/"append" add it before/after each row's own
-    payee, taken as typed (unstripped) so a separating space can be part of it."""
+    payee, taken as typed (unstripped) so a separating space can be part of it.
+    "regex" (admin mode on screen) takes payee as a regular expression and
+    replaces every match in each row's payee with payee_replacement, where
+    $1, $2... name capture groups and $& the whole match, as in JavaScript;
+    the result is stripped, and a row the pattern doesn't match is left alone."""
     category_id: Optional[int] = None
     payee: Optional[str] = None
-    payee_mode: Literal["replace", "prepend", "append"] = "replace"
+    payee_mode: Literal["replace", "prepend", "append", "regex"] = "replace"
+    payee_replacement: str = ""
+    payee_ignore_case: bool = False
     # Admin mode only on screen: moves every selected transaction to this
     # account, keeping each one's own split as it is.
     account_id: Optional[int] = None

@@ -796,6 +796,7 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
           searchFilter={allSelected ? buildSearchRequest() : undefined}
           matchingTotal={allSelected ? total : undefined}
           moveAccounts={adminMode ? allAccounts : undefined}
+          adminMode={adminMode}
         />
       )}
 
