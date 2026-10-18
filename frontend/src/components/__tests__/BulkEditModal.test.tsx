@@ -354,3 +354,35 @@ test('removes tags in bulk when the action is set to Remove', async () => {
     [1, 2], { remove_tag_ids: [3] }, null))
   expect(mockCreateTag).not.toHaveBeenCalled()
 })
+
+test('Regex rename is only offered in admin mode', () => {
+  renderWithProviders(<BulkEditModal {...baseProps} />)
+  fireEvent.click(screen.getByText('Rename'))
+  expect(screen.queryByRole('button', { name: 'Regex' })).toBeNull()
+})
+
+test('Regex rename previews, blocks an invalid pattern and sends pattern + replacement', async () => {
+  mockBulkUpdateTransactions.mockResolvedValue({ updated_count: 2, transaction_ids: [1, 2] })
+  renderWithProviders(<BulkEditModal {...baseProps} adminMode />)
+  fireEvent.click(screen.getByText('Rename'))
+  fireEvent.click(screen.getByRole('button', { name: 'Regex' }))
+
+  fireEvent.change(screen.getByLabelText('Pattern'), { target: { value: '(unclosed' } })
+  expect(screen.getByRole('alert')).toHaveTextContent('Invalid regular expression')
+  expect(submitButton()).toBeDisabled()
+
+  fireEvent.change(screen.getByLabelText('Pattern'), { target: { value: '^l(\\w+)' } })
+  fireEvent.change(screen.getByLabelText('Replacement'), { target: { value: 'L$1!' } })
+  fireEvent.click(screen.getByLabelText('Ignore case'))
+  expect(screen.getByText('Lunch!')).toBeInTheDocument()
+  expect(screen.getByText('Need help with your regex?')).toBeInTheDocument()
+  expect(screen.getByLabelText('Ask Claude').getAttribute('href')).toMatch(/^https:\/\/claude\.ai\/new\?q=.*Coffee/)
+  expect(screen.getByLabelText('Ask ChatGPT').getAttribute('href')).toMatch(/^https:\/\/chatgpt\.com\/\?q=/)
+
+  fireEvent.click(submitButton())
+  await waitFor(() => expect(mockBulkUpdateTransactions).toHaveBeenCalledWith(
+    [1, 2],
+    { payee: '^l(\\w+)', payee_mode: 'regex', payee_replacement: 'L$1!', payee_ignore_case: true },
+    null,
+  ))
+})
