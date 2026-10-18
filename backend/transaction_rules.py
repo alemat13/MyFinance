@@ -32,7 +32,7 @@ treatment of NULL: a condition on an empty field never matches, not even
 
 import logging
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime
 
 from sqlalchemy.orm import Session
 
@@ -40,6 +40,7 @@ import cache_service
 import split_engine
 import tags as tag_service
 from audit import TRACKED_FIELDS, _jsonify, diff_splits, record_transaction_history
+from filtering import coerce_bool
 from models import (
     AccountSplitWeight,
     Category,
@@ -51,7 +52,7 @@ from models import (
     TransactionSplit,
     User,
 )
-from schemas import DATE_FIELDS, TAG_FIELDS, TEXT_FIELDS, FilterCondition, RuleActions, RuleOutcomeOut
+from schemas import BOOL_FIELDS, DATE_FIELDS, TAG_FIELDS, TEXT_FIELDS, FilterCondition, RuleActions, RuleOutcomeOut
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +63,8 @@ HISTORY_SOURCE = "rule"
 _STATE_FIELDS = (
     "payee", "memo", "raw_label", "amount", "date", "account_id", "category_id",
     "accounting_month_offset", "reconciled",
+    "raw_counterparty", "raw_transaction_code", "raw_merchant_category_code", "raw_merchant_location",
+    "raw_initiated_date", "raw_booking_date",
 )
 
 
@@ -94,6 +97,8 @@ def load_rules(db: Session, rule_ids: list[int] | None = None) -> list[Transacti
 
 
 def _coerce_date(value) -> date:
+    if isinstance(value, datetime):
+        return value.date()
     return value if isinstance(value, date) else date.fromisoformat(str(value))
 
 
@@ -113,6 +118,8 @@ def _matches(condition: FilterCondition, state: dict) -> bool:
     if current is None:
         return False
     op = condition.operator
+    if condition.field in BOOL_FIELDS:
+        return bool(current) == coerce_bool(condition.value)
     if condition.field in TEXT_FIELDS:
         text, value = str(current).lower(), str(condition.value).lower()
         return {

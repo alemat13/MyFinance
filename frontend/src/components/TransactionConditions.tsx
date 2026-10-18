@@ -32,37 +32,35 @@ const NUMERIC_OPERATORS = [
  *  ownership of the account pays), as the Transactions screen shows them.
  *  Offered only where the builder is given the users (not in rules). */
 export const USER_FIELDS: FilterField[] = ['split_weight', 'split_share', 'split_balance']
-const NUMERIC_FIELDS: FilterField[] = ['amount', 'account_id', 'category_id', 'tag_id', ...USER_FIELDS]
+/** Fields a search can use but a rule cannot: the per-user figures (an
+ *  imported row has no split yet) and when a row was added (it has not been). */
+export const SEARCH_ONLY_FIELDS: FilterField[] = [...USER_FIELDS, 'created_at']
+const NUMERIC_FIELDS: FilterField[] = [
+  'amount', 'account_id', 'category_id', 'tag_id', 'accounting_month_offset', ...USER_FIELDS,
+]
+const DATE_FIELDS: FilterField[] = ['date', 'created_at', 'raw_initiated_date', 'raw_booking_date']
+const isDateField = (field: FilterField) => DATE_FIELDS.includes(field)
+
+const TEXT_OPERATORS = [
+  { value: 'contains', label: 'contains' },
+  { value: 'equals', label: 'equals' },
+  { value: 'not_equals', label: 'not equals' },
+  { value: 'starts_with', label: 'starts with' },
+  { value: 'ends_with', label: 'ends with' },
+]
+const DATE_OPERATORS = [
+  { value: 'on', label: 'on' },
+  { value: 'before', label: 'before' },
+  { value: 'after', label: 'after' },
+  { value: 'between', label: 'between' },
+]
 
 export const OPERATORS_BY_FIELD: Record<FilterField, { value: string; label: string }[]> = {
-  payee: [
-    { value: 'contains', label: 'contains' },
-    { value: 'equals', label: 'equals' },
-    { value: 'not_equals', label: 'not equals' },
-    { value: 'starts_with', label: 'starts with' },
-    { value: 'ends_with', label: 'ends with' },
-  ],
-  memo: [
-    { value: 'contains', label: 'contains' },
-    { value: 'equals', label: 'equals' },
-    { value: 'not_equals', label: 'not equals' },
-    { value: 'starts_with', label: 'starts with' },
-    { value: 'ends_with', label: 'ends with' },
-  ],
-  raw_label: [
-    { value: 'contains', label: 'contains' },
-    { value: 'equals', label: 'equals' },
-    { value: 'not_equals', label: 'not equals' },
-    { value: 'starts_with', label: 'starts with' },
-    { value: 'ends_with', label: 'ends with' },
-  ],
+  payee: TEXT_OPERATORS,
+  memo: TEXT_OPERATORS,
+  raw_label: TEXT_OPERATORS,
   amount: NUMERIC_OPERATORS,
-  date: [
-    { value: 'on', label: 'on' },
-    { value: 'before', label: 'before' },
-    { value: 'after', label: 'after' },
-    { value: 'between', label: 'between' },
-  ],
+  date: DATE_OPERATORS,
   account_id: [
     { value: 'eq', label: 'is' },
     { value: 'ne', label: 'is not' },
@@ -71,25 +69,40 @@ export const OPERATORS_BY_FIELD: Record<FilterField, { value: string; label: str
     { value: 'eq', label: 'is' },
     { value: 'ne', label: 'is not' },
   ],
-  split_weight: NUMERIC_OPERATORS,
-  split_share: NUMERIC_OPERATORS,
-  split_balance: NUMERIC_OPERATORS,
   tag_id: [
     { value: 'eq', label: 'is' },
     { value: 'ne', label: 'is not' },
   ],
+  reconciled: [{ value: 'eq', label: 'is' }],
+  accounting_month_offset: NUMERIC_OPERATORS,
+  created_at: DATE_OPERATORS,
+  raw_counterparty: TEXT_OPERATORS,
+  raw_transaction_code: TEXT_OPERATORS,
+  raw_merchant_category_code: TEXT_OPERATORS,
+  raw_merchant_location: TEXT_OPERATORS,
+  raw_initiated_date: DATE_OPERATORS,
+  raw_booking_date: DATE_OPERATORS,
+  split_weight: NUMERIC_OPERATORS,
+  split_share: NUMERIC_OPERATORS,
+  split_balance: NUMERIC_OPERATORS,
 }
 
+// Bank fields read as the transaction's "As reported by the bank" section
+// names them.
 export const FIELD_LABELS: Record<FilterField, string> = {
   payee: 'Payee', memo: 'Memo', raw_label: 'Original label', amount: 'Amount', date: 'Date',
-  account_id: 'Account', category_id: 'Category',
+  account_id: 'Account', category_id: 'Category', tag_id: 'Tag',
+  reconciled: 'Reconciled', accounting_month_offset: 'Accounting month shift', created_at: 'Added on',
+  raw_counterparty: 'Counterparty', raw_transaction_code: 'Bank transaction code / type',
+  raw_merchant_category_code: 'Merchant category code', raw_merchant_location: 'Merchant location',
+  raw_initiated_date: 'Purchase date', raw_booking_date: 'Booking date',
   split_weight: 'Split weight of', split_share: 'Share of', split_balance: 'Balance of',
-  tag_id: 'Tag',
 }
 
 export const emptyCondition: ConditionRow = { field: 'payee', operator: 'contains', value: '', value2: '' }
 
-function coerceValue(field: FilterField, value: string): string | number {
+function coerceValue(field: FilterField, value: string): string | number | boolean {
+  if (field === 'reconciled') return value === 'true'
   if (NUMERIC_FIELDS.includes(field)) return parseFloat(value)
   return value
 }
@@ -102,7 +115,7 @@ const isUserField = (field: FilterField) => USER_FIELDS.includes(field)
  *  1000 on; a number only once it parses. */
 function isCompleteValue(field: FilterField, value: string): boolean {
   if (value === '') return false
-  if (field === 'date') {
+  if (isDateField(field)) {
     const m = /^(\d{4})-\d{2}-\d{2}$/.exec(value)
     return !!m && parseInt(m[1]) >= 1000 && !Number.isNaN(Date.parse(value))
   }
@@ -110,7 +123,8 @@ function isCompleteValue(field: FilterField, value: string): boolean {
   return true
 }
 // Fields where the user types a number.
-const isNumberInput = (field: FilterField) => field === 'amount' || isUserField(field)
+const isNumberInput = (field: FilterField) =>
+  field === 'amount' || field === 'accounting_month_offset' || isUserField(field)
 
 /** Drops the rows the user started but left empty or half-typed (a "between"
  *  missing its second bound included), so a condition being typed never
@@ -127,7 +141,7 @@ export function conditionsToFilters(conditions: ConditionRow[]): FilterCondition
       value: (c.field === 'category_id' && c.value === String(UNCATEGORIZED_ID))
         || (c.field === 'tag_id' && c.value === String(UNTAGGED_ID))
         ? null : coerceValue(c.field, c.value),
-      value2: c.operator === 'between' ? coerceValue(c.field, c.value2) : undefined,
+      value2: c.operator === 'between' ? coerceValue(c.field, c.value2) as string | number : undefined,
       ...(isUserField(c.field) ? { user_id: parseInt(c.userId!) } : {}),
     }))
 }
@@ -143,17 +157,20 @@ interface Props {
   tags?: TagRef[]
   // Given, the per-user fields are offered too, one condition per user.
   users?: User[]
+  // Leaves out the fields a rule cannot test (SEARCH_ONLY_FIELDS).
+  forRules?: boolean
 }
 
 /** The advanced-filter condition builder, shared by the Transactions screen
  *  and the auto-categorization screen so a training selection is expressed in
  *  exactly the filters the user already knows. */
 export default function TransactionConditions({
-  conditions, onChange, matchMode, onMatchModeChange, accounts, categories, tags, users,
+  conditions, onChange, matchMode, onMatchModeChange, accounts, categories, tags, users, forRules,
 }: Props) {
   const fields = (Object.keys(OPERATORS_BY_FIELD) as FilterField[])
     .filter(f => !isUserField(f) || (users && users.length > 0))
     .filter(f => f !== 'tag_id' || tags !== undefined)
+    .filter(f => !forRules || !SEARCH_ONLY_FIELDS.includes(f))
   const updateField = (i: number, field: FilterField) => {
     onChange(conditions.map((c, idx) => {
       if (idx !== i) return c
@@ -209,6 +226,13 @@ export default function TransactionConditions({
               anyLabel="Choose category"
               className="min-w-[140px]"
             />
+          ) : c.field === 'reconciled' ? (
+            <Select aria-label="Reconciled value" value={c.value} onChange={e => updateValue(i, 'value', e.target.value)}
+                    className="min-w-[140px]">
+              <option value="">Choose</option>
+              <option value="true">Yes</option>
+              <option value="false">No</option>
+            </Select>
           ) : c.field === 'tag_id' ? (
             <Select aria-label="Tag value" value={c.value} onChange={e => updateValue(i, 'value', e.target.value)}
                     className="min-w-[140px]">
@@ -218,7 +242,7 @@ export default function TransactionConditions({
             </Select>
           ) : (
             <Input
-              type={isNumberInput(c.field) ? 'number' : c.field === 'date' ? 'date' : 'text'}
+              type={isNumberInput(c.field) ? 'number' : isDateField(c.field) ? 'date' : 'text'}
               step={c.field === 'amount' || c.field === 'split_share' || c.field === 'split_balance' ? '0.01' : undefined}
               value={c.value}
               onChange={e => updateValue(i, 'value', e.target.value)}

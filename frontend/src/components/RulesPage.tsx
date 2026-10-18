@@ -42,7 +42,8 @@ function toRows(conditions: FilterCondition[]): ConditionRow[] {
 
 function describeCondition(c: FilterCondition, accounts: Account[], categories: Category[], tags: Tag[]): string {
   const op = OPERATORS_BY_FIELD[c.field].find(o => o.value === c.operator)?.label ?? c.operator
-  const show = (v: string | number | null | undefined) => {
+  const show = (v: string | number | boolean | null | undefined) => {
+    if (c.field === 'reconciled') return String(v) === 'true' ? 'Yes' : 'No'
     if (c.field === 'account_id') return accounts.find(a => a.id === Number(v))?.name ?? `#${v}`
     if (c.field === 'category_id') return v == null ? 'Uncategorized' : categories.find(x => x.id === Number(v))?.name ?? `#${v}`
     if (c.field === 'tag_id') return v == null ? 'No tag' : `#${tags.find(x => x.id === Number(v))?.name ?? v}`
@@ -178,6 +179,7 @@ function RuleEditor({
             accounts={accounts}
             categories={categories}
             tags={tags}
+            forRules
           />
           <p className="text-xs text-slate-600 dark:text-slate-300 mt-2">
             {filters.length === 0

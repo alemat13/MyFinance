@@ -98,6 +98,8 @@ def test_reorder(client, db):
     {"name": "Empty split", "conditions": [_contains("payee", "x")], "actions": {"split_weights": []}},
     {"name": "Per-user share", "conditions": [{"field": "split_share", "user_id": 1, "operator": "gt", "value": 0}],
      "actions": {"payee": "X"}},
+    {"name": "Added on", "conditions": [{"field": "created_at", "operator": "on", "value": "2026-10-18"}],
+     "actions": {"payee": "X"}},
 ])
 def test_create_refuses_an_unusable_rule(client, body):
     assert client.post("/api/rules", json=body).status_code == 422
@@ -150,6 +152,25 @@ def test_operators_mirror_the_filter(db, sample_account):
     # No category named: "is" matches an uncategorized row, "is not" a filed one.
     assert match(field="category_id", operator="eq", value=None)
     assert not match(field="category_id", operator="ne", value=None)
+    assert match(field="reconciled", operator="eq", value=False)
+    assert not match(field="reconciled", operator="eq", value="true")
+    assert match(field="accounting_month_offset", operator="eq", value=0)
+    assert not match(field="raw_counterparty", operator="not_equals", value="x")
+
+
+def test_bank_fields_and_reconciled_conditions(db, sample_account):
+    from datetime import date
+    row = _txn(db, sample_account.id, "SNCF")
+    row.raw_merchant_category_code = "4112"
+    row.raw_booking_date = date(2026, 8, 3)
+    row.reconciled = True
+    db.commit()
+    rule = _rule(db, "train", [
+        {"field": "raw_merchant_category_code", "operator": "equals", "value": "4112"},
+        {"field": "raw_booking_date", "operator": "after", "value": "2026-08-01"},
+        {"field": "reconciled", "operator": "eq", "value": True},
+    ], {"payee": "Train"})
+    assert _evaluate(db, [rule], row).fields == {"payee": "Train"}
 
 
 def test_match_mode_any_and_all(db, sample_account):
