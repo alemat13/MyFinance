@@ -1,3 +1,5 @@
+import re
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, selectinload
@@ -40,6 +42,33 @@ router = APIRouter(prefix="/api/transactions")
 # Rows per commit in bulk-update; see the comment where it is used.
 BULK_UPDATE_CHUNK_SIZE = 1500
 PAYEE_MAX_LENGTH = Transaction.__table__.c.payee.type.length
+
+_REPLACEMENT_TOKEN = re.compile(r"\$(\$|&|\d{1,2})")
+
+
+def _expand_replacement(match: re.Match, replacement: str) -> str:
+    """JavaScript's String.replace() template, so the screen's preview and the
+    server agree: $1..$99 a capture group (empty when it didn't take part),
+    $& the whole match, $$ a literal $; anything else, backslashes included,
+    is literal. Like JavaScript, a two-digit $nn naming no group falls back
+    to $n followed by the digit."""
+    def token(t: re.Match) -> str:
+        value = t.group(1)
+        if value == "$":
+            return "$"
+        if value == "&":
+            return match.group(0)
+        if len(value) == 2 and int(value) > match.re.groups:
+            return token_for(value[0]) + value[1]
+        return token_for(value)
+
+    def token_for(digits: str) -> str:
+        index = int(digits)
+        if index == 0 or index > match.re.groups:
+            return "$" + digits
+        return match.group(index) or ""
+
+    return _REPLACEMENT_TOKEN.sub(token, replacement)
 
 
 @router.get("", response_model=list[TransactionOut])
@@ -290,6 +319,8 @@ def bulk_update_transactions(data: BulkUpdateTransactionsRequest, actor_user_id:
     update_data = data.update.model_dump(exclude_unset=True)
     split_weights_provided = "split_weights" in update_data
     payee_mode = update_data.pop("payee_mode", "replace")
+    payee_replacement = update_data.pop("payee_replacement", "")
+    payee_ignore_case = update_data.pop("payee_ignore_case", False)
     add_tag_ids = update_data.pop("add_tag_ids", None) or []
     remove_tag_ids = update_data.pop("remove_tag_ids", None) or []
     non_split_fields = {k: v for k, v in update_data.items() if k not in ("split_weights", "split_source")}
@@ -307,12 +338,33 @@ def bulk_update_transactions(data: BulkUpdateTransactionsRequest, actor_user_id:
             raise HTTPException(422, "account_id cannot be cleared")
         _validate_bulk_move(db, target_ids, non_split_fields["account_id"])
     payee_affix = None
+    regex_payees = None
     if "payee" in non_split_fields:
         payee = non_split_fields["payee"] or ""
         if not payee.strip():
             raise HTTPException(422, "payee cannot be blank")
         if payee_mode == "replace":
             non_split_fields["payee"] = payee.strip()
+        elif payee_mode == "regex":
+            # Every row's new payee is worked out up front so a blank or
+            # too-long result refuses the whole edit before anything is written.
+            pattern = non_split_fields.pop("payee")
+            try:
+                regex = re.compile(pattern, re.IGNORECASE if payee_ignore_case else 0)
+            except re.error as exc:
+                raise HTTPException(422, f"Invalid regular expression: {exc}")
+            regex_payees = {}
+            rows = db.query(Transaction.id, Transaction.payee).filter(Transaction.id.in_(target_ids)).all() if target_ids else []
+            for row_id, old_payee in rows:
+                new_payee = regex.sub(lambda m: _expand_replacement(m, payee_replacement), old_payee).strip()
+                if new_payee == old_payee:
+                    continue
+                if not new_payee:
+                    raise HTTPException(422, f"The regex would leave an empty payee (\"{old_payee}\")")
+                if len(new_payee) > PAYEE_MAX_LENGTH:
+                    raise HTTPException(
+                        422, f"payee would exceed {PAYEE_MAX_LENGTH} characters on at least one transaction")
+                regex_payees[row_id] = new_payee
         else:
             # Prepend/append: each row keeps its own payee around the text, so
             # it can't be one value set on every row like the other fields.
@@ -350,13 +402,15 @@ def bulk_update_transactions(data: BulkUpdateTransactionsRequest, actor_user_id:
         )
         for transaction in transactions:
             old_values = {f: getattr(transaction, f) for f in non_split_fields if f in TRACKED_FIELDS}
-            if payee_affix is not None:
+            if payee_affix is not None or regex_payees is not None:
                 old_values["payee"] = transaction.payee
             for field, value in non_split_fields.items():
                 setattr(transaction, field, value)
             if payee_affix is not None:
                 transaction.payee = (payee_affix + transaction.payee if payee_mode == "prepend"
                                      else transaction.payee + payee_affix)
+            if regex_payees is not None and transaction.id in regex_payees:
+                transaction.payee = regex_payees[transaction.id]
             changes = {
                 f: {"old": _jsonify(old), "new": _jsonify(getattr(transaction, f))}
                 for f, old in old_values.items() if old != getattr(transaction, f)

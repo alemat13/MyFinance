@@ -9,6 +9,7 @@ import TransactionSplitFields from './TransactionSplitFields'
 import CategoryPicker from './CategoryPicker'
 import AccountPicker from './AccountPicker'
 import TagPicker from './TagPicker'
+import RegexHelpLinks from './RegexHelpLinks'
 import { useToast } from '../context/ToastContext'
 import { Modal, Button, Select, Input } from './ui'
 
@@ -32,13 +33,26 @@ interface Props {
   /** Admin mode only: the accounts a selection can be moved to. When absent
    * the "Move to another account" section isn't offered. */
   moveAccounts?: Account[]
+  /** Admin mode only: offers a fourth rename mode, Regex. */
+  adminMode?: boolean
 }
 
 const PAYEE_MODES: { value: PayeeMode; label: string; placeholder: string }[] = [
   { value: 'replace', label: 'Replace', placeholder: 'New payee' },
   { value: 'prepend', label: 'Prepend', placeholder: 'Text to add before' },
   { value: 'append', label: 'Append', placeholder: 'Text to add after' },
+  { value: 'regex', label: 'Regex', placeholder: 'Pattern' },
 ]
+
+/** The regex a pattern compiles to, or the browser's error message. Always
+ * global: every match in a payee is replaced, as on the server. */
+function compileRegex(pattern: string, ignoreCase: boolean): RegExp | string {
+  try {
+    return new RegExp(pattern, ignoreCase ? 'gi' : 'g')
+  } catch (err) {
+    return (err as Error).message
+  }
+}
 
 /** The payee a row would get. Prepend/append keep the text as typed, so a
  * separating space is the user's to include; Replace trims it like the API. */
@@ -62,7 +76,7 @@ function offsetLabel(offset: number): string {
 
 export default function BulkEditModal({
   transactionIds, transactions, accounts, categories, tags = [], onTagCreated, allUsers, globalWeights, selectedUserId, onClose, onSaved,
-  searchFilter, matchingTotal, moveAccounts,
+  searchFilter, matchingTotal, moveAccounts, adminMode = false,
 }: Props) {
   const canSelectAllMatching = searchFilter != null && matchingTotal != null && matchingTotal > transactionIds.length
   const [allMatching, setAllMatching] = useState(false)
@@ -74,6 +88,9 @@ export default function BulkEditModal({
   const [renameEnabled, setRenameEnabled] = useState(false)
   const [payee, setPayee] = useState('')
   const [payeeMode, setPayeeMode] = useState<PayeeMode>('replace')
+  const [replacement, setReplacement] = useState('')
+  const [ignoreCase, setIgnoreCase] = useState(false)
+  const payeeModes = adminMode ? PAYEE_MODES : PAYEE_MODES.filter(m => m.value !== 'regex')
 
   const [moveEnabled, setMoveEnabled] = useState(false)
   const [moveAccountId, setMoveAccountId] = useState<number | null>(null)
@@ -98,10 +115,19 @@ export default function BulkEditModal({
   const currencies = [...new Set(transactions.map(t => t.currency))]
   const previewTransaction = transactions[0]
 
+  const regex = payeeMode === 'regex' && payee !== '' ? compileRegex(payee, ignoreCase) : null
+  const regexError = typeof regex === 'string' ? regex : null
+  // The first selected row the pattern changes, so the example shows something.
+  const regexPreview = regex instanceof RegExp
+    ? transactions.map(t => ({ from: t.payee, to: t.payee.replace(regex, replacement).trim() }))
+      .find(p => p.to !== p.from) ?? null
+    : null
+
   const canSave = (categoryEnabled || renameEnabled || moveEnabled || offsetEnabled || splitEnabled || reconciledEnabled
     || (tagsEnabled && tagIds.length > 0))
     && !(moveEnabled && moveAccountId == null)
     && !(renameEnabled && payee.trim() === '')
+    && !(renameEnabled && payeeMode === 'regex' && regexError != null)
 
   const handleSave = () => {
     if (splitEnabled && splitRows.length === 0) {
@@ -110,7 +136,10 @@ export default function BulkEditModal({
     const update: BulkTransactionUpdate = {
       ...(categoryEnabled ? { category_id: categoryId } : {}),
       ...(renameEnabled
-        ? payeeMode === 'replace' ? { payee: payee.trim() } : { payee, payee_mode: payeeMode }
+        ? payeeMode === 'replace' ? { payee: payee.trim() }
+          : payeeMode === 'regex'
+            ? { payee, payee_mode: payeeMode, payee_replacement: replacement, payee_ignore_case: ignoreCase }
+            : { payee, payee_mode: payeeMode }
         : {}),
       ...(moveEnabled && moveAccountId != null ? { account_id: moveAccountId } : {}),
       ...(offsetEnabled ? { accounting_month_offset: offset } : {}),
@@ -176,7 +205,7 @@ export default function BulkEditModal({
           {renameEnabled && (
             <div>
               <div role="group" aria-label="Rename mode" className="inline-flex rounded-md border border-slate-300 dark:border-slate-600 overflow-hidden mb-2">
-                {PAYEE_MODES.map(m => (
+                {payeeModes.map(m => (
                   <button
                     key={m.value}
                     type="button"
@@ -190,22 +219,66 @@ export default function BulkEditModal({
                   </button>
                 ))}
               </div>
-              <Input
-                aria-label={PAYEE_MODES.find(m => m.value === payeeMode)!.placeholder}
-                placeholder={PAYEE_MODES.find(m => m.value === payeeMode)!.placeholder}
-                value={payee}
-                onChange={e => setPayee(e.target.value)}
-              />
-              <div className="text-xs text-slate-400 mt-1">
-                {payeeMode === 'replace'
-                  ? 'Every selected transaction gets this payee.'
-                  : `Added ${payeeMode === 'prepend' ? 'before' : 'after'} each transaction's own payee, exactly as typed (include a space if you want one).`}
-                {' '}Memos and original bank labels are kept.
-              </div>
-              {payeeMode !== 'replace' && previewTransaction && payee.trim() !== '' && (
-                <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                  e.g. <span className="font-medium text-slate-700 dark:text-slate-200 whitespace-pre-wrap">{renamedPayee(previewTransaction.payee, payee, payeeMode)}</span>
+              {payeeMode === 'regex' ? (
+                <div className="flex flex-col gap-2">
+                  <Input
+                    aria-label="Pattern"
+                    placeholder="Pattern, e.g. ^PRLV SEPA (.*)$"
+                    className="font-mono"
+                    value={payee}
+                    onChange={e => setPayee(e.target.value)}
+                  />
+                  <Input
+                    aria-label="Replacement"
+                    placeholder="Replacement, e.g. $1 (empty deletes the match)"
+                    className="font-mono"
+                    value={replacement}
+                    onChange={e => setReplacement(e.target.value)}
+                  />
+                  <label className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={ignoreCase} onChange={e => setIgnoreCase(e.target.checked)} />
+                    Ignore case
+                  </label>
+                  {regexError && (
+                    <div role="alert" className="text-xs text-red-600 dark:text-red-400">{regexError}</div>
+                  )}
+                  <div className="text-xs text-slate-400">
+                    Every match in each payee is replaced; $1, $2... insert a captured group, $&amp; the whole match.
+                    Transactions the pattern doesn't match are left as they are. Memos and original bank labels are kept.
+                  </div>
+                  {regex instanceof RegExp && (
+                    <div className="text-xs text-slate-500 dark:text-slate-400">
+                      {regexPreview
+                        ? <>e.g. <span className="whitespace-pre-wrap">{regexPreview.from}</span> → <span className="font-medium text-slate-700 dark:text-slate-200 whitespace-pre-wrap">{regexPreview.to}</span></>
+                        : 'No transaction shown here matches this pattern.'}
+                    </div>
+                  )}
+                  <RegexHelpLinks
+                    samplePayees={[...new Set(transactions.map(t => t.payee))].slice(0, 10)}
+                    pattern={payee}
+                    replacement={replacement}
+                  />
                 </div>
+              ) : (
+                <>
+                <Input
+                  aria-label={PAYEE_MODES.find(m => m.value === payeeMode)!.placeholder}
+                  placeholder={PAYEE_MODES.find(m => m.value === payeeMode)!.placeholder}
+                  value={payee}
+                  onChange={e => setPayee(e.target.value)}
+                />
+                <div className="text-xs text-slate-400 mt-1">
+                  {payeeMode === 'replace'
+                    ? 'Every selected transaction gets this payee.'
+                    : `Added ${payeeMode === 'prepend' ? 'before' : 'after'} each transaction's own payee, exactly as typed (include a space if you want one).`}
+                  {' '}Memos and original bank labels are kept.
+                </div>
+                {payeeMode !== 'replace' && previewTransaction && payee.trim() !== '' && (
+                  <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    e.g. <span className="font-medium text-slate-700 dark:text-slate-200 whitespace-pre-wrap">{renamedPayee(previewTransaction.payee, payee, payeeMode)}</span>
+                  </div>
+                )}
+                </>
               )}
             </div>
           )}

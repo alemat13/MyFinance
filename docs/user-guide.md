@@ -537,6 +537,19 @@ the list, so nothing you didn't see counted gets edited.
   between it and the payee; a line under the box shows the result on the first
   selected transaction. The whole edit is refused if it would make any payee longer
   than 200 characters.
+  In admin mode (see "Admin mode") a fourth button, **Regex**, rewrites each payee
+  with a regular expression: type a **Pattern** and a **Replacement**, where `$1`,
+  `$2`… insert a captured group and `$&` the whole match (leave it empty to delete
+  what matches), and tick **Ignore case** if needed. Every match in a payee is
+  replaced, spaces left at either end are trimmed, and transactions the pattern
+  doesn't match keep their payee (for example `^PRLV SEPA (.*)$` → `$1` turns
+  `PRLV SEPA FREE MOBILE` into `FREE MOBILE`). An invalid pattern is shown in red and
+  blocks Apply; a line shows the result on the first selected transaction it changes;
+  the whole edit is refused if it would leave any payee empty. Under it, **Need help
+  with your regex?** opens Gemini, Claude or ChatGPT with a ready-made prompt that
+  explains how the app applies the regex and lists some of the selected payees: you
+  only describe the result you want. Gemini can't receive a prompt through a link, so
+  for it the prompt is copied and you paste it.
 - **Tags** — choose **Add** or **Remove** in the drop-down, then pick the tags; every
   selected transaction keeps its other tags. With **Add**, a tag that doesn't exist yet
   can be created from the box. Like the other changes, it works with **Select all N transactions**.
