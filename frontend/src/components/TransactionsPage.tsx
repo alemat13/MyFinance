@@ -12,7 +12,7 @@ import CategorizeModal from './CategorizeModal'
 import RulesApplyModal from './RulesApplyModal'
 import CategoryPicker from './CategoryPicker'
 import AccountPicker from './AccountPicker'
-import TransactionConditions, { ConditionRow, USER_FIELDS, conditionsToFilters } from './TransactionConditions'
+import TransactionConditions, { ConditionRow, SEARCH_ONLY_FIELDS, conditionsToFilters } from './TransactionConditions'
 import ExportMenu from './ExportMenu'
 import TagChips from './TagChips'
 import SavedFilters, { CurrentFilter } from './SavedFilters'
@@ -311,7 +311,7 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
     const draft: RuleDraft = mode === 'advanced'
       // A rule cannot test a person's split, share or balance (the import
       // preview runs rules on rows that have none yet), so those are left out.
-      ? { conditions: conditionsToFilters(conditions).filter(c => !USER_FIELDS.includes(c.field)), match_mode: matchMode }
+      ? { conditions: conditionsToFilters(conditions).filter(c => !SEARCH_ONLY_FIELDS.includes(c.field)), match_mode: matchMode }
       : { conditions: simpleFiltersToConditions(buildSearchRequest()), match_mode: 'all' }
     return draft.conditions.length > 0 ? draft : null
   }

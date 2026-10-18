@@ -4,7 +4,7 @@ from sqlalchemy import Numeric, and_, cast, func, or_, select
 from sqlalchemy.orm import Session
 
 from models import AccountUser, Transaction, TransactionSplit, TransactionTag
-from schemas import DATE_FIELDS, TAG_FIELDS, TEXT_FIELDS, USER_FIELDS, FilterCondition
+from schemas import BOOL_FIELDS, DATE_FIELDS, TAG_FIELDS, TEXT_FIELDS, USER_FIELDS, FilterCondition
 
 FIELD_COLUMN_MAP = {
     "payee": Transaction.payee,
@@ -14,6 +14,16 @@ FIELD_COLUMN_MAP = {
     "date": Transaction.date,
     "account_id": Transaction.account_id,
     "category_id": Transaction.category_id,
+    "accounting_month_offset": Transaction.accounting_month_offset,
+    "reconciled": Transaction.reconciled,
+    "raw_counterparty": Transaction.raw_counterparty,
+    "raw_transaction_code": Transaction.raw_transaction_code,
+    "raw_merchant_category_code": Transaction.raw_merchant_category_code,
+    "raw_merchant_location": Transaction.raw_merchant_location,
+    "raw_initiated_date": Transaction.raw_initiated_date,
+    "raw_booking_date": Transaction.raw_booking_date,
+    # A timestamp, compared by its day like the other date fields.
+    "created_at": func.date(Transaction.created_at),
 }
 
 
@@ -35,6 +45,16 @@ def _coerce_number(value) -> float:
         return float(value)
     except (TypeError, ValueError):
         raise ValueError(f'invalid number value: {value!r}')
+
+
+def coerce_bool(value) -> bool:
+    if isinstance(value, bool):
+        return value
+    if str(value).strip().lower() in ("true", "1", "yes"):
+        return True
+    if str(value).strip().lower() in ("false", "0", "no"):
+        return False
+    raise ValueError(f'invalid yes/no value: {value!r}')
 
 
 def _text_expr(column, condition: FilterCondition):
@@ -141,6 +161,8 @@ def build_condition_expr(condition: FilterCondition):
     if condition.field in USER_FIELDS:
         return _numeric_expr(_user_column(condition.field, condition.user_id), condition)
     column = FIELD_COLUMN_MAP[condition.field]
+    if condition.field in BOOL_FIELDS:
+        return column.is_(coerce_bool(condition.value))
     if condition.field in TEXT_FIELDS:
         return _text_expr(column, condition)
     if condition.field in DATE_FIELDS:

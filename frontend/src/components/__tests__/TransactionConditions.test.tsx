@@ -76,3 +76,33 @@ test('a Category is Uncategorized condition is sent with no category', () => {
     { field: 'category_id', operator: 'eq', value: null, value2: undefined },
   ])
 })
+
+test('Reconciled is sent as a boolean, bank fields and dates as typed', () => {
+  expect(conditionsToFilters([
+    { field: 'reconciled', operator: 'eq', value: 'false', value2: '' },
+    { field: 'reconciled', operator: 'eq', value: '', value2: '' },
+    { field: 'accounting_month_offset', operator: 'ne', value: '0', value2: '' },
+    { field: 'raw_merchant_category_code', operator: 'equals', value: '4112', value2: '' },
+    { field: 'created_at', operator: 'after', value: '0002-10-01', value2: '' },
+    { field: 'raw_booking_date', operator: 'on', value: '2026-10-01', value2: '' },
+  ])).toEqual([
+    { field: 'reconciled', operator: 'eq', value: false, value2: undefined },
+    { field: 'accounting_month_offset', operator: 'ne', value: 0, value2: undefined },
+    { field: 'raw_merchant_category_code', operator: 'equals', value: '4112', value2: undefined },
+    { field: 'raw_booking_date', operator: 'on', value: '2026-10-01', value2: undefined },
+  ])
+})
+
+test('Reconciled picks Yes or No, and rules are not offered Added on', () => {
+  const onChange = vi.fn()
+  const props = { onChange, matchMode: 'all' as const, onMatchModeChange: vi.fn(), accounts: [], categories: [] }
+  const { unmount } = render(<TransactionConditions {...props}
+    conditions={[{ field: 'reconciled', operator: 'eq', value: '', value2: '' }]} />)
+  fireEvent.change(screen.getByLabelText('Reconciled value'), { target: { value: 'true' } })
+  expect(onChange).toHaveBeenCalledWith([{ field: 'reconciled', operator: 'eq', value: 'true', value2: '' }])
+  expect(screen.getByRole('option', { name: 'Added on' })).toBeInTheDocument()
+  unmount()
+  render(<TransactionConditions {...props} forRules conditions={[{ field: 'payee', operator: 'contains', value: '', value2: '' }]} />)
+  expect(screen.queryByRole('option', { name: 'Added on' })).toBeNull()
+  expect(screen.getByRole('option', { name: 'Booking date' })).toBeInTheDocument()
+})

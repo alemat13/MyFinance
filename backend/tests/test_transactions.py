@@ -807,6 +807,66 @@ def test_search_advanced_date_operators(client, db, sample_account, sample_categ
         assert (total == 1) == should_match, f"{operator} {value} expected match={should_match}"
 
 
+def _count(client, condition):
+    response = client.post("/api/transactions/search", json={"conditions": [condition]})
+    assert response.status_code == 200, response.text
+    return response.json()["total"]
+
+
+def test_search_advanced_reconciled(client, db, sample_account, sample_category):
+    _make_transaction(db, sample_account, sample_category, payee="Checked", reconciled=True)
+    _make_transaction(db, sample_account, sample_category, payee="Unchecked", reconciled=False)
+
+    for value, expected in ((True, "Checked"), (False, "Unchecked"), ("true", "Checked"), ("false", "Unchecked")):
+        response = client.post("/api/transactions/search", json={
+            "conditions": [{"field": "reconciled", "operator": "eq", "value": value}],
+        })
+        assert [t["payee"] for t in response.json()["items"]] == [expected], value
+
+
+def test_search_advanced_accounting_month_offset(client, db, sample_account, sample_category):
+    _make_transaction(db, sample_account, sample_category, accounting_month_offset=1)
+    _make_transaction(db, sample_account, sample_category, accounting_month_offset=0)
+
+    assert _count(client, {"field": "accounting_month_offset", "operator": "eq", "value": 1}) == 1
+    assert _count(client, {"field": "accounting_month_offset", "operator": "ne", "value": 0}) == 1
+
+
+def test_search_advanced_raw_fields(client, db, sample_account, sample_category):
+    from datetime import date
+    t = _make_transaction(db, sample_account, sample_category)
+    t.raw_counterparty = "SNCF Voyageurs"
+    t.raw_transaction_code = "PMNT-CCRD-POSD"
+    t.raw_merchant_category_code = "4112"
+    t.raw_merchant_location = "Paris"
+    t.raw_initiated_date = date(2026, 6, 14)
+    t.raw_booking_date = date(2026, 6, 16)
+    _make_transaction(db, sample_account, sample_category)
+    db.commit()
+
+    assert _count(client, {"field": "raw_counterparty", "operator": "contains", "value": "sncf"}) == 1
+    assert _count(client, {"field": "raw_transaction_code", "operator": "starts_with", "value": "PMNT"}) == 1
+    assert _count(client, {"field": "raw_merchant_category_code", "operator": "equals", "value": "4112"}) == 1
+    assert _count(client, {"field": "raw_merchant_location", "operator": "equals", "value": "paris"}) == 1
+    assert _count(client, {"field": "raw_initiated_date", "operator": "on", "value": "2026-06-14"}) == 1
+    assert _count(client, {"field": "raw_booking_date", "operator": "after", "value": "2026-06-15"}) == 1
+    # SQL's NULL: the row with no bank data matches neither side.
+    assert _count(client, {"field": "raw_counterparty", "operator": "not_equals", "value": "x"}) == 1
+
+
+def test_search_advanced_created_at_by_day(client, db, sample_account, sample_category):
+    from datetime import datetime
+    t = _make_transaction(db, sample_account, sample_category)
+    t.created_at = datetime(2026, 10, 18, 21, 30)
+    db.commit()
+
+    assert _count(client, {"field": "created_at", "operator": "on", "value": "2026-10-18"}) == 1
+    assert _count(client, {"field": "created_at", "operator": "before", "value": "2026-10-18"}) == 0
+    assert _count(client, {"field": "created_at", "operator": "after", "value": "2026-10-17"}) == 1
+    assert _count(client, {"field": "created_at", "operator": "between",
+                           "value": "2026-10-01", "value2": "2026-10-31"}) == 1
+
+
 def test_search_between_missing_second_bound_is_422_not_500(client):
     for field, value in (("date", "2026-09-01"), ("amount", 1)):
         body = {"conditions": [{"field": field, "operator": "between", "value": value}]}
