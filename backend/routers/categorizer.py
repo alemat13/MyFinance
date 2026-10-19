@@ -22,6 +22,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+import audit
 import auto_categorize
 import cache_service
 import categorizer
@@ -238,6 +239,7 @@ def suggest(req: CategorizerSuggestRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/apply", response_model=CategorizerApplyResponse)
+@audit.batched
 def apply(req: CategorizerApplyRequest, actor_user_id: int | None = Query(None), db: Session = Depends(get_db)):
     """Write one category per transaction.
 

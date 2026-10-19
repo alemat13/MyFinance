@@ -19,7 +19,7 @@ import { resolveDefaultSplitRows } from '../utils/splitWeights'
 import { formatServerTimestamp } from '../utils/datetime'
 import { formatMoney } from '../utils/currency'
 import { isAdminMode } from '../utils/admin'
-import { categoryNameFor } from '../utils/categoryDisplay'
+import { historyBadgeVariant, historyBadgeLabel, describeHistoryChanges } from '../utils/history'
 import { whatsAppShareUrl } from '../utils/whatsapp'
 import WhatsAppIcon from './WhatsAppIcon'
 import { Modal, Button, Input, Select, StatusMessage, ConfirmDialog, Badge } from './ui'
@@ -49,70 +49,6 @@ const emptyFormData: TransactionUpdate = {
   category_id: 0,
   accounting_month_offset: 0,
 }
-
-const historyBadgeVariant = (action: TransactionHistoryEntry['action']) =>
-  action === 'created' ? 'positive' : action === 'deleted' ? 'negative' : 'info'
-
-// What wrote the row, when it wasn't somebody typing. Worth naming on the
-// badge rather than leaving every line reading "updated": an automatic
-// categorization is exactly the kind of change you need to be able to find
-// and judge afterwards, and a sync and a divide are no different.
-const HISTORY_SOURCE_LABELS: Record<string, string> = {
-  csv_import: 'CSV',
-  bank_sync: 'bank sync',
-  categorizer: 'auto',
-  divide: 'divide',
-  admin: 'admin',
-  rule: 'rule',
-}
-
-interface SplitSnapshotEntry {
-  user_id: number
-  weight: number
-  source: string
-}
-
-const describeSplitsChange = (change: { old: SplitSnapshotEntry[] | null; new: SplitSnapshotEntry[] | null }, users: User[]) => {
-  const nameFor = (id: number) => users.find(u => u.id === id)?.name ?? `User ${id}`
-  const weightsById = (entries: SplitSnapshotEntry[] | null) => new Map((entries ?? []).map(e => [e.user_id, e.weight]))
-  const oldWeights = weightsById(change.old)
-  const newWeights = weightsById(change.new)
-  const userIds = [...new Set([...oldWeights.keys(), ...newWeights.keys()])].sort((a, b) => a - b)
-  return `splits: ${userIds.map(id => `${nameFor(id)} ${oldWeights.get(id) ?? 0}→${newWeights.get(id) ?? 0}`).join(', ')}`
-}
-
-const describeCategoryChange = (change: { old: unknown; new: unknown }, categories: Category[]) =>
-  `category: ${categoryNameFor(change.old as number | null, categories)} → ${categoryNameFor(change.new as number | null, categories)}`
-
-// Tag names as they were then, so a tag renamed or deleted since still reads right.
-const describeTagsChange = (change: { old: unknown; new: unknown }) => {
-  const before = (change.old as string[] | null) ?? []
-  const after = (change.new as string[] | null) ?? []
-  const added = after.filter(n => !before.includes(n))
-  const removed = before.filter(n => !after.includes(n))
-  return [
-    added.length > 0 ? `tags added: ${added.join(', ')}` : null,
-    removed.length > 0 ? `tags removed: ${removed.join(', ')}` : null,
-  ].filter(Boolean).join(', ')
-}
-
-const describeReconciledChange = (change: { old: unknown; new: unknown }) =>
-  `Reconciled: ${change.old ? 'Yes' : 'No'} → ${change.new ? 'Yes' : 'No'}`
-
-const describeHistoryChanges = (changes: TransactionHistoryEntry['changes'], users: User[], categories: Category[]) =>
-  changes
-    ? Object.entries(changes).map(([field, value]) =>
-        field === 'splits'
-          ? describeSplitsChange(value as { old: SplitSnapshotEntry[] | null; new: SplitSnapshotEntry[] | null }, users)
-          : field === 'category_id'
-          ? describeCategoryChange(value, categories)
-          : field === 'reconciled'
-          ? describeReconciledChange(value)
-          : field === 'tags'
-          ? describeTagsChange(value)
-          : `${field}: ${value.old ?? '—'} → ${value.new ?? '—'}`
-      ).join(', ')
-    : ''
 
 export default function TransactionDetail({
   transactionId, accounts, categories, tags = [], onTagCreated, allUsers, globalWeights, selectedUserId, onClose, onSaved, onDeleted,
@@ -414,7 +350,7 @@ export default function TransactionDetail({
                   {historyEntries.map(h => (
                     <div key={h.id} className="flex items-center gap-2 text-xs flex-wrap">
                       <Badge variant={historyBadgeVariant(h.action)}>
-                        {h.action}{h.source && HISTORY_SOURCE_LABELS[h.source] ? ` · ${HISTORY_SOURCE_LABELS[h.source]}` : ''}
+                        {historyBadgeLabel(h.action, h.source)}
                       </Badge>
                       <span className="text-slate-500 dark:text-slate-400">{formatServerTimestamp(h.changed_at)}</span>
                       <span className="text-slate-500 dark:text-slate-400">by {h.changed_by_user_name ?? 'Unknown user'}</span>

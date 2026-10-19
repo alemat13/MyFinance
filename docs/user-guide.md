@@ -12,17 +12,18 @@ people *using* the app to track household finances — for schema/database detai
 4. [Categories](#categories)
 5. [Tags](#tags)
 6. [Transactions](#transactions)
-7. [Users](#users)
-8. [Split Weights](#split-weights)
-9. [Import](#import)
-10. [Bank Sync](#bank-sync)
-11. [Auto-categorization](#auto-categorization)
-12. [Rules](#rules)
-13. [Email alerts](#email-alerts)
-14. [Backup & Restore](#backup--restore)
-15. [Charts](#charts)
-16. [Admin mode](#admin-mode)
-17. [Appendix: Validation Rules & Tips](#appendix-validation-rules--tips)
+7. [History](#history)
+8. [Users](#users)
+9. [Split Weights](#split-weights)
+10. [Import](#import)
+11. [Bank Sync](#bank-sync)
+12. [Auto-categorization](#auto-categorization)
+13. [Rules](#rules)
+14. [Email alerts](#email-alerts)
+15. [Backup & Restore](#backup--restore)
+16. [Charts](#charts)
+17. [Admin mode](#admin-mode)
+18. [Appendix: Validation Rules & Tips](#appendix-validation-rules--tips)
 
 ## Getting Started
 
@@ -47,7 +48,7 @@ Every screen shares the same header:
 
 MyFinance shows four primary destinations — **Dashboard**, **Transactions**,
 **Accounts**, and **Charts** — plus a **More** button for everything else (Categories,
-Tags, Users, Split Weights, Import, Bank Sync, Auto-categorization, Rules, Email alerts, Backup &
+Tags, History, Users, Split Weights, Import, Bank Sync, Auto-categorization, Rules, Email alerts, Backup &
 Restore, and Help). On a phone, the primary
 destinations sit in a tab bar fixed to the bottom of the screen and **More** opens a
 sheet that slides up from the bottom; on a wider screen, the same buttons sit in a bar
@@ -614,6 +615,35 @@ shows, per row, what they would change before anything is written — see
 whole page ticked it offers **Select all N transactions** to delete everything the
 filters match on every page, and it's refused if that number changed in the meantime.
 After deleting, the list refreshes and the selection is cleared.
+
+## History
+
+**More → History** lists every change made to a transaction, newest first, grouped by
+day: what changed, when, by whom and how (by hand, Bulk Edit, a rule, the
+auto-categorization, an import, a bank sync, a divide, admin mode). Two drop-downs narrow
+it to one origin (**By hand**, **Bulk edit**, **Rules**…) or one kind of change
+(**Created**, **Updated**, **Deleted**). **Show older changes** at the bottom loads the
+next ones.
+
+A single change shows the transaction (date, payee, amount, account) and what moved, for
+example `category: Uncategorized → Groceries`; click the transaction to open it.
+
+Everything one action changed at once — a Bulk Edit, applying rules or suggestions to a
+selection, an import, one account's bank sync, a bulk delete — is **one line** saying how
+many transactions it touched and what they have in common (`category → Groceries`, or
+`payee changed` when each got its own new payee). On that line:
+
+- **Show transactions** lists them under it, 50 at a time, each with its own before/after
+  (deleted ones included); click one to open it.
+- **Open in Transactions** opens the Transactions screen on exactly those transactions,
+  with a banner saying so and a **Show all transactions** button to go back to the full
+  list. Every filter and the bulk actions work on top of it, so a bulk edit can be checked
+  or redone from there.
+
+Changes made before this screen existed have no record of which action they came from, so
+for those, History puts together the changes made by the same person, of the same kind,
+setting the same values, less than a minute apart. That is nearly always one bulk edit,
+but two identical bulk edits run one right after the other show as a single line.
 
 ## Users
 

@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session, selectinload
 
+import audit
 import tags
 from audit import record_transaction_history
 from database import get_db
@@ -72,6 +73,7 @@ def update_tag(tag_id: int, data: TagUpdate, db: Session = Depends(get_db)):
 
 
 @router.delete("/{tag_id}", status_code=204)
+@audit.batched
 def delete_tag(tag_id: int, actor_user_id: int | None = Query(None), db: Session = Depends(get_db)):
     """Removes the tag from every transaction carrying it, each one getting a
     history row like any other tag change."""

@@ -1150,3 +1150,22 @@ test('the Tag filter searches by tag, or for transactions with none', async () =
   await waitFor(() => expect(mockSearchTransactions).toHaveBeenLastCalledWith(
     expect.objectContaining({ untagged: true, tag_id: undefined })))
 })
+
+test('opened from a History entry, the list is limited to its transactions until cleared', async () => {
+  const group = { first_id: 120, last_id: 21, action: 'updated', source: 'bulk', changed_by_user_id: 1, batch_id: 'abc' }
+  window.history.replaceState(null, '', `/?history_group=${encodeURIComponent(JSON.stringify(group))}`)
+  mockSearchTransactions.mockResolvedValue(searchResult(twoTxns))
+  mockFetchAccounts.mockResolvedValue([baseAccount])
+  mockFetchCategories.mockResolvedValue([baseCategory])
+
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} onOpenCategorizer={() => {}} />)
+
+  await waitFor(() => expect(screen.getByText('Coffee')).toBeInTheDocument())
+  expect(mockSearchTransactions).toHaveBeenLastCalledWith(expect.objectContaining({ history_group: group }))
+  expect(screen.getByText(/changed by one History entry/)).toBeInTheDocument()
+
+  fireEvent.click(screen.getByText('Show all transactions'))
+  await waitFor(() => expect(mockSearchTransactions).toHaveBeenLastCalledWith(
+    expect.objectContaining({ history_group: undefined })))
+  expect(window.location.search).not.toContain('history_group')
+})

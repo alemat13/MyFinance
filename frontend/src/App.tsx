@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Sun, Moon, ShieldAlert } from 'lucide-react'
-import { fetchUsers, User } from './api/client'
+import { fetchUsers, HistoryGroupRef, User } from './api/client'
 import { useTheme } from './context/ThemeContext'
 import { getParam, navigateQueryParams } from './utils/urlState'
 import { isAdminMode } from './utils/admin'
@@ -21,6 +21,7 @@ import BankSyncPage from './components/BankSyncPage'
 import CategorizerPage from './components/CategorizerPage'
 import RulesPage from './components/RulesPage'
 import TagsPage from './components/TagsPage'
+import HistoryPage from './components/HistoryPage'
 import { RuleDraft } from './utils/rules'
 import ChartsPage from './components/ChartsPage'
 import HelpPage from './components/HelpPage'
@@ -94,11 +95,14 @@ export default function App() {
   // account. TransactionsPage reads its filters from the query string on mount, so
   // we set account_id (and clear every other simple/advanced filter, which may be
   // left over from an earlier visit) before switching the view.
-  const navigateToFilteredTransactions = (filter: { account_id?: number; tag_id?: number }) => {
+  const navigateToFilteredTransactions = (filter: {
+    account_id?: number; tag_id?: number; history_group?: HistoryGroupRef; transaction?: number
+  }) => {
     navigateQueryParams({
       view: 'transactions',
       account_id: filter.account_id ? String(filter.account_id) : undefined,
       tag_id: filter.tag_id ? String(filter.tag_id) : undefined,
+      history_group: filter.history_group ? JSON.stringify(filter.history_group) : undefined,
       mode: undefined,
       q: undefined,
       date_from: undefined,
@@ -110,7 +114,7 @@ export default function App() {
       match: undefined,
       conditions: undefined,
       page: undefined,
-      transaction: undefined,
+      transaction: filter.transaction ? String(filter.transaction) : undefined,
     })
     setView('transactions')
   }
@@ -207,6 +211,13 @@ export default function App() {
           onBack={() => navigateToView('dashboard')}
           selectedUserId={selectedUserId}
           onOpenTransactions={tagId => navigateToFilteredTransactions({ tag_id: tagId })}
+        />
+      )}
+      {view === 'history' && (
+        <HistoryPage
+          onBack={() => navigateToView('dashboard')}
+          onOpenTransaction={id => navigateToFilteredTransactions({ transaction: id })}
+          onOpenGroup={group => navigateToFilteredTransactions({ history_group: group })}
         />
       )}
       {view === 'alerts' && <EmailAlertsPage onBack={() => navigateToView('dashboard')} selectedUserId={selectedUserId} />}
