@@ -11,7 +11,11 @@ const {
   mockActivateCategorizerModel,
   mockDeleteCategorizerModel,
   mockSearchTransactions,
+  mockFetchTags,
+  mockFetchUsers,
 } = vi.hoisted(() => ({
+  mockFetchTags: vi.fn(),
+  mockFetchUsers: vi.fn(),
   mockFetchAccounts: vi.fn(),
   mockFetchCategories: vi.fn(),
   mockFetchCategorizerModels: vi.fn(),
@@ -29,6 +33,8 @@ vi.mock('../../api/client', () => ({
   activateCategorizerModel: mockActivateCategorizerModel,
   deleteCategorizerModel: mockDeleteCategorizerModel,
   searchTransactions: mockSearchTransactions,
+  fetchTags: mockFetchTags,
+  fetchUsers: mockFetchUsers,
 }))
 
 const accounts = [
@@ -70,6 +76,8 @@ beforeEach(() => {
   vi.clearAllMocks()
   mockFetchAccounts.mockResolvedValue(accounts)
   mockFetchCategories.mockResolvedValue(categories)
+  mockFetchTags.mockResolvedValue([{ id: 3, name: 'vacances' }])
+  mockFetchUsers.mockResolvedValue([{ id: 1, name: 'Alex' }, { id: 2, name: 'Olivia' }])
   mockFetchCategorizerModels.mockResolvedValue([])
   mockSearchTransactions.mockResolvedValue({ items: [], total: 30088, page: 1, page_size: 1, total_pages: 1 })
 })
@@ -90,6 +98,14 @@ test('opens on a training and a test selection that do not overlap', async () =>
   const values = operators.map(el => (el as HTMLSelectElement).value)
   expect(values).toContain('before')
   expect(values).toContain('between')
+})
+
+test('offers the same fields as the Transactions advanced filter, tags and per-person ones included', async () => {
+  renderWithProviders(<CategorizerPage onBack={() => {}} />)
+  await screen.findByText(/No model is active yet/)
+  await waitFor(() => expect(screen.getAllByRole('option', { name: 'Tag' }).length).toBeGreaterThan(0))
+  expect(screen.getAllByRole('option', { name: 'Reconciled' }).length).toBeGreaterThan(0)
+  expect(screen.getAllByRole('option', { name: 'Share of' }).length).toBeGreaterThan(0)
 })
 
 test('counts the transactions each selection matches', async () => {

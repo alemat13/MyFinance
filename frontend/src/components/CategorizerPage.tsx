@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import {
-  Account, Category, CategorizerModel, CategorizerMetrics,
-  TransactionSearchRequest,
+  Account, Category, CategorizerModel, CategorizerMetrics, Tag,
+  TransactionSearchRequest, User,
   activateCategorizerModel, deleteCategorizerModel, fetchAccounts, fetchCategories,
-  fetchCategorizerModels, searchTransactions, trainCategorizerModel,
+  fetchCategorizerModels, fetchTags, fetchUsers, searchTransactions, trainCategorizerModel,
 } from '../api/client'
 import TransactionConditions, { ConditionRow, conditionsToFilters } from './TransactionConditions'
 import { BackButton, Badge, Button, Card, ConfirmDialog, Input, StatusMessage, Table, Thead, Tbody, Tr, Th, Td } from './ui'
@@ -126,6 +126,8 @@ function ModelResults({ model }: { model: CategorizerModel }) {
 export default function CategorizerPage({ onBack }: Props) {
   const [accounts, setAccounts] = useState<Account[]>([])
   const [categories, setCategories] = useState<Category[]>([])
+  const [tags, setTags] = useState<Tag[]>([])
+  const [users, setUsers] = useState<User[]>([])
   const [models, setModels] = useState<CategorizerModel[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -158,8 +160,8 @@ export default function CategorizerPage({ onBack }: Props) {
 
   useEffect(() => {
     setLoading(true)
-    Promise.all([fetchAccounts(), fetchCategories(), loadModels()])
-      .then(([a, c]) => { setAccounts(a); setCategories(c) })
+    Promise.all([fetchAccounts(), fetchCategories(), fetchTags(), fetchUsers(), loadModels()])
+      .then(([a, c, t, u]) => { setAccounts(a); setCategories(c); setTags(t); setUsers(u) })
       .catch(err => { console.error(err); setError(err.message) })
       .finally(() => setLoading(false))
   }, [])
@@ -265,6 +267,8 @@ export default function CategorizerPage({ onBack }: Props) {
           onMatchModeChange={setTrainMatch}
           accounts={accounts}
           categories={categories}
+          tags={tags}
+          users={users}
         />
         <p className="text-xs text-slate-600 dark:text-slate-300 mt-2">
           {describeCount(trainCount)} — only those with both a category and an original label can be learned from.
@@ -284,6 +288,8 @@ export default function CategorizerPage({ onBack }: Props) {
           onMatchModeChange={setTestMatch}
           accounts={accounts}
           categories={categories}
+          tags={tags}
+          users={users}
         />
         <p className="text-xs text-slate-600 dark:text-slate-300 mt-2">
           {describeCount(testCount)}

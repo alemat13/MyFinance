@@ -852,7 +852,8 @@ applied](#where-the-suggestions-are-applied) below.
 The screen works in three steps, then shows you a score.
 
 **1. What to learn from.** The transactions whose categories you trust, chosen with the
-same conditions as the Transactions screen's Advanced filter. It opens on everything
+same conditions as the Transactions screen's Advanced filter, all of them (Tag and the
+per-person Split weight / Share / Balance included). It opens on everything
 older than twelve months. This is not just a date range on purpose: rows nobody has
 curated carry *wrong* labels rather than missing ones, so training on an account that is
 never kept up to date teaches the model those omissions. Leaving such an account out —
