@@ -372,8 +372,15 @@ class TransactionHistory(Base):
     # changed_by_user_id (DELETE /api/users/{id} is a real hard delete too).
     transaction_id = Column(Integer, nullable=False, index=True)
     action = Column(String(20), nullable=False)  # 'created' | 'updated' | 'deleted'
-    source = Column(String(20), nullable=True)  # 'manual' | 'csv_import' (created only) | 'divide' (created or updated) | 'admin' (raw fields edited)
-    changed_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    # 'manual' | 'csv_import' | 'bank_sync' (created only) | 'divide' (created or updated)
+    # | 'admin' (raw fields edited) | 'rule' | 'categorizer' | 'bulk' (bulk edit or delete);
+    # NULL on an edit made by hand in the transaction form.
+    source = Column(String(20), nullable=True)
+    changed_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    # Shared by every row one action wrote (audit.batch()): a bulk edit, an
+    # import, a sync. NULL on a row written alone, and on every row written
+    # before batches existed (the History screen groups those by guesswork).
+    batch_id = Column(String(32), nullable=True, index=True)
     changed_by_user_id = Column(Integer, nullable=True)
 
     # Snapshot of the transaction's core fields as of this event

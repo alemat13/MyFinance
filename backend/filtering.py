@@ -3,6 +3,7 @@ from datetime import date
 from sqlalchemy import Numeric, and_, cast, func, or_, select
 from sqlalchemy.orm import Session
 
+import history
 from models import AccountUser, Transaction, TransactionSplit, TransactionTag
 from schemas import BOOL_FIELDS, DATE_FIELDS, TAG_FIELDS, TEXT_FIELDS, USER_FIELDS, FilterCondition
 
@@ -228,6 +229,8 @@ def apply_transaction_filters(query, req, db: Session):
         query = query.filter(Transaction.amount <= req.amount_max)
     if req.reconciled is not None:
         query = query.filter(Transaction.reconciled == req.reconciled)
+    if getattr(req, "history_group", None) is not None:
+        query = query.filter(Transaction.id.in_(history.group_transaction_ids(req.history_group)))
     if req.conditions:
         where = build_where_clause(req.conditions, req.match_mode)
         if where is not None:

@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+import audit
 import transaction_rules
 from database import get_db
 from filtering import build_condition_expr
@@ -157,6 +158,7 @@ def preview_rules(req: RulePreviewRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/apply", response_model=RuleApplyResponse)
+@audit.batched
 def apply_rules(req: RuleApplyRequest, actor_user_id: int | None = Query(None), db: Session = Depends(get_db)):
     rows, rules = _selection(db, req)
     changed = transaction_rules.apply_to(db, rows, rules, actor_user_id=actor_user_id)

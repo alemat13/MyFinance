@@ -534,6 +534,17 @@ class FilterCondition(BaseModel):
         return self
 
 
+class HistoryGroupRef(BaseModel):
+    """One History entry's rows (history.group_filter()): the id range they
+    span plus what they share."""
+    first_id: int
+    last_id: int
+    action: str
+    source: str | None = None
+    changed_by_user_id: int | None = None
+    batch_id: str | None = None
+
+
 class TransactionSearchRequest(BaseModel):
     user_id: int | None = None
 
@@ -565,6 +576,10 @@ class TransactionSearchRequest(BaseModel):
     # sorting
     sort_by: Literal["date", "amount", "payee", "created_at"] = "date"
     sort_dir: Literal["asc", "desc"] = "desc"
+
+    # Only the transactions one History entry touched (its "Open in
+    # Transactions" link); combined with whatever else is set.
+    history_group: HistoryGroupRef | None = None
 
 
 BulkUpdateTransactionsRequest.model_rebuild()
@@ -655,6 +670,33 @@ class TransactionHistoryOut(BaseModel):
     category_id: Optional[int] = None
     accounting_month_offset: Optional[int] = None
     changes: Optional[dict] = None
+
+
+class HistoryEntryOut(HistoryGroupRef):
+    """One line of the History timeline: a single history row (count 1, with
+    its own snapshot and `changes`) or the rows one action wrote (count > 1,
+    `changes` then holding history.summary()'s shared values)."""
+    count: int
+    changed_at: datetime  # the newest row's
+    started_at: datetime  # the oldest row's
+    changed_by_user_name: str | None = None
+    transaction_id: int | None = None
+    date: Optional[_DateType] = None
+    payee: str | None = None
+    amount: float | None = None
+    account_id: int | None = None
+    category_id: int | None = None
+    changes: dict | None = None
+
+
+class HistoryPageOut(BaseModel):
+    items: list[HistoryEntryOut]
+    next_before_id: int | None = None
+
+
+class HistoryRowsOut(BaseModel):
+    items: list[TransactionHistoryOut]
+    total: int
 
 
 class ImportDetectResponse(BaseModel):
@@ -1104,6 +1146,7 @@ class TransactionHistoryExport(BaseModel):
     category_id: int | None = None
     accounting_month_offset: int | None = None
     changes: dict | None = None
+    batch_id: str | None = None
 
 
 class BankConnectionExport(BaseModel):
