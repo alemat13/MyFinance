@@ -1,4 +1,4 @@
-import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, test, expect, vi, beforeEach, afterEach, onTestFinished } from 'vitest'
 import { screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { renderWithProviders } from '../../test-utils'
 import TransactionsPage from '../TransactionsPage'
@@ -1168,4 +1168,27 @@ test('opened from a History entry, the list is limited to its transactions until
   await waitFor(() => expect(mockSearchTransactions).toHaveBeenLastCalledWith(
     expect.objectContaining({ history_group: undefined })))
   expect(window.location.search).not.toContain('history_group')
+})
+
+test('Share on WhatsApp sends every filtered row to wa.me', async () => {
+  mockSearchTransactions.mockResolvedValue(searchResult([groceryOnJoint]))
+  mockFetchAccounts.mockResolvedValue([jointAccount])
+  mockFetchCategories.mockResolvedValue([baseCategory])
+  mockFetchUsers.mockResolvedValue(bobAndAlice)
+  const win = { location: { href: '' }, close: vi.fn() }
+  const openSpy = vi.spyOn(window, 'open').mockReturnValue(win as unknown as Window)
+  onTestFinished(() => openSpy.mockRestore())
+
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={1} onOpenCategorizer={() => {}} />)
+  await waitFor(() => expect(screen.getByText('Grocery')).toBeInTheDocument())
+
+  mockSearchTransactions.mockClear()
+  fireEvent.click(screen.getByRole('button', { name: /Share on WhatsApp/ }))
+
+  await waitFor(() => expect(win.location.href).toMatch(/^https:\/\/wa\.me\/\?text=/))
+  expect(mockSearchTransactions).toHaveBeenCalledWith(expect.objectContaining({ unpaginated: true, user_id: 1 }))
+  const text = decodeURIComponent(win.location.href.slice('https://wa.me/?text='.length))
+  expect(text).toContain('*Transactions (1)*')
+  expect(text).toContain('• 2026-01-15 Grocery · Salary: *-$100.00*')
+  expect(text).toContain('view=transactions')
 })
