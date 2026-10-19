@@ -788,3 +788,20 @@ test('edits the tags and shows tag changes in the history', async () => {
   await waitFor(() => expect(mockUpdateTransaction).toHaveBeenCalledWith(
     1, expect.objectContaining({ tag_ids: [4] }), null))
 })
+
+test('existing transaction shows a WhatsApp share link next to its name', async () => {
+  mockFetchTransaction.mockResolvedValue(baseTxn)
+  renderWithProviders(<TransactionDetail {...baseProps} />)
+  const link = await screen.findByRole('link', { name: 'Share on WhatsApp' })
+  const href = link.getAttribute('href')!
+  expect(href.startsWith('https://wa.me/?text=')).toBe(true)
+  const text = decodeURIComponent(href.slice('https://wa.me/?text='.length))
+  expect(text.startsWith('*Test*')).toBe(true)
+  expect(text.endsWith('?view=transactions&transaction=1')).toBe(true)
+  expect(link.getAttribute('target')).toBe('_blank')
+})
+
+test('new transaction has no WhatsApp share link', () => {
+  renderWithProviders(<TransactionDetail {...baseProps} transactionId={null} />)
+  expect(screen.queryByRole('link', { name: 'Share on WhatsApp' })).toBeNull()
+})
