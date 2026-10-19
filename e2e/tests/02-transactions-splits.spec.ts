@@ -39,8 +39,7 @@ test('quick-fill buttons resolve to the correct seeded weight tier', async ({ pa
   await expect(dialog).toContainText('Total weight: 2')
 
   // Manual edit of a weight input marks the split as custom (no quick-fill button stays primary).
-  // Spinbutton 0 is the Amount field; spinbutton 1 is the first split row's weight input.
-  const firstWeightInput = dialog.getByRole('spinbutton').nth(1)
+  const firstWeightInput = dialog.getByRole('textbox', { name: 'Weight' }).first()
   await firstWeightInput.fill('5')
   await expect(dialog).toContainText('Total weight: 6')
 

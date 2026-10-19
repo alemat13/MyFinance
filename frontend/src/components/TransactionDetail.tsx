@@ -22,7 +22,7 @@ import { isAdminMode } from '../utils/admin'
 import { historyBadgeVariant, historyBadgeLabel, describeHistoryChanges } from '../utils/history'
 import { whatsAppShareUrl } from '../utils/whatsapp'
 import WhatsAppIcon from './WhatsAppIcon'
-import { Modal, Button, Input, Select, StatusMessage, ConfirmDialog, Badge } from './ui'
+import { Modal, Button, Input, Select, StatusMessage, ConfirmDialog, Badge, NumberInput } from './ui'
 
 interface Props {
   transactionId: number | null
@@ -267,7 +267,7 @@ export default function TransactionDetail({
               )}
               <div className="flex gap-2 flex-wrap items-end">
                 <Input type="date" aria-label="Date" value={formData.date ?? ''} onChange={e => setFormData({ ...formData, date: e.target.value })} />
-                <Input placeholder="Amount" type="number" step="0.01" value={formData.amount ?? 0} onChange={e => setFormData({ ...formData, amount: parseFloat(e.target.value) || 0 })} className="w-[110px]" />
+                <NumberInput placeholder="Amount" signed value={formData.amount ?? 0} onValueChange={v => setFormData({ ...formData, amount: v ?? 0 })} className="w-[110px]" />
                 <AccountPicker
                   accounts={pickerAccounts}
                   value={formData.account_id || null}

@@ -18,7 +18,7 @@ import WhatsAppIcon from './WhatsAppIcon'
 import { whatsAppListShareUrl } from '../utils/whatsapp'
 import TagChips from './TagChips'
 import SavedFilters, { CurrentFilter } from './SavedFilters'
-import { Button, IconButton, Input, Select, Table, Thead, Tbody, Tr, Th, Td, StatusMessage, CategoryBadge, BackButton, ConfirmDialog, Card } from './ui'
+import { Button, IconButton, Input, Select, Table, Thead, Tbody, Tr, Th, Td, StatusMessage, CategoryBadge, BackButton, ConfirmDialog, Card, NumberInput, parseNumber } from './ui'
 import { formatMoney } from '../utils/currency'
 import { getParam, patchQueryParams } from '../utils/urlState'
 import { UNCATEGORIZED_ID } from '../utils/categoryHierarchy'
@@ -534,8 +534,8 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
               <option value={UNTAGGED_ID}>No tag</option>
               {tags.map(t => <option key={t.id} value={t.id}>#{t.name}</option>)}
             </Select>
-            <Input placeholder="Min amount" type="number" step="0.01" value={amountMin} onChange={e => { setAmountMin(e.target.value); setPage(1) }} className="w-[110px]" />
-            <Input placeholder="Max amount" type="number" step="0.01" value={amountMax} onChange={e => { setAmountMax(e.target.value); setPage(1) }} className="w-[110px]" />
+            <NumberInput placeholder="Min amount" signed value={parseNumber(amountMin)} onValueChange={v => { setAmountMin(v == null ? '' : String(v)); setPage(1) }} className="w-[110px]" />
+            <NumberInput placeholder="Max amount" signed value={parseNumber(amountMax)} onValueChange={v => { setAmountMax(v == null ? '' : String(v)); setPage(1) }} className="w-[110px]" />
             <Select value={filterReconciled} onChange={e => { setFilterReconciled(e.target.value); setPage(1) }} className="min-w-[150px]">
               <option value="">Reconciled: any</option>
               <option value="true">Reconciled only</option>

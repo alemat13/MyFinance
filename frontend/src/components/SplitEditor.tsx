@@ -1,7 +1,7 @@
 import { Plus, X } from 'lucide-react'
 import { User } from '../api/client'
 import { useToast } from '../context/ToastContext'
-import { IconButton, Input, Select } from './ui'
+import { IconButton, Input, Select, NumberInput } from './ui'
 import { formatMoney } from '../utils/currency'
 
 export interface SplitRow {
@@ -66,12 +66,12 @@ export default function SplitEditor({ rows, allUsers, total, unit, currency, lab
               </option>
             ))}
           </Select>
-          <Input
-            type="number"
-            step={unit === '%' ? '0.1' : unit === 'weight' ? '1' : '0.01'}
-            min={unit === 'weight' ? '0' : undefined}
+          <NumberInput
+            aria-label={unit === 'weight' ? 'Weight' : unit === '%' ? 'Percentage' : 'Share amount'}
+            integer={unit === 'weight'}
+            signed={unit === 'currency'}
             value={r.value}
-            onChange={e => updateRow(i, 'value', (unit === 'weight' ? parseInt(e.target.value, 10) : parseFloat(e.target.value)) || 0)}
+            onValueChange={v => updateRow(i, 'value', v ?? 0)}
             className="w-20 text-right"
           />
           <span className="text-xs text-slate-500 dark:text-slate-400">{suffix}</span>

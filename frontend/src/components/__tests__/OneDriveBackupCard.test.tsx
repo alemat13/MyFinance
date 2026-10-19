@@ -83,10 +83,10 @@ test('renders connected state with account email and settings', async () => {
 
   expect(await screen.findByText('user@example.com')).toBeInTheDocument()
   expect(screen.getByDisplayValue('/MyFinance Backups')).toBeInTheDocument()
-  expect(screen.getByLabelText('Daily')).toHaveValue(7)
-  expect(screen.getByLabelText('Weekly')).toHaveValue(4)
-  expect(screen.getByLabelText('Monthly')).toHaveValue(12)
-  expect(screen.getByLabelText('Yearly')).toHaveValue(3)
+  expect(screen.getByLabelText('Daily')).toHaveValue('7')
+  expect(screen.getByLabelText('Weekly')).toHaveValue('4')
+  expect(screen.getByLabelText('Monthly')).toHaveValue('12')
+  expect(screen.getByLabelText('Yearly')).toHaveValue('3')
   expect(screen.getByText(/Last backup:/)).toBeInTheDocument()
 })
 
