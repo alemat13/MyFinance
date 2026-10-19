@@ -8,7 +8,7 @@ import {
 import SplitEditor, { SplitRow } from './SplitEditor'
 import { useToast } from '../context/ToastContext'
 import { useCrudList } from '../hooks/useCrudList'
-import { Button, Input, Select, Table, Thead, Tbody, Tr, Th, Td, StatusMessage, ConfirmDialog, BackButton } from './ui'
+import { Button, Input, Select, Table, Thead, Tbody, Tr, Th, Td, StatusMessage, ConfirmDialog, BackButton, NumberInput } from './ui'
 import { CURRENCY_OPTIONS, formatMoney } from '../utils/currency'
 import { AccountTypeGroup, groupAccounts } from '../utils/accountGroups'
 import { useIsMobile } from '../hooks/useMediaQuery'
@@ -273,7 +273,7 @@ export default function AccountsList({ onBack, selectedUserId }: Props) {
               <Input aria-label="Type" placeholder="Type" value={editData.type ?? ''} onChange={e => setEditData({ ...editData, type: e.target.value })} />
             </div>
           </Td>
-          <Td className="text-right"><Input type="number" value={editData.balance ?? 0} onChange={e => setEditData({ ...editData, balance: parseFloat(e.target.value) || 0 })} className="w-[100px] text-right" /></Td>
+          <Td className="text-right"><NumberInput aria-label="Balance" signed value={editData.balance ?? 0} onValueChange={v => setEditData({ ...editData, balance: v ?? 0 })} className="w-[100px] text-right" /></Td>
           <Td><CurrencyField value={editData.currency ?? 'EUR'} onChange={currency => setEditData({ ...editData, currency })} /></Td>
           <Td colSpan={3}>
             {splitEditors}
@@ -351,7 +351,7 @@ export default function AccountsList({ onBack, selectedUserId }: Props) {
           <Input aria-label="Name" value={editData.name ?? ''} onChange={e => setEditData({ ...editData, name: e.target.value })} />
           <Input aria-label="Type" placeholder="Type" value={editData.type ?? ''} onChange={e => setEditData({ ...editData, type: e.target.value })} />
           <div className="flex gap-2 items-center">
-            <Input aria-label="Balance" type="number" value={editData.balance ?? 0} onChange={e => setEditData({ ...editData, balance: parseFloat(e.target.value) || 0 })} className="w-[120px]" />
+            <NumberInput aria-label="Balance" signed value={editData.balance ?? 0} onValueChange={v => setEditData({ ...editData, balance: v ?? 0 })} className="w-[120px]" />
             <CurrencyField value={editData.currency ?? 'EUR'} onChange={currency => setEditData({ ...editData, currency })} />
           </div>
           {splitEditors}
@@ -423,7 +423,7 @@ export default function AccountsList({ onBack, selectedUserId }: Props) {
           <div className="flex gap-2 flex-wrap items-end">
             <Input placeholder="Name" value={newData.name} onChange={e => setNewData({ ...newData, name: e.target.value })} />
             <Input placeholder="Type" value={newData.type} onChange={e => setNewData({ ...newData, type: e.target.value })} />
-            <Input placeholder="Balance" type="number" value={newData.balance} onChange={e => setNewData({ ...newData, balance: parseFloat(e.target.value) || 0 })} className="w-[100px]" />
+            <NumberInput placeholder="Balance" signed value={newData.balance} onValueChange={v => setNewData({ ...newData, balance: v ?? 0 })} className="w-[100px]" />
             <CurrencyField value={newData.currency ?? 'EUR'} onChange={currency => setNewData({ ...newData, currency })} />
             <Button onClick={saveNew}>Save</Button>
             <Button variant="secondary" onClick={cancelNew}>Cancel</Button>

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { GlobalSplitWeight, fetchSplitWeights, updateSplitWeights } from '../api/client'
 import { useToast } from '../context/ToastContext'
-import { Button, Input, Card, StatusMessage, BackButton } from './ui'
+import { Button, Input, Card, StatusMessage, BackButton, NumberInput } from './ui'
 
 interface Props {
   onBack: () => void
@@ -65,12 +65,10 @@ export default function SplitWeightsSettings({ onBack }: Props) {
           {weights.map(w => (
             <div key={w.user_id} className="flex items-center gap-2 mb-2">
               <span className="flex-1 text-[13px] text-slate-700 dark:text-slate-200">{w.user_name}</span>
-              <Input
-                type="number"
-                min="0"
-                step="1"
+              <NumberInput
+                integer
                 value={w.weight}
-                onChange={e => updateWeight(w.user_id, parseInt(e.target.value, 10) || 0)}
+                onValueChange={v => updateWeight(w.user_id, v ?? 0)}
                 className="w-[100px] text-right"
               />
             </div>

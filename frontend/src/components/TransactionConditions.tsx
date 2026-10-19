@@ -3,7 +3,7 @@ import CategoryPicker from './CategoryPicker'
 import AccountPicker from './AccountPicker'
 import { UNCATEGORIZED_ID } from '../utils/categoryHierarchy'
 import { UNTAGGED_ID } from '../utils/tags'
-import { Button, Select, Input } from './ui'
+import { Button, Select, Input, NumberInput, parseNumber } from './ui'
 
 /** One row of the advanced filter, as the UI holds it: every value a string,
  *  since that is what an `<input>` gives back. `conditionsToFilters()` turns
@@ -103,7 +103,7 @@ export const emptyCondition: ConditionRow = { field: 'payee', operator: 'contain
 
 function coerceValue(field: FilterField, value: string): string | number | boolean {
   if (field === 'reconciled') return value === 'true'
-  if (NUMERIC_FIELDS.includes(field)) return parseFloat(value)
+  if (NUMERIC_FIELDS.includes(field)) return parseNumber(value) ?? NaN
   return value
 }
 
@@ -119,7 +119,7 @@ function isCompleteValue(field: FilterField, value: string): boolean {
     const m = /^(\d{4})-\d{2}-\d{2}$/.exec(value)
     return !!m && parseInt(m[1]) >= 1000 && !Number.isNaN(Date.parse(value))
   }
-  if (NUMERIC_FIELDS.includes(field)) return !Number.isNaN(parseFloat(value))
+  if (NUMERIC_FIELDS.includes(field)) return parseNumber(value) !== null
   return true
 }
 // Fields where the user types a number.
@@ -186,6 +186,17 @@ export default function TransactionConditions({
   const updateValue = (i: number, key: 'value' | 'value2', value: string) =>
     onChange(conditions.map((c, idx) => idx === i ? { ...c, [key]: value } : c))
 
+  // Weights and month shifts are whole numbers; a weight is never negative.
+  const numberField = (i: number, c: ConditionRow, key: 'value' | 'value2') => (
+    <NumberInput
+      integer={c.field === 'split_weight' || c.field === 'accounting_month_offset'}
+      signed={c.field !== 'split_weight'}
+      value={parseNumber(c[key])}
+      onValueChange={v => updateValue(i, key, v == null ? '' : String(v))}
+      className="w-[130px]"
+    />
+  )
+
   return (
     <div>
       <div className="flex gap-2 items-center mb-2">
@@ -240,24 +251,24 @@ export default function TransactionConditions({
               <option value={UNTAGGED_ID}>No tag</option>
               {(tags ?? []).map(t => <option key={t.id} value={t.id}>#{t.name}</option>)}
             </Select>
+          ) : isNumberInput(c.field) ? (
+            numberField(i, c, 'value')
           ) : (
             <Input
-              type={isNumberInput(c.field) ? 'number' : isDateField(c.field) ? 'date' : 'text'}
-              step={c.field === 'amount' || c.field === 'split_share' || c.field === 'split_balance' ? '0.01' : undefined}
+              type={isDateField(c.field) ? 'date' : 'text'}
               value={c.value}
               onChange={e => updateValue(i, 'value', e.target.value)}
               className="w-[130px]"
             />
           )}
-          {c.operator === 'between' && (
+          {c.operator === 'between' && (isNumberInput(c.field) ? numberField(i, c, 'value2') : (
             <Input
-              type={isNumberInput(c.field) ? 'number' : 'date'}
-              step={c.field === 'amount' || c.field === 'split_share' || c.field === 'split_balance' ? '0.01' : undefined}
+              type="date"
               value={c.value2}
               onChange={e => updateValue(i, 'value2', e.target.value)}
               className="w-[130px]"
             />
-          )}
+          ))}
           <Button size="sm" variant="danger" onClick={() => onChange(conditions.filter((_, idx) => idx !== i))}>×</Button>
         </div>
       ))}
