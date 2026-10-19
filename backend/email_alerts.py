@@ -21,14 +21,20 @@ month (the 18h sync). A sync started by hand calls `run_quietly(db,
 manual=True)`, which also sends the daily alert of whoever has something new
 since their last one, whatever the time.
 """
+import base64
 import html
+import json
 import logging
 import os
+import re
 import smtplib
 import ssl
+import struct
+import zlib
 from datetime import date, datetime, time, timedelta, timezone
 from email.message import EmailMessage
 from email.utils import formataddr, make_msgid
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session, joinedload
@@ -158,6 +164,84 @@ def _money(amount: float, currency: str) -> str:
     return f"{sign}{whole.replace(',', ' ')},{cents} {'€' if currency == 'EUR' else currency}"
 
 
+# Colours of the app (Tailwind): green-600/red-600 for amounts, as in the
+# Transactions list; slate for text; utils/categoryColors.ts for categories.
+CREDIT_COLOR = "#16a34a"
+DEBIT_COLOR = "#dc2626"
+UNCATEGORIZED_COLOR = "#94a3b8"
+DEFAULT_CATEGORY_COLOR = "#64748b"
+_HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
+_ICONS: dict | None = None
+
+
+def _icon_masks() -> dict:
+    """Alpha masks of the category icons, rasterised from the app's own
+    lucide icons by frontend/scripts/build-email-icons.mjs: email clients
+    don't render SVG, so each icon goes out as a small PNG."""
+    global _ICONS
+    if _ICONS is None:
+        with open(Path(__file__).with_name("email_icons.json"), encoding="utf-8") as f:
+            _ICONS = json.load(f)
+    return _ICONS
+
+
+def _rgb(color: str) -> tuple[int, int, int]:
+    return int(color[1:3], 16), int(color[3:5], 16), int(color[5:7], 16)
+
+
+def icon_png(icon: str | None, color: str) -> bytes:
+    """The category icon drawn in `color` on a transparent background, as a
+    PNG (written by hand with zlib: no imaging library in the image)."""
+    masks = _icon_masks()
+    size = masks["size"]
+    alpha = zlib.decompress(base64.b64decode(masks["icons"].get(icon or "") or masks["icons"][masks["default"]]))
+    r, g, b = _rgb(color)
+    raw = b"".join(
+        b"\x00" + b"".join(bytes((r, g, b, a)) for a in alpha[y * size:(y + 1) * size]) for y in range(size)
+    )
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
+
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", struct.pack(">IIBBBBB", size, size, 8, 6, 0, 0, 0))
+        + chunk(b"IDAT", zlib.compress(raw, 9))
+        + chunk(b"IEND", b"")
+    )
+
+
+def _tint(color: str) -> str:
+    """`color` at 15% over white: the background of the app's category
+    badge (`${color}26`), flattened since email clients ignore #rrggbbaa."""
+    return "#" + "".join(f"{round(c * 0x26 / 255 + 255 * (1 - 0x26 / 255)):02x}" for c in _rgb(color))
+
+
+def _category_style(t: Transaction) -> tuple[str, str | None, str]:
+    """(name, icon, colour) as the app's CategoryBadge shows them."""
+    if t.category is None:
+        return "Uncategorized", None, UNCATEGORIZED_COLOR
+    color = t.category.color if t.category.color and _HEX.match(t.category.color) else DEFAULT_CATEGORY_COLOR
+    return t.category.name, t.category.icon, color
+
+
+def _amount_color(amount: float) -> str:
+    return CREDIT_COLOR if amount >= 0 else DEBIT_COLOR
+
+
+def _by_account(rows: list[Transaction]) -> list[tuple[str, str, list[Transaction]]]:
+    """(account name, currency, rows) per account, by account name, each
+    keeping the rows' own order (most recent first)."""
+    groups: dict[int | None, list[Transaction]] = {}
+    for t in rows:
+        groups.setdefault(t.account_id, []).append(t)
+    out = [
+        (g[0].account.name if g[0].account else "", g[0].account.currency if g[0].account else "EUR", g)
+        for g in groups.values()
+    ]
+    return sorted(out, key=lambda item: item[0].lower())
+
+
 def build_message(user: User, alert: EmailAlert, frequency: str, rows: list[Transaction]) -> EmailMessage:
     count = len(rows)
     label = FREQUENCY_LABELS[frequency]
@@ -176,53 +260,103 @@ def build_message(user: User, alert: EmailAlert, frequency: str, rows: list[Tran
 
     listed = rows[:MAX_LISTED]
     hidden = count - len(listed)
+    groups = _by_account(listed)
     app_url = os.environ.get("FRONTEND_BASE_URL", "")
+    esc = html.escape
 
-    def line(t: Transaction) -> tuple[str, str, str, str, str]:
-        currency = t.account.currency if t.account else "EUR"
-        return (
-            t.date.strftime("%d/%m/%Y"),
-            t.account.name if t.account else "",
-            t.payee,
-            t.category.name if t.category else "Uncategorized",
-            _money(t.amount, currency),
-        )
-
-    total_lines = [
-        f"In {_money(income, cur)} · Out {_money(spent, cur)}" for cur, (income, spent) in sorted(totals.items())
-    ]
-
+    # ── Plain text ──
     text = [f"Hello {user.name},", "", f"{count} new {noun} reached MyFinance on your accounts."]
-    text += total_lines + [""]
-    text += ["  ".join(cells) for cells in map(line, listed)]
+    text += [f"In {_money(i, cur)} · Out {_money(o, cur)}" for cur, (i, o) in sorted(totals.items())]
+    for name, currency, group in groups:
+        text += ["", f"== {name} =="]
+        for t in group:
+            category = _category_style(t)[0]
+            text.append(f"{t.date.strftime('%d/%m/%Y')}  {t.payee}  {category}  {_money(t.amount, currency)}")
+            if t.memo:
+                text.append(f"    {t.memo}")
     if hidden:
-        text.append(f"… and {hidden} more.")
+        text += ["", f"… and {hidden} more."]
     if app_url:
         text += ["", f"Open MyFinance: {app_url}"]
     text += ["", "You can change or stop these alerts in MyFinance, More → Email alerts."]
 
-    cell = 'style="padding:4px 8px;border-bottom:1px solid #e5e7eb;"'
-    body_rows = "".join(
-        "<tr>"
-        + "".join(
-            f'<td {cell[:-1]}{"text-align:right;white-space:nowrap;" if i == 4 else ""}">{html.escape(v)}</td>'
-            for i, v in enumerate(cells)
+    # ── HTML: cards like the app's Transactions list on a phone, grouped by
+    # account. Tables and inline styles only, which is what email clients
+    # (Gmail first) keep. ──
+    images: dict[tuple[str | None, str], str] = {}
+
+    def icon_cid(icon: str | None, color: str) -> str:
+        key = (icon, color)
+        if key not in images:
+            images[key] = make_msgid(domain="myfinance")[1:-1]
+        return images[key]
+
+    font = "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;"
+
+    def money_span(amount: float, currency: str, weight: int = 600) -> str:
+        return (
+            f'<span style="color:{_amount_color(amount)};font-weight:{weight};white-space:nowrap;">'
+            f"{esc(_money(amount, currency))}</span>"
         )
-        + "</tr>"
-        for cells in map(line, listed)
+
+    def card(t: Transaction, currency: str) -> str:
+        name, icon, color = _category_style(t)
+        name_style = "color:#94a3b8;font-style:italic;" if t.category is None else "color:#334155;"
+        memo = (
+            f'<tr><td colspan="2" style="padding-top:6px;font-size:12px;color:#64748b;">{esc(t.memo)}</td></tr>'
+            if t.memo else ""
+        )
+        return f"""<tr><td style="padding:0 0 8px 0;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;border-collapse:separate;">
+<tr><td style="padding:12px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+<tr><td style="font-size:15px;font-weight:600;color:#0f172a;word-break:break-word;">{esc(t.payee)}</td>
+<td align="right" valign="top" style="font-size:15px;padding-left:8px;">{money_span(t.amount, currency)}</td></tr>
+<tr><td colspan="2" style="font-size:12px;color:#64748b;padding-top:2px;">{t.date.strftime('%d/%m/%Y')}</td></tr>
+<tr><td colspan="2" style="padding-top:8px;">
+<table role="presentation" cellpadding="0" cellspacing="0"><tr>
+<td width="20" height="20" align="center" valign="middle" bgcolor="{_tint(color)}" style="width:20px;height:20px;background:{_tint(color)};border-radius:6px;line-height:0;">
+<img src="cid:{icon_cid(icon, color)}" width="12" height="12" alt="" style="display:block;border:0;width:12px;height:12px;"></td>
+<td style="padding-left:6px;font-size:13px;{name_style}">{esc(name)}</td>
+</tr></table></td></tr>{memo}
+</table></td></tr></table></td></tr>"""
+
+    def section(name: str, currency: str, group: list[Transaction]) -> str:
+        net = sum(t.amount for t in group)
+        n = len(group)
+        return f"""<tr><td style="padding:16px 4px 8px 4px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+<td style="font-size:14px;font-weight:700;color:#0f172a;">{esc(name)}
+<span style="font-weight:400;color:#64748b;font-size:12px;">&nbsp;· {n} {"transaction" if n == 1 else "transactions"}</span></td>
+<td align="right" style="font-size:13px;">{money_span(net, currency, 600)}</td>
+</tr></table></td></tr>{"".join(card(t, currency) for t in group)}"""
+
+    summary = "".join(
+        f'<div style="margin-top:6px;font-size:14px;">In {money_span(i, cur)}'
+        f'<span style="color:#94a3b8;"> &nbsp;·&nbsp; </span>Out {money_span(o, cur)}</div>'
+        for cur, (i, o) in sorted(totals.items())
     )
-    heads = "".join(
-        f'<th {cell[:-1]}text-align:{"right" if i == 4 else "left"};">{h}</th>'
-        for i, h in enumerate(("Date", "Account", "Payee", "Category", "Amount"))
+    more = (
+        f'<tr><td style="padding:4px;font-size:13px;color:#64748b;">… and {hidden} more.</td></tr>' if hidden else ""
     )
-    html_body = f"""<!doctype html><html><body style="font-family:Arial,sans-serif;font-size:14px;color:#111827;">
-<p>Hello {html.escape(user.name)},</p>
-<p><strong>{count} new {noun}</strong> reached MyFinance on your accounts.<br>{"<br>".join(html.escape(l) for l in total_lines)}</p>
-<table style="border-collapse:collapse;font-size:13px;"><thead><tr>{heads}</tr></thead><tbody>{body_rows}</tbody></table>
-{f"<p>… and {hidden} more.</p>" if hidden else ""}
-{f'<p><a href="{html.escape(app_url)}">Open MyFinance</a></p>' if app_url else ""}
-<p style="color:#6b7280;font-size:12px;">You can change or stop these alerts in MyFinance, More → Email alerts.</p>
-</body></html>"""
+    button = (
+        f'<tr><td align="center" style="padding:16px 0 4px 0;"><a href="{esc(app_url)}" '
+        f'style="display:inline-block;background:#4f46e5;color:#ffffff;text-decoration:none;font-weight:600;'
+        f'font-size:14px;padding:10px 20px;border-radius:8px;">Open MyFinance</a></td></tr>'
+        if app_url else ""
+    )
+    html_body = f"""<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"></head>
+<body style="margin:0;padding:0;background:#f1f5f9;{font}">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#f1f5f9" style="background:#f1f5f9;">
+<tr><td align="center" style="padding:16px 12px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;{font}">
+<tr><td style="padding:0 4px 12px 4px;font-size:18px;font-weight:700;color:#4f46e5;">MyFinance</td></tr>
+<tr><td style="background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;padding:14px 16px;color:#0f172a;font-size:14px;">
+Hello {esc(user.name)},<br><strong>{count} new {noun}</strong> reached MyFinance on your accounts.{summary}</td></tr>
+{"".join(section(*g) for g in groups)}{more}{button}
+<tr><td style="padding:16px 4px 0 4px;color:#94a3b8;font-size:12px;">You can change or stop these alerts in MyFinance, More → Email alerts.</td></tr>
+</table></td></tr></table></body></html>"""
 
     message = EmailMessage()
     message["Subject"] = subject
@@ -231,6 +365,9 @@ def build_message(user: User, alert: EmailAlert, frequency: str, rows: list[Tran
     message["Message-ID"] = make_msgid(domain=from_address().rpartition("@")[2] or None)
     message.set_content("\n".join(text))
     message.add_alternative(html_body, subtype="html")
+    html_part = message.get_payload()[1]
+    for (icon, color), cid in images.items():
+        html_part.add_related(icon_png(icon, color), "image", "png", cid=f"<{cid}>", filename=f"{icon or 'none'}.png")
     return message
 
 
