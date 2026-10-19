@@ -14,6 +14,8 @@ import CategoryPicker from './CategoryPicker'
 import AccountPicker from './AccountPicker'
 import TransactionConditions, { ConditionRow, SEARCH_ONLY_FIELDS, conditionsToFilters } from './TransactionConditions'
 import ExportMenu from './ExportMenu'
+import WhatsAppIcon from './WhatsAppIcon'
+import { whatsAppListShareUrl } from '../utils/whatsapp'
 import TagChips from './TagChips'
 import SavedFilters, { CurrentFilter } from './SavedFilters'
 import { Button, IconButton, Input, Select, Table, Thead, Tbody, Tr, Th, Td, StatusMessage, CategoryBadge, BackButton, ConfirmDialog, Card } from './ui'
@@ -115,6 +117,7 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
   const [adminMode] = useState(isAdminMode)
   const [exporting, setExporting] = useState(false)
+  const [sharing, setSharing] = useState(false)
 
   const [mode, setMode] = useState<FilterMode>(loadInitialMode)
   const [searchText, setSearchText] = useState(() => getParam('q') ?? '')
@@ -242,6 +245,22 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
       })
       .catch(err => showToast(err.message))
       .finally(() => setExporting(false))
+  }
+
+  // Every row the filters match, not just this page, like the export. The tab
+  // is opened before the fetch: a window opened after an await is a popup
+  // most browsers block.
+  const handleWhatsAppShare = () => {
+    const win = window.open('', '_blank')
+    setSharing(true)
+    searchTransactions({ ...buildSearchRequest(), unpaginated: true })
+      .then(res => {
+        const url = whatsAppListShareUrl(res.items)
+        if (win) win.location.href = url
+        else window.location.href = url
+      })
+      .catch(err => { win?.close(); showToast(err.message) })
+      .finally(() => setSharing(false))
   }
 
   useEffect(loadTransactions, [
@@ -736,6 +755,15 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
             <span>Page {page} / {totalPages}</span>
             <Button size="sm" variant="secondary" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>Next</Button>
           </div>
+        </div>
+      )}
+
+      {!loading && total > 0 && (
+        <div className="flex justify-center mt-4">
+          <Button size="sm" variant="secondary" onClick={handleWhatsAppShare} disabled={sharing}>
+            <span className="text-[#25D366]"><WhatsAppIcon size={16} /></span>
+            {sharing ? 'Preparing…' : 'Share on WhatsApp'}
+          </Button>
         </div>
       )}
 

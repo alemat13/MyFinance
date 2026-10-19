@@ -458,6 +458,12 @@ whether it is reconciled, and finally a link that opens this transaction in MyFi
 You choose the chat in WhatsApp. The message describes the transaction as it was last
 saved, so save your edits first if you want them in it.
 
+To share a whole list instead, use **Share on WhatsApp** at the bottom of the
+Transactions screen. It takes every transaction the current filters match (all pages,
+not only the one shown), lists the first 30 with their date, payee, category and
+amount, says how many more there are, gives the total per currency, and ends with a
+link that opens the Transactions screen with the same filters.
+
 ### Dividing a transaction
 
 **Divide** is a different feature from the **Split** section above, even though both
