@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
+import audit
 import cache_service
 import split_engine
 import tags as tag_service
@@ -68,6 +69,7 @@ async def import_preview(
 
 
 @router.post("/commit", response_model=ImportCommitResponse)
+@audit.batched
 def import_commit(data: ImportCommitRequest, actor_user_id: int | None = Query(None), db: Session = Depends(get_db)):
     if len(data.rows) > MAX_IMPORT_ROWS:
         raise RuleViolation(

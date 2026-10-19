@@ -2,7 +2,7 @@ import { Fragment, useEffect, useState } from 'react'
 import { ArrowDown, ArrowUp, CheckCircle2, Circle } from 'lucide-react'
 import {
   Transaction, TransactionSplit, GlobalSplitWeight,
-  Account, Category, User, Tag, TransactionSearchRequest, SavedFilter,
+  Account, Category, User, Tag, TransactionSearchRequest, SavedFilter, HistoryGroupRef,
   fetchAccounts, fetchCategories, fetchUsers, fetchSplitWeights, fetchTags, searchTransactions, updateTransaction,
 } from '../api/client'
 import TransactionDetail from './TransactionDetail'
@@ -68,6 +68,19 @@ function loadInitialConditions(): ConditionRow[] {
   }
 }
 
+// The History entry whose transactions the screen is limited to, if it was
+// opened from History's "Open in Transactions".
+function loadInitialHistoryGroup(): HistoryGroupRef | null {
+  const raw = getParam('history_group')
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw)
+    return typeof parsed?.first_id === 'number' && typeof parsed?.last_id === 'number' ? parsed : null
+  } catch {
+    return null
+  }
+}
+
 function loadInitialInt(name: string, fallback: number): number {
   const parsed = parseInt(getParam(name) ?? '', 10)
   return Number.isFinite(parsed) ? parsed : fallback
@@ -130,6 +143,7 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
   const [amountMin, setAmountMin] = useState(() => getParam('amount_min') ?? '')
   const [amountMax, setAmountMax] = useState(() => getParam('amount_max') ?? '')
   const [filterReconciled, setFilterReconciled] = useState(() => getParam('reconciled') ?? '')
+  const [historyGroup, setHistoryGroup] = useState<HistoryGroupRef | null>(loadInitialHistoryGroup)
   const [conditions, setConditions] = useState<ConditionRow[]>(loadInitialConditions)
   const [debouncedConditions, setDebouncedConditions] = useState<ConditionRow[]>(loadInitialConditions)
   const [matchMode, setMatchMode] = useState<'all' | 'any'>(() => (getParam('match') === 'any' ? 'any' : 'all'))
@@ -168,6 +182,7 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
     const base: TransactionSearchRequest = {
       user_id: selectedUserId ?? undefined,
       page, page_size: pageSize, sort_by: sortBy, sort_dir: sortDir,
+      history_group: historyGroup ?? undefined,
     }
     if (mode === 'advanced') {
       return { ...base, match_mode: matchMode, conditions: conditionsToFilters(debouncedConditions) }
@@ -264,7 +279,7 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
   }
 
   useEffect(loadTransactions, [
-    selectedUserId, mode, debouncedSearch, dateFrom, dateTo, filterAccountId, filterCategoryId, filterTagId,
+    selectedUserId, JSON.stringify(historyGroup), mode, debouncedSearch, dateFrom, dateTo, filterAccountId, filterCategoryId, filterTagId,
     amountMin, amountMax, filterReconciled, JSON.stringify(debouncedConditions), matchMode, page, pageSize, sortBy, sortDir,
   ])
 
@@ -400,6 +415,12 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
     setAmountMin('')
     setAmountMax('')
     setFilterReconciled('')
+    setPage(1)
+  }
+
+  const clearHistoryGroup = () => {
+    setHistoryGroup(null)
+    patchQueryParams({ history_group: undefined })
     setPage(1)
   }
 
@@ -539,6 +560,13 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
           </>
         )}
       </div>
+
+      {historyGroup && (
+        <div className="flex flex-wrap items-center gap-2 mb-3 p-2 rounded-md bg-accent/10 border border-accent/30 text-sm">
+          <span>Showing only the transactions changed by one History entry{!loading ? ` (${total})` : ''}.</span>
+          <Button size="sm" variant="secondary" onClick={clearHistoryGroup}>Show all transactions</Button>
+        </div>
+      )}
 
       <StatusMessage loading={loading} />
       {!loading && searchError && (

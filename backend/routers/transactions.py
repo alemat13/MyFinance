@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session, selectinload
 import cache_service
 import split_engine
 import tags as tag_service
+import audit
 from audit import TRACKED_FIELDS, _jsonify, diff_splits, record_transaction_history, splits_created_changes
 from database import get_db
 from filtering import apply_transaction_filters, build_where_clause, visible_transaction_filter
@@ -311,6 +312,7 @@ def _validate_bulk_move(db: Session, target_ids: list[int], account_id: int) -> 
 
 
 @router.put("/bulk-update", response_model=BulkUpdateTransactionsResponse)
+@audit.batched
 def bulk_update_transactions(data: BulkUpdateTransactionsRequest, actor_user_id: int | None = Query(None), db: Session = Depends(get_db)):
     # Registered before the /{transaction_id} routes below: Starlette matches
     # routes in registration order, and {transaction_id} (typed int) would
@@ -430,7 +432,7 @@ def bulk_update_transactions(data: BulkUpdateTransactionsRequest, actor_user_id:
                     changes["tags"] = tags_change
 
             if changes:
-                record_transaction_history(db, transaction, "updated", actor_user_id, changes=changes)
+                record_transaction_history(db, transaction, "updated", actor_user_id, source="bulk", changes=changes)
             updated_ids.append(transaction.id)
 
         cache_service.invalidate(db, "balances", "charts", "account_totals", "category_usage")
@@ -439,6 +441,7 @@ def bulk_update_transactions(data: BulkUpdateTransactionsRequest, actor_user_id:
 
 
 @router.delete("/bulk-delete", response_model=BulkDeleteTransactionsResponse)
+@audit.batched
 def bulk_delete_transactions(data: BulkDeleteTransactionsRequest, actor_user_id: int | None = Query(None), db: Session = Depends(get_db)):
     # Registered before the /{transaction_id} DELETE route below, for the same
     # route-registration-order reason documented on bulk_update_transactions
@@ -452,7 +455,7 @@ def bulk_delete_transactions(data: BulkDeleteTransactionsRequest, actor_user_id:
     for start in range(0, len(target_ids), BULK_UPDATE_CHUNK_SIZE):
         chunk_ids = target_ids[start:start + BULK_UPDATE_CHUNK_SIZE]
         for transaction in db.query(Transaction).filter(Transaction.id.in_(chunk_ids)).order_by(Transaction.id).all():
-            record_transaction_history(db, transaction, "deleted", actor_user_id)
+            record_transaction_history(db, transaction, "deleted", actor_user_id, source="bulk")
             db.delete(transaction)
             deleted_ids.append(transaction.id)
         cache_service.invalidate(db, "balances", "charts", "account_totals", "category_usage")
@@ -563,6 +566,7 @@ def delete_transaction(transaction_id: int, actor_user_id: int | None = Query(No
 
 
 @router.post("/{transaction_id}/divide", response_model=TransactionDivideResponse)
+@audit.batched
 def divide_transaction(transaction_id: int, data: TransactionDivideRequest, actor_user_id: int | None = Query(None), db: Session = Depends(get_db)):
     # Divides one transaction's amount into several new transactions (by
     # category/date) — unrelated to split_weights, which divides a

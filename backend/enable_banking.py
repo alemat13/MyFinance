@@ -32,6 +32,7 @@ import httpx
 import jwt
 from sqlalchemy.orm import Session
 
+import audit
 import auto_categorize
 import transaction_rules
 import cache_service
@@ -457,6 +458,7 @@ def is_sync_due(link: BankAccountLink, now: datetime | None = None) -> bool:
     return now - last >= timedelta(hours=MIN_SYNC_INTERVAL_HOURS)
 
 
+@audit.batched
 def import_transactions(db: Session, link: BankAccountLink, rows: list[dict], date_from: date, date_to: date) -> int:
     """Insert the rows this account hasn't already got, resolving each one's
     split through the normal cascade. Commits once, at the end — the row cap

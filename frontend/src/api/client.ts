@@ -286,6 +286,8 @@ export interface TransactionSearchRequest {
   unpaginated?: boolean
   sort_by?: 'date' | 'amount' | 'payee' | 'created_at'
   sort_dir?: 'asc' | 'desc'
+  // Only the transactions one History entry touched.
+  history_group?: HistoryGroupRef
 }
 
 export interface TransactionSearchResponse {
@@ -455,7 +457,7 @@ export interface TransactionHistoryEntry {
   id: number
   transaction_id: number
   action: 'created' | 'updated' | 'deleted'
-  source: 'manual' | 'csv_import' | 'divide' | null
+  source: string | null
   changed_at: string
   changed_by_user_id: number | null
   changed_by_user_name: string | null
@@ -466,6 +468,44 @@ export interface TransactionHistoryEntry {
   account_id: number | null
   category_id: number | null
   changes: Record<string, { old: unknown; new: unknown }> | null
+}
+
+// One History entry's rows: the id range they span plus what they share.
+export interface HistoryGroupRef {
+  first_id: number
+  last_id: number
+  action: 'created' | 'updated' | 'deleted'
+  source: string | null
+  changed_by_user_id: number | null
+  batch_id: string | null
+}
+
+// One line of the History timeline. count 1: a single change, with its own
+// snapshot and changes ({old, new} per field). count > 1: the rows one action
+// wrote, `changes` then holding what they share ({new} when every row got the
+// same value, {new: null, mixed: true} when not, {added, removed} for tags).
+export interface HistoryEntry extends HistoryGroupRef {
+  count: number
+  changed_at: string
+  started_at: string
+  changed_by_user_name: string | null
+  transaction_id: number | null
+  date: string | null
+  payee: string | null
+  amount: number | null
+  account_id: number | null
+  category_id: number | null
+  changes: Record<string, { old?: unknown; new?: unknown; mixed?: boolean; added?: string[]; removed?: string[] }> | null
+}
+
+export interface HistoryPage {
+  items: HistoryEntry[]
+  next_before_id: number | null
+}
+
+export interface HistoryRows {
+  items: TransactionHistoryEntry[]
+  total: number
 }
 
 const API_BASE = import.meta.env.VITE_API_URL ?? `http://${window.location.hostname}:8000/api`
@@ -652,6 +692,40 @@ export function bulkDeleteTransactionsByFilter(
 
 export function fetchTransactionHistory(transactionId: number): Promise<TransactionHistoryEntry[]> {
   return request<TransactionHistoryEntry[]>(`/transactions/${transactionId}/history`)
+}
+
+export function fetchHistory(params: {
+  beforeId?: number | null
+  limit?: number
+  action?: string
+  source?: string
+}): Promise<HistoryPage> {
+  const qs = new URLSearchParams()
+  if (params.beforeId) qs.set('before_id', String(params.beforeId))
+  if (params.limit) qs.set('limit', String(params.limit))
+  if (params.action) qs.set('action', params.action)
+  if (params.source) qs.set('source', params.source)
+  const query = qs.toString()
+  return request<HistoryPage>(`/history${query ? `?${query}` : ''}`)
+}
+
+export function historyGroupRef(entry: HistoryGroupRef): HistoryGroupRef {
+  const { first_id, last_id, action, source, changed_by_user_id, batch_id } = entry
+  return { first_id, last_id, action, source, changed_by_user_id, batch_id }
+}
+
+export function fetchHistoryRows(group: HistoryGroupRef, offset = 0, limit = 50): Promise<HistoryRows> {
+  const qs = new URLSearchParams({
+    first_id: String(group.first_id),
+    last_id: String(group.last_id),
+    action: group.action,
+    offset: String(offset),
+    limit: String(limit),
+  })
+  if (group.source !== null) qs.set('source', group.source)
+  if (group.changed_by_user_id !== null) qs.set('changed_by_user_id', String(group.changed_by_user_id))
+  if (group.batch_id !== null) qs.set('batch_id', group.batch_id)
+  return request<HistoryRows>(`/history/rows?${qs}`)
 }
 
 export function divideTransaction(

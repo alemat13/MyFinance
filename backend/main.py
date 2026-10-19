@@ -21,6 +21,7 @@ from routers import (
     charts,
     dashboard,
     email_alerts,
+    history,
     imports,
     onedrive,
     saved_filters,
@@ -115,3 +116,4 @@ app.include_router(transaction_rules.router)
 app.include_router(saved_filters.router)
 app.include_router(email_alerts.router)
 app.include_router(tags.router)
+app.include_router(history.router)
