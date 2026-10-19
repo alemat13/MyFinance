@@ -9,6 +9,8 @@ interface ModalProps {
   isOpen: boolean
   onClose: () => void
   title?: string
+  // Shown right after the title, e.g. a share button for the record it names.
+  titleActions?: ReactNode
   children: ReactNode
   size?: 'sm' | 'lg'
 }
@@ -22,7 +24,7 @@ const SIZE_CLASSES: Record<'sm' | 'lg', string> = {
   lg: 'inset-0 md:inset-auto md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 w-full h-full md:h-auto md:max-w-2xl md:max-h-[85vh] rounded-none md:rounded-lg flex flex-col',
 }
 
-export function Modal({ isOpen, onClose, title, children, size = 'sm' }: ModalProps) {
+export function Modal({ isOpen, onClose, title, titleActions, children, size = 'sm' }: ModalProps) {
   useBackToClose(isOpen, onClose)
   const isFullScreenCapable = size === 'lg'
 
@@ -41,11 +43,14 @@ export function Modal({ isOpen, onClose, title, children, size = 'sm' }: ModalPr
           {title ? (
             <Dialog.Title
               className={cn(
-                'flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-700 text-sm font-semibold text-slate-800 dark:text-slate-100',
+                'flex items-center justify-between gap-2 px-4 py-3 border-b border-slate-200 dark:border-slate-700 text-sm font-semibold text-slate-800 dark:text-slate-100',
                 isFullScreenCapable && 'shrink-0 pt-safe'
               )}
             >
-              {title}
+              <span className="flex items-center gap-2 min-w-0">
+                <span className="truncate">{title}</span>
+                {titleActions}
+              </span>
               <Dialog.Close asChild>
                 <IconButton aria-label="Close">
                   <X size={16} />

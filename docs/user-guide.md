@@ -447,6 +447,17 @@ anything you typed in by hand, for instance. A CSV import only ever fills in the
 **Original label**, since a CSV carries none of the rest. The badge next to the heading
 says where the values came from.
 
+### Sharing a transaction on WhatsApp
+
+An existing transaction shows a green WhatsApp icon next to its name at the top of the
+panel. Clicking it opens WhatsApp (the app on a phone, WhatsApp Web or Desktop on a
+computer) with a message ready to send: the payee in bold, then the date, the amount
+(bold), the account, the category, the accounting month when it is shifted, the memo
+(in italics, left out when it repeats the payee), the tags, each person's share and
+whether it is reconciled, and finally a link that opens this transaction in MyFinance.
+You choose the chat in WhatsApp. The message describes the transaction as it was last
+saved, so save your edits first if you want them in it.
+
 ### Dividing a transaction
 
 **Divide** is a different feature from the **Split** section above, even though both
