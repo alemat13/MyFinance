@@ -10,7 +10,7 @@ import {
 import { useToast } from '../context/ToastContext'
 import { formatServerTimestamp } from '../utils/datetime'
 import { getParam, patchQueryParams } from '../utils/urlState'
-import { Button, Card, ConfirmDialog, Input, StatusMessage } from './ui'
+import { Button, Card, ConfirmDialog, Input, StatusMessage, NumberInput } from './ui'
 
 type Retention = Pick<OneDriveSettings, 'keep_daily' | 'keep_weekly' | 'keep_monthly' | 'keep_yearly'>
 
@@ -130,13 +130,11 @@ export default function OneDriveBackupCard() {
               {RETENTION_FIELDS.map(({ key, label }) => (
                 <div key={key}>
                   <label htmlFor={`onedrive-${key}`} className="block text-[12px] text-slate-500 dark:text-slate-400 mb-0.5">{label}</label>
-                  <Input
+                  <NumberInput
                     id={`onedrive-${key}`}
-                    type="number"
-                    min="0"
-                    max="365"
+                    integer
                     value={retention[key]}
-                    onChange={e => setRetention(r => ({ ...r, [key]: parseInt(e.target.value, 10) || 0 }))}
+                    onValueChange={v => setRetention(r => ({ ...r, [key]: Math.min(v ?? 0, 365) }))}
                     className="w-full"
                   />
                 </div>

@@ -312,7 +312,7 @@ test('free-form weight entry is accepted and submitted as source "custom"', asyn
   renderWithProviders(<TransactionDetail {...baseProps} allUsers={[alex]} />)
 
   await screen.findByDisplayValue('Test')
-  const numberInputs = screen.getAllByRole('spinbutton')
+  const numberInputs = screen.getAllByRole('textbox')
   const weightInput = numberInputs.find(el => (el as HTMLInputElement).value === '1')!
   fireEvent.change(weightInput, { target: { value: '9' } })
   fireEvent.click(screen.getByText('Save'))
@@ -690,7 +690,7 @@ test('free-form weight entry on a new transaction is submitted with source "cust
   selectCategoryInForm('Salary')
 
   fireEvent.click(screen.getByLabelText('Add user'))
-  const numberInputs = screen.getAllByRole('spinbutton')
+  const numberInputs = screen.getAllByRole('textbox')
   const weightInput = numberInputs.find(el => (el as HTMLInputElement).value === '0')!
   fireEvent.change(weightInput, { target: { value: '5' } })
 

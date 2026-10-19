@@ -1148,6 +1148,8 @@ before using any of them.
 
 ## Appendix: Validation Rules & Tips
 
+**Typing numbers**: every number field (amounts, balances, weights, percentages, retention counts, numeric filter values) takes either `.` or `,` as the decimal separator, so a French numeric keypad's `.` works as well as the keyboard's `,`, and spaces are ignored (`1 250,50`). A prefilled `0` can be deleted, leaving the field empty, which counts as 0. Weights, month shifts and retention counts are whole numbers and refuse a separator; only amounts, balances and amount filters accept a leading `-`.
+
 A quick reference for the rules the app enforces:
 
 | Rule | Where it applies |

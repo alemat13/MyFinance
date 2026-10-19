@@ -5,7 +5,7 @@ import CategoryPicker from './CategoryPicker'
 import { useToast } from '../context/ToastContext'
 import { formatMoney } from '../utils/currency'
 import { ACCOUNTING_MONTH_OFFSETS, accountingMonthLabel } from '../utils/transactions'
-import { Modal, Button, Input, Select, IconButton } from './ui'
+import { Modal, Button, Input, Select, IconButton, NumberInput } from './ui'
 
 interface Props {
   transaction: Transaction
@@ -106,12 +106,11 @@ export default function TransactionDivideModal({ transaction, categories, select
               </Select>
               <Input placeholder="Payee" value={p.payee} onChange={e => updatePart(i, { payee: e.target.value })} className="min-w-[120px]" />
               <Input placeholder="Memo" value={p.memo} onChange={e => updatePart(i, { memo: e.target.value })} className="min-w-[120px]" />
-              <Input
+              <NumberInput
                 placeholder="Amount"
-                type="number"
-                step="0.01"
+                signed
                 value={p.amount}
-                onChange={e => updatePart(i, { amount: parseFloat(e.target.value) || 0 })}
+                onValueChange={v => updatePart(i, { amount: v ?? 0 })}
                 className="w-[100px]"
               />
               <CategoryPicker
