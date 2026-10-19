@@ -1,5 +1,5 @@
 import { test, expect } from 'vitest'
-import { transactionLink, whatsAppText, whatsAppShareUrl } from '../whatsapp'
+import { transactionLink, whatsAppText, whatsAppShareUrl, filteredListLink, whatsAppListText, LIST_SHARE_MAX_ROWS } from '../whatsapp'
 import type { Transaction } from '../../api/client'
 
 const txn: Transaction = {
@@ -48,4 +48,20 @@ test('whatsAppShareUrl encodes the text for wa.me', () => {
   const url = whatsAppShareUrl(txn, 'https://x/?a=1&b=2')
   expect(url.startsWith('https://wa.me/?text=')).toBe(true)
   expect(decodeURIComponent(url.slice('https://wa.me/?text='.length))).toBe(whatsAppText(txn, 'https://x/?a=1&b=2'))
+})
+
+test('filteredListLink keeps the filters and drops page, admin and an open transaction', () => {
+  const link = filteredListLink('https://f.fr/?view=transactions&account_id=3&page=4&admin&transaction=9&sort_dir=asc')
+  expect(link).toBe('https://f.fr/?view=transactions&account_id=3&sort_dir=asc')
+})
+
+test('whatsAppListText lists the rows, caps them and totals per currency', () => {
+  const many = Array.from({ length: LIST_SHARE_MAX_ROWS + 2 }, (_, i) => ({ ...txn, id: i, amount: -1.1 }))
+  const text = whatsAppListText([...many, { ...txn, amount: 5, currency: 'USD' }], 'L')
+  const lines = text.split('\n')
+  expect(lines[0]).toBe(`*Transactions (${LIST_SHARE_MAX_ROWS + 3})*`)
+  expect(lines[1]).toBe('• 2026-10-09 RET DAB 09/10 PARIS · Animaux: *-€1.10*')
+  expect(text).toContain('_… and 3 more_')
+  expect(text).toContain(`💶 Total: *-€${(1.1 * (LIST_SHARE_MAX_ROWS + 2)).toFixed(2)}* / *$5.00*`)
+  expect(text.endsWith('\nL')).toBe(true)
 })
