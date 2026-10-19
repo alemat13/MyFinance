@@ -20,6 +20,8 @@ import { formatServerTimestamp } from '../utils/datetime'
 import { formatMoney } from '../utils/currency'
 import { isAdminMode } from '../utils/admin'
 import { categoryNameFor } from '../utils/categoryDisplay'
+import { whatsAppShareUrl } from '../utils/whatsapp'
+import WhatsAppIcon from './WhatsAppIcon'
 import { Modal, Button, Input, Select, StatusMessage, ConfirmDialog, Badge } from './ui'
 
 interface Props {
@@ -241,7 +243,25 @@ export default function TransactionDetail({
   const pickerAccounts = transactionId === null ? accounts.filter(a => !a.archived) : accounts
 
   return (
-    <Modal isOpen size="lg" onClose={onClose} title={transactionId === null ? 'New Transaction' : (transaction?.payee ?? 'Transaction')}>
+    <Modal
+      isOpen
+      size="lg"
+      onClose={onClose}
+      title={transactionId === null ? 'New Transaction' : (transaction?.payee ?? 'Transaction')}
+      titleActions={transaction && transactionId !== null && (
+        // Shares the transaction as saved, not the form's unsaved edits.
+        <a
+          href={whatsAppShareUrl(transaction)}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="Share on WhatsApp"
+          title="Share on WhatsApp"
+          className="shrink-0 inline-flex items-center justify-center rounded p-1 text-[#25D366] hover:bg-slate-100 dark:hover:bg-slate-700"
+        >
+          <WhatsAppIcon size={18} />
+        </a>
+      )}
+    >
       {loading && <StatusMessage loading />}
       {error && <StatusMessage error={error} />}
       {!loading && !error && (
