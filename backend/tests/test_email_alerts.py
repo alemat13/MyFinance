@@ -314,3 +314,57 @@ def test_send_message_uses_starttls_and_logs_in(monkeypatch):
     assert calls == [
         ("connect", "smtp-relay.example.com", 587), ("starttls",), ("login", "user", "pass"), ("send", "me@olivex.fr"),
     ]
+
+
+def test_html_groups_cards_by_account_with_category_icons(db, sample_user, sample_account_with_user, outbox):
+    from models import Category
+    second = Account(name="Aaa savings", type="Savings")
+    db.add(second)
+    db.flush()
+    db.add(AccountUser(account_id=second.id, user_id=sample_user.id, ownership_percentage=100.0))
+    food = Category(name="Groceries", type="Expense", color="#d97706", icon="ShoppingCart")
+    db.add(food)
+    db.flush()
+    last = datetime(2026, 10, 15, 5)
+    t = _tx(db, sample_account_with_user, "Carrefour", -42.5, last + timedelta(hours=1))
+    t.category_id = food.id
+    _tx(db, sample_account_with_user, "Remboursement", 12.0, last + timedelta(hours=2))
+    _tx(db, second, "Intérêts", 3.0, last + timedelta(hours=3))
+    db.add(EmailAlert(user_id=sample_user.id, email="me@olivex.fr", daily=True, last_daily_sent_at=last))
+    db.commit()
+    email_alerts.run_due_alerts(db, FRI_0500_UTC)
+
+    message = outbox[0]
+    body = message.get_body(("html",)).get_content()
+    # One section per account, by name, each holding its own rows.
+    savings, checking = body.index("Aaa savings"), body.index(sample_account_with_user.name)
+    assert savings < body.index("Intérêts") < checking < body.index("Carrefour")
+    # Credits green, debits red, as in the app.
+    assert f'color:{email_alerts.DEBIT_COLOR};font-weight:600;white-space:nowrap;">-42,50 €' in body
+    assert f'color:{email_alerts.CREDIT_COLOR};font-weight:600;white-space:nowrap;">+12,00 €' in body
+    # The category's own colour behind its icon; Uncategorized in grey.
+    assert email_alerts._tint("#d97706") in body and "Groceries" in body
+    assert "Uncategorized" in body
+    # One inline PNG per distinct (icon, colour), each referenced by its cid.
+    images = [p for p in message.walk() if p.get_content_type() == "image/png"]
+    assert len(images) == 2
+    for part in images:
+        assert part.get_content().startswith(b"\x89PNG")
+        assert f"cid:{part['Content-ID'][1:-1]}" in body
+    text = message.get_body(("plain",)).get_content()
+    assert text.index("== Aaa savings ==") < text.index("Intérêts") < text.index(f"== {sample_account_with_user.name} ==")
+
+
+def test_icon_png_is_drawn_in_the_category_colour():
+    import struct
+    import zlib
+    png = email_alerts.icon_png("ShoppingCart", "#d97706")
+    width, height = struct.unpack(">II", png[16:24])
+    assert (width, height) == (32, 32)
+    idat = png[png.index(b"IDAT") + 4:png.index(b"IEND") - 8]
+    raw = zlib.decompress(idat)
+    pixels = [raw[y * 129 + 1 + x * 4: y * 129 + 5 + x * 4] for y in range(32) for x in range(32)]
+    drawn = [p for p in pixels if p[3] > 0]
+    assert drawn and all(p[:3] == bytes((0xD9, 0x77, 0x06)) for p in drawn)
+    # An unknown or missing icon falls back to the app's default one.
+    assert email_alerts.icon_png("NoSuchIcon", "#000000") == email_alerts.icon_png(None, "#000000")
