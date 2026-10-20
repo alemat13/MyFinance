@@ -21,6 +21,7 @@ const { mockSearchTransactions, mockFetchAccounts, mockFetchCategories, mockCrea
   mockFetchDivideSiblings: vi.fn().mockResolvedValue([]),
 }))
 const mockFetchTags = vi.hoisted(() => vi.fn().mockResolvedValue([]))
+const mockCreateTransactionLink = vi.hoisted(() => vi.fn())
 
 vi.mock('../../api/client', () => ({
   searchTransactions: mockSearchTransactions,
@@ -45,6 +46,7 @@ vi.mock('../../api/client', () => ({
   updateSavedFilter: mockUpdateSavedFilter,
   deleteSavedFilter: mockDeleteSavedFilter,
   reorderSavedFilters: mockReorderSavedFilters,
+  createTransactionLink: mockCreateTransactionLink,
 }))
 
 const { mockFetchSavedFilters, mockCreateSavedFilter, mockUpdateSavedFilter, mockDeleteSavedFilter, mockReorderSavedFilters } = vi.hoisted(() => ({
@@ -1204,4 +1206,30 @@ test('Share on WhatsApp sends every filtered row to wa.me', async () => {
   expect(text).toContain('*Transactions (1)*')
   expect(text).toContain('• 2026-01-15 Grocery · Salary: *-$100.00*')
   expect(text).toContain('view=transactions')
+})
+
+
+test('Link appears once two rows are ticked and links them; a linked row shows the link icon', async () => {
+  const rows = [
+    { id: 1, date: '2026-03-12', payee: 'Dr Martin', memo: null, amount: -60, account_id: 1, account_name: 'Checking', currency: 'EUR', category_id: null, category_name: null, splits: [], link_id: null },
+    { id: 2, date: '2026-03-18', payee: 'CPAM', memo: null, amount: 42, account_id: 1, account_name: 'Checking', currency: 'EUR', category_id: null, category_name: null, splits: [], link_id: 5 },
+  ]
+  mockSearchTransactions.mockResolvedValue(searchResult(rows))
+  mockFetchAccounts.mockResolvedValue([baseAccount])
+  mockFetchCategories.mockResolvedValue([baseCategory])
+  mockCreateTransactionLink.mockResolvedValue({ id: 5, name: null, transactions: rows, totals: [] })
+
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} onOpenCategorizer={() => {}} />)
+
+  await screen.findByText('Dr Martin')
+  expect(screen.getAllByLabelText('Linked')).toHaveLength(1)
+
+  fireEvent.click(screen.getByLabelText('Select transaction Dr Martin'))
+  expect(screen.queryByRole('button', { name: 'Link' })).not.toBeInTheDocument()
+  fireEvent.click(screen.getByLabelText('Select transaction CPAM'))
+  fireEvent.click(screen.getByRole('button', { name: 'Link' }))
+
+  const dialog = await screen.findByRole('dialog')
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Link' }))
+  await waitFor(() => expect(mockCreateTransactionLink).toHaveBeenCalledWith([1, 2], null, null))
 })

@@ -177,6 +177,9 @@ def build_condition_expr(condition: FilterCondition):
         # "Category is / is not" with no category: the uncategorized rows.
         column = Transaction.category_id
         return column.is_(None) if condition.operator == "eq" else column.isnot(None)
+    if condition.field == "linked":
+        column = Transaction.link_id
+        return column.isnot(None) if coerce_bool(condition.value) else column.is_(None)
     if condition.operator in LIST_OPERATORS:
         return _list_expr(FIELD_COLUMN_MAP[condition.field], condition)
     if condition.field in USER_FIELDS:

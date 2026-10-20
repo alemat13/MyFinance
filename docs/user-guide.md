@@ -269,7 +269,8 @@ Two filtering modes are available:
   then excludes them anyway. Likewise "Tag is
   #trip" / "Tag is not #trip", and "Tag is **No tag**" for the untagged transactions, "Tag
   is not No tag" for the ones carrying at least one — useful for more precise or compound searches than the
-  simple filters allow. Also offered: **Reconciled** is Yes / No; **Accounting month
+  simple filters allow. Also offered: **Reconciled** is Yes / No; **Linked** is Yes / No
+  (see [Linking transactions](#linking-transactions)); **Accounting month
   shift** (the −3…+3 months set on a transaction, so "≠ 0" lists every shifted one);
   **Added on**, the day the transaction reached MyFinance (a bank sync, an import or
   by hand), which is not its own date; and the bank's fields from the "As reported by
@@ -513,6 +514,38 @@ date) simply peel an amount off into its own row.
   sibling parts, so you can jump between them. A part can be divided again to add
   more siblings to the same group; but if you open one of the *other* parts, its
   Divide button won't appear — divide the original part instead.
+
+### Linking transactions
+
+Some transactions belong together although each one stays its own row: a transfer
+between two of your accounts (−500 € on one, +500 € on the other), a doctor's bill and
+what the CPAM and the mutuelle paid back, a shared dinner and what the others refunded.
+**Link** groups them so each one shows the others and what they add up to.
+
+- Tick two or more transactions in the list; a **Link** button appears in the selection
+  bar. It opens a short window listing them with their **Net** (their amounts added up,
+  per currency) and an optional **Name** (e.g. "Dentist March"), then **Link**.
+- A linked transaction shows a small link icon next to its payee, in the list and on
+  the phone's cards.
+- Opening one shows a **Linked transactions** section (under the Save button): every
+  transaction of the group with its date, account and amount, the group's **Net**, and
+  a click on any of them opens it. The pencil renames the group. **Unlink this one**
+  takes the open transaction out; **Unlink all** dissolves the group. A group needs two
+  transactions, so taking one out of a group of two dissolves it, and so does deleting
+  one of them.
+- To add a transaction to an existing group, tick it together with any transaction
+  already in that group and press **Link**: it joins the group. Ticking transactions
+  from two different groups merges them into one.
+- A transaction belongs to one group at most. Linking changes nothing else: amounts,
+  categories, splits, balances and charts stay exactly as they were (a refund filed
+  under the same category as the expense already reduces it in the charts, and a
+  transfer filed as "Transfer, other" already counts for nothing).
+- Every link and unlink shows in the transaction's History (and on the History screen,
+  origin **Links**). The advanced filter's **Linked** is Yes / No condition lists the
+  linked transactions, or the ones still on their own.
+
+Linking is a different thing from [Dividing a transaction](#dividing-a-transaction),
+which turns one transaction into several new ones.
 
 ### Reconciling transactions
 
@@ -952,8 +985,8 @@ on their own screen, under **More → Rules**.
 
 **Conditions** are the same as the Transactions screen's Advanced filter — payee, memo,
 amount, date, account, category, tag, reconciled, accounting month shift and the bank's
-fields — except the per-person ones and **Added on** (a transaction being imported has
-not been added yet). The most useful is **Original label**, the bank's (or the file's)
+fields — except the per-person ones, **Added on** and **Linked** (a transaction being
+imported has not been added, nor linked, yet). The most useful is **Original label**, the bank's (or the file's)
 own wording before any cleanup or renaming, which is the steadiest way to recognise a
 merchant. Combine them with **ALL** or **ANY**. As you type, the editor says how many
 existing transactions match today, the quickest check that a condition says what you

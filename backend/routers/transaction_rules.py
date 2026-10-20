@@ -41,6 +41,9 @@ def _validate(db: Session, data: RuleCreate | RuleUpdate) -> None:
         if condition.field == "created_at":
             # A row being imported or synced has not been added yet.
             raise RuleViolation('A rule cannot test the date a transaction was added.')
+        if condition.field == "linked":
+            # Nor linked to anything.
+            raise RuleViolation('A rule cannot test whether a transaction is linked.')
         if condition.field == "tag_id" and condition.value is None:
             pass  # "has no tag" / "has some tag"
         elif condition.value is None or (isinstance(condition.value, str) and not condition.value.strip()):

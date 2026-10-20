@@ -38,8 +38,11 @@ export const USER_FIELDS: FilterField[] = [
 /** The "(abs)" fields, read without their sign; their value is never negative. */
 const ABS_FIELDS: FilterField[] = ['amount_abs', 'split_share_abs', 'split_balance_abs']
 /** Fields a search can use but a rule cannot: the per-user figures (an
- *  imported row has no split yet) and when a row was added (it has not been). */
-export const SEARCH_ONLY_FIELDS: FilterField[] = [...USER_FIELDS, 'created_at']
+ *  imported row has no split yet), when a row was added (it has not been)
+ *  and whether it is linked (it is not yet). */
+export const SEARCH_ONLY_FIELDS: FilterField[] = [...USER_FIELDS, 'created_at', 'linked']
+/** Yes / No fields. */
+const BOOL_FIELDS: FilterField[] = ['reconciled', 'linked']
 const NUMERIC_FIELDS: FilterField[] = [
   'amount', 'amount_abs', 'account_id', 'category_id', 'tag_id', 'accounting_month_offset', ...USER_FIELDS,
 ]
@@ -86,6 +89,7 @@ export const OPERATORS_BY_FIELD: Record<FilterField, { value: string; label: str
     { value: 'ne', label: 'is not' },
   ],
   reconciled: [{ value: 'eq', label: 'is' }],
+  linked: [{ value: 'eq', label: 'is' }],
   accounting_month_offset: NUMERIC_OPERATORS,
   created_at: DATE_OPERATORS,
   raw_counterparty: TEXT_OPERATORS,
@@ -106,7 +110,7 @@ export const OPERATORS_BY_FIELD: Record<FilterField, { value: string; label: str
 export const FIELD_LABELS: Record<FilterField, string> = {
   payee: 'Payee', memo: 'Memo', raw_label: 'Original label', amount: 'Amount', amount_abs: 'Amount (abs)', date: 'Date',
   account_id: 'Account', category_id: 'Category', tag_id: 'Tag',
-  reconciled: 'Reconciled', accounting_month_offset: 'Accounting month shift', created_at: 'Added on',
+  reconciled: 'Reconciled', linked: 'Linked', accounting_month_offset: 'Accounting month shift', created_at: 'Added on',
   raw_counterparty: 'Counterparty', raw_transaction_code: 'Bank transaction code / type',
   raw_merchant_category_code: 'Merchant category code', raw_merchant_location: 'Merchant location',
   raw_initiated_date: 'Purchase date', raw_booking_date: 'Booking date',
@@ -117,7 +121,7 @@ export const FIELD_LABELS: Record<FilterField, string> = {
 export const emptyCondition: ConditionRow = { field: 'payee', operator: 'contains', value: '', value2: '' }
 
 function coerceValue(field: FilterField, value: string): string | number | boolean {
-  if (field === 'reconciled') return value === 'true'
+  if (BOOL_FIELDS.includes(field)) return value === 'true'
   if (NUMERIC_FIELDS.includes(field)) return parseNumber(value) ?? NaN
   return value
 }
@@ -262,8 +266,8 @@ export default function TransactionConditions({
               anyLabel="Choose categories"
               className="min-w-[140px]"
             />
-          ) : c.field === 'reconciled' ? (
-            <Select aria-label="Reconciled value" value={c.value} onChange={e => updateValue(i, 'value', e.target.value)}
+          ) : BOOL_FIELDS.includes(c.field) ? (
+            <Select aria-label={`${FIELD_LABELS[c.field]} value`} value={c.value} onChange={e => updateValue(i, 'value', e.target.value)}
                     className="min-w-[140px]">
               <option value="">Choose</option>
               <option value="true">Yes</option>

@@ -12,6 +12,7 @@ import CategoryPicker from './CategoryPicker'
 import PayeeInput from './PayeeInput'
 import AccountPicker from './AccountPicker'
 import TransactionRawFields from './TransactionRawFields'
+import TransactionLinkSection from './TransactionLinkSection'
 import TagPicker from './TagPicker'
 import { useToast } from '../context/ToastContext'
 import { validateTransactionForm, ACCOUNTING_MONTH_OFFSETS, accountingMonthLabel } from '../utils/transactions'
@@ -38,6 +39,9 @@ interface Props {
   onSaved: () => void
   onDeleted: () => void
   onNavigateToTransaction?: (id: number) => void
+  // A link was renamed or undone from the detail panel, so the list behind it
+  // may show a stale link icon.
+  onLinksChanged?: () => void
 }
 
 const emptyFormData: TransactionUpdate = {
@@ -53,6 +57,7 @@ const emptyFormData: TransactionUpdate = {
 export default function TransactionDetail({
   transactionId, accounts, categories, tags = [], onTagCreated, allUsers, globalWeights, selectedUserId, onClose, onSaved, onDeleted,
   onNavigateToTransaction,
+  onLinksChanged,
 }: Props) {
   const [transaction, setTransaction] = useState<Transaction | null>(null)
   const [loading, setLoading] = useState(transactionId !== null)
@@ -323,6 +328,19 @@ export default function TransactionDetail({
                 ))}
               </div>
             </div>
+          )}
+
+          {transaction && (
+            <TransactionLinkSection
+              transaction={transaction}
+              actorUserId={selectedUserId}
+              onNavigateToTransaction={onNavigateToTransaction}
+              onChanged={linkId => {
+                setTransaction({ ...transaction, link_id: linkId })
+                fetchTransactionHistory(transaction.id).then(setHistoryEntries).catch(() => {})
+                onLinksChanged?.()
+              }}
+            />
           )}
 
           {transaction && (

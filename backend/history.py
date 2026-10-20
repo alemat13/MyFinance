@@ -36,7 +36,7 @@ _MAX_TAG_NAMES = 20
 
 # The "Origin" filter: what the history screen calls each value of `source`.
 # 'manual' also covers NULL, the hand edit made in the transaction form.
-SOURCES = ("manual", "bulk", "rule", "categorizer", "csv_import", "bank_sync", "divide", "admin")
+SOURCES = ("manual", "bulk", "rule", "categorizer", "csv_import", "bank_sync", "divide", "admin", "link")
 
 
 def _tags_delta(change: dict) -> tuple[list[str], list[str]]:
