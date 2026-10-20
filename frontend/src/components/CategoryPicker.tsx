@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Check, ChevronDown, ChevronRight } from 'lucide-react'
 import { Category } from '../api/client'
 import { CategoryBadge } from './ui'
@@ -20,6 +20,8 @@ interface CategoryPickerProps {
   onChangeMany?: (ids: number[]) => void
 }
 
+const MENU_WIDTH = 288
+
 const triggerClasses =
   'flex items-center justify-between gap-2 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent cursor-pointer'
 
@@ -30,6 +32,7 @@ export default function CategoryPicker({
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [expanded, setExpanded] = useState<Set<number>>(new Set())
+  const [alignRight, setAlignRight] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
   const multi = values !== undefined
@@ -54,6 +57,15 @@ export default function CategoryPicker({
     setExpanded(prev => new Set([...prev, ...parentIds]))
     // Only seed the expansion once per open, from the value at open time.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
+
+  // A menu wider than the room left of it would run off the right edge of a
+  // phone screen (and scroll the page sideways): anchor it to the trigger's
+  // right edge then, as AccountPicker does.
+  useLayoutEffect(() => {
+    if (!open) return
+    const rect = ref.current?.getBoundingClientRect()
+    setAlignRight(!!rect && rect.left + MENU_WIDTH > window.innerWidth - 8)
   }, [open])
 
   const searching = search.trim().length > 0
@@ -111,7 +123,7 @@ export default function CategoryPicker({
         <ChevronDown size={14} className="text-slate-400 shrink-0" />
       </button>
       {open && (
-        <div className="absolute z-10 mt-1 w-72 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-lg">
+        <div className={`absolute z-10 mt-1 w-72 max-w-[calc(100vw-1rem)] ${alignRight ? 'right-0' : 'left-0'} rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-lg`}>
           <div className="p-2 border-b border-slate-100 dark:border-slate-700">
             <input
               autoFocus
