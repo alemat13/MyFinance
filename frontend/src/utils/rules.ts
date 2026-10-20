@@ -69,9 +69,14 @@ function shiftDay(isoDate: string, days: number): string {
 export function simpleFiltersToConditions(f: TransactionSearchRequest): FilterCondition[] {
   const out: FilterCondition[] = []
   if (f.search?.trim()) out.push({ field: 'payee', operator: 'contains', value: f.search.trim() })
-  if (f.account_id) out.push({ field: 'account_id', operator: 'eq', value: f.account_id })
-  if (f.category_id) out.push({ field: 'category_id', operator: 'eq', value: f.category_id })
-  if (f.uncategorized) out.push({ field: 'category_id', operator: 'eq', value: null })
+  const accountIds = f.account_ids ?? (f.account_id ? [f.account_id] : [])
+  if (accountIds.length > 0) out.push({ field: 'account_id', operator: 'in', value: accountIds })
+  // Uncategorized ticked is a null in the list, OR'd with the categories as on the screen.
+  const categoryIds: (number | null)[] = [
+    ...(f.category_ids ?? (f.category_id ? [f.category_id] : [])),
+    ...(f.uncategorized ? [null] : []),
+  ]
+  if (categoryIds.length > 0) out.push({ field: 'category_id', operator: 'in', value: categoryIds })
   if (f.tag_id) out.push({ field: 'tag_id', operator: 'eq', value: f.tag_id })
   if (f.untagged) out.push({ field: 'tag_id', operator: 'eq', value: null })
   if (f.amount_min != null && f.amount_max != null) {

@@ -86,6 +86,17 @@ function loadInitialInt(name: string, fallback: number): number {
   return Number.isFinite(parsed) ? parsed : fallback
 }
 
+// An id list param ("3,5"), which an older single-id link still reads as.
+function loadInitialIds(name: string): number[] {
+  return (getParam(name) ?? '').split(',').map(v => parseInt(v, 10)).filter(n => Number.isFinite(n) && n !== 0)
+}
+
+/** A saved filter's account/category: one id (0 for none) or a list. */
+const savedIds = (v: number | number[] | undefined): number[] =>
+  Array.isArray(v) ? v : v ? [v] : []
+/** The other way round, so a filter of one id saves the way it always did. */
+const idsToSaved = (ids: number[]): number | number[] => ids.length === 0 ? 0 : ids.length === 1 ? ids[0] : ids
+
 function loadInitialPageSize(): number {
   const parsed = parseInt(getParam('page_size') ?? '', 10)
   return (PAGE_SIZE_VALUES as readonly number[]).includes(parsed) ? parsed : 50
@@ -137,8 +148,9 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
   const [debouncedSearch, setDebouncedSearch] = useState(() => getParam('q') ?? '')
   const [dateFrom, setDateFrom] = useState(() => getParam('date_from') ?? '')
   const [dateTo, setDateTo] = useState(() => getParam('date_to') ?? '')
-  const [filterAccountId, setFilterAccountId] = useState(() => loadInitialInt('account_id', 0))
-  const [filterCategoryId, setFilterCategoryId] = useState(() => loadInitialInt('category_id', 0))
+  const [filterAccountIds, setFilterAccountIds] = useState<number[]>(() => loadInitialIds('account_id'))
+  // UNCATEGORIZED_ID among them stands for the transactions with no category.
+  const [filterCategoryIds, setFilterCategoryIds] = useState<number[]>(() => loadInitialIds('category_id'))
   const [filterTagId, setFilterTagId] = useState(() => loadInitialInt('tag_id', 0))
   const [amountMin, setAmountMin] = useState(() => getParam('amount_min') ?? '')
   const [amountMax, setAmountMax] = useState(() => getParam('amount_max') ?? '')
@@ -192,9 +204,9 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
       search: debouncedSearch || undefined,
       date_from: dateFrom || undefined,
       date_to: dateTo || undefined,
-      account_id: filterAccountId || undefined,
-      category_id: filterCategoryId > 0 ? filterCategoryId : undefined,
-      uncategorized: filterCategoryId === UNCATEGORIZED_ID || undefined,
+      account_ids: filterAccountIds.length > 0 ? filterAccountIds : undefined,
+      category_ids: filterCategoryIds.some(id => id > 0) ? filterCategoryIds.filter(id => id > 0) : undefined,
+      uncategorized: filterCategoryIds.includes(UNCATEGORIZED_ID) || undefined,
       tag_id: filterTagId > 0 ? filterTagId : undefined,
       untagged: filterTagId === UNTAGGED_ID || undefined,
       amount_min: amountMin !== '' ? parseFloat(amountMin) : undefined,
@@ -279,7 +291,7 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
   }
 
   useEffect(loadTransactions, [
-    selectedUserId, JSON.stringify(historyGroup), mode, debouncedSearch, dateFrom, dateTo, filterAccountId, filterCategoryId, filterTagId,
+    selectedUserId, JSON.stringify(historyGroup), mode, debouncedSearch, dateFrom, dateTo, filterAccountIds.join(), filterCategoryIds.join(), filterTagId,
     amountMin, amountMax, filterReconciled, JSON.stringify(debouncedConditions), matchMode, page, pageSize, sortBy, sortDir,
   ])
 
@@ -307,8 +319,8 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
         q: debouncedSearch || undefined,
         date_from: dateFrom || undefined,
         date_to: dateTo || undefined,
-        account_id: filterAccountId ? String(filterAccountId) : undefined,
-        category_id: filterCategoryId ? String(filterCategoryId) : undefined,
+        account_id: filterAccountIds.length > 0 ? filterAccountIds.join(',') : undefined,
+        category_id: filterCategoryIds.length > 0 ? filterCategoryIds.join(',') : undefined,
         tag_id: filterTagId ? String(filterTagId) : undefined,
         amount_min: amountMin || undefined,
         amount_max: amountMax || undefined,
@@ -316,7 +328,7 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
       })
     }
   }, [
-    mode, debouncedSearch, dateFrom, dateTo, filterAccountId, filterCategoryId, filterTagId,
+    mode, debouncedSearch, dateFrom, dateTo, filterAccountIds.join(), filterCategoryIds.join(), filterTagId,
     amountMin, amountMax, filterReconciled, JSON.stringify(debouncedConditions), matchMode, page, pageSize, sortBy, sortDir,
   ])
 
@@ -368,7 +380,7 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
     }
     const filters = {
       search: searchText, date_from: dateFrom, date_to: dateTo,
-      account_id: filterAccountId, category_id: filterCategoryId,
+      account_id: idsToSaved(filterAccountIds), category_id: idsToSaved(filterCategoryIds),
       amount_min: amountMin, amount_max: amountMax, reconciled: filterReconciled,
       // Only when set, so a filter saved before tags existed still reads as active.
       ...(filterTagId ? { tag_id: filterTagId } : {}),
@@ -392,8 +404,8 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
       setDebouncedSearch(f.search ?? '')
       setDateFrom(f.date_from ?? '')
       setDateTo(f.date_to ?? '')
-      setFilterAccountId(f.account_id ?? 0)
-      setFilterCategoryId(f.category_id ?? 0)
+      setFilterAccountIds(savedIds(f.account_id))
+      setFilterCategoryIds(savedIds(f.category_id))
       setFilterTagId(f.tag_id ?? 0)
       setAmountMin(f.amount_min ?? '')
       setAmountMax(f.amount_max ?? '')
@@ -409,8 +421,8 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
     setDebouncedSearch('')
     setDateFrom('')
     setDateTo('')
-    setFilterAccountId(0)
-    setFilterCategoryId(0)
+    setFilterAccountIds([])
+    setFilterCategoryIds([])
     setFilterTagId(0)
     setAmountMin('')
     setAmountMax('')
@@ -517,15 +529,19 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
             <Input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(1) }} />
             <AccountPicker
               accounts={accounts}
-              value={filterAccountId || null}
-              onChange={id => { setFilterAccountId(id ?? 0); setPage(1) }}
+              value={null}
+              onChange={() => {}}
+              values={filterAccountIds}
+              onChangeMany={ids => { setFilterAccountIds(ids); setPage(1) }}
               placeholder="All accounts"
               className="min-w-[140px]"
             />
             <CategoryPicker
               categories={categories}
-              value={filterCategoryId || null}
-              onChange={id => { setFilterCategoryId(id ?? 0); setPage(1) }}
+              value={null}
+              onChange={() => {}}
+              values={filterCategoryIds}
+              onChangeMany={ids => { setFilterCategoryIds(ids); setPage(1) }}
               anyLabel="All categories"
               className="min-w-[140px]"
             />

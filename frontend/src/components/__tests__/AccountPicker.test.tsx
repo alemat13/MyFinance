@@ -105,3 +105,18 @@ test('no Archived sub-menu when nothing is archived', () => {
   const { listbox } = open({ accounts: accounts.filter(a => !a.archived) })
   expect(within(listbox).queryByText('Archived')).not.toBeInTheDocument()
 })
+
+test('with values, ticks several accounts and keeps the menu open', () => {
+  const onChangeMany = vi.fn()
+  render(<AccountPicker accounts={accounts} value={null} onChange={() => {}} values={[2]} onChangeMany={onChangeMany}
+                        placeholder="Choose accounts" />)
+  expect(screen.getAllByRole('button')[0].textContent).toContain('Compte joint')
+  fireEvent.click(screen.getAllByRole('button')[0])
+  const listbox = screen.getByRole('listbox', { name: 'Accounts' })
+  // The sub-menu holding a ticked account opens by itself.
+  fireEvent.click(within(listbox).getByRole('option', { name: 'Compte perso' }))
+  expect(onChangeMany).toHaveBeenLastCalledWith([2, 4])
+  fireEvent.click(within(listbox).getByRole('option', { name: 'Compte joint' }))
+  expect(onChangeMany).toHaveBeenLastCalledWith([])
+  expect(screen.getByRole('listbox', { name: 'Accounts' })).toBeTruthy()
+})

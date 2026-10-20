@@ -116,3 +116,17 @@ test('as a filter, the Uncategorized choice shows in the trigger', () => {
   expect(screen.getByText('Uncategorized')).toBeInTheDocument()
   expect(screen.queryByText('All categories')).not.toBeInTheDocument()
 })
+
+test('with values, ticks several categories, Uncategorized included, and stays open', () => {
+  const onChangeMany = vi.fn()
+  renderWithProviders(<CategoryPicker categories={categories} value={null} onChange={() => {}}
+                                      values={[2, 4]} onChangeMany={onChangeMany} anyLabel="Choose categories" />)
+  fireEvent.click(screen.getByText('2 categories'))
+  // The parent of a ticked subcategory opens by itself.
+  expect(screen.getByRole('option', { name: 'Rent' })).toHaveAttribute('aria-selected', 'true')
+  fireEvent.click(screen.getByRole('option', { name: 'Uncategorized' }))
+  expect(onChangeMany).toHaveBeenLastCalledWith([2, 4, -1])
+  fireEvent.click(screen.getByRole('option', { name: 'Salary' }))
+  expect(onChangeMany).toHaveBeenLastCalledWith([2])
+  expect(screen.getByRole('option', { name: /Housing/ })).toBeInTheDocument()
+})

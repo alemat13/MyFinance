@@ -143,6 +143,16 @@ def test_operators_mirror_the_filter(db, sample_account):
     assert match(field="raw_label", operator="contains", value="carte")
     assert match(field="amount", operator="lt", value=0)
     assert match(field="amount", operator="between", value=-50, value2=-40)
+    # "Amount (abs)": the amount without its sign.
+    assert match(field="amount_abs", operator="eq", value=42)
+    assert match(field="amount_abs", operator="between", value=40, value2=50)
+    assert not match(field="amount_abs", operator="lt", value=0)
+    # "is in / is not in" a list, a null in a category list being "Uncategorized".
+    assert match(field="account_id", operator="in", value=[sample_account.id, 999])
+    assert not match(field="account_id", operator="not_in", value=[sample_account.id])
+    assert match(field="category_id", operator="in", value=[None, 999])
+    assert not match(field="category_id", operator="in", value=[999])
+    assert not match(field="category_id", operator="not_in", value=[999])
     assert match(field="date", operator="after", value="2026-07-31")
     assert match(field="date", operator="between", value="2026-08-31", value2="2026-08-01")
     assert match(field="account_id", operator="eq", value=sample_account.id)

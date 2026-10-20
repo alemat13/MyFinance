@@ -111,6 +111,15 @@ def _matches(condition: FilterCondition, state: dict) -> bool:
             return bool(tag_ids) == (condition.operator == "ne")
         return (int(float(condition.value)) in tag_ids) == (condition.operator == "eq")
     current = state.get(condition.field)
+    if condition.field == "amount_abs":
+        current = None if state.get("amount") is None else abs(float(state["amount"]))
+    if condition.operator in ("in", "not_in"):
+        # Mirrors filtering._list_expr(): None in the list is "no value";
+        # "not in" never matches a row with no value.
+        ids = {int(v) for v in condition.value if v is not None}
+        if condition.operator == "in":
+            return (current is None and None in condition.value) or (current is not None and int(current) in ids)
+        return current is not None and int(current) not in ids
     if condition.field == "category_id" and condition.value is None and condition.operator in ("eq", "ne"):
         # Mirrors filtering.build_condition_expr(): no category named means
         # "is uncategorized" / "has a category".
