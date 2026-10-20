@@ -4,6 +4,15 @@ from typing import List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+
+class Schema(BaseModel):
+    # A response always carries every field, defaulted ones included, so the
+    # OpenAPI schema lists them as required on the response side. The
+    # frontend's generated types (frontend/src/api/schema.d.ts) then read
+    # `memo: string | null` rather than an optional `memo?:`. Request schemas
+    # are unaffected: a defaulted field stays optional there.
+    model_config = ConfigDict(json_schema_serialization_defaults_required=True)
+
 # Alias used where a model field is itself named `date`: pydantic v2 resolves
 # annotations using the class's own namespace, and a field named the same as
 # its type (with a default) gets shadowed by that default there, so the bare
@@ -11,7 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 _DateType = date
 
 
-class UserOut(BaseModel):
+class UserOut(Schema):
     id: int
     name: str
     email: str | None = None
@@ -19,24 +28,24 @@ class UserOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class UserCreate(BaseModel):
+class UserCreate(Schema):
     name: str
     email: str | None = None
 
 
-class UserUpdate(BaseModel):
+class UserUpdate(Schema):
     name: str | None = None
     email: str | None = None
 
 
-class AccountUserOut(BaseModel):
+class AccountUserOut(Schema):
     user_id: int
     user_name: str
     ownership_percentage: float
     model_config = ConfigDict(from_attributes=True)
 
 
-class AccountUserCreate(BaseModel):
+class AccountUserCreate(Schema):
     user_id: int
     ownership_percentage: float
 
@@ -48,19 +57,19 @@ def _validate_currency_code(value: str) -> str:
     return value
 
 
-class AccountSplitWeightOut(BaseModel):
+class AccountSplitWeightOut(Schema):
     user_id: int
     user_name: str
     weight: int
     model_config = ConfigDict(from_attributes=True)
 
 
-class AccountSplitWeightUpdateItem(BaseModel):
+class AccountSplitWeightUpdateItem(Schema):
     user_id: int
     weight: int
 
 
-class AccountOut(BaseModel):
+class AccountOut(Schema):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -77,7 +86,7 @@ class AccountOut(BaseModel):
     last_transaction_date: date | None = None
 
 
-class AccountCreate(BaseModel):
+class AccountCreate(Schema):
     name: str
     type: str
     balance: float = 0.0
@@ -90,7 +99,7 @@ class AccountCreate(BaseModel):
         return _validate_currency_code(value)
 
 
-class AccountUpdate(BaseModel):
+class AccountUpdate(Schema):
     name: Optional[str] = None
     type: Optional[str] = None
     balance: Optional[float] = None
@@ -104,14 +113,14 @@ class AccountUpdate(BaseModel):
         return _validate_currency_code(value) if value is not None else None
 
 
-class CategorySplitOut(BaseModel):
+class CategorySplitOut(Schema):
     user_id: int
     user_name: str
     weight: int
     model_config = ConfigDict(from_attributes=True)
 
 
-class CategorySplitCreate(BaseModel):
+class CategorySplitCreate(Schema):
     user_id: int
     weight: int
 
@@ -146,7 +155,7 @@ def _validate_category_icon(value: str | None) -> str | None:
     return value
 
 
-class CategoryOut(BaseModel):
+class CategoryOut(Schema):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -171,7 +180,7 @@ def normalize_category_type(value):
     return value if value in CATEGORY_TYPES else CATEGORY_TYPES[-1]
 
 
-class CategoryCreate(BaseModel):
+class CategoryCreate(Schema):
     name: str
     type: CategoryType
     color: str | None = None
@@ -190,7 +199,7 @@ class CategoryCreate(BaseModel):
         return _validate_category_icon(value)
 
 
-class CategoryUpdate(BaseModel):
+class CategoryUpdate(Schema):
     name: Optional[str] = None
     type: Optional[CategoryType] = None
     color: Optional[str] = None
@@ -209,24 +218,24 @@ class CategoryUpdate(BaseModel):
         return _validate_category_icon(value)
 
 
-class GlobalSplitWeightOut(BaseModel):
+class GlobalSplitWeightOut(Schema):
     user_id: int
     user_name: str
     weight: int
     model_config = ConfigDict(from_attributes=True)
 
 
-class GlobalSplitWeightUpdateItem(BaseModel):
+class GlobalSplitWeightUpdateItem(Schema):
     user_id: int
     weight: int
 
 
-class SplitWeightCreate(BaseModel):
+class SplitWeightCreate(Schema):
     user_id: int
     weight: int
 
 
-class TransactionSplitOut(BaseModel):
+class TransactionSplitOut(Schema):
     user_id: int
     user_name: str
     weight: int
@@ -235,14 +244,14 @@ class TransactionSplitOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class UserBalanceOut(BaseModel):
+class UserBalanceOut(Schema):
     user_id: int
     user_name: str
     currency: str
     net_position: float
 
 
-class TagRef(BaseModel):
+class TagRef(Schema):
     """A tag as a transaction carries it."""
     model_config = ConfigDict(from_attributes=True)
 
@@ -256,7 +265,7 @@ class TagOut(TagRef):
     transaction_count: int = 0
 
 
-class TagCreate(BaseModel):
+class TagCreate(Schema):
     name: str = Field(..., min_length=1, max_length=50)
     color: Optional[str] = None
 
@@ -286,7 +295,7 @@ class TagUpdate(TagCreate):
     name: Optional[str] = Field(None, min_length=1, max_length=50)
 
 
-class TransactionOut(BaseModel):
+class TransactionOut(Schema):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -324,7 +333,7 @@ class TransactionOut(BaseModel):
 
 # ── Linked transactions (models.TransactionLink) ─────────────────────
 
-class TransactionLinkCreate(BaseModel):
+class TransactionLinkCreate(Schema):
     """Links these transactions together. Any of them already in a group
     brings that group along: the groups are merged into one, so ticking a
     new row with one already linked adds it to that group."""
@@ -332,23 +341,23 @@ class TransactionLinkCreate(BaseModel):
     name: Optional[str] = Field(None, max_length=100)
 
 
-class TransactionLinkUpdate(BaseModel):
+class TransactionLinkUpdate(Schema):
     """Rename; a blank name clears it."""
     name: Optional[str] = Field(None, max_length=100)
 
 
-class TransactionLinkUnlink(BaseModel):
+class TransactionLinkUnlink(Schema):
     """Takes these transactions out of the group; a group left with fewer
     than two is dissolved."""
     transaction_ids: list[int] = Field(..., min_length=1)
 
 
-class TransactionLinkTotal(BaseModel):
+class TransactionLinkTotal(Schema):
     currency: str
     amount: float
 
 
-class TransactionLinkOut(BaseModel):
+class TransactionLinkOut(Schema):
     id: int
     name: Optional[str] = None
     transactions: list[TransactionOut]
@@ -356,7 +365,7 @@ class TransactionLinkOut(BaseModel):
     totals: list[TransactionLinkTotal]
 
 
-class PayeeSuggestionOut(BaseModel):
+class PayeeSuggestionOut(Schema):
     """One autocompletion entry for the Payee field: a payee as last used, the
     category it was filed under then, and that most recent transaction's date
     and amount so two similar entries can be told apart."""
@@ -368,7 +377,7 @@ class PayeeSuggestionOut(BaseModel):
     currency: str
 
 
-class TransactionCreate(BaseModel):
+class TransactionCreate(Schema):
     date: _DateType
     payee: str
     memo: Optional[str] = None
@@ -382,7 +391,7 @@ class TransactionCreate(BaseModel):
     tag_ids: list[int] | None = None
 
 
-class TransactionUpdate(BaseModel):
+class TransactionUpdate(Schema):
     date: Optional[_DateType] = None
     payee: Optional[str] = None
     memo: Optional[str] = None
@@ -397,7 +406,7 @@ class TransactionUpdate(BaseModel):
     tag_ids: list[int] | None = None
 
 
-class TransactionRawFieldsUpdate(BaseModel):
+class TransactionRawFieldsUpdate(Schema):
     """Admin-mode edit of a transaction's raw, as-reported fields (the
     "As reported by the bank" section). Same exclude_unset contract as
     TransactionUpdate: an omitted key is left untouched, an explicit null (or
@@ -424,7 +433,7 @@ class TransactionRawFieldsUpdate(BaseModel):
         return value
 
 
-class BulkTransactionUpdate(BaseModel):
+class BulkTransactionUpdate(Schema):
     """Same "field omitted vs explicitly null" contract as TransactionUpdate,
     via exclude_unset: only include a key here when its section is meant to be
     applied to every selected transaction. An omitted key leaves that field
@@ -458,7 +467,7 @@ class BulkTransactionUpdate(BaseModel):
     remove_tag_ids: list[int] | None = None
 
 
-class BulkUpdateTransactionsRequest(BaseModel):
+class BulkUpdateTransactionsRequest(Schema):
     """Exactly one of transaction_ids (the rows ticked on screen) or filter
     (every transaction the Transactions screen's current filter matches, across
     all pages; its pagination and sorting fields are ignored). expected_count,
@@ -471,12 +480,12 @@ class BulkUpdateTransactionsRequest(BaseModel):
     update: BulkTransactionUpdate
 
 
-class BulkUpdateTransactionsResponse(BaseModel):
+class BulkUpdateTransactionsResponse(Schema):
     updated_count: int
     transaction_ids: list[int]
 
 
-class BulkDeleteTransactionsRequest(BaseModel):
+class BulkDeleteTransactionsRequest(Schema):
     """Same selection contract as BulkUpdateTransactionsRequest: exactly one of
     transaction_ids or filter (+ expected_count, 409 if the match moved)."""
     transaction_ids: list[int] = []
@@ -484,12 +493,12 @@ class BulkDeleteTransactionsRequest(BaseModel):
     expected_count: Optional[int] = None
 
 
-class BulkDeleteTransactionsResponse(BaseModel):
+class BulkDeleteTransactionsResponse(Schema):
     deleted_count: int
     transaction_ids: list[int]
 
 
-class TransactionDividePart(BaseModel):
+class TransactionDividePart(Schema):
     """One resulting part of a "divide" operation (splitting a transaction's
     amount into several new transactions by category/date — unrelated to
     TransactionSplit/split_weights, which divides a transaction's amount
@@ -505,11 +514,11 @@ class TransactionDividePart(BaseModel):
     split_source: Literal["global", "account", "category", "custom"] | None = None
 
 
-class TransactionDivideRequest(BaseModel):
+class TransactionDivideRequest(Schema):
     parts: list[TransactionDividePart]
 
 
-class TransactionDivideResponse(BaseModel):
+class TransactionDivideResponse(Schema):
     transactions: list[TransactionOut]
 
 
@@ -555,7 +564,7 @@ OPERATORS_BY_FIELD = {
 }
 
 
-class FilterCondition(BaseModel):
+class FilterCondition(Schema):
     field: Literal[
         "payee", "memo", "raw_label", "amount", "amount_abs", "date", "account_id", "category_id",
         "split_weight", "split_share", "split_balance", "split_share_abs", "split_balance_abs", "tag_id",
@@ -583,7 +592,7 @@ class FilterCondition(BaseModel):
         return self
 
 
-class HistoryGroupRef(BaseModel):
+class HistoryGroupRef(Schema):
     """One History entry's rows (history.group_filter()): the id range they
     span plus what they share."""
     first_id: int
@@ -594,7 +603,7 @@ class HistoryGroupRef(BaseModel):
     batch_id: str | None = None
 
 
-class TransactionSearchRequest(BaseModel):
+class TransactionSearchRequest(Schema):
     user_id: int | None = None
 
     # simple mode
@@ -638,7 +647,7 @@ BulkUpdateTransactionsRequest.model_rebuild()
 BulkDeleteTransactionsRequest.model_rebuild()
 
 
-class TransactionSearchResponse(BaseModel):
+class TransactionSearchResponse(Schema):
     items: list[TransactionOut]
     total: int
     page: int
@@ -646,13 +655,13 @@ class TransactionSearchResponse(BaseModel):
     total_pages: int
 
 
-class DashboardResponse(BaseModel):
+class DashboardResponse(Schema):
     accounts: List[AccountOut]
     recent_transactions: List[TransactionOut]
     balances: List[UserBalanceOut] = []
 
 
-class CategoryChartItem(BaseModel):
+class CategoryChartItem(Schema):
     category_id: int | None
     category_name: str
     category_type: Literal["Income", "Expense", "Uncategorized"]
@@ -661,7 +670,7 @@ class CategoryChartItem(BaseModel):
     currency: str
 
 
-class MonthChartItem(BaseModel):
+class MonthChartItem(Schema):
     month: str
     income: float
     expense: float
@@ -669,32 +678,32 @@ class MonthChartItem(BaseModel):
     currency: str
 
 
-class NetMonthChartItem(BaseModel):
+class NetMonthChartItem(Schema):
     month: str
     net: float
     currency: str
 
 
-class MonthCategoryChartItem(BaseModel):
+class MonthCategoryChartItem(Schema):
     month: str
     category_id: int | None
     amount: float
     currency: str
 
 
-class ChartCategoryOut(BaseModel):
+class ChartCategoryOut(Schema):
     category_id: int | None
     name: str
     color: str | None = None
     icon: str | None = None
 
 
-class ParentCategoryOut(BaseModel):
+class ParentCategoryOut(Schema):
     id: int
     name: str
 
 
-class ChartsResponse(BaseModel):
+class ChartsResponse(Schema):
     currencies: List[str]
     by_category: List[CategoryChartItem]
     by_month: List[MonthChartItem]
@@ -704,7 +713,7 @@ class ChartsResponse(BaseModel):
     parent_category: ParentCategoryOut | None = None
 
 
-class TransactionHistoryOut(BaseModel):
+class TransactionHistoryOut(Schema):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -741,17 +750,17 @@ class HistoryEntryOut(HistoryGroupRef):
     changes: dict | None = None
 
 
-class HistoryPageOut(BaseModel):
+class HistoryPageOut(Schema):
     items: list[HistoryEntryOut]
     next_before_id: int | None = None
 
 
-class HistoryRowsOut(BaseModel):
+class HistoryRowsOut(Schema):
     items: list[TransactionHistoryOut]
     total: int
 
 
-class ImportDetectResponse(BaseModel):
+class ImportDetectResponse(Schema):
     headers: list[str]
     encoding: str
     delimiter: str
@@ -762,7 +771,7 @@ class ImportDetectResponse(BaseModel):
     file_format: str = "csv"  # 'csv' or 'qif' (a QIF file is read as fixed Date/Payee/Amount/Memo/Category columns)
 
 
-class ImportPreviewRequest(BaseModel):
+class ImportPreviewRequest(Schema):
     account_id: int  # default/fallback account, used when account_col is absent or a row's value doesn't match
     encoding: str
     delimiter: str
@@ -776,14 +785,14 @@ class ImportPreviewRequest(BaseModel):
     account_col: str | None = None
 
 
-class ImportPreviewSplitShare(BaseModel):
+class ImportPreviewSplitShare(Schema):
     user_id: int
     weight: int
     share_amount: float
     source: str
 
 
-class ImportPreviewRow(BaseModel):
+class ImportPreviewRow(Schema):
     row_number: int
     transaction_date: date | None = None
     payee: str | None = None
@@ -818,18 +827,18 @@ class ImportCommitRow(TransactionCreate):
     reconciled: bool = False
 
 
-class ImportCommitRequest(BaseModel):
+class ImportCommitRequest(Schema):
     rows: list[ImportCommitRow]
 
 
-class ImportCommitResponse(BaseModel):
+class ImportCommitResponse(Schema):
     created_count: int
     transaction_ids: list[int]
 
 
 # ── Automatic categorisation (see categorizer.py) ────────────────
 
-class CategorizerTrainRequest(BaseModel):
+class CategorizerTrainRequest(Schema):
     """Which transactions to learn from, and which to be scored on.
 
     Both selections are ordinary Transactions-screen filters, so a training
@@ -847,7 +856,7 @@ class CategorizerTrainRequest(BaseModel):
     note: str | None = Field(None, max_length=200)
 
 
-class CategorizerModelOut(BaseModel):
+class CategorizerModelOut(Schema):
     id: int
     created_at: datetime
     status: str
@@ -862,7 +871,7 @@ class CategorizerModelOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class CategorizerSuggestRequest(BaseModel):
+class CategorizerSuggestRequest(Schema):
     """Either an explicit list of transactions (the bulk action on a
     selection) or a filter (everything matching, e.g. the uncategorised)."""
     transaction_ids: list[int] | None = None
@@ -870,7 +879,7 @@ class CategorizerSuggestRequest(BaseModel):
     limit: int = Field(500, ge=1, le=2000)
 
 
-class CategorizerSuggestion(BaseModel):
+class CategorizerSuggestion(Schema):
     transaction_id: int
     date: _DateType
     payee: str
@@ -885,7 +894,7 @@ class CategorizerSuggestion(BaseModel):
     category_changed: bool = False
 
 
-class CategorizerSuggestResponse(BaseModel):
+class CategorizerSuggestResponse(Schema):
     model_id: int
     threshold: float
     items: list[CategorizerSuggestion]
@@ -893,12 +902,12 @@ class CategorizerSuggestResponse(BaseModel):
     high_confidence_changes: int
 
 
-class CategorizerApplyItem(BaseModel):
+class CategorizerApplyItem(Schema):
     transaction_id: int
     category_id: int
 
 
-class CategorizerApplyRequest(BaseModel):
+class CategorizerApplyRequest(Schema):
     """Applies one value per transaction, which is why this is not
     bulk-update: that endpoint sets the same category on every row it
     touches."""
@@ -907,7 +916,7 @@ class CategorizerApplyRequest(BaseModel):
     overwrite_category: bool = False
 
 
-class CategorizerApplyResponse(BaseModel):
+class CategorizerApplyResponse(Schema):
     updated_count: int
     transaction_ids: list[int]
     # Rows left alone because they already carried a category and
@@ -917,7 +926,7 @@ class CategorizerApplyResponse(BaseModel):
 
 # ── Automatic rules (see transaction_rules.py) ───────────────────
 
-class RuleActions(BaseModel):
+class RuleActions(Schema):
     """What a rule does to a matching transaction: a bulk edit's fields, plus
     renaming the payee. Moving to another account and deleting are left out
     on purpose — too much to happen unseen. An omitted (or None) key leaves
@@ -948,7 +957,7 @@ class RuleActions(BaseModel):
             and not self.add_tag_ids
 
 
-class RuleBase(BaseModel):
+class RuleBase(Schema):
     name: str = Field(..., min_length=1, max_length=100)
     enabled: bool = True
     match_mode: Literal["all", "any"] = "all"
@@ -973,14 +982,14 @@ class RuleOut(RuleBase):
     model_config = {"from_attributes": True}
 
 
-class RuleOrderRequest(BaseModel):
+class RuleOrderRequest(Schema):
     """Every rule's id, in the order they should run."""
     rule_ids: list[int]
 
 
 # ── Saved filters (Transactions screen) ───────────────────────────
 
-class SavedFilterBase(BaseModel):
+class SavedFilterBase(Schema):
     """`filters` is the screen's own filter state, stored and returned as is
     (see models.SavedFilter)."""
     name: str = Field(..., min_length=1, max_length=100)
@@ -992,7 +1001,7 @@ class SavedFilterCreate(SavedFilterBase):
     pass
 
 
-class SavedFilterUpdate(BaseModel):
+class SavedFilterUpdate(Schema):
     """Rename, or replace what the filter holds; omitted fields stay."""
     name: str | None = Field(None, min_length=1, max_length=100)
     mode: Literal["simple", "advanced"] | None = None
@@ -1008,12 +1017,12 @@ class SavedFilterOut(SavedFilterBase):
     model_config = {"from_attributes": True}
 
 
-class SavedFilterOrderRequest(BaseModel):
+class SavedFilterOrderRequest(Schema):
     """Every saved filter's id, in the order the buttons should show."""
     filter_ids: list[int]
 
 
-class RuleOutcomeOut(BaseModel):
+class RuleOutcomeOut(Schema):
     """What the rules change on one transaction. Only the fields a rule
     actually changes are set; `split_weights` set means a rule set the split."""
     rule_ids: list[int]
@@ -1033,14 +1042,14 @@ class RuleOutcomeOut(BaseModel):
 ImportPreviewRow.model_rebuild()
 
 
-class RulePreviewRequest(BaseModel):
+class RulePreviewRequest(Schema):
     """The ticked transactions, and which rules to run on them (by id, in
     their saved order). `rule_ids` omitted means every enabled rule."""
     transaction_ids: list[int]
     rule_ids: list[int] | None = None
 
 
-class RulePreviewItem(BaseModel):
+class RulePreviewItem(Schema):
     transaction_id: int
     date: _DateType
     payee: str
@@ -1052,7 +1061,7 @@ class RulePreviewItem(BaseModel):
     outcome: RuleOutcomeOut | None = None
 
 
-class RulePreviewResponse(BaseModel):
+class RulePreviewResponse(Schema):
     items: list[RulePreviewItem]
     changed_count: int
 
@@ -1061,7 +1070,7 @@ class RuleApplyRequest(RulePreviewRequest):
     pass
 
 
-class RuleApplyResponse(BaseModel):
+class RuleApplyResponse(Schema):
     updated_count: int
     transaction_ids: list[int]
 
@@ -1071,7 +1080,7 @@ class RuleApplyResponse(BaseModel):
 # model's own columns exactly (ids and FK ids included, no joins), so a
 # round-trip preserves the database precisely.
 
-class UserExport(BaseModel):
+class UserExport(Schema):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -1080,7 +1089,7 @@ class UserExport(BaseModel):
     created_at: datetime
 
 
-class AccountExport(BaseModel):
+class AccountExport(Schema):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -1092,7 +1101,7 @@ class AccountExport(BaseModel):
     archived: bool = False
 
 
-class CategoryExport(BaseModel):
+class CategoryExport(Schema):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -1109,7 +1118,7 @@ class CategoryExport(BaseModel):
         return normalize_category_type(value)
 
 
-class AccountUserExport(BaseModel):
+class AccountUserExport(Schema):
     model_config = ConfigDict(from_attributes=True)
 
     account_id: int
@@ -1117,7 +1126,7 @@ class AccountUserExport(BaseModel):
     ownership_percentage: float
 
 
-class CategorySplitExport(BaseModel):
+class CategorySplitExport(Schema):
     model_config = ConfigDict(from_attributes=True)
 
     category_id: int
@@ -1125,14 +1134,14 @@ class CategorySplitExport(BaseModel):
     weight: int
 
 
-class GlobalSplitWeightExport(BaseModel):
+class GlobalSplitWeightExport(Schema):
     model_config = ConfigDict(from_attributes=True)
 
     user_id: int
     weight: int
 
 
-class AccountSplitWeightExport(BaseModel):
+class AccountSplitWeightExport(Schema):
     model_config = ConfigDict(from_attributes=True)
 
     account_id: int
@@ -1140,7 +1149,7 @@ class AccountSplitWeightExport(BaseModel):
     weight: int
 
 
-class TransactionExport(BaseModel):
+class TransactionExport(Schema):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -1172,7 +1181,7 @@ class TransactionExport(BaseModel):
     created_at: datetime
 
 
-class TransactionSplitExport(BaseModel):
+class TransactionSplitExport(Schema):
     model_config = ConfigDict(from_attributes=True)
 
     transaction_id: int
@@ -1182,7 +1191,7 @@ class TransactionSplitExport(BaseModel):
     source: str
 
 
-class TransactionHistoryExport(BaseModel):
+class TransactionHistoryExport(Schema):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -1202,7 +1211,7 @@ class TransactionHistoryExport(BaseModel):
     batch_id: str | None = None
 
 
-class BankConnectionExport(BaseModel):
+class BankConnectionExport(Schema):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -1217,7 +1226,7 @@ class BankConnectionExport(BaseModel):
     last_error: str | None = None
 
 
-class BankAccountLinkExport(BaseModel):
+class BankAccountLinkExport(Schema):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -1235,7 +1244,7 @@ class BankAccountLinkExport(BaseModel):
     last_imported_count: int = 0
 
 
-class TransactionRuleExport(BaseModel):
+class TransactionRuleExport(Schema):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -1249,7 +1258,7 @@ class TransactionRuleExport(BaseModel):
     updated_at: datetime | None = None
 
 
-class TagExport(BaseModel):
+class TagExport(Schema):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -1258,7 +1267,7 @@ class TagExport(BaseModel):
     created_at: datetime | None = None
 
 
-class TransactionLinkExport(BaseModel):
+class TransactionLinkExport(Schema):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -1266,14 +1275,14 @@ class TransactionLinkExport(BaseModel):
     created_at: datetime | None = None
 
 
-class TransactionTagExport(BaseModel):
+class TransactionTagExport(Schema):
     model_config = ConfigDict(from_attributes=True)
 
     transaction_id: int
     tag_id: int
 
 
-class SavedFilterExport(BaseModel):
+class SavedFilterExport(Schema):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -1285,7 +1294,7 @@ class SavedFilterExport(BaseModel):
     updated_at: datetime | None = None
 
 
-class DatabaseExport(BaseModel):
+class DatabaseExport(Schema):
     schema_version: int
     exported_at: datetime
     users: list[UserExport] = []
@@ -1332,7 +1341,7 @@ class DatabaseExport(BaseModel):
 # A single global connection (see models.OneDriveBackupSettings); token
 # columns are never exposed here.
 
-class OneDriveSettingsOut(BaseModel):
+class OneDriveSettingsOut(Schema):
     connected: bool
     account_email: str | None = None
     folder_path: str | None = None
@@ -1346,7 +1355,7 @@ class OneDriveSettingsOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class OneDriveSettingsUpdate(BaseModel):
+class OneDriveSettingsUpdate(Schema):
     folder_path: str
     keep_daily: int
     keep_weekly: int
@@ -1354,7 +1363,7 @@ class OneDriveSettingsUpdate(BaseModel):
     keep_yearly: int
 
 
-class OneDriveBackupRunResult(BaseModel):
+class OneDriveBackupRunResult(Schema):
     ran: bool
     status: Literal["success", "failed"] | None = None
     error: str | None = None
@@ -1363,7 +1372,7 @@ class OneDriveBackupRunResult(BaseModel):
 # ── Email alerts on new transactions ──────────────────────────────
 # One row per user (see models.EmailAlert / email_alerts.py).
 
-class EmailAlertOut(BaseModel):
+class EmailAlertOut(Schema):
     user_id: int
     email: str | None = None
     daily: bool
@@ -1381,19 +1390,19 @@ class EmailAlertOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class EmailAlertUpdate(BaseModel):
+class EmailAlertUpdate(Schema):
     email: str | None = None
     daily: bool = False
     weekly: bool = False
     monthly: bool = False
 
 
-class EmailAlertTestResult(BaseModel):
+class EmailAlertTestResult(Schema):
     sent_to: str
     transaction_count: int
 
 
-class EmailAlertExport(BaseModel):
+class EmailAlertExport(Schema):
     model_config = ConfigDict(from_attributes=True)
 
     user_id: int
@@ -1406,7 +1415,7 @@ class EmailAlertExport(BaseModel):
     last_monthly_sent_at: datetime | None = None
 
 
-class ImportSummary(BaseModel):
+class ImportSummary(Schema):
     mode: Literal["overwrite", "partial"]
     users: int
     accounts: int
@@ -1432,24 +1441,24 @@ class ImportSummary(BaseModel):
 # See enable_banking.py. Nothing here exposes a session id or any part of
 # the signing key — the frontend only ever needs the consent URL.
 
-class BankInstitutionOut(BaseModel):
+class BankInstitutionOut(Schema):
     name: str
     country: str
     logo: str | None = None
 
 
-class BankConnectionCreate(BaseModel):
+class BankConnectionCreate(Schema):
     aspsp_name: str
     aspsp_country: str = "FR"
     language: str = "fr"
 
 
-class BankConnectionCreated(BaseModel):
+class BankConnectionCreated(Schema):
     connection_id: int
     authorization_url: str
 
 
-class BankAccountLinkOut(BaseModel):
+class BankAccountLinkOut(Schema):
     id: int
     connection_id: int
     iban: str | None = None
@@ -1465,7 +1474,7 @@ class BankAccountLinkOut(BaseModel):
     last_imported_count: int
 
 
-class BankConnectionOut(BaseModel):
+class BankConnectionOut(Schema):
     id: int
     aspsp_name: str
     aspsp_country: str
@@ -1476,18 +1485,18 @@ class BankConnectionOut(BaseModel):
     accounts: List[BankAccountLinkOut] = []
 
 
-class BankAccountLinkUpdate(BaseModel):
+class BankAccountLinkUpdate(Schema):
     account_id: int | None = None
     sync_enabled: bool = True
     sync_from_date: _DateType | None = None
 
 
-class BankResyncRequest(BaseModel):
+class BankResyncRequest(Schema):
     date_from: _DateType
     date_to: _DateType
 
 
-class BankSyncRunResult(BaseModel):
+class BankSyncRunResult(Schema):
     ran: bool
     synced_links: int = 0
     created_count: int = 0

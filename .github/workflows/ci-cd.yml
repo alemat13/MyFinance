@@ -39,6 +39,13 @@ jobs:
             sleep 15
           done
           exit 1
+      - name: API types match the OpenAPI schema
+        run: |
+          npm run gen:api
+          git diff --exit-code -- src/api/schema.d.ts || {
+            echo "src/api/schema.d.ts is stale: run 'npm run gen:api' in frontend/ and commit it."
+            exit 1
+          }
       - run: npm run build
       - run: npm test
 
