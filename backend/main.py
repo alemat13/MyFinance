@@ -44,7 +44,15 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="Personal Finance Manager API", lifespan=lifespan)
+# Swagger UI and the schema live under /api like every route, since that is the
+# only prefix the production load balancer sends to this service (behind IAP).
+app = FastAPI(
+    title="Personal Finance Manager API",
+    lifespan=lifespan,
+    docs_url="/api/docs",
+    redoc_url="/api/redoc",
+    openapi_url="/api/openapi.json",
+)
 
 _default_cors_origins = (
     "http://localhost:5173,"
