@@ -305,6 +305,8 @@ class TransactionOut(BaseModel):
     accounting_month: str
     reconciled: bool
     divide_group_id: Optional[int] = None
+    # The group of linked transactions it belongs to (models.TransactionLink).
+    link_id: Optional[int] = None
     # Read-only throughout: present here and absent from TransactionCreate /
     # TransactionUpdate, so the API can show what the source said without
     # ever letting a client rewrite it. See models.Transaction.
@@ -318,6 +320,40 @@ class TransactionOut(BaseModel):
     raw_booking_date: Optional[date] = None
     splits: list[TransactionSplitOut] = []
     tags: list[TagRef] = []
+
+
+# ── Linked transactions (models.TransactionLink) ─────────────────────
+
+class TransactionLinkCreate(BaseModel):
+    """Links these transactions together. Any of them already in a group
+    brings that group along: the groups are merged into one, so ticking a
+    new row with one already linked adds it to that group."""
+    transaction_ids: list[int] = Field(..., min_length=2)
+    name: Optional[str] = Field(None, max_length=100)
+
+
+class TransactionLinkUpdate(BaseModel):
+    """Rename; a blank name clears it."""
+    name: Optional[str] = Field(None, max_length=100)
+
+
+class TransactionLinkUnlink(BaseModel):
+    """Takes these transactions out of the group; a group left with fewer
+    than two is dissolved."""
+    transaction_ids: list[int] = Field(..., min_length=1)
+
+
+class TransactionLinkTotal(BaseModel):
+    currency: str
+    amount: float
+
+
+class TransactionLinkOut(BaseModel):
+    id: int
+    name: Optional[str] = None
+    transactions: list[TransactionOut]
+    # The members' amounts summed per currency: what the group nets to.
+    totals: list[TransactionLinkTotal]
 
 
 class PayeeSuggestionOut(BaseModel):
@@ -490,7 +526,8 @@ DATE_FIELDS = {"date", "raw_initiated_date", "raw_booking_date", "created_at"}
 # catches a 150 € expense as well as a 150 € income.
 NUMERIC_FIELDS = {"amount", "amount_abs", "account_id", "category_id", "accounting_month_offset"}
 # "Reconciled is Yes / No"; the value is a boolean (or "true"/"false").
-BOOL_FIELDS = {"reconciled"}
+# "Linked" is whether the row belongs to a group of linked transactions.
+BOOL_FIELDS = {"reconciled", "linked"}
 BOOL_OPERATORS = {"eq"}
 # "Has tag" / "does not have tag"; with no tag named, "has no tag at all" /
 # "has at least one tag" (is / is not), like the uncategorized category_id.
@@ -522,7 +559,7 @@ class FilterCondition(BaseModel):
     field: Literal[
         "payee", "memo", "raw_label", "amount", "amount_abs", "date", "account_id", "category_id",
         "split_weight", "split_share", "split_balance", "split_share_abs", "split_balance_abs", "tag_id",
-        "reconciled", "accounting_month_offset", "created_at",
+        "reconciled", "linked", "accounting_month_offset", "created_at",
         "raw_counterparty", "raw_transaction_code", "raw_merchant_category_code", "raw_merchant_location",
         "raw_initiated_date", "raw_booking_date",
     ]
@@ -1116,6 +1153,7 @@ class TransactionExport(BaseModel):
     accounting_month_offset: int = 0
     reconciled: bool = False
     divide_group_id: int | None = None
+    link_id: int | None = None
     # Carried through so a restore doesn't strip the bank identifiers that
     # keep a later sync from re-importing the same transactions. Defaulted,
     # so archives written before bank sync existed still validate.
@@ -1220,6 +1258,14 @@ class TagExport(BaseModel):
     created_at: datetime | None = None
 
 
+class TransactionLinkExport(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str | None = None
+    created_at: datetime | None = None
+
+
 class TransactionTagExport(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -1277,6 +1323,9 @@ class DatabaseExport(BaseModel):
     # from before tags.
     tags: list[TagExport] | None = None
     transaction_tags: list[TransactionTagExport] | None = None
+    # Groups of linked transactions (transactions.link_id names one).
+    # Restored by both modes. `None` is an archive from before links.
+    transaction_links: list[TransactionLinkExport] | None = None
 
 
 # ── OneDrive automatic backup connection ──────────────────────────
@@ -1376,6 +1425,7 @@ class ImportSummary(BaseModel):
     email_alerts: int = 0
     tags: int = 0
     transaction_tags: int = 0
+    transaction_links: int = 0
 
 
 # ── Bank sync (Enable Banking) ────────────────────────────────────────

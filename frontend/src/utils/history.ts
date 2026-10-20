@@ -16,6 +16,7 @@ export const HISTORY_SOURCE_LABELS: Record<string, string> = {
   admin: 'admin',
   rule: 'rule',
   bulk: 'bulk edit',
+  link: 'link',
 }
 
 interface SplitSnapshotEntry {
@@ -48,6 +49,10 @@ const describeTagsChange = (change: { old: unknown; new: unknown }) => {
   ].filter(Boolean).join(', ')
 }
 
+// The group's label then (its name, else "#id"), like tags.
+const describeLinkChange = (change: { old: unknown; new: unknown }) =>
+  change.new != null ? `linked: ${change.new}` : `unlinked from ${change.old ?? 'a group'}`
+
 const describeReconciledChange = (change: { old: unknown; new: unknown }) =>
   `Reconciled: ${change.old ? 'Yes' : 'No'} → ${change.new ? 'Yes' : 'No'}`
 
@@ -62,6 +67,8 @@ export const describeHistoryChanges = (changes: TransactionHistoryEntry['changes
           ? describeReconciledChange(value)
           : field === 'tags'
           ? describeTagsChange(value)
+          : field === 'link'
+          ? describeLinkChange(value)
           : `${field}: ${value.old ?? '—'} → ${value.new ?? '—'}`
       ).join(', ')
     : ''
@@ -88,6 +95,7 @@ export const describeGroupChanges = (changes: HistoryEntry['changes'], users: Us
         }
         if (field === 'category_id') return `category → ${categoryNameFor(value.new as number | null, categories)}`
         if (field === 'reconciled') return `Reconciled → ${value.new ? 'Yes' : 'No'}`
+        if (field === 'link') return value.new != null ? `linked: ${value.new}` : 'unlinked'
         return `${field} → ${value.new ?? '—'}`
       }).join(', ')
     : ''

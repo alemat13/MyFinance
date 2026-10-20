@@ -17,6 +17,7 @@ erDiagram
     users ||--o{ transaction_splits : "owes"
     transactions ||--o{ transaction_tags : "tagged"
     tags ||--o{ transaction_tags : "on"
+    transaction_links |o--o{ transactions : "links"
 
     transaction_history {
         int id PK
@@ -97,6 +98,13 @@ erDiagram
         boolean reconciled "manually set, default false"
         datetime created_at
         int divide_group_id "nullable, NOT a FK; anchor transaction's own id, shared by every part of a divide"
+        int link_id FK "nullable, indexed, ON DELETE SET NULL; the group of linked transactions"
+    }
+
+    transaction_links {
+        int id PK
+        string name "nullable"
+        datetime created_at
     }
 
     tags {
@@ -304,6 +312,9 @@ The Transactions screen's saved filters (`routers/saved_filters.py`): a filter s
 
 ### `tags` and `transaction_tags`
 Free labels on transactions (`backend/tags.py`, `routers/tags.py`, Alembic `0022`), many-to-many: `transaction_tags` holds one row per (transaction, tag), written through `Transaction.tags`. A tag feeds no balance, chart, split or cache namespace; it is searched (simple filter `tag_id`/`untagged`, advanced condition `tag_id` with `eq`/`ne`, a null value meaning "no tag at all", like an uncategorized `category_id`), set by hand (`tag_ids` on create/update, replacing the whole set), in bulk (`add_tag_ids`/`remove_tag_ids` on bulk-update, each row keeping its others), and by rules (`RuleActions.add_tag_ids`, add only). Every change to a transaction's tags writes a `changes.tags` entry (`{"old": [names], "new": [names]}`, names as they were then) in `transaction_history`, including the removals done by deleting a tag (`DELETE /api/tags/{id}`). Divide parts inherit the original's tags. In the backup archive (`tags`, `transaction_tags`), restored by both modes: a partial restore reuses an existing tag of the same name; `None` is an archive from before tags. Exported in the Transactions CSV/Excel as one `Tags` column, names separated by `, `, which is why a name can't contain `,`, `;` or `|`.
+
+### `transaction_links`
+Groups of linked transactions (`backend/transaction_links.py`, `routers/transaction_links.py`, Alembic `0024`): a transfer's two sides, an expense and its refunds, a shared expense and what the others paid back. Each member points at its group through `transactions.link_id` (a real FK, `ON DELETE SET NULL`), so a transaction belongs to one group at most. Nothing is split or created, and a group feeds no balance, chart, split or cache namespace: it exists so the detail panel can list the members and their net (`GET /api/transaction-links/{id}`, `totals` summed per currency). `POST /api/transaction-links` links two or more transactions; any of them already in a group brings that group along, the groups merging into the oldest (its name kept unless a new one is given), which is how a row joins an existing group. `PUT` renames (blank clears), `POST /{id}/unlink` takes members out and `DELETE /{id}` dissolves it. A group always has at least two members: one left with fewer, by an unlink or a transaction delete (single or bulk, `transaction_links.prune()`), is deleted and its last member unlinked. Every join or leave writes a `changes.link` entry (`{"old": label, "new": label}`, the label being the group's name, else `#id`) under `source="link"` in `transaction_history`. Searched by the advanced condition `linked` (`eq` true/false, refused by rules). In the backup archive (`transaction_links`, plus each transaction's `link_id`), restored by both modes: a partial restore recreates a group under a new id when at least two of its members are restored; `None` is an archive from before links.
 
 ### `email_alerts`
 Each user's email alert on new transactions (`backend/email_alerts.py`, `routers/email_alerts.py`, Alembic `0021`): at most one row per user, created the first time their settings are saved on the Email alerts screen. A transaction is "new" by its `created_at` (when it reached MyFinance: bank sync, import or typed in), not its `date`, and only on accounts the user owns (`ownership_percentage > 0`). Sent at the end of the bank sync, never on a schedule of their own: the scheduled `POST /api/bank-sync/run-due` (0h/6h/12h/18h Paris) sends whatever is due — daily with the 6h sync, weekly with the Sunday 18h sync, monthly with the 18h sync of the month's last day, a missed one with the next sync — and a sync started by hand also sends the daily alert of whoever has something new. An email lists at most 100 rows, most recent first, and counts the rest; a window with nothing new sends nothing. Sent over SMTP (`SMTP_HOST`/`SMTP_PORT`/`SMTP_USERNAME`/`SMTP_PASSWORD`) from `ALERT_FROM_ADDRESS`. Deleting a user deletes their row. Part of the backup archive (`email_alerts`), restored in overwrite mode only; `None` is an archive from before alerts.

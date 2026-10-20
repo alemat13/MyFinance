@@ -30,6 +30,7 @@ const ORIGINS: [string, string][] = [
   ['csv_import', 'Import'],
   ['bank_sync', 'Bank sync'],
   ['divide', 'Divide'],
+  ['link', 'Links'],
   ['admin', 'Admin'],
 ]
 

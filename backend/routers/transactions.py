@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session, selectinload
 import cache_service
 import split_engine
 import tags as tag_service
+import transaction_links
 import audit
 from audit import TRACKED_FIELDS, _jsonify, diff_splits, record_transaction_history, splits_created_changes
 from database import get_db
@@ -454,10 +455,14 @@ def bulk_delete_transactions(data: BulkDeleteTransactionsRequest, actor_user_id:
     deleted_ids = []
     for start in range(0, len(target_ids), BULK_UPDATE_CHUNK_SIZE):
         chunk_ids = target_ids[start:start + BULK_UPDATE_CHUNK_SIZE]
+        link_ids = set()
         for transaction in db.query(Transaction).filter(Transaction.id.in_(chunk_ids)).order_by(Transaction.id).all():
             record_transaction_history(db, transaction, "deleted", actor_user_id, source="bulk")
+            link_ids.add(transaction.link_id)
             db.delete(transaction)
             deleted_ids.append(transaction.id)
+        db.flush()
+        transaction_links.prune(db, link_ids, actor_user_id)
         cache_service.invalidate(db, "balances", "charts", "account_totals", "category_usage")
         db.commit()
     return BulkDeleteTransactionsResponse(deleted_count=len(deleted_ids), transaction_ids=deleted_ids)
@@ -560,7 +565,10 @@ def delete_transaction(transaction_id: int, actor_user_id: int | None = Query(No
     if not transaction:
         raise HTTPException(404, "Transaction not found")
     record_transaction_history(db, transaction, "deleted", actor_user_id)
+    link_id = transaction.link_id
     db.delete(transaction)
+    db.flush()
+    transaction_links.prune(db, [link_id], actor_user_id)
     cache_service.invalidate(db, "balances", "charts", "account_totals", "category_usage")
     db.commit()
 
