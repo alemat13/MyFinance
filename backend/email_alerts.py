@@ -39,6 +39,7 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session, joinedload
 
+import account_totals
 from models import AccountUser, EmailAlert, Transaction, User
 
 logger = logging.getLogger(__name__)
@@ -229,20 +230,38 @@ def _amount_color(amount: float) -> str:
     return CREDIT_COLOR if amount >= 0 else DEBIT_COLOR
 
 
-def _by_account(rows: list[Transaction]) -> list[tuple[str, str, list[Transaction]]]:
-    """(account name, currency, rows) per account, by account name, each
-    keeping the rows' own order (most recent first)."""
+def _by_account(rows: list[Transaction]) -> list[tuple[int | None, str, str, list[Transaction]]]:
+    """(account id, account name, currency, rows) per account, by account
+    name, each keeping the rows' own order (most recent first)."""
     groups: dict[int | None, list[Transaction]] = {}
     for t in rows:
         groups.setdefault(t.account_id, []).append(t)
     out = [
-        (g[0].account.name if g[0].account else "", g[0].account.currency if g[0].account else "EUR", g)
-        for g in groups.values()
+        (aid, g[0].account.name if g[0].account else "", g[0].account.currency if g[0].account else "EUR", g)
+        for aid, g in groups.items()
     ]
-    return sorted(out, key=lambda item: item[0].lower())
+    return sorted(out, key=lambda item: item[1].lower())
 
 
-def build_message(user: User, alert: EmailAlert, frequency: str, rows: list[Transaction]) -> EmailMessage:
+def account_balances(db: Session, rows: list[Transaction]) -> dict[int, float]:
+    """Today's balance of every account `rows` touch, as the app shows it
+    (offset + all its transactions, not only the new ones)."""
+    totals = account_totals.get_transaction_totals(db)
+    accounts = {t.account_id: t.account for t in rows if t.account is not None}
+    return {aid: account_totals.account_balance(a, totals.get(aid, 0.0)) for aid, a in accounts.items()}
+
+
+def _balance(amount: float, currency: str) -> str:
+    """A balance as the dashboard shows one: a sign only when negative."""
+    return _money(amount, currency).lstrip("+")
+
+
+def build_message(
+    user: User, alert: EmailAlert, frequency: str, rows: list[Transaction],
+    balances: dict[int, float] | None = None,
+) -> EmailMessage:
+    """`balances` ({account id: balance}) adds each account's current
+    balance under its heading; an account missing from it shows none."""
     count = len(rows)
     label = FREQUENCY_LABELS[frequency]
     noun = "transaction" if count == 1 else "transactions"
@@ -267,8 +286,11 @@ def build_message(user: User, alert: EmailAlert, frequency: str, rows: list[Tran
     # ── Plain text ──
     text = [f"Hello {user.name},", "", f"{count} new {noun} reached MyFinance on your accounts."]
     text += [f"In {_money(i, cur)} · Out {_money(o, cur)}" for cur, (i, o) in sorted(totals.items())]
-    for name, currency, group in groups:
+    balances = balances or {}
+    for account_id, name, currency, group in groups:
         text += ["", f"== {name} =="]
+        if account_id in balances:
+            text.append(f"Balance: {_balance(balances[account_id], currency)}")
         for t in group:
             category = _category_style(t)[0]
             text.append(f"{t.date.strftime('%d/%m/%Y')}  {t.payee}  {category}  {_money(t.amount, currency)}")
@@ -321,15 +343,21 @@ def build_message(user: User, alert: EmailAlert, frequency: str, rows: list[Tran
 </tr></table></td></tr>{memo}
 </table></td></tr></table></td></tr>"""
 
-    def section(name: str, currency: str, group: list[Transaction]) -> str:
+    def section(account_id: int | None, name: str, currency: str, group: list[Transaction]) -> str:
         net = sum(t.amount for t in group)
         n = len(group)
+        balance = (
+            f'<tr><td colspan="2" style="font-size:12px;color:#64748b;padding-top:2px;">Balance '
+            f'<span style="color:{"#0f172a" if balances[account_id] >= 0 else DEBIT_COLOR};font-weight:600;'
+            f'white-space:nowrap;">{esc(_balance(balances[account_id], currency))}</span></td></tr>'
+            if account_id in balances else ""
+        )
         return f"""<tr><td style="padding:16px 4px 8px 4px;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
 <td style="font-size:14px;font-weight:700;color:#0f172a;">{esc(name)}
 <span style="font-weight:400;color:#64748b;font-size:12px;">&nbsp;· {n} {"transaction" if n == 1 else "transactions"}</span></td>
 <td align="right" style="font-size:13px;">{money_span(net, currency, 600)}</td>
-</tr></table></td></tr>{"".join(card(t, currency) for t in group)}"""
+</tr>{balance}</table></td></tr>{"".join(card(t, currency) for t in group)}"""
 
     summary = "".join(
         f'<div style="margin-top:6px;font-size:14px;">In {money_span(i, cur)}'
@@ -404,7 +432,7 @@ def send_alert(db: Session, user: User, alert: EmailAlert, frequency: str, now: 
     rows = new_transactions(db, user.id, start, now)
     sent = False
     if rows:
-        send_message(build_message(user, alert, frequency, rows))
+        send_message(build_message(user, alert, frequency, rows, account_balances(db, rows)))
         sent = True
     setattr(alert, f"last_{frequency}_sent_at", now)
     return sent
@@ -460,7 +488,7 @@ def send_test(db: Session, user: User, alert: EmailAlert, now: datetime | None =
     the number of transactions listed."""
     now = now or _utcnow()
     rows = new_transactions(db, user.id, now - FIRST_WINDOW["weekly"], now)
-    message = build_message(user, alert, "weekly", rows)
+    message = build_message(user, alert, "weekly", rows, account_balances(db, rows))
     message.replace_header("Subject", f"[Test] {message['Subject']}")
     send_message(message)
     return len(rows)

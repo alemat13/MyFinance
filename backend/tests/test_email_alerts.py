@@ -368,3 +368,23 @@ def test_icon_png_is_drawn_in_the_category_colour():
     assert drawn and all(p[:3] == bytes((0xD9, 0x77, 0x06)) for p in drawn)
     # An unknown or missing icon falls back to the app's default one.
     assert email_alerts.icon_png("NoSuchIcon", "#000000") == email_alerts.icon_png(None, "#000000")
+
+
+def test_each_account_heading_shows_its_current_balance(db, sample_user, sample_account_with_user, outbox):
+    sample_account_with_user.balance_offset = 1000.0
+    last = datetime(2026, 10, 15, 5)
+    _tx(db, sample_account_with_user, "Old rent", -1500.0, last - timedelta(days=10))  # before the window
+    _tx(db, sample_account_with_user, "Carrefour", -42.5, last + timedelta(hours=1))
+    db.add(EmailAlert(user_id=sample_user.id, email="me@olivex.fr", daily=True, last_daily_sent_at=last))
+    db.commit()
+    email_alerts.run_due_alerts(db, FRI_0500_UTC)
+
+    # Offset + every transaction of the account, not only the new ones.
+    body = outbox[0].get_body(("html",)).get_content()
+    assert f'color:{email_alerts.DEBIT_COLOR};font-weight:600;white-space:nowrap;">-542,50 €</span>' in body
+    assert "Balance: -542,50 €" in outbox[0].get_body(("plain",)).get_content()
+
+
+def test_a_positive_balance_carries_no_plus_sign():
+    assert email_alerts._balance(1234.5, "EUR") == "1 234,50 €"
+    assert email_alerts._balance(-3.0, "EUR") == "-3,00 €"
