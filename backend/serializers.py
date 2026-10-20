@@ -86,6 +86,7 @@ def build_transaction_out_from_row(
         accounting_month=compute_accounting_month(t.date, t.accounting_month_offset),
         reconciled=t.reconciled,
         divide_group_id=t.divide_group_id,
+        link_id=t.link_id,
         raw_source=t.raw_source,
         raw_label=t.raw_label,
         raw_counterparty=t.raw_counterparty,

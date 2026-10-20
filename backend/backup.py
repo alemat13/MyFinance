@@ -15,7 +15,7 @@ from models import (
     Account, Category, Transaction, User, AccountUser,
     CategorySplit, GlobalSplitWeight, AccountSplitWeight, TransactionSplit, TransactionHistory,
     BankConnection, BankAccountLink, CategorizerModel, OneDriveBackupSettings, TransactionRule,
-    SavedFilter, EmailAlert, Tag, TransactionTag,
+    SavedFilter, EmailAlert, Tag, TransactionTag, TransactionLink,
 )
 from schemas import (
     DatabaseExport, ImportSummary,
@@ -23,7 +23,7 @@ from schemas import (
     CategorySplitExport, GlobalSplitWeightExport, AccountSplitWeightExport, TransactionExport,
     TransactionSplitExport, TransactionHistoryExport,
     BankConnectionExport, BankAccountLinkExport, TransactionRuleExport,
-    SavedFilterExport, EmailAlertExport, TagExport, TransactionTagExport,
+    SavedFilterExport, EmailAlertExport, TagExport, TransactionTagExport, TransactionLinkExport,
 )
 
 SCHEMA_VERSION = 1
@@ -34,7 +34,7 @@ ZIP_ENTRY_NAME = "backup.json"
 _SERIAL_PK_TABLES = [
     "users", "accounts", "categories", "transactions", "transaction_history",
     "bank_connections", "bank_account_links", "transaction_rules",
-    "saved_filters", "tags",
+    "saved_filters", "tags", "transaction_links",
 ]
 
 # Survive an overwrite restore untouched, and are never in an archive. The
@@ -93,6 +93,7 @@ def build_export(db: Session) -> DatabaseExport:
         email_alerts=[EmailAlertExport.model_validate(a) for a in db.query(EmailAlert).all()],
         tags=[TagExport.model_validate(t) for t in db.query(Tag).all()],
         transaction_tags=[TransactionTagExport.model_validate(tt) for tt in db.query(TransactionTag).all()],
+        transaction_links=[TransactionLinkExport.model_validate(l) for l in db.query(TransactionLink).all()],
     )
 
 
@@ -159,10 +160,13 @@ def _validate_referential_integrity(data: DatabaseExport) -> None:
     for w in data.account_split_weights:
         _check("account_split_weights.account_id", w.account_id, account_ids)
         _check("account_split_weights.user_id", w.user_id, user_ids)
+    link_ids = {l.id for l in data.transaction_links or []}
     for t in data.transactions:
         _check("transactions.account_id", t.account_id, account_ids)
         if t.category_id is not None:
             _check("transactions.category_id", t.category_id, category_ids)
+        if t.link_id is not None:
+            _check("transactions.link_id", t.link_id, link_ids)
     for s in data.transaction_splits:
         _check("transaction_splits.transaction_id", s.transaction_id, transaction_ids)
         _check("transaction_splits.user_id", s.user_id, user_ids)
@@ -232,6 +236,12 @@ def import_database(db: Session, data: DatabaseExport, mode: Literal["overwrite"
         session.add_all(AccountSplitWeight(**w.model_dump()) for w in data.account_split_weights)
         session.flush()
 
+        # Before the transactions, which name them. An archive from before
+        # links (None) restores with none.
+        transaction_links = data.transaction_links or []
+        session.add_all(TransactionLink(**l.model_dump(exclude_none=True)) for l in transaction_links)
+        session.flush()
+
         # Restoring an already-valid snapshot, not fresh user input, so this
         # bypasses the app-level ownership/split-percentage validators —
         # same as seed.py already does.
@@ -294,6 +304,7 @@ def import_database(db: Session, data: DatabaseExport, mode: Literal["overwrite"
         email_alerts=len(email_alerts),
         tags=len(tags),
         transaction_tags=len(transaction_tags),
+        transaction_links=len(transaction_links),
     )
 
 
@@ -441,7 +452,7 @@ def import_partial(db: Session, data: DatabaseExport) -> ImportSummary:
         # archive can carry the whole ledger.
         new_transactions = [
             Transaction(
-                **t.model_dump(exclude={"id", "account_id", "category_id", "divide_group_id"}),
+                **t.model_dump(exclude={"id", "account_id", "category_id", "divide_group_id", "link_id"}),
                 account_id=_account(t.account_id),
                 category_id=_category(t.category_id),
             )
@@ -455,6 +466,23 @@ def import_partial(db: Session, data: DatabaseExport) -> ImportSummary:
         for t, new in zip(data.transactions, new_transactions):
             if t.divide_group_id is not None:
                 new.divide_group_id = transaction_map.get(t.divide_group_id)
+        # Each archive group with at least two restored members is recreated
+        # under a new id; the restored rows never join an existing group.
+        archive_links = {l.id: l for l in data.transaction_links or []}
+        members_by_link: dict[int, list[Transaction]] = {}
+        for t, new in zip(data.transactions, new_transactions):
+            if t.link_id in archive_links:
+                members_by_link.setdefault(t.link_id, []).append(new)
+        created_links = 0
+        for old_link_id, members in sorted(members_by_link.items()):
+            if len(members) < 2:
+                continue
+            group = TransactionLink(**archive_links[old_link_id].model_dump(exclude={"id"}, exclude_none=True))
+            db.add(group)
+            db.flush()
+            for new in members:
+                new.link_id = group.id
+            created_links += 1
 
         db.add_all(
             TransactionSplit(**s.model_dump(exclude={"transaction_id"}), transaction_id=transaction_map[s.transaction_id])
@@ -507,4 +535,5 @@ def import_partial(db: Session, data: DatabaseExport) -> ImportSummary:
         transaction_history=len(history),
         tags=created_tags,
         transaction_tags=len(pairs),
+        transaction_links=created_links,
     )

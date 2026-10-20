@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState } from 'react'
-import { ArrowDown, ArrowUp, CheckCircle2, Circle } from 'lucide-react'
+import { ArrowDown, ArrowUp, CheckCircle2, Circle, Link2 } from 'lucide-react'
 import {
   Transaction, TransactionSplit, GlobalSplitWeight,
   Account, Category, User, Tag, TransactionSearchRequest, SavedFilter, HistoryGroupRef,
@@ -10,6 +10,7 @@ import BulkEditModal from './BulkEditModal'
 import BulkDeleteModal from './BulkDeleteModal'
 import CategorizeModal from './CategorizeModal'
 import RulesApplyModal from './RulesApplyModal'
+import LinkTransactionsModal from './LinkTransactionsModal'
 import CategoryPicker from './CategoryPicker'
 import AccountPicker from './AccountPicker'
 import TransactionConditions, { ConditionRow, SEARCH_ONLY_FIELDS, conditionsToFilters } from './TransactionConditions'
@@ -120,6 +121,16 @@ const splitsDisplay = (splits: TransactionSplit[], currency: string) => {
   return splits.map(s => `${s.user_name} ${formatMoney(s.share_amount, currency)}`).join(' / ')
 }
 
+// Marks a transaction that belongs to a group of linked ones; the group itself
+// is shown in the detail panel.
+function LinkedIcon() {
+  return (
+    <span title="Linked to other transactions" className="inline-flex align-[-2px] text-accent mx-1">
+      <Link2 size={14} aria-label="Linked" />
+    </span>
+  )
+}
+
 export default function TransactionsPage({ onBack, selectedUserId, onOpenCategorizer, onOpenRules, onCreateRule }: Props) {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
@@ -137,6 +148,7 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [bulkEditOpen, setBulkEditOpen] = useState(false)
   const [categorizeOpen, setCategorizeOpen] = useState(false)
+  const [linkOpen, setLinkOpen] = useState(false)
   const [rulesOpen, setRulesOpen] = useState(false)
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
   const [adminMode] = useState(isAdminMode)
@@ -603,6 +615,11 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
           <Button size="sm" onClick={() => setBulkEditOpen(true)}>Bulk Edit</Button>
           <Button size="sm" variant="secondary" onClick={() => setCategorizeOpen(true)}>Categorize</Button>
           <Button size="sm" variant="secondary" onClick={() => setRulesOpen(true)}>Apply rules</Button>
+          {selectedIds.size >= 2 && (
+            <Button size="sm" variant="secondary" onClick={() => setLinkOpen(true)}>
+              <Link2 size={14} /> Link
+            </Button>
+          )}
           {adminMode && (
             <Button size="sm" variant="danger" onClick={() => setBulkDeleteOpen(true)}>Delete selected</Button>
           )}
@@ -653,7 +670,10 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
                     </IconButton>
                     <div className="flex-1 min-w-0">
                       <div className="flex justify-between gap-2">
-                        <span className="font-medium text-slate-900 dark:text-slate-100 truncate">{t.payee}</span>
+                        <span className="font-medium text-slate-900 dark:text-slate-100 truncate">
+                          {t.link_id != null && <LinkedIcon />}
+                          {t.payee}
+                        </span>
                         <span className={`shrink-0 font-semibold ${t.amount >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                           {formatMoney(t.amount, t.currency)}
                         </span>
@@ -742,6 +762,7 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
                         : <Circle size={16} className="text-slate-300 dark:text-slate-600" />}
                     </IconButton>
                     {t.payee}
+                    {t.link_id != null && <LinkedIcon />}
                   </span>
                   {t.tags && t.tags.length > 0 && <div className="ml-7 mt-0.5"><TagChips tags={t.tags} /></div>}
                 </Td>
@@ -826,6 +847,7 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
           onSaved={() => { closeDetail(); loadTransactions() }}
           onDeleted={() => { closeDetail(); loadTransactions() }}
           onNavigateToTransaction={openDetail}
+          onLinksChanged={loadTransactions}
         />
       )}
 
@@ -837,6 +859,15 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
           onClose={() => setCategorizeOpen(false)}
           onApplied={() => { setCategorizeOpen(false); setSelectedIds(new Set()); loadTransactions() }}
           onOpenCategorizer={onOpenCategorizer}
+        />
+      )}
+
+      {linkOpen && (
+        <LinkTransactionsModal
+          transactions={transactions.filter(t => selectedIds.has(t.id))}
+          selectedUserId={selectedUserId}
+          onClose={() => setLinkOpen(false)}
+          onLinked={() => { setLinkOpen(false); setSelectedIds(new Set()); loadTransactions() }}
         />
       )}
 

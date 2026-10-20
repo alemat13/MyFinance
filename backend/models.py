@@ -69,6 +69,10 @@ class Transaction(Base):
     # this is about avoiding delete failures when a sibling is deleted while
     # others in the group still reference the anchor's id.
     divide_group_id = Column(Integer, nullable=True, index=True)
+    # The group of linked transactions this one belongs to, if any (see
+    # TransactionLink): a transfer's two sides, an expense and its refunds.
+    # At most one group per transaction.
+    link_id = Column(Integer, ForeignKey("transaction_links.id", ondelete="SET NULL"), nullable=True, index=True)
     # The identifier the bank gave this transaction, for rows pulled in by
     # bank sync (see enable_banking.py) — an ASPSP's own entry_reference /
     # transaction_id, or a locally derived "fp:" fingerprint when the bank
@@ -115,6 +119,21 @@ class Transaction(Base):
         Index("ix_transactions_account_id_date", "account_id", "date"),
         Index("ix_transactions_account_id_external_id", "account_id", "external_id", unique=True),
     )
+
+
+class TransactionLink(Base):
+    """A group of transactions that belong together although each stays its
+    own row: the two sides of a transfer between accounts, a health expense
+    and its refunds, a shared expense and what the others paid back. Unlike a
+    divide group, nothing is split or created; the members are linked so the
+    detail panel can list them with their net. Means nothing to balances,
+    charts or splits. Always at least two members: a link left with fewer is
+    deleted (transaction_links.prune())."""
+    __tablename__ = "transaction_links"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(100), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 class Tag(Base):

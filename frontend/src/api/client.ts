@@ -148,6 +148,9 @@ export interface Transaction {
   accounting_month: string
   reconciled: boolean
   divide_group_id: number | null
+  // The group of linked transactions it belongs to (fetchTransactionLink()).
+  // Optional like the raw fields below: the API always sends it.
+  link_id?: number | null
   // What the source reported before any renaming. No matching field on
   // TransactionCreate/TransactionUpdate: only admin mode rewrites them, via
   // updateTransactionRawFields().
@@ -251,7 +254,7 @@ export interface TransactionDivideResponse {
 
 export type FilterField = 'payee' | 'memo' | 'raw_label' | 'amount' | 'amount_abs' | 'date' | 'account_id' | 'category_id'
   | 'split_weight' | 'split_share' | 'split_balance' | 'split_share_abs' | 'split_balance_abs' | 'tag_id'
-  | 'reconciled' | 'accounting_month_offset' | 'created_at'
+  | 'reconciled' | 'linked' | 'accounting_month_offset' | 'created_at'
   | 'raw_counterparty' | 'raw_transaction_code' | 'raw_merchant_category_code' | 'raw_merchant_location'
   | 'raw_initiated_date' | 'raw_booking_date'
 
@@ -747,6 +750,62 @@ export function divideTransaction(
 
 export function fetchDivideSiblings(transactionId: number): Promise<Transaction[]> {
   return request<Transaction[]>(`/transactions/${transactionId}/divide-siblings`)
+}
+
+// ── Linked transactions ─────────────────────────────────────────────
+// A group of transactions that belong together (a transfer's two sides, an
+// expense and its refunds), shown with their net. Linking rows of which one
+// is already linked adds the others to its group.
+
+export interface TransactionLinkTotal {
+  currency: string
+  amount: number
+}
+
+export interface TransactionLink {
+  id: number
+  name: string | null
+  transactions: Transaction[]
+  totals: TransactionLinkTotal[]
+}
+
+export function createTransactionLink(
+  transactionIds: number[],
+  name: string | null,
+  actorUserId?: number | null,
+): Promise<TransactionLink> {
+  const params = actorUserId ? `?actor_user_id=${actorUserId}` : ''
+  return request<TransactionLink>(`/transaction-links${params}`, {
+    method: 'POST',
+    body: JSON.stringify({ transaction_ids: transactionIds, name }),
+  })
+}
+
+export function fetchTransactionLink(id: number): Promise<TransactionLink> {
+  return request<TransactionLink>(`/transaction-links/${id}`)
+}
+
+export function renameTransactionLink(id: number, name: string | null): Promise<TransactionLink> {
+  return request<TransactionLink>(`/transaction-links/${id}`, { method: 'PUT', body: JSON.stringify({ name }) })
+}
+
+// The group as it is afterwards, or null when it was left with fewer than two
+// and dissolved.
+export function unlinkTransactions(
+  id: number,
+  transactionIds: number[],
+  actorUserId?: number | null,
+): Promise<TransactionLink | null> {
+  const params = actorUserId ? `?actor_user_id=${actorUserId}` : ''
+  return request<TransactionLink | null>(`/transaction-links/${id}/unlink${params}`, {
+    method: 'POST',
+    body: JSON.stringify({ transaction_ids: transactionIds }),
+  })
+}
+
+export function deleteTransactionLink(id: number, actorUserId?: number | null): Promise<void> {
+  const params = actorUserId ? `?actor_user_id=${actorUserId}` : ''
+  return request<void>(`/transaction-links/${id}${params}`, { method: 'DELETE' })
 }
 
 export function fetchUsers(): Promise<User[]> {

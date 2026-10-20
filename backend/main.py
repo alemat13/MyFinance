@@ -27,6 +27,7 @@ from routers import (
     saved_filters,
     split_weights,
     tags,
+    transaction_links,
     transaction_rules,
     transactions,
     users,
@@ -117,3 +118,4 @@ app.include_router(saved_filters.router)
 app.include_router(email_alerts.router)
 app.include_router(tags.router)
 app.include_router(history.router)
+app.include_router(transaction_links.router)
