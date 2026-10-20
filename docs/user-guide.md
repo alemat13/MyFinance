@@ -1037,7 +1037,8 @@ Tick any combination and press **Save**. A frequency counts from the moment you 
 on: the first email only holds what arrives after that, never your whole history. When
 nothing new arrived, no email is sent. Each email has the number of new transactions and the
 money in and out, then up to 100 of them (the most recent first) grouped by account, each
-account with its own count and net amount. Every transaction is a card like on the
+account with its own count, net amount and current balance (the same figure as on the
+Accounts screen, in red when negative). Every transaction is a card like on the
 Transactions screen of a phone: payee, date, the category with its icon and colour, the memo
 if any, and the amount in green for money in and red for money out.
 
