@@ -925,6 +925,93 @@ def test_search_advanced_per_user_split_fields(client, sample_account_with_user,
     assert payees("split_balance", sample_user2, "eq", -25) == {"Shared"}
     assert payees("split_balance", sample_user, "eq", 0) == {"Mine only"}
     assert payees("split_balance", sample_user, "gt", 0) == {"Shared"}
+    # The (abs) variants read the same figures without their sign.
+    assert payees("split_share_abs", sample_user, "eq", 75) == {"Shared"}
+    assert payees("split_share_abs", sample_user2, "gt", 20) == {"Shared"}
+    assert payees("split_balance_abs", sample_user2, "eq", 25) == {"Shared"}
+    assert payees("split_balance_abs", sample_user, "eq", 25) == {"Shared"}
+    assert payees("split_balance_abs", sample_user, "lt", 1) == {"Mine only"}
+
+
+def test_search_advanced_account_and_category_in(client, db, sample_account, sample_category):
+    from models import Account, Category
+    other_account = Account(name="Other", type="Checking", currency="EUR")
+    other_category = Category(name="Other cat", type="Expense")
+    db.add_all([other_account, other_category])
+    db.commit()
+    _make_transaction(db, sample_account, sample_category, payee="A1")
+    _make_transaction(db, other_account, other_category, payee="B2")
+    _make_transaction(db, other_account, sample_category, payee="B1", category_id=None)
+
+    def payees(field, operator, value):
+        response = client.post("/api/transactions/search",
+                               json={"conditions": [{"field": field, "operator": operator, "value": value}]})
+        assert response.status_code == 200, response.json()
+        return {item["payee"] for item in response.json()["items"]}
+
+    assert payees("account_id", "in", [sample_account.id, other_account.id]) == {"A1", "B2", "B1"}
+    assert payees("account_id", "not_in", [sample_account.id]) == {"B2", "B1"}
+    assert payees("category_id", "in", [sample_category.id, other_category.id]) == {"A1", "B2"}
+    # A null in the list is "Uncategorized".
+    assert payees("category_id", "in", [other_category.id, None]) == {"B2", "B1"}
+    assert payees("category_id", "in", [None]) == {"B1"}
+    # Like "is not", "not in" leaves out the uncategorized rows unless they are named.
+    assert payees("category_id", "not_in", [sample_category.id]) == {"B2"}
+    assert payees("category_id", "not_in", [sample_category.id, None]) == {"B2"}
+    assert payees("category_id", "not_in", [None]) == {"A1", "B2"}
+
+
+def test_search_simple_account_and_category_lists(client, db, sample_account, sample_category):
+    from models import Account, Category
+    other_account = Account(name="Other", type="Checking", currency="EUR")
+    third_account = Account(name="Third", type="Checking", currency="EUR")
+    other_category = Category(name="Other cat", type="Expense")
+    db.add_all([other_account, third_account, other_category])
+    db.commit()
+    _make_transaction(db, sample_account, sample_category, payee="A1")
+    _make_transaction(db, other_account, other_category, payee="B2")
+    _make_transaction(db, third_account, sample_category, payee="C0", category_id=None)
+
+    def payees(**body):
+        response = client.post("/api/transactions/search", json=body)
+        assert response.status_code == 200, response.json()
+        return {item["payee"] for item in response.json()["items"]}
+
+    assert payees(account_ids=[sample_account.id, other_account.id]) == {"A1", "B2"}
+    assert payees(category_ids=[sample_category.id, other_category.id]) == {"A1", "B2"}
+    # Uncategorized ticked with categories: either.
+    assert payees(category_ids=[other_category.id], uncategorized=True) == {"B2", "C0"}
+    assert payees(uncategorized=True) == {"C0"}
+    assert payees(account_ids=[third_account.id, sample_account.id], category_ids=[sample_category.id]) == {"A1"}
+
+
+def test_search_in_operator_needs_a_list_422(client):
+    for condition in (
+        {"field": "account_id", "operator": "in", "value": 3},
+        {"field": "account_id", "operator": "in", "value": []},
+        {"field": "account_id", "operator": "eq", "value": [3]},
+        {"field": "payee", "operator": "in", "value": [3]},
+    ):
+        response = client.post("/api/transactions/search", json={"conditions": [condition]})
+        assert response.status_code == 422, condition
+
+
+def test_search_advanced_amount_abs(client, db, sample_account, sample_category):
+    _make_transaction(db, sample_account, sample_category, payee="Out", amount=-150.0)
+    _make_transaction(db, sample_account, sample_category, payee="In", amount=150.0)
+    _make_transaction(db, sample_account, sample_category, payee="Small", amount=-20.0)
+
+    def payees(operator, value, value2=None):
+        condition = {"field": "amount_abs", "operator": operator, "value": value}
+        if value2 is not None:
+            condition["value2"] = value2
+        response = client.post("/api/transactions/search", json={"conditions": [condition]})
+        assert response.status_code == 200, response.json()
+        return {item["payee"] for item in response.json()["items"]}
+
+    assert payees("gt", 100) == {"Out", "In"}
+    assert payees("eq", 150) == {"Out", "In"}
+    assert payees("between", 10, 30) == {"Small"}
 
 
 def test_search_per_user_field_without_user_422(client):

@@ -1,6 +1,6 @@
 import { CSSProperties, ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Archive, ChevronDown, ChevronRight } from 'lucide-react'
+import { Archive, Check, ChevronDown, ChevronRight } from 'lucide-react'
 import { Account } from '../api/client'
 import { AccountTypeGroup, filterGroups, groupAccounts } from '../utils/accountGroups'
 
@@ -20,6 +20,10 @@ interface AccountPickerProps {
    *  Never inside a Modal: the dialog's focus trap would keep the search box
    *  from taking focus. */
   portal?: boolean
+  /** Given, several accounts can be ticked: the menu stays open and
+   *  `value`/`onChange` are unused. */
+  values?: number[]
+  onChangeMany?: (ids: number[]) => void
 }
 
 const ARCHIVED_KEY = 'archived'
@@ -35,6 +39,7 @@ const groupKey = (g: AccountTypeGroup) => `type:${g.key}`
 
 export default function AccountPicker({
   accounts, value, onChange, placeholder = 'Account', allowEmpty = true, className = '', disabled = false, id, portal = false,
+  values, onChangeMany,
 }: AccountPickerProps) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
@@ -45,7 +50,10 @@ export default function AccountPicker({
   const triggerRef = useRef<HTMLButtonElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
 
-  const selected = value != null ? accounts.find(a => a.id === value) ?? null : null
+  const multi = values !== undefined
+  const isSelected = (accountId: number) => multi ? values.includes(accountId) : value === accountId
+  const selected = !multi && value != null ? accounts.find(a => a.id === value) ?? null : null
+  const ticked = multi ? accounts.filter(a => values.includes(a.id)) : []
   const groups = useMemo(() => groupAccounts(accounts), [accounts])
 
   const close = () => { setOpen(false); setSearch('') }
@@ -61,18 +69,20 @@ export default function AccountPicker({
     return () => document.removeEventListener('mousedown', onMouseDown)
   }, [open])
 
-  // Seed the expansion once per open: the sub-menu holding the current account,
+  // Seed the expansion once per open: the sub-menus holding the current account(s),
   // or the only sub-menu there is.
   useEffect(() => {
     if (!open) return
     const next = new Set<string>()
-    if (selected) {
-      if (selected.archived) next.add(ARCHIVED_KEY)
+    const current = multi ? ticked : selected ? [selected] : []
+    for (const account of current) {
+      if (account.archived) next.add(ARCHIVED_KEY)
       else {
-        const g = groups.open.find(g => g.accounts.some(a => a.id === selected.id))
+        const g = groups.open.find(g => g.accounts.some(a => a.id === account.id))
         if (g) next.add(groupKey(g))
       }
-    } else if (groups.open.length === 1 && groups.archived.length === 0) {
+    }
+    if (current.length === 0 && groups.open.length === 1 && groups.archived.length === 0) {
       next.add(groupKey(groups.open[0]))
     }
     setExpanded(next)
@@ -122,6 +132,10 @@ export default function AccountPicker({
   }
 
   const select = (accountId: number | null) => {
+    if (multi) {
+      if (accountId != null) onChangeMany?.(values.includes(accountId) ? values.filter(v => v !== accountId) : [...values, accountId])
+      return
+    }
     onChange(accountId)
     close()
   }
@@ -131,10 +145,15 @@ export default function AccountPicker({
       key={a.id}
       type="button"
       role="option"
-      aria-selected={value === a.id}
+      aria-selected={isSelected(a.id)}
       onClick={() => select(a.id)}
-      className={`${rowClasses} ${indent} ${value === a.id ? selectedClasses : ''}`}
+      className={`${rowClasses} ${indent} ${isSelected(a.id) ? selectedClasses : ''}`}
     >
+      {multi && (
+        <span className={`mr-1.5 flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border ${isSelected(a.id) ? 'border-accent bg-accent text-white' : 'border-slate-300 dark:border-slate-500'}`}>
+          {isSelected(a.id) && <Check size={10} strokeWidth={3} />}
+        </span>
+      )}
       <span className="truncate">{a.name}</span>
     </button>
   )
@@ -171,13 +190,16 @@ export default function AccountPicker({
           onChange={e => setSearch(e.target.value)}
           onKeyDown={e => {
             if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); triggerRef.current?.focus() }
-            if (e.key === 'Enter') { e.preventDefault(); if (searching && matches.length > 0) select(matches[0].id) }
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              if (searching && matches.length > 0) { select(matches[0].id); if (multi) setSearch('') }
+            }
           }}
           className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent"
         />
       </div>
       <div role="listbox" aria-label="Accounts" className="overflow-y-auto py-1" style={{ maxHeight: MENU_MAX_HEIGHT - 50 }}>
-        {allowEmpty && !searching && (
+        {allowEmpty && !searching && !multi && (
           <button
             type="button"
             role="option"
@@ -234,8 +256,10 @@ export default function AccountPicker({
         className={`${triggerClasses} min-w-[140px] w-full`}
         onClick={() => (open ? close() : setOpen(true))}
       >
-        <span className={`truncate ${selected ? '' : 'text-slate-500 dark:text-slate-400'}`}>
-          {selected ? selected.name : placeholder}
+        <span className={`truncate ${selected || ticked.length > 0 ? '' : 'text-slate-500 dark:text-slate-400'}`}>
+          {multi
+            ? ticked.length === 0 ? placeholder : ticked.length === 1 ? ticked[0].name : `${ticked.length} accounts`
+            : selected ? selected.name : placeholder}
           {selected?.archived && <span className="ml-1 text-xs text-slate-400">(archived)</span>}
         </span>
         <ChevronDown size={14} className="text-slate-400 shrink-0" />

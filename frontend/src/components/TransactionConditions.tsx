@@ -11,6 +11,7 @@ import { Button, Select, Input, NumberInput, parseNumber } from './ui'
 export interface ConditionRow {
   field: FilterField
   operator: string
+  // Account and category ("is in" / "is not in"): the ids picked, comma-separated.
   value: string
   value2: string
   // Only for a per-user field (USER_FIELDS): which user's figure it reads.
@@ -31,13 +32,29 @@ const NUMERIC_OPERATORS = [
  *  their split weight, their share, and their balance (share minus what their
  *  ownership of the account pays), as the Transactions screen shows them.
  *  Offered only where the builder is given the users (not in rules). */
-export const USER_FIELDS: FilterField[] = ['split_weight', 'split_share', 'split_balance']
+export const USER_FIELDS: FilterField[] = [
+  'split_weight', 'split_share', 'split_share_abs', 'split_balance', 'split_balance_abs',
+]
+/** The "(abs)" fields, read without their sign; their value is never negative. */
+const ABS_FIELDS: FilterField[] = ['amount_abs', 'split_share_abs', 'split_balance_abs']
 /** Fields a search can use but a rule cannot: the per-user figures (an
  *  imported row has no split yet) and when a row was added (it has not been). */
 export const SEARCH_ONLY_FIELDS: FilterField[] = [...USER_FIELDS, 'created_at']
 const NUMERIC_FIELDS: FilterField[] = [
-  'amount', 'account_id', 'category_id', 'tag_id', 'accounting_month_offset', ...USER_FIELDS,
+  'amount', 'amount_abs', 'account_id', 'category_id', 'tag_id', 'accounting_month_offset', ...USER_FIELDS,
 ]
+/** Fields picked from a list, several at a time ("is in" / "is not in"). */
+const LIST_FIELDS: FilterField[] = ['account_id', 'category_id']
+const isListField = (field: FilterField) => LIST_FIELDS.includes(field)
+const LIST_OPERATORS = [
+  { value: 'in', label: 'is in' },
+  { value: 'not_in', label: 'is not in' },
+]
+/** A row saved before "is in" existed says "is" / "is not" of a single id:
+ *  the same thing as a list of one. */
+const listOperator = (operator: string) => operator === 'eq' ? 'in' : operator === 'ne' ? 'not_in' : operator
+export const listIds = (value: string): number[] =>
+  value.split(',').map(v => parseInt(v)).filter(n => !Number.isNaN(n))
 const DATE_FIELDS: FilterField[] = ['date', 'created_at', 'raw_initiated_date', 'raw_booking_date']
 const isDateField = (field: FilterField) => DATE_FIELDS.includes(field)
 
@@ -60,15 +77,10 @@ export const OPERATORS_BY_FIELD: Record<FilterField, { value: string; label: str
   memo: TEXT_OPERATORS,
   raw_label: TEXT_OPERATORS,
   amount: NUMERIC_OPERATORS,
+  amount_abs: NUMERIC_OPERATORS,
   date: DATE_OPERATORS,
-  account_id: [
-    { value: 'eq', label: 'is' },
-    { value: 'ne', label: 'is not' },
-  ],
-  category_id: [
-    { value: 'eq', label: 'is' },
-    { value: 'ne', label: 'is not' },
-  ],
+  account_id: LIST_OPERATORS,
+  category_id: LIST_OPERATORS,
   tag_id: [
     { value: 'eq', label: 'is' },
     { value: 'ne', label: 'is not' },
@@ -84,19 +96,22 @@ export const OPERATORS_BY_FIELD: Record<FilterField, { value: string; label: str
   raw_booking_date: DATE_OPERATORS,
   split_weight: NUMERIC_OPERATORS,
   split_share: NUMERIC_OPERATORS,
+  split_share_abs: NUMERIC_OPERATORS,
   split_balance: NUMERIC_OPERATORS,
+  split_balance_abs: NUMERIC_OPERATORS,
 }
 
 // Bank fields read as the transaction's "As reported by the bank" section
 // names them.
 export const FIELD_LABELS: Record<FilterField, string> = {
-  payee: 'Payee', memo: 'Memo', raw_label: 'Original label', amount: 'Amount', date: 'Date',
+  payee: 'Payee', memo: 'Memo', raw_label: 'Original label', amount: 'Amount', amount_abs: 'Amount (abs)', date: 'Date',
   account_id: 'Account', category_id: 'Category', tag_id: 'Tag',
   reconciled: 'Reconciled', accounting_month_offset: 'Accounting month shift', created_at: 'Added on',
   raw_counterparty: 'Counterparty', raw_transaction_code: 'Bank transaction code / type',
   raw_merchant_category_code: 'Merchant category code', raw_merchant_location: 'Merchant location',
   raw_initiated_date: 'Purchase date', raw_booking_date: 'Booking date',
   split_weight: 'Split weight of', split_share: 'Share of', split_balance: 'Balance of',
+  split_share_abs: 'Share of (abs)', split_balance_abs: 'Balance of (abs)',
 }
 
 export const emptyCondition: ConditionRow = { field: 'payee', operator: 'contains', value: '', value2: '' }
@@ -115,6 +130,7 @@ const isUserField = (field: FilterField) => USER_FIELDS.includes(field)
  *  1000 on; a number only once it parses. */
 function isCompleteValue(field: FilterField, value: string): boolean {
   if (value === '') return false
+  if (isListField(field)) return listIds(value).length > 0
   if (isDateField(field)) {
     const m = /^(\d{4})-\d{2}-\d{2}$/.exec(value)
     return !!m && parseInt(m[1]) >= 1000 && !Number.isNaN(Date.parse(value))
@@ -124,7 +140,7 @@ function isCompleteValue(field: FilterField, value: string): boolean {
 }
 // Fields where the user types a number.
 const isNumberInput = (field: FilterField) =>
-  field === 'amount' || field === 'accounting_month_offset' || isUserField(field)
+  field === 'amount' || field === 'amount_abs' || field === 'accounting_month_offset' || isUserField(field)
 
 /** Drops the rows the user started but left empty or half-typed (a "between"
  *  missing its second bound included), so a condition being typed never
@@ -133,13 +149,16 @@ export function conditionsToFilters(conditions: ConditionRow[]): FilterCondition
   return conditions
     .filter(c => isCompleteValue(c.field, c.value) && (!isUserField(c.field) || !!c.userId))
     .filter(c => c.operator !== 'between' || isCompleteValue(c.field, c.value2))
-    .map(c => ({
+    .map(c => isListField(c.field) ? {
+      field: c.field,
+      operator: listOperator(c.operator),
+      // "Uncategorized" is sent as no category at all (IS NULL).
+      value: listIds(c.value).map(id => id === UNCATEGORIZED_ID ? null : id),
+    } : ({
       field: c.field,
       operator: c.operator,
-      // "Uncategorized" is sent as no category at all (IS NULL / IS NOT NULL).
-      // So is "No tag": "Tag is No tag" is the untagged rows.
-      value: (c.field === 'category_id' && c.value === String(UNCATEGORIZED_ID))
-        || (c.field === 'tag_id' && c.value === String(UNTAGGED_ID))
+      // "No tag" is sent as no tag at all: "Tag is No tag" is the untagged rows.
+      value: (c.field === 'tag_id' && c.value === String(UNTAGGED_ID))
         ? null : coerceValue(c.field, c.value),
       value2: c.operator === 'between' ? coerceValue(c.field, c.value2) as string | number : undefined,
       ...(isUserField(c.field) ? { user_id: parseInt(c.userId!) } : {}),
@@ -186,11 +205,12 @@ export default function TransactionConditions({
   const updateValue = (i: number, key: 'value' | 'value2', value: string) =>
     onChange(conditions.map((c, idx) => idx === i ? { ...c, [key]: value } : c))
 
-  // Weights and month shifts are whole numbers; a weight is never negative.
+  // Weights and month shifts are whole numbers; a weight is never negative,
+  // nor is an "(abs)" figure.
   const numberField = (i: number, c: ConditionRow, key: 'value' | 'value2') => (
     <NumberInput
       integer={c.field === 'split_weight' || c.field === 'accounting_month_offset'}
-      signed={c.field !== 'split_weight'}
+      signed={c.field !== 'split_weight' && !ABS_FIELDS.includes(c.field)}
       value={parseNumber(c[key])}
       onValueChange={v => updateValue(i, key, v == null ? '' : String(v))}
       className="w-[130px]"
@@ -218,23 +238,28 @@ export default function TransactionConditions({
               {(users ?? []).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
             </Select>
           )}
-          <Select value={c.operator} onChange={e => updateOperator(i, e.target.value)} className="min-w-[120px]">
+          <Select value={isListField(c.field) ? listOperator(c.operator) : c.operator}
+                  onChange={e => updateOperator(i, e.target.value)} className="min-w-[120px]">
             {OPERATORS_BY_FIELD[c.field].map(op => <option key={op.value} value={op.value}>{op.label}</option>)}
           </Select>
           {c.field === 'account_id' ? (
             <AccountPicker
               accounts={accounts}
-              value={c.value ? parseInt(c.value) : null}
-              onChange={id => updateValue(i, 'value', id != null ? String(id) : '')}
-              placeholder="Choose account"
+              value={null}
+              onChange={() => {}}
+              values={listIds(c.value)}
+              onChangeMany={ids => updateValue(i, 'value', ids.join(','))}
+              placeholder="Choose accounts"
               className="min-w-[140px]"
             />
           ) : c.field === 'category_id' ? (
             <CategoryPicker
               categories={categories}
-              value={c.value ? parseInt(c.value) : null}
-              onChange={id => updateValue(i, 'value', id != null ? String(id) : '')}
-              anyLabel="Choose category"
+              value={null}
+              onChange={() => {}}
+              values={listIds(c.value)}
+              onChangeMany={ids => updateValue(i, 'value', ids.join(','))}
+              anyLabel="Choose categories"
               className="min-w-[140px]"
             />
           ) : c.field === 'reconciled' ? (

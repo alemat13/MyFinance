@@ -5,13 +5,16 @@ from sqlalchemy.orm import Session
 
 import history
 from models import AccountUser, Transaction, TransactionSplit, TransactionTag
-from schemas import BOOL_FIELDS, DATE_FIELDS, TAG_FIELDS, TEXT_FIELDS, USER_FIELDS, FilterCondition
+from schemas import (
+    BOOL_FIELDS, DATE_FIELDS, LIST_OPERATORS, TAG_FIELDS, TEXT_FIELDS, USER_FIELDS, FilterCondition,
+)
 
 FIELD_COLUMN_MAP = {
     "payee": Transaction.payee,
     "memo": Transaction.memo,
     "raw_label": Transaction.raw_label,
     "amount": Transaction.amount,
+    "amount_abs": func.abs(Transaction.amount),
     "date": Transaction.date,
     "account_id": Transaction.account_id,
     "category_id": Transaction.category_id,
@@ -94,6 +97,19 @@ def _numeric_expr(column, condition: FilterCondition):
     raise ValueError(f'unsupported numeric operator: {condition.operator}')
 
 
+def _list_expr(column, condition: FilterCondition):
+    """In / not in a list of ids, a None in it being "no value" (IS NULL).
+    Like "is not", "not in" never matches a row with no value unless the
+    list names "no value" itself, which it then excludes."""
+    ids = [int(v) for v in condition.value if v is not None]
+    with_null = None in condition.value
+    if condition.operator == "in":
+        exprs = ([column.in_(ids)] if ids else []) + ([column.is_(None)] if with_null else [])
+        return or_(*exprs)
+    exprs = [column.isnot(None)] + ([column.notin_(ids)] if ids else [])
+    return and_(*exprs)
+
+
 def _date_expr(column, condition: FilterCondition):
     value = _coerce_date(condition.value)
     if condition.operator == "between":
@@ -121,6 +137,8 @@ def _split_column(column, user_id: int):
 
 
 def _user_column(field: str, user_id: int):
+    if field.endswith("_abs"):
+        return func.abs(_user_column(field.removesuffix("_abs"), user_id))
     if field == "split_weight":
         return _split_column(TransactionSplit.weight, user_id)
     share = _split_column(TransactionSplit.share_amount, user_id)
@@ -159,6 +177,8 @@ def build_condition_expr(condition: FilterCondition):
         # "Category is / is not" with no category: the uncategorized rows.
         column = Transaction.category_id
         return column.is_(None) if condition.operator == "eq" else column.isnot(None)
+    if condition.operator in LIST_OPERATORS:
+        return _list_expr(FIELD_COLUMN_MAP[condition.field], condition)
     if condition.field in USER_FIELDS:
         return _numeric_expr(_user_column(condition.field, condition.user_id), condition)
     column = FIELD_COLUMN_MAP[condition.field]
@@ -217,7 +237,12 @@ def apply_transaction_filters(query, req, db: Session):
         query = query.filter(Transaction.account_id == req.account_id)
     if req.category_id is not None:
         query = query.filter(Transaction.category_id == req.category_id)
-    if req.uncategorized:
+    if req.account_ids:
+        query = query.filter(Transaction.account_id.in_(req.account_ids))
+    if req.category_ids:
+        in_categories = Transaction.category_id.in_(req.category_ids)
+        query = query.filter(or_(in_categories, Transaction.category_id.is_(None)) if req.uncategorized else in_categories)
+    elif req.uncategorized:
         query = query.filter(Transaction.category_id.is_(None))
     if req.tag_id is not None:
         query = query.filter(_tag_expr(req.tag_id, True))
