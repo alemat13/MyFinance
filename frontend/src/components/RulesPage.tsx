@@ -33,15 +33,19 @@ function toRows(conditions: FilterCondition[]): ConditionRow[] {
   return conditions.map(c => ({
     field: c.field,
     operator: c.operator,
-    value: c.value == null
-      ? (c.field === 'category_id' ? String(UNCATEGORIZED_ID) : c.field === 'tag_id' ? String(UNTAGGED_ID) : '')
-      : String(c.value),
+    value: Array.isArray(c.value)
+      ? c.value.map(v => v == null ? UNCATEGORIZED_ID : v).join(',')
+      : c.value == null
+        ? (c.field === 'category_id' ? String(UNCATEGORIZED_ID) : c.field === 'tag_id' ? String(UNTAGGED_ID) : '')
+        : String(c.value),
     value2: c.value2 == null ? '' : String(c.value2),
   }))
 }
 
 function describeCondition(c: FilterCondition, accounts: Account[], categories: Category[], tags: Tag[]): string {
-  const op = OPERATORS_BY_FIELD[c.field].find(o => o.value === c.operator)?.label ?? c.operator
+  // A rule saved before "is in" existed says "is" / "is not".
+  const op = OPERATORS_BY_FIELD[c.field].find(o => o.value === c.operator)?.label
+    ?? ({ eq: 'is', ne: 'is not' } as Record<string, string>)[c.operator] ?? c.operator
   const show = (v: string | number | boolean | null | undefined) => {
     if (c.field === 'reconciled') return String(v) === 'true' ? 'Yes' : 'No'
     if (c.field === 'account_id') return accounts.find(a => a.id === Number(v))?.name ?? `#${v}`
@@ -49,7 +53,8 @@ function describeCondition(c: FilterCondition, accounts: Account[], categories: 
     if (c.field === 'tag_id') return v == null ? 'No tag' : `#${tags.find(x => x.id === Number(v))?.name ?? v}`
     return typeof v === 'string' ? `"${v}"` : String(v)
   }
-  return `${FIELD_LABELS[c.field]} ${op} ${show(c.value)}${c.operator === 'between' ? ` and ${show(c.value2)}` : ''}`
+  const value = Array.isArray(c.value) ? c.value.map(show).join(', ') : show(c.value)
+  return `${FIELD_LABELS[c.field]} ${op} ${value}${c.operator === 'between' ? ` and ${show(c.value2)}` : ''}`
 }
 
 interface EditorProps {

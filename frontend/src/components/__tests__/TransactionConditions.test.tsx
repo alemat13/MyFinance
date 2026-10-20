@@ -71,10 +71,35 @@ test('without users the per-user fields are not offered', () => {
   expect(screen.getByRole('option', { name: 'Amount' })).toBeTruthy()
 })
 
-test('a Category is Uncategorized condition is sent with no category', () => {
-  expect(conditionsToFilters([{ field: 'category_id', operator: 'eq', value: '-1', value2: '' }])).toEqual([
-    { field: 'category_id', operator: 'eq', value: null, value2: undefined },
+test('Account and Category are sent as "is in" lists, Uncategorized as no category', () => {
+  expect(conditionsToFilters([
+    { field: 'category_id', operator: 'in', value: '-1,4', value2: '' },
+    { field: 'account_id', operator: 'not_in', value: '2,3', value2: '' },
+    // Saved before "is in" existed: "is" of one id is "is in" a list of one.
+    { field: 'category_id', operator: 'eq', value: '-1', value2: '' },
+    { field: 'account_id', operator: 'ne', value: '7', value2: '' },
+    // Nothing picked yet: left out.
+    { field: 'account_id', operator: 'in', value: '', value2: '' },
+  ])).toEqual([
+    { field: 'category_id', operator: 'in', value: [null, 4] },
+    { field: 'account_id', operator: 'not_in', value: [2, 3] },
+    { field: 'category_id', operator: 'in', value: [null] },
+    { field: 'account_id', operator: 'not_in', value: [7] },
   ])
+})
+
+test('the "(abs)" fields are offered next to their signed ones', () => {
+  render(
+    <TransactionConditions conditions={[{ field: 'amount_abs', operator: 'gt', value: '100', value2: '' }]}
+                           onChange={() => {}} matchMode="all" onMatchModeChange={() => {}}
+                           accounts={[]} categories={[]} users={users} />,
+  )
+  const labels = screen.getAllByRole('option').map(o => o.textContent)
+  expect(labels.indexOf('Amount (abs)')).toBe(labels.indexOf('Amount') + 1)
+  expect(labels.indexOf('Share of (abs)')).toBe(labels.indexOf('Share of') + 1)
+  expect(labels.indexOf('Balance of (abs)')).toBe(labels.indexOf('Balance of') + 1)
+  expect(conditionsToFilters([{ field: 'split_balance_abs', operator: 'lt', value: '5', value2: '', userId: '1' }]))
+    .toEqual([{ field: 'split_balance_abs', operator: 'lt', value: 5, value2: undefined, user_id: 1 }])
 })
 
 test('Reconciled is sent as a boolean, bank fields and dates as typed', () => {

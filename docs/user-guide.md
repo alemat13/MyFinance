@@ -250,17 +250,25 @@ transactions.
 Two filtering modes are available:
 
 - **Simple filters**: free-text search over payee/memo, a date range, account and
-  category dropdowns (the category one offers **All categories**, the default, and
-  **Uncategorized**, which lists only the transactions with no category), a **Tag** dropdown
+  category lists where you tick as many as you like (nothing ticked means all; the
+  transactions in any ticked account and any ticked category are listed; the category
+  list also offers **Uncategorized** for the transactions with no category, which can be
+  ticked alongside categories), a **Tag** dropdown
   (**All tags**, **No tag** for the transactions without any, or one tag), a min/max amount range, and a **Reconciled** filter (Any /
   Reconciled only / Unreconciled only — see [Reconciling transactions](#reconciling-transactions)
   below). **Clear** resets all of these.
 - **Advanced filters**: build arbitrary AND/OR conditions across payee, memo, amount,
   date, account, or category, each with its own operator (contains, equals, between,
-  greater/less than, etc.; "Category is **Uncategorized**" lists the transactions with
-  no category, "Category is not Uncategorized" the ones that have one; likewise "Tag is
+  greater/less than, etc.). **Account** and **Category** use **is in** / **is not in**
+  with a list where you tick as many accounts or categories as you like (the menu stays
+  open while you tick; "Category is in Groceries, Restaurants" lists both). Ticking
+  **Uncategorized** in a category list stands for the transactions with no category, so
+  "Category is in Uncategorized" lists those and "Category is not in Uncategorized" the
+  ones that have one. As with every "not" condition, "Category is not in Groceries"
+  leaves out the uncategorized transactions unless Uncategorized is ticked too, which
+  then excludes them anyway. Likewise "Tag is
   #trip" / "Tag is not #trip", and "Tag is **No tag**" for the untagged transactions, "Tag
-  is not No tag" for the ones carrying at least one) — useful for more precise or compound searches than the
+  is not No tag" for the ones carrying at least one — useful for more precise or compound searches than the
   simple filters allow. Also offered: **Reconciled** is Yes / No; **Accounting month
   shift** (the −3…+3 months set on a transaction, so "≠ 0" lists every shifted one);
   **Added on**, the day the transaction reached MyFinance (a bank sync, an import or
@@ -272,7 +280,9 @@ Two filtering modes are available:
   figures on a transaction, picked from a second dropdown: **Split weight of**,
   **Share of** and **Balance of** (share minus the part of the amount that person's
   ownership of the account pays, the same Balance as in the list), with =, ≠, <, >,
-  ≤, ≥ or between. A person left out of a transaction's split counts as weight 0 and
+  ≤, ≥ or between. **Amount (abs)**, **Share of (abs)** and **Balance of (abs)** read the
+  same figures without their sign, so "Amount (abs) > 100" catches a −150 € expense as
+  well as a +150 € income. A person left out of a transaction's split counts as weight 0 and
   share 0, so "Split weight of Olivia = 0" lists the transactions she has no part in.
   They work in saved filters too.
 

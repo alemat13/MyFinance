@@ -1009,9 +1009,22 @@ test('Create rule hands the simple filters over as rule conditions', async () =>
     match_mode: 'all',
     conditions: [
       { field: 'payee', operator: 'contains', value: 'netflix' },
-      { field: 'account_id', operator: 'eq', value: 1 },
+      { field: 'account_id', operator: 'in', value: [1] },
       { field: 'amount', operator: 'lte', value: -5 },
     ],
+  })
+})
+
+test('the simple filter sends several accounts and categories from the URL', async () => {
+  window.history.replaceState(null, '', '/?account_id=1,2&category_id=-1,4')
+  mockSearchTransactions.mockResolvedValue(searchResult([]))
+  mockFetchAccounts.mockResolvedValue([baseAccount])
+  mockFetchCategories.mockResolvedValue([baseCategory])
+
+  renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} onOpenCategorizer={() => {}} />)
+  await waitFor(() => expect(mockSearchTransactions).toHaveBeenCalled())
+  expect(mockSearchTransactions.mock.calls[mockSearchTransactions.mock.calls.length - 1][0]).toMatchObject({
+    account_ids: [1, 2], category_ids: [4], uncategorized: true,
   })
 })
 

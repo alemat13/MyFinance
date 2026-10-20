@@ -249,8 +249,8 @@ export interface TransactionDivideResponse {
   transactions: Transaction[]
 }
 
-export type FilterField = 'payee' | 'memo' | 'raw_label' | 'amount' | 'date' | 'account_id' | 'category_id'
-  | 'split_weight' | 'split_share' | 'split_balance' | 'tag_id'
+export type FilterField = 'payee' | 'memo' | 'raw_label' | 'amount' | 'amount_abs' | 'date' | 'account_id' | 'category_id'
+  | 'split_weight' | 'split_share' | 'split_balance' | 'split_share_abs' | 'split_balance_abs' | 'tag_id'
   | 'reconciled' | 'accounting_month_offset' | 'created_at'
   | 'raw_counterparty' | 'raw_transaction_code' | 'raw_merchant_category_code' | 'raw_merchant_location'
   | 'raw_initiated_date' | 'raw_booking_date'
@@ -258,9 +258,11 @@ export type FilterField = 'payee' | 'memo' | 'raw_label' | 'amount' | 'date' | '
 export interface FilterCondition {
   field: FilterField
   operator: string
-  value?: string | number | boolean | null
+  // A list for "in" / "not_in" (account_id, category_id), null standing for no category.
+  value?: string | number | boolean | (number | null)[] | null
   value2?: string | number | null
-  // The user a per-user field (split_weight/split_share/split_balance) reads.
+  // The user a per-user field (split_weight/split_share/split_balance and
+  // their _abs variants) reads.
   user_id?: number | null
 }
 
@@ -273,6 +275,9 @@ export interface TransactionSearchRequest {
   category_id?: number
   // Only the transactions with no category.
   uncategorized?: boolean
+  // Any of these accounts / categories (uncategorized, when set, is OR'd in).
+  account_ids?: number[]
+  category_ids?: number[]
   // Only the transactions carrying this tag, or (untagged) carrying none.
   tag_id?: number
   untagged?: boolean
@@ -1205,8 +1210,10 @@ export interface SimpleFilterState {
   search: string
   date_from: string
   date_to: string
-  account_id: number
-  category_id: number
+  /** One id (0 for any, UNCATEGORIZED_ID for no category), or several ids
+   *  once more than one is ticked: a filter saved with one id keeps its shape. */
+  account_id: number | number[]
+  category_id: number | number[]
   amount_min: string
   amount_max: string
   reconciled: string
