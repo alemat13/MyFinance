@@ -55,6 +55,7 @@ runs `alembic upgrade head` automatically before every production deploy — no 
 cd backend && python export_openapi.py   # app.openapi() → frontend/src/api/openapi.json
 cd frontend && npm run gen:api           # openapi.json → src/api/schema.d.ts (openapi-typescript)
 ```
+Swagger UI is served at `/api/docs` (ReDoc at `/api/redoc`, the schema at `/api/openapi.json`), under `/api` because that is the only prefix the production load balancer sends to the backend, so it is reachable in production behind IAP like the rest of the API.
 Run both, and commit both files, whenever `schemas.py` or a route's signature changes.
 `backend/tests/test_openapi_export.py` fails while `openapi.json` is stale, and
 `test-frontend` fails while `schema.d.ts` doesn't match it. `client.ts` aliases the
