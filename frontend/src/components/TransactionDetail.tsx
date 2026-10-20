@@ -144,7 +144,7 @@ export default function TransactionDetail({
           amount: formData.amount ?? 0,
           account_id: formData.account_id ?? 0,
           category_id: formData.category_id || null,
-          accounting_month_offset: formData.accounting_month_offset,
+          accounting_month_offset: formData.accounting_month_offset ?? undefined,
           split_weights: split.map(r => ({ user_id: r.user_id, weight: r.value })),
           split_source: splitSource ?? 'custom',
           tag_ids: tagIds,
