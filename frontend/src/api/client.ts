@@ -1,256 +1,94 @@
-export interface AccountUser {
-  user_id: number
-  user_name: string
-  ownership_percentage: number
-}
+import type { components } from './schema'
 
-export interface AccountSplitWeight {
-  user_id: number
-  user_name: string
-  weight: number
-}
+type Schemas = components['schemas']
 
-export interface AccountSplitWeightCreate {
-  user_id: number
-  weight: number
-}
+// Most types below are aliases of the ones generated from the backend's
+// OpenAPI schema (schema.d.ts, `npm run gen:api`). These two helpers adjust a
+// generated type where the frontend says more than the schema can (a literal
+// union for a field the backend types as str) or wants a field optional.
+type With<T, O> = Omit<T, keyof O> & O
+type Loose<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>
 
-export interface Account {
-  id: number
-  name: string
-  type: string
-  balance: number
-  currency: string
-  created_at: string
-  archived: boolean
-  users: AccountUser[]
-  split_weights: AccountSplitWeight[]
-  // Only sent by GET /api/dashboard; null when the account has no transactions.
-  last_transaction_date?: string | null
-}
+export type AccountUser = Schemas['AccountUserOut']
 
-export interface AccountUserCreate {
-  user_id: number
-  ownership_percentage: number
-}
+export type AccountSplitWeight = Schemas['AccountSplitWeightOut']
 
-export interface AccountCreate {
-  name: string
-  type: string
-  balance?: number
-  currency?: string
-  users?: AccountUserCreate[]
-}
+export type AccountSplitWeightCreate = Schemas['AccountSplitWeightUpdateItem']
 
-export interface AccountUpdate {
-  name?: string
-  type?: string
-  balance?: number
-  currency?: string
-  archived?: boolean
-  users?: AccountUserCreate[]
-}
+// last_transaction_date is only filled by GET /api/dashboard (null elsewhere);
+// optional so fixtures and hand-built accounts can leave it out.
+export type Account = Loose<Schemas['AccountOut'], 'last_transaction_date'>
 
-export interface CategorySplit {
-  user_id: number
-  user_name: string
-  weight: number
-}
+export type AccountUserCreate = Schemas['AccountUserCreate']
 
-export interface CategorySplitCreate {
-  user_id: number
-  weight: number
-}
+export type AccountCreate = Schemas['AccountCreate']
 
-export interface Category {
-  id: number
-  name: string
-  type: string
-  color?: string | null
-  icon?: string | null
-  parent_id?: number | null
-  parent_name?: string | null
-  splits: CategorySplit[]
-}
+export type AccountUpdate = Schemas['AccountUpdate']
 
-export interface CategoryCreate {
-  name: string
-  type: string
-  color?: string | null
-  icon?: string | null
-  parent_id?: number | null
-  splits?: CategorySplitCreate[]
-}
+export type CategorySplit = Schemas['CategorySplitOut']
 
-export interface CategoryUpdate {
-  name?: string
-  type?: string
-  color?: string | null
-  icon?: string | null
-  parent_id?: number | null
-  splits?: CategorySplitCreate[]
-}
+export type CategorySplitCreate = Schemas['CategorySplitCreate']
 
-export interface GlobalSplitWeight {
-  user_id: number
-  user_name: string
-  weight: number
-}
+export type Category = Loose<Schemas['CategoryOut'], 'color' | 'icon' | 'parent_id' | 'parent_name'>
+
+// `type` stays a plain string: the form holds '' until a type is picked, and
+// the backend refuses anything outside CATEGORY_TYPES.
+export type CategoryCreate = With<Schemas['CategoryCreate'], { type: string }>
+
+export type CategoryUpdate = With<Schemas['CategoryUpdate'], { type?: string }>
+
+export type GlobalSplitWeight = Schemas['GlobalSplitWeightOut']
 
 export type SplitSource = 'global' | 'account' | 'category' | 'custom'
 
-export interface SplitWeightCreate {
-  user_id: number
-  weight: number
-}
+export type SplitWeightCreate = Schemas['SplitWeightCreate']
 
-export interface TransactionSplit {
-  user_id: number
-  user_name: string
-  weight: number
-  share_amount: number
-  source: SplitSource
-}
+export type TransactionSplit = With<Schemas['TransactionSplitOut'], { source: SplitSource }>
 
-export interface UserBalance {
-  user_id: number
-  user_name: string
-  currency: string
-  net_position: number
-}
+export type UserBalance = Schemas['UserBalanceOut']
 
 /** A free label on transactions, many-to-many: a transaction carries any
  *  number of tags. Means nothing to balances, charts or splits. */
-export interface TagRef {
-  id: number
-  name: string
-  color?: string | null
-}
+export type TagRef = Loose<Schemas['TagRef'], 'color'>
 
-export interface Tag extends TagRef {
-  transaction_count: number
-}
+export type Tag = Schemas['TagOut']
 
-export interface Transaction {
-  id: number
-  date: string
-  payee: string
-  memo: string | null
-  amount: number
-  account_id: number
-  account_name: string
-  currency: string
-  category_id: number | null
-  category_name: string | null
-  category_color?: string | null
-  category_icon?: string | null
-  accounting_month_offset: number
-  accounting_month: string
-  reconciled: boolean
-  divide_group_id: number | null
-  // The group of linked transactions it belongs to (fetchTransactionLink()).
-  // Optional like the raw fields below: the API always sends it.
-  link_id?: number | null
-  // What the source reported before any renaming. No matching field on
-  // TransactionCreate/TransactionUpdate: only admin mode rewrites them, via
-  // updateTransactionRawFields().
-  // Optional like category_color/icon above — the API always sends them, but
-  // declaring them required would force every fixture and every hand-built
-  // Transaction to spell out seven nulls it does not care about.
-  raw_source?: 'enable_banking' | 'csv_import' | 'linxo_export' | null
-  raw_label?: string | null
-  raw_counterparty?: string | null
-  raw_transaction_code?: string | null
-  raw_merchant_category_code?: string | null
-  raw_merchant_location?: string | null
-  raw_initiated_date?: string | null
-  raw_booking_date?: string | null
-  splits: TransactionSplit[]
-  // Optional for the same reason as the raw fields: the API always sends it.
-  tags?: TagRef[]
-}
+// The API always sends every field. The ones listed in Loose are optional
+// here only so that fixtures and hand-built transactions need not spell out
+// a dozen nulls they do not care about.
+export type Transaction = Loose<
+  With<Schemas['TransactionOut'], {
+    raw_source: 'enable_banking' | 'csv_import' | 'linxo_export' | null
+    splits: TransactionSplit[]
+    tags: TagRef[]
+  }>,
+  | 'category_color' | 'category_icon' | 'link_id' | 'tags'
+  | 'raw_source' | 'raw_label' | 'raw_counterparty' | 'raw_transaction_code'
+  | 'raw_merchant_category_code' | 'raw_merchant_location' | 'raw_initiated_date' | 'raw_booking_date'
+>
 
-export interface TransactionCreate {
-  date: string
-  payee: string
-  memo?: string | null
-  amount: number
-  account_id: number
-  category_id?: number | null
-  accounting_month_offset?: number
-  split_weights?: SplitWeightCreate[] | null
-  split_source?: SplitSource | null
-  tag_ids?: number[]
-}
+export type TransactionCreate = Schemas['TransactionCreate']
 
-export interface TransactionUpdate {
-  date?: string
-  payee?: string
-  memo?: string | null
-  amount?: number
-  account_id?: number
-  category_id?: number | null
-  accounting_month_offset?: number
-  reconciled?: boolean
-  split_weights?: SplitWeightCreate[] | null
-  split_source?: SplitSource | null
-  // Replaces the whole set of tags; omitted leaves them alone.
-  tag_ids?: number[]
-}
+export type TransactionUpdate = With<Schemas['TransactionUpdate'], { split_source?: SplitSource | null }>
 
 // Only include a key here when its section is meant to be applied to every
 // selected transaction — an omitted key leaves that field untouched on all
 // of them, mirroring the backend's exclude_unset contract.
 export type PayeeMode = 'replace' | 'prepend' | 'append' | 'regex'
 
-export interface BulkTransactionUpdate {
-  category_id?: number | null
-  // Renames every selected transaction (payee only, never the memo).
-  payee?: string
-  // What to do with `payee`: set it (default), or add it before/after each
-  // row's own payee, as typed (a separating space is part of the text).
-  payee_mode?: PayeeMode
-  // Regex mode only (admin mode on screen): what each match becomes, $1 for a group.
-  payee_replacement?: string
-  payee_ignore_case?: boolean
-  // Admin mode only: moves the selection to this account, splits unchanged.
-  account_id?: number
-  accounting_month_offset?: number
-  reconciled?: boolean
-  split_weights?: SplitWeightCreate[] | null
-  split_source?: SplitSource | null
-  // Tags added to / removed from every selected row, which keeps its others.
-  add_tag_ids?: number[]
-  remove_tag_ids?: number[]
-}
+export type BulkTransactionUpdate = Schemas['BulkTransactionUpdate']
 
-export interface BulkUpdateTransactionsResponse {
-  updated_count: number
-  transaction_ids: number[]
-}
+export type BulkUpdateTransactionsResponse = Schemas['BulkUpdateTransactionsResponse']
 
 // A "Divide" splits one transaction's amount into several new transactions
 // by category/date — unrelated to split_weights/SplitSource above, which
 // divide a transaction's amount among users. No account_id: every part
 // stays on the original transaction's account.
-export interface TransactionDividePart {
-  date: string
-  payee: string
-  memo?: string | null
-  amount: number
-  category_id?: number | null
-  accounting_month_offset?: number
-  split_weights?: SplitWeightCreate[] | null
-  split_source?: SplitSource | null
-}
+export type TransactionDividePart = Schemas['TransactionDividePart']
 
-export interface TransactionDivideRequest {
-  parts: TransactionDividePart[]
-}
+export type TransactionDivideRequest = Schemas['TransactionDivideRequest']
 
-export interface TransactionDivideResponse {
-  transactions: Transaction[]
-}
+export type TransactionDivideResponse = With<Schemas['TransactionDivideResponse'], { transactions: Transaction[] }>
 
 export type FilterField = 'payee' | 'memo' | 'raw_label' | 'amount' | 'amount_abs' | 'date' | 'account_id' | 'category_id'
   | 'split_weight' | 'split_share' | 'split_balance' | 'split_share_abs' | 'split_balance_abs' | 'tag_id'
@@ -258,139 +96,41 @@ export type FilterField = 'payee' | 'memo' | 'raw_label' | 'amount' | 'amount_ab
   | 'raw_counterparty' | 'raw_transaction_code' | 'raw_merchant_category_code' | 'raw_merchant_location'
   | 'raw_initiated_date' | 'raw_booking_date'
 
-export interface FilterCondition {
-  field: FilterField
-  operator: string
-  // A list for "in" / "not_in" (account_id, category_id), null standing for no category.
-  value?: string | number | boolean | (number | null)[] | null
-  value2?: string | number | null
-  // The user a per-user field (split_weight/split_share/split_balance and
-  // their _abs variants) reads.
-  user_id?: number | null
-}
+export type FilterCondition = Schemas['FilterCondition-Input']
 
-export interface TransactionSearchRequest {
-  user_id?: number
-  search?: string
-  date_from?: string
-  date_to?: string
-  account_id?: number
-  category_id?: number
-  // Only the transactions with no category.
-  uncategorized?: boolean
-  // Any of these accounts / categories (uncategorized, when set, is OR'd in).
-  account_ids?: number[]
-  category_ids?: number[]
-  // Only the transactions carrying this tag, or (untagged) carrying none.
-  tag_id?: number
-  untagged?: boolean
-  amount_min?: number
-  amount_max?: number
-  reconciled?: boolean
-  conditions?: FilterCondition[]
-  match_mode?: 'all' | 'any'
-  page?: number
-  page_size?: number
-  unpaginated?: boolean
-  sort_by?: 'date' | 'amount' | 'payee' | 'created_at'
-  sort_dir?: 'asc' | 'desc'
-  // Only the transactions one History entry touched.
-  history_group?: HistoryGroupRef
-}
+export type TransactionSearchRequest = Schemas['TransactionSearchRequest']
 
-export interface TransactionSearchResponse {
-  items: Transaction[]
-  total: number
-  page: number
-  page_size: number
-  total_pages: number
-}
+export type TransactionSearchResponse = With<Schemas['TransactionSearchResponse'], { items: Transaction[] }>
 
-export interface User {
-  id: number
-  name: string
-  email: string | null
-  created_at: string
-}
+export type User = Schemas['UserOut']
 
-export interface UserCreate {
-  name: string
-  email?: string | null
-}
+export type UserCreate = Schemas['UserCreate']
 
-export interface UserUpdate {
-  name?: string
-  email?: string | null
-}
+export type UserUpdate = Schemas['UserUpdate']
 
-export interface DashboardData {
+export type DashboardData = With<Schemas['DashboardResponse'], {
   accounts: Account[]
   recent_transactions: Transaction[]
-  balances: UserBalance[]
-}
+}>
 
-export interface ImportDetectResponse {
-  headers: string[]
-  encoding: string
-  delimiter: string
-  date_format: string | null
-  decimal_separator: string
+export type ImportDetectResponse = Loose<With<Schemas['ImportDetectResponse'], {
   column_mapping: Record<'date' | 'payee' | 'amount' | 'memo' | 'category' | 'account', string | null>
-  sample_rows: Record<string, string>[]
-  file_format?: 'csv' | 'qif'
-}
+  file_format: 'csv' | 'qif'
+}>, 'file_format'>
 
-export interface CategoryChartItem {
-  category_id: number | null
-  category_name: string
-  category_type: 'Income' | 'Expense' | 'Uncategorized'
-  color?: string | null
-  amount: number
-  currency: string
-}
+export type CategoryChartItem = Schemas['CategoryChartItem']
 
-export interface MonthChartItem {
-  month: string
-  income: number
-  expense: number
-  uncategorized: number
-  currency: string
-}
+export type MonthChartItem = Schemas['MonthChartItem']
 
-export interface NetMonthChartItem {
-  month: string
-  net: number
-  currency: string
-}
+export type NetMonthChartItem = Schemas['NetMonthChartItem']
 
-export interface MonthCategoryChartItem {
-  month: string
-  category_id: number | null
-  amount: number
-  currency: string
-}
+export type MonthCategoryChartItem = Schemas['MonthCategoryChartItem']
 
-export interface ChartCategoryOut {
-  category_id: number | null
-  name: string
-  color?: string | null
-  icon?: string | null
-}
+export type ChartCategoryOut = Schemas['ChartCategoryOut']
 
-export interface ParentCategoryOut {
-  id: number
-  name: string
-}
+export type ParentCategoryOut = Schemas['ParentCategoryOut']
 
-export interface ChartsData {
-  currencies: string[]
-  by_category: CategoryChartItem[]
-  by_month: MonthChartItem[]
-  net_by_month: NetMonthChartItem[]
-  by_month_category: MonthCategoryChartItem[]
-  chart_categories: ChartCategoryOut[]
-  parent_category: ParentCategoryOut | null
-}
+export type ChartsData = Schemas['ChartsResponse']
 
 export interface ImportPreviewRequest {
   account_id: number
@@ -406,115 +146,50 @@ export interface ImportPreviewRequest {
   account_col?: string | null
 }
 
-export interface ImportPreviewRow {
-  row_number: number
-  transaction_date: string | null
-  payee: string | null
-  memo: string | null
-  amount: number | null
-  account_id: number
-  account_name: string | null
-  account_matched: boolean
-  category_id: number | null
-  category_name: string | null
+export type ImportPreviewRow = With<Schemas['ImportPreviewRow'], {
   status: 'ok' | 'needs_category' | 'possible_duplicate' | 'error'
-  error_message: string | null
-  preview_split: { user_id: number; weight: number; share_amount: number; source: string }[]
-  // What the active categorization model would file this row under, or null
-  // throughout when no model is active. Advisory: the screen offers it next
-  // to the file's own category and commits whichever one the user kept.
-  suggested_category_id: number | null
-  suggested_category_name: string | null
-  suggested_confidence: number | null
-  // What the enabled automatic rules would change on this row, or null when
-  // no rule matches. The screen applies it unless the user switches rules off.
   rules: RuleOutcome | null
-}
+}>
 
 /** A row as the import commits it: `raw_label` is the file's own payee, sent
  *  separately because a rule may have renamed `payee` in the preview. */
-export interface ImportCommitRow extends TransactionCreate {
-  raw_label?: string | null
-  reconciled?: boolean
-}
+export type ImportCommitRow = Schemas['ImportCommitRow']
 
-export interface ImportCommitResponse {
-  created_count: number
-  transaction_ids: number[]
-}
+export type ImportCommitResponse = Schemas['ImportCommitResponse']
 
 export type BackupImportMode = 'overwrite' | 'partial'
 
-export interface ImportSummary {
-  mode: BackupImportMode
-  users: number
-  accounts: number
-  categories: number
-  account_users: number
-  category_splits: number
-  global_split_weights: number
-  account_split_weights: number
-  transactions: number
-  transaction_splits: number
-  transaction_history: number
-  bank_connections: number
-  bank_account_links: number
-}
+export type ImportSummary = Schemas['ImportSummary']
 
-export interface TransactionHistoryEntry {
-  id: number
-  transaction_id: number
-  action: 'created' | 'updated' | 'deleted'
-  source: string | null
-  changed_at: string
-  changed_by_user_id: number | null
-  changed_by_user_name: string | null
-  date: string | null
-  payee: string | null
-  memo: string | null
-  amount: number | null
-  account_id: number | null
-  category_id: number | null
+export type HistoryAction = 'created' | 'updated' | 'deleted'
+
+export type TransactionHistoryEntry = With<Schemas['TransactionHistoryOut'], {
+  action: HistoryAction
   changes: Record<string, { old: unknown; new: unknown }> | null
-}
+}>
 
 // One History entry's rows: the id range they span plus what they share.
-export interface HistoryGroupRef {
-  first_id: number
-  last_id: number
-  action: 'created' | 'updated' | 'deleted'
+// Sent back as is by fetchHistoryRows(), so every field is required here even
+// though the request side of the schema leaves them optional.
+export type HistoryGroupRef = With<Schemas['HistoryGroupRef'], {
+  action: HistoryAction
   source: string | null
   changed_by_user_id: number | null
   batch_id: string | null
-}
+}>
 
 // One line of the History timeline. count 1: a single change, with its own
 // snapshot and changes ({old, new} per field). count > 1: the rows one action
 // wrote, `changes` then holding what they share ({new} when every row got the
 // same value, {new: null, mixed: true} when not, {added, removed} for tags).
-export interface HistoryEntry extends HistoryGroupRef {
-  count: number
-  changed_at: string
-  started_at: string
-  changed_by_user_name: string | null
-  transaction_id: number | null
-  date: string | null
-  payee: string | null
-  amount: number | null
-  account_id: number | null
-  category_id: number | null
+export type HistoryEntry = With<Schemas['HistoryEntryOut'], {
+  action: HistoryAction
   changes: Record<string, { old?: unknown; new?: unknown; mixed?: boolean; added?: string[]; removed?: string[] }> | null
-}
+}>
 
-export interface HistoryPage {
-  items: HistoryEntry[]
-  next_before_id: number | null
-}
+export type HistoryPage = With<Schemas['HistoryPageOut'], { items: HistoryEntry[] }>
 
-export interface HistoryRows {
-  items: TransactionHistoryEntry[]
-  total: number
-}
+export type HistoryRows = With<Schemas['HistoryRowsOut'], { items: TransactionHistoryEntry[] }>
 
 const API_BASE = import.meta.env.VITE_API_URL ?? `http://${window.location.hostname}:8000/api`
 
@@ -595,14 +270,7 @@ export function searchTransactions(req: TransactionSearchRequest): Promise<Trans
   return request<TransactionSearchResponse>('/transactions/search', { method: 'POST', body: JSON.stringify(req) })
 }
 
-export interface PayeeSuggestion {
-  payee: string
-  category_id: number | null
-  category_name: string | null
-  date: string
-  amount: number
-  currency: string
-}
+export type PayeeSuggestion = Schemas['PayeeSuggestionOut']
 
 export function fetchPayeeSuggestions(q: string, limit = 8): Promise<PayeeSuggestion[]> {
   const params = new URLSearchParams({ q, limit: String(limit) })
@@ -668,10 +336,7 @@ export function bulkUpdateTransactionsByFilter(
   })
 }
 
-export interface BulkDeleteTransactionsResponse {
-  deleted_count: number
-  transaction_ids: number[]
-}
+export type BulkDeleteTransactionsResponse = Schemas['BulkDeleteTransactionsResponse']
 
 export function bulkDeleteTransactions(
   ids: number[],
@@ -757,17 +422,9 @@ export function fetchDivideSiblings(transactionId: number): Promise<Transaction[
 // expense and its refunds), shown with their net. Linking rows of which one
 // is already linked adds the others to its group.
 
-export interface TransactionLinkTotal {
-  currency: string
-  amount: number
-}
+export type TransactionLinkTotal = Schemas['TransactionLinkTotal']
 
-export interface TransactionLink {
-  id: number
-  name: string | null
-  transactions: Transaction[]
-  totals: TransactionLinkTotal[]
-}
+export type TransactionLink = Schemas['TransactionLinkOut']
 
 export function createTransactionLink(
   transactionIds: number[],
@@ -903,32 +560,11 @@ export async function importDatabase(file: File, mode: BackupImportMode): Promis
   return res.json()
 }
 
-export interface OneDriveSettings {
-  connected: boolean
-  account_email: string | null
-  folder_path: string | null
-  keep_daily: number
-  keep_weekly: number
-  keep_monthly: number
-  keep_yearly: number
-  last_backup_at: string | null
-  last_backup_status: 'success' | 'failed' | null
-  last_backup_error: string | null
-}
+export type OneDriveSettings = Schemas['OneDriveSettingsOut']
 
-export interface OneDriveSettingsUpdate {
-  folder_path: string
-  keep_daily: number
-  keep_weekly: number
-  keep_monthly: number
-  keep_yearly: number
-}
+export type OneDriveSettingsUpdate = Schemas['OneDriveSettingsUpdate']
 
-export interface OneDriveBackupRunResult {
-  ran: boolean
-  status: 'success' | 'failed' | null
-  error: string | null
-}
+export type OneDriveBackupRunResult = Schemas['OneDriveBackupRunResult']
 
 export function fetchOneDriveSettings(): Promise<OneDriveSettings> {
   return request<OneDriveSettings>('/onedrive/settings')
@@ -952,52 +588,15 @@ export function getOneDriveConnectUrl(): string {
 
 // ── Bank sync (Enable Banking) ────────────────────────────────────────
 
-export interface BankInstitution {
-  name: string
-  country: string
-  logo: string | null
-}
+export type BankInstitution = Schemas['BankInstitutionOut']
 
-export interface BankAccountLink {
-  id: number
-  connection_id: number
-  iban: string | null
-  remote_name: string | null
-  currency: string | null
-  account_id: number | null
-  account_name: string | null
-  sync_enabled: boolean
-  sync_from_date: string | null
-  last_synced_at: string | null
-  last_sync_status: 'success' | 'failed' | null
-  last_sync_error: string | null
-  last_imported_count: number
-}
+export type BankAccountLink = Schemas['BankAccountLinkOut']
 
-export interface BankConnection {
-  id: number
-  aspsp_name: string
-  aspsp_country: string
-  status: 'pending' | 'linked' | 'expired' | 'error'
-  access_valid_until: string | null
-  created_at: string | null
-  last_error: string | null
-  accounts: BankAccountLink[]
-}
+export type BankConnection = Schemas['BankConnectionOut']
 
-export interface BankAccountLinkUpdate {
-  account_id: number | null
-  sync_enabled: boolean
-  sync_from_date?: string | null
-}
+export type BankAccountLinkUpdate = Schemas['BankAccountLinkUpdate']
 
-export interface BankSyncRunResult {
-  ran: boolean
-  synced_links: number
-  created_count: number
-  status: 'success' | 'failed' | null
-  error: string | null
-}
+export type BankSyncRunResult = Schemas['BankSyncRunResult']
 
 export function fetchBankInstitutions(country = 'FR'): Promise<BankInstitution[]> {
   return request<BankInstitution[]>(`/bank-sync/institutions?country=${country}`)
@@ -1067,24 +666,12 @@ export interface CategorizerMetrics {
   baseline?: CategorizerBaseline
 }
 
-export interface CategorizerModel {
-  id: number
-  created_at: string
-  status: string
-  is_active: boolean
-  trained_rows: number
-  tested_rows: number
-  note: string | null
+export type CategorizerModel = With<Schemas['CategorizerModelOut'], {
   params: Record<string, unknown> | null
   metrics: CategorizerMetrics | null
-  error: string | null
-}
+}>
 
-export interface CategorizerTrainRequest {
-  train: TransactionSearchRequest
-  test: TransactionSearchRequest
-  note?: string
-}
+export type CategorizerTrainRequest = Schemas['CategorizerTrainRequest']
 
 export function fetchCategorizerModels(): Promise<CategorizerModel[]> {
   return request<CategorizerModel[]>('/categorizer/models')
@@ -1102,39 +689,13 @@ export function deleteCategorizerModel(id: number): Promise<void> {
   return request<void>(`/categorizer/models/${id}`, { method: 'DELETE' })
 }
 
-export interface CategorizerSuggestion {
-  transaction_id: number
-  date: string
-  payee: string
-  raw_label: string | null
-  amount: number
-  current_category_id: number | null
-  current_category_name: string | null
-  suggested_category_id: number | null
-  suggested_category_name: string | null
-  confidence: number | null
-  high_confidence: boolean
-  category_changed: boolean
-}
+export type CategorizerSuggestion = Schemas['CategorizerSuggestion']
 
-export interface CategorizerSuggestResponse {
-  model_id: number
-  threshold: number
-  items: CategorizerSuggestion[]
-  category_changes: number
-  high_confidence_changes: number
-}
+export type CategorizerSuggestResponse = Schemas['CategorizerSuggestResponse']
 
-export interface CategorizerApplyItem {
-  transaction_id: number
-  category_id: number
-}
+export type CategorizerApplyItem = Schemas['CategorizerApplyItem']
 
-export interface CategorizerApplyResponse {
-  updated_count: number
-  transaction_ids: number[]
-  skipped_transaction_ids: number[]
-}
+export type CategorizerApplyResponse = Schemas['CategorizerApplyResponse']
 
 export function suggestCategories(transactionIds: number[]): Promise<CategorizerSuggestResponse> {
   return request<CategorizerSuggestResponse>('/categorizer/suggest', {
@@ -1159,70 +720,21 @@ export function applyCategorizerSuggestions(
 // A rule is the advanced filter's conditions plus a bulk edit's actions (and a
 // payee rename). Never a move to another account or a delete.
 
-export interface RuleActions {
-  payee?: string | null
-  category_id?: number | null
-  accounting_month_offset?: number | null
-  reconciled?: boolean | null
-  split_weights?: { user_id: number; weight: number }[] | null
-  split_source?: SplitSource | null
-  /** A weight tier read when the rule runs (not copied into the rule), so a
-   *  later change to that tier carries through. Exclusive with split_weights. */
-  split_tier?: SplitTier | null
-  /** Tags added to a matching transaction, which keeps the ones it has. */
-  add_tag_ids?: number[] | null
-}
+export type RuleActions = Schemas['RuleActions-Input']
 
 export type SplitTier = 'global' | 'account' | 'category' | 'default'
 
-export interface RuleInput {
-  name: string
-  enabled: boolean
-  match_mode: 'all' | 'any'
-  conditions: FilterCondition[]
-  actions: RuleActions
-}
+export type RuleInput = Schemas['RuleCreate']
 
-export interface Rule extends RuleInput {
-  id: number
-  position: number
-  created_at: string
-  updated_at: string
-}
+export type Rule = Schemas['RuleOut']
 
 /** What the rules change on one transaction: only the fields a rule changed
  *  are set; `split_weights` set means a rule set the split. */
-export interface RuleOutcome {
-  rule_ids: number[]
-  rule_names: string[]
-  payee: string | null
-  category_id: number | null
-  category_name: string | null
-  accounting_month_offset: number | null
-  reconciled: boolean | null
-  split_weights: { user_id: number; weight: number }[] | null
-  split_source: SplitSource | null
-  /** Tags a rule adds that the row does not carry yet. */
-  add_tag_ids?: number[] | null
-  add_tag_names?: string[] | null
-}
+export type RuleOutcome = With<Schemas['RuleOutcomeOut'], { split_source: SplitSource | null }>
 
-export interface RulePreviewItem {
-  transaction_id: number
-  date: string
-  payee: string
-  amount: number
-  current_category_id: number | null
-  current_category_name: string | null
-  current_accounting_month_offset: number
-  current_reconciled: boolean
-  outcome: RuleOutcome | null
-}
+export type RulePreviewItem = With<Schemas['RulePreviewItem'], { outcome: RuleOutcome | null }>
 
-export interface RulePreviewResponse {
-  items: RulePreviewItem[]
-  changed_count: number
-}
+export type RulePreviewResponse = With<Schemas['RulePreviewResponse'], { items: RulePreviewItem[] }>
 
 export function fetchRules(): Promise<Rule[]> {
   return request<Rule[]>('/rules')
@@ -1322,32 +834,11 @@ export function reorderSavedFilters(filterIds: number[]): Promise<SavedFilter[]>
 
 export type AlertFrequency = 'daily' | 'weekly' | 'monthly'
 
-export interface EmailAlert {
-  user_id: number
-  email: string | null
-  daily: boolean
-  weekly: boolean
-  monthly: boolean
-  last_daily_sent_at: string | null
-  last_weekly_sent_at: string | null
-  last_monthly_sent_at: string | null
-  last_status: 'success' | 'failed' | null
-  last_error: string | null
-  sending_configured: boolean
-  from_address: string
-}
+export type EmailAlert = Schemas['EmailAlertOut']
 
-export interface EmailAlertUpdate {
-  email: string | null
-  daily: boolean
-  weekly: boolean
-  monthly: boolean
-}
+export type EmailAlertUpdate = Schemas['EmailAlertUpdate']
 
-export interface EmailAlertTestResult {
-  sent_to: string
-  transaction_count: number
-}
+export type EmailAlertTestResult = Schemas['EmailAlertTestResult']
 
 export function fetchEmailAlert(userId: number): Promise<EmailAlert> {
   return request<EmailAlert>(`/alerts/users/${userId}`)
