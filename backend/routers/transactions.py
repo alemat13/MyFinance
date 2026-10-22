@@ -158,37 +158,44 @@ PAYEE_SUGGESTION_SCAN = 400
 def payee_suggestions(
     q: str = Query(..., min_length=1),
     limit: int = Query(8, ge=1, le=50),
+    exclude_id: int | None = Query(None),
     db: Session = Depends(get_db),
 ):
-    """The most recent payees containing `q`, one entry per (payee, category).
+    """The most recent transactions whose payee, memo or original bank label
+    contains `q`, one entry per (payee, category).
 
     Backs the Payee field's autocompletion in the transaction form: picking an
     entry fills both the payee and the category it was last filed under.
+    `exclude_id` leaves out the transaction being edited, which would otherwise
+    always suggest itself.
     """
     needle = q.strip().lower()
     if not needle:
         return []
     escaped = needle.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-    rows = (
+    query = (
         db.query(Transaction.payee, Transaction.category_id, Category.name, Transaction.date,
-                 Transaction.amount, Account.currency)
+                 Transaction.amount, Account.currency, Transaction.memo, Transaction.raw_label)
         .join(Account, Transaction.account_id == Account.id)
         .outerjoin(Category, Transaction.category_id == Category.id)
-        .filter(func.lower(Transaction.payee).like(f"%{escaped}%", escape="\\"))
-        .order_by(Transaction.date.desc(), Transaction.id.desc())
-        .limit(PAYEE_SUGGESTION_SCAN)
-        .all()
+        .filter(or_(*(
+            func.lower(column).like(f"%{escaped}%", escape="\\")
+            for column in (Transaction.payee, Transaction.memo, Transaction.raw_label)
+        )))
     )
+    if exclude_id is not None:
+        query = query.filter(Transaction.id != exclude_id)
+    rows = query.order_by(Transaction.date.desc(), Transaction.id.desc()).limit(PAYEE_SUGGESTION_SCAN).all()
     seen: set[tuple[str, int | None]] = set()
     suggestions: list[PayeeSuggestionOut] = []
-    for payee, category_id, category_name, txn_date, amount, currency in rows:
+    for payee, category_id, category_name, txn_date, amount, currency, memo, raw_label in rows:
         key = (payee.strip().lower(), category_id)
         if key in seen:
             continue
         seen.add(key)
         suggestions.append(PayeeSuggestionOut(
             payee=payee, category_id=category_id, category_name=category_name,
-            date=txn_date, amount=amount, currency=currency,
+            date=txn_date, amount=amount, currency=currency, memo=memo, raw_label=raw_label,
         ))
         if len(suggestions) >= limit:
             break

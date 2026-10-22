@@ -272,8 +272,9 @@ export function searchTransactions(req: TransactionSearchRequest): Promise<Trans
 
 export type PayeeSuggestion = Schemas['PayeeSuggestionOut']
 
-export function fetchPayeeSuggestions(q: string, limit = 8): Promise<PayeeSuggestion[]> {
+export function fetchPayeeSuggestions(q: string, excludeId?: number | null, limit = 8): Promise<PayeeSuggestion[]> {
   const params = new URLSearchParams({ q, limit: String(limit) })
+  if (excludeId != null) params.set('exclude_id', String(excludeId))
   return request<PayeeSuggestion[]>(`/transactions/payee-suggestions?${params}`)
 }
 

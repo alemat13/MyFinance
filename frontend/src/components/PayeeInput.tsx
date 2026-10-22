@@ -14,13 +14,27 @@ interface Props {
   onChange: (payee: string) => void
   // A suggestion picked: the payee and the category it was last filed under.
   onPick: (suggestion: PayeeSuggestion) => void
+  // The transaction being edited, left out of its own suggestions.
+  excludeId?: number | null
   className?: string
 }
 
+// Where a suggestion matched when it wasn't its payee: the memo or the bank's
+// original label, shown under it so the entry doesn't look unrelated.
+function otherMatch(s: PayeeSuggestion, q: string): string | null {
+  const needle = q.trim().toLowerCase()
+  if (!needle || s.payee.toLowerCase().includes(needle)) return null
+  for (const text of [s.memo, s.raw_label]) {
+    if (text && text.toLowerCase().includes(needle)) return text
+  }
+  return null
+}
+
 // The Payee field with autocompletion from the most recent transactions whose
-// payee contains what was typed. Suggestions are only fetched after the user
-// types, never for the value the form opened with.
-export default function PayeeInput({ value, categories, onChange, onPick, className }: Props) {
+// payee, memo or original bank label contains what was typed. Suggestions are
+// fetched when the user types or clicks in the field (then from the payee
+// already there), never just because the form opened.
+export default function PayeeInput({ value, categories, onChange, onPick, excludeId, className }: Props) {
   const [query, setQuery] = useState<string | null>(null)
   const [suggestions, setSuggestions] = useState<PayeeSuggestion[]>([])
   const [open, setOpen] = useState(false)
@@ -35,7 +49,7 @@ export default function PayeeInput({ value, categories, onChange, onPick, classN
     }
     let cancelled = false
     const timer = setTimeout(() => {
-      fetchPayeeSuggestions(q)
+      fetchPayeeSuggestions(q, excludeId)
         .then(rows => {
           if (cancelled) return
           setSuggestions(rows)
@@ -46,7 +60,7 @@ export default function PayeeInput({ value, categories, onChange, onPick, classN
         .catch(() => { if (!cancelled) setSuggestions([]) })
     }, DEBOUNCE_MS)
     return () => { cancelled = true; clearTimeout(timer) }
-  }, [query])
+  }, [query, excludeId])
 
   useEffect(() => {
     if (!open) return
@@ -105,6 +119,10 @@ export default function PayeeInput({ value, categories, onChange, onPick, classN
           setQuery(e.target.value)
           setOpen(true)
         }}
+        onClick={e => {
+          setQuery(e.currentTarget.value)
+          setOpen(true)
+        }}
         onKeyDown={onKeyDown}
       />
       {showList && (
@@ -115,6 +133,7 @@ export default function PayeeInput({ value, categories, onChange, onPick, classN
         >
           {suggestions.map((s, i) => {
             const category = categories.find(c => c.id === s.category_id)
+            const matched = otherMatch(s, query ?? '')
             return (
               <li
                 key={`${s.payee}|${s.category_id}`}
@@ -132,6 +151,9 @@ export default function PayeeInput({ value, categories, onChange, onPick, classN
                     {s.date} · {formatMoney(s.amount, s.currency)}
                   </span>
                 </div>
+                {matched && (
+                  <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400 truncate">{matched}</div>
+                )}
                 <div className="mt-0.5 text-xs">
                   <CategoryBadge
                     name={s.category_id === null ? null : (s.category_name ?? category?.name ?? null)}

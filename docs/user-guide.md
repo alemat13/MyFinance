@@ -372,12 +372,14 @@ captures:
 
 - **Payee** and an optional **memo**, each in a full-width box (the memo wraps long
   text; drag its corner to make it taller).
-  Typing at least two characters in **Payee** lists the most recent transactions
-  whose payee contains that text, newest first, one line per payee and category
-  (with that transaction's date and amount, and the category it was filed under,
-  "Uncategorized" included). Clicking a line, or picking it with the arrow keys and
-  Enter, fills in both the payee and the category; Escape closes the list. Keep
-  typing to ignore it.
+  Typing at least two characters in **Payee**, or clicking in it when it already
+  holds two or more, lists the most recent transactions whose payee, memo or
+  original bank label contains that text, newest first, one line per payee and
+  category (with that transaction's date and amount, the memo or bank label it
+  matched when the payee itself doesn't, and the category it was filed under,
+  "Uncategorized" included). The transaction you have open is never suggested.
+  Clicking a line, or picking it with the arrow keys and Enter, fills in both the
+  payee and the category; Escape closes the list. Keep typing to ignore it.
 - Its **category** — picking a category is
   optional; leaving it as "Uncategorized" (the default) is a valid, final choice, and
   such transactions display with a gray "Uncategorized" badge instead of a category
