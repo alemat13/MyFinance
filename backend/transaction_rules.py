@@ -40,7 +40,7 @@ import cache_service
 import split_engine
 import tags as tag_service
 from audit import TRACKED_FIELDS, _jsonify, diff_splits, record_transaction_history
-from filtering import coerce_bool
+from filtering import coerce_bool, month_index
 from models import (
     AccountSplitWeight,
     Category,
@@ -52,7 +52,7 @@ from models import (
     TransactionSplit,
     User,
 )
-from schemas import BOOL_FIELDS, DATE_FIELDS, TAG_FIELDS, TEXT_FIELDS, FilterCondition, RuleActions, RuleOutcomeOut
+from schemas import BOOL_FIELDS, DATE_FIELDS, MONTH_FIELDS, TAG_FIELDS, TEXT_FIELDS, FilterCondition, RuleActions, RuleOutcomeOut
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +111,17 @@ def _matches(condition: FilterCondition, state: dict) -> bool:
             return bool(tag_ids) == (condition.operator == "ne")
         return (int(float(condition.value)) in tag_ids) == (condition.operator == "eq")
     current = state.get(condition.field)
+    if condition.field in MONTH_FIELDS:
+        # Mirrors filtering._month_expr() on the row's date + offset.
+        if state.get("date") is None:
+            return False
+        d = _coerce_date(state["date"])
+        current = d.year * 12 + d.month - 1 + int(state.get("accounting_month_offset") or 0)
+        value = month_index(condition.value)
+        if condition.operator == "between":
+            low, high = sorted((value, month_index(condition.value2)))
+            return low <= current <= high
+        return {"on": current == value, "before": current < value, "after": current > value}[condition.operator]
     if condition.field == "amount_abs":
         current = None if state.get("amount") is None else abs(float(state["amount"]))
     if condition.operator in ("in", "not_in"):

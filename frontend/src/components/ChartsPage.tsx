@@ -1,17 +1,21 @@
 import { useEffect, useState } from 'react'
-import { ChartsData, fetchCharts } from '../api/client'
+import { ChartsData, fetchAccounts, fetchCharts } from '../api/client'
 import { Card, Input, Select, StatusMessage, BackButton } from './ui'
 import { getParam, patchQueryParams } from '../utils/urlState'
 import { lastNMonthsRange } from '../utils/dateRange'
 import SpendingByMonthChart from './charts/SpendingByMonthChart'
 import NetIncomeByMonthChart from './charts/NetIncomeByMonthChart'
+import { ConditionRow } from './TransactionConditions'
+import { UNCATEGORIZED_ID } from '../utils/categoryHierarchy'
 
 interface Props {
   selectedUserId: number | null
   onBack: () => void
+  // Opens the Transactions screen on an advanced filter.
+  onOpenTransactions?: (conditions: ConditionRow[]) => void
 }
 
-export default function ChartsPage({ selectedUserId, onBack }: Props) {
+export default function ChartsPage({ selectedUserId, onBack, onOpenTransactions }: Props) {
   const [data, setData] = useState<ChartsData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [currency, setCurrency] = useState<string | null>(() => getParam('currency'))
@@ -66,6 +70,32 @@ export default function ChartsPage({ selectedUserId, onBack }: Props) {
       parent_category_id: parentCategoryId != null ? String(parentCategoryId) : undefined,
     })
   }, [currency, startMonth, endMonth, parentCategoryId])
+
+  // The Transactions screen on exactly the rows a chart segment sums: that one
+  // category (not its subcategories), the month clicked or the whole range by
+  // accounting month (the date shifted by its accounting month shift, as the
+  // chart buckets it), rows the selected user has a share in, and, when there
+  // is more than one currency, the accounts in the one shown.
+  const openTransactions = async (categoryId: number | null, month: string | null) => {
+    if (!onOpenTransactions || selectedUserId == null) return
+    const conditions: ConditionRow[] = [
+      { field: 'category_id', operator: 'in', value: String(categoryId ?? UNCATEGORIZED_ID), value2: '' },
+      month
+        ? { field: 'accounting_month', operator: 'on', value: month, value2: '' }
+        : { field: 'accounting_month', operator: 'between', value: startMonth, value2: endMonth },
+      { field: 'split_weight', operator: 'gt', value: '0', value2: '', userId: String(selectedUserId) },
+    ]
+    if (data && data.currencies.length > 1 && currency) {
+      try {
+        const accounts = await fetchAccounts()
+        const ids = accounts.filter(a => a.currency === currency).map(a => a.id)
+        if (ids.length > 0) conditions.push({ field: 'account_id', operator: 'in', value: ids.join(','), value2: '' })
+      } catch (err) {
+        console.error(err)
+      }
+    }
+    onOpenTransactions(conditions)
+  }
 
   const backButton = <BackButton onClick={onBack} />
 
@@ -126,6 +156,7 @@ export default function ChartsPage({ selectedUserId, onBack }: Props) {
                 currency={currency}
                 onDrill={setParentCategoryId}
                 onBackToOverview={() => setParentCategoryId(null)}
+                onOpenTransactions={openTransactions}
               />
               <NetIncomeByMonthChart
                 byMonth={data.by_month.filter(m => m.currency === currency)}

@@ -143,6 +143,9 @@ def test_operators_mirror_the_filter(db, sample_account):
     assert match(field="raw_label", operator="contains", value="carte")
     assert match(field="amount", operator="lt", value=0)
     assert match(field="amount", operator="between", value=-50, value2=-40)
+    month = f"{row.date.year:04d}-{row.date.month:02d}"
+    assert match(field="accounting_month", operator="on", value=month)
+    assert not match(field="accounting_month", operator="before", value=month)
     # "Amount (abs)": the amount without its sign.
     assert match(field="amount_abs", operator="eq", value=42)
     assert match(field="amount_abs", operator="between", value=40, value2=50)

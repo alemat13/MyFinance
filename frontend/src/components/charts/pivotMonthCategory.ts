@@ -19,6 +19,11 @@ export interface PivotedMonthRow {
  * segments. `total` is the sum of that month's segments, used for the
  * chart's trend line; deriving it here (rather than trusting a backend
  * field) keeps the line mathematically unable to disagree with the bars.
+ *
+ * Signs are flipped on the way: the backend reports spending as the signed
+ * share (an expense negative), the chart shows it as a positive amount, so
+ * money coming back on an expense category (a tax refund, a reimbursement)
+ * comes out negative and is drawn below zero.
  */
 export function pivotMonthCategory(
   items: MonthCategoryChartItem[],
@@ -28,7 +33,7 @@ export function pivotMonthCategory(
   const byMonth = new Map<string, Map<string, number>>()
   for (const item of items) {
     const monthEntries = byMonth.get(item.month) ?? new Map<string, number>()
-    monthEntries.set(categoryDataKey(item.category_id), item.amount)
+    monthEntries.set(categoryDataKey(item.category_id), -item.amount || 0)
     byMonth.set(item.month, monthEntries)
   }
 
