@@ -528,6 +528,10 @@ class TransactionDivideResponse(Schema):
 TEXT_OPERATORS = {"contains", "equals", "not_equals", "starts_with", "ends_with"}
 NUMERIC_OPERATORS = {"eq", "ne", "gt", "gte", "lt", "lte", "between"}
 DATE_OPERATORS = {"on", "before", "after", "between"}
+# The month a transaction counts toward (its date shifted by its
+# accounting_month_offset), compared as "YYYY-MM": how the Charts page buckets
+# a transaction, so a chart's segment can open its own transactions.
+MONTH_FIELDS = {"accounting_month"}
 TEXT_FIELDS = {
     "payee", "memo", "raw_label",
     "raw_counterparty", "raw_transaction_code", "raw_merchant_category_code", "raw_merchant_location",
@@ -559,6 +563,7 @@ USER_FIELDS = {"split_weight", "split_share", "split_balance", "split_share_abs"
 OPERATORS_BY_FIELD = {
     **{f: TEXT_OPERATORS for f in TEXT_FIELDS},
     **{f: DATE_OPERATORS for f in DATE_FIELDS},
+    **{f: DATE_OPERATORS for f in MONTH_FIELDS},
     **{f: NUMERIC_OPERATORS for f in NUMERIC_FIELDS},
     **{f: NUMERIC_OPERATORS | LIST_OPERATORS for f in LIST_FIELDS},
     **{f: NUMERIC_OPERATORS for f in USER_FIELDS},
@@ -571,7 +576,7 @@ class FilterCondition(Schema):
     field: Literal[
         "payee", "memo", "raw_label", "amount", "amount_abs", "date", "account_id", "category_id",
         "split_weight", "split_share", "split_balance", "split_share_abs", "split_balance_abs", "tag_id",
-        "reconciled", "linked", "accounting_month_offset", "created_at",
+        "reconciled", "linked", "accounting_month_offset", "accounting_month", "created_at",
         "raw_counterparty", "raw_transaction_code", "raw_merchant_category_code", "raw_merchant_location",
         "raw_initiated_date", "raw_booking_date",
     ]

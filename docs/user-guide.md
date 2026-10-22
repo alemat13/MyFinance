@@ -272,6 +272,8 @@ Two filtering modes are available:
   simple filters allow. Also offered: **Reconciled** is Yes / No; **Linked** is Yes / No
   (see [Linking transactions](#linking-transactions)); **Accounting month
   shift** (the −3…+3 months set on a transaction, so "≠ 0" lists every shifted one);
+  **Accounting month**, the month a transaction counts toward (its date shifted by that
+  shift, the way the charts count it), picked as a month;
   **Added on**, the day the transaction reached MyFinance (a bank sync, an import or
   by hand), which is not its own date; and the bank's fields from the "As reported by
   the bank" section: **Original label**, **Counterparty**, **Bank transaction code /
@@ -1156,10 +1158,21 @@ Two charts are shown:
 - **Spending per month** — a stacked bar chart, one bar per month, with one segment per
   top-level expense category (plus a gray "Uncategorized" segment for any uncategorized
   transactions, so they're never silently left out of the totals) and a black line
-  tracing each month's total spend. Income doesn't appear in this chart. Click a
-  category in the legend beneath the chart to drill into that category's own
-  subcategories for the same date range — a breadcrumb appears above the chart, and
-  clicking "Overview" in it returns to the top-level view.
+  tracing each month's total spend. Spending is shown as a positive amount; money coming
+  back on an expense category (a tax overpayment refunded, a reimbursement) is drawn
+  below zero and lowers the month's total. Income doesn't appear in this chart. The
+  tooltip lists the month's categories biggest first, then the total.
+  Click a category, in the legend or on its segment of a bar, to drill into it: the chart
+  then shows its subcategories for the same date range, plus a "(directly)" segment for
+  the transactions filed on the category itself. A breadcrumb appears above the chart,
+  and clicking "Overview" in it returns to the top-level view. In that drilled-down view,
+  clicking a subcategory (or the "(directly)" one) opens the Transactions screen on
+  exactly the transactions it adds up: that category, by accounting month (the date
+  shifted by its accounting month shift, as the chart counts it), over the chart's whole
+  range from the legend or just that month from a bar, the ones you have a share in,
+  and the chart's currency when there are several. "Uncategorized" opens its
+  transactions the same way straight from the overview. The filter arrives as advanced
+  conditions you can then change.
 - **Net income per month** — green income bars and red expense bars per month, plus a
   black line tracing the net (income minus expense) per month.
   Under the chart, a summary table lists each month's income, expense and net (plus an

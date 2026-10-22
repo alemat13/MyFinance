@@ -1,12 +1,12 @@
 from datetime import date
 
-from sqlalchemy import Numeric, and_, cast, func, or_, select
+from sqlalchemy import Integer, Numeric, and_, cast, extract, func, or_, select
 from sqlalchemy.orm import Session
 
 import history
 from models import AccountUser, Transaction, TransactionSplit, TransactionTag
 from schemas import (
-    BOOL_FIELDS, DATE_FIELDS, LIST_OPERATORS, TAG_FIELDS, TEXT_FIELDS, USER_FIELDS, FilterCondition,
+    BOOL_FIELDS, DATE_FIELDS, LIST_OPERATORS, MONTH_FIELDS, TAG_FIELDS, TEXT_FIELDS, USER_FIELDS, FilterCondition,
 )
 
 FIELD_COLUMN_MAP = {
@@ -124,6 +124,42 @@ def _date_expr(column, condition: FilterCondition):
     raise ValueError(f'unsupported date operator: {condition.operator}')
 
 
+def month_index(month: str) -> int:
+    """"YYYY-MM" as a count of months (year * 12 + month - 1), the scale
+    accounting_month.compute_accounting_month() shifts on."""
+    try:
+        year, mon = (int(part) for part in str(month).split("-")[:2])
+    except ValueError:
+        raise ValueError(f'invalid month value: {month!r}')
+    if not 1 <= mon <= 12:
+        raise ValueError(f'invalid month value: {month!r}')
+    return year * 12 + mon - 1
+
+
+# The accounting month as a month count, in SQL that SQLite and Postgres both
+# run: the date's year and month plus the row's own offset.
+ACCOUNTING_MONTH_INDEX = (
+    cast(extract("year", Transaction.date), Integer) * 12
+    + cast(extract("month", Transaction.date), Integer) - 1
+    + Transaction.accounting_month_offset
+)
+
+
+def _month_expr(column, condition: FilterCondition):
+    """On / before / after / between months, both bounds included by between."""
+    value = month_index(condition.value)
+    if condition.operator == "between":
+        value2 = month_index(condition.value2)
+        return column.between(min(value, value2), max(value, value2))
+    if condition.operator == "on":
+        return column == value
+    if condition.operator == "before":
+        return column < value
+    if condition.operator == "after":
+        return column > value
+    raise ValueError(f'unsupported month operator: {condition.operator}')
+
+
 def _split_column(column, user_id: int):
     """One of the user's split columns on the transaction, 0 when the split
     leaves them out (as the Transactions screen shows it)."""
@@ -182,6 +218,8 @@ def build_condition_expr(condition: FilterCondition):
         return column.isnot(None) if coerce_bool(condition.value) else column.is_(None)
     if condition.operator in LIST_OPERATORS:
         return _list_expr(FIELD_COLUMN_MAP[condition.field], condition)
+    if condition.field in MONTH_FIELDS:
+        return _month_expr(ACCOUNTING_MONTH_INDEX, condition)
     if condition.field in USER_FIELDS:
         return _numeric_expr(_user_column(condition.field, condition.user_id), condition)
     column = FIELD_COLUMN_MAP[condition.field]

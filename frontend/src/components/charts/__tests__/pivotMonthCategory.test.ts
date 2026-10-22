@@ -25,7 +25,7 @@ describe('pivotMonthCategory', () => {
     const result = pivotMonthCategory(items, categories, ['2026-01', '2026-02'])
 
     expect(result).toEqual([
-      { month: '2026-01', total: -100, cat_2: -100, cat_3: 0, uncategorized: 0 },
+      { month: '2026-01', total: 100, cat_2: 100, cat_3: 0, uncategorized: 0 },
       { month: '2026-02', total: 0, cat_2: 0, cat_3: 0, uncategorized: 0 },
     ])
   })
@@ -38,7 +38,17 @@ describe('pivotMonthCategory', () => {
     ]
     const result = pivotMonthCategory(items, categories, ['2026-01'])
 
-    expect(result[0].total).toBe(-160)
+    expect(result[0].total).toBe(160)
+  })
+
+  test('shows spending as positive and money back on an expense category as negative', () => {
+    const items = [
+      { month: '2026-01', category_id: 2, amount: -100, currency: 'EUR' },
+      { month: '2026-01', category_id: 3, amount: 40, currency: 'EUR' },
+    ]
+    const result = pivotMonthCategory(items, categories, ['2026-01'])
+
+    expect(result[0]).toMatchObject({ cat_2: 100, cat_3: -40, total: 60 })
   })
 
   test('preserves the given category order in each row', () => {
