@@ -108,3 +108,16 @@ test('a transaction that is not linked shows no section', () => {
   expect(container).toBeEmptyDOMElement()
   expect(mockFetch).not.toHaveBeenCalled()
 })
+
+
+test('the link modal prefills the name with the text the payees share', () => {
+  renderWithProviders(
+    <LinkTransactionsModal
+      transactions={[txn(1, 'Virement vers Livret A', -500), txn(2, 'VIREMENT depuis Joint', 500)]}
+      selectedUserId={null}
+      onClose={() => {}}
+      onLinked={() => {}}
+    />,
+  )
+  expect(screen.getByPlaceholderText('e.g. Dentist March')).toHaveValue('Virement')
+})

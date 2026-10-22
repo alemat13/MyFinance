@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Transaction, createTransactionLink } from '../api/client'
 import { useToast } from '../context/ToastContext'
 import { formatMoney } from '../utils/currency'
-import { formatNet, netByCurrency } from '../utils/links'
+import { commonPayeeText, formatNet, netByCurrency } from '../utils/links'
 import { Modal, Button, Input } from './ui'
 
 interface Props {
@@ -16,7 +16,8 @@ interface Props {
 // ticked row that is already linked brings its group along (the server
 // merges them), which is also how a row is added to an existing group.
 export default function LinkTransactionsModal({ transactions, selectedUserId, onClose, onLinked }: Props) {
-  const [name, setName] = useState('')
+  // Prefilled with the text every payee shares, which usually names the group.
+  const [name, setName] = useState(() => commonPayeeText(transactions.map(t => t.payee)).slice(0, 100))
   const [saving, setSaving] = useState(false)
   const { showToast } = useToast()
   const alreadyLinked = transactions.filter(t => t.link_id != null)
