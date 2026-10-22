@@ -867,6 +867,27 @@ def test_search_advanced_created_at_by_day(client, db, sample_account, sample_ca
                            "value": "2026-10-01", "value2": "2026-10-31"}) == 1
 
 
+def test_search_advanced_accounting_month(client, db, sample_account, sample_category):
+    from datetime import date
+    # Counts toward 2026-01 / 2025-12 (shifted back) / 2026-03 (shifted across a year end too).
+    _make_transaction(db, sample_account, sample_category, date=date(2026, 1, 15))
+    _make_transaction(db, sample_account, sample_category, date=date(2026, 1, 2), accounting_month_offset=-1)
+    _make_transaction(db, sample_account, sample_category, date=date(2025, 12, 20), accounting_month_offset=3)
+
+    assert _count(client, {"field": "accounting_month", "operator": "on", "value": "2026-01"}) == 1
+    assert _count(client, {"field": "accounting_month", "operator": "on", "value": "2025-12"}) == 1
+    assert _count(client, {"field": "accounting_month", "operator": "on", "value": "2026-03"}) == 1
+    assert _count(client, {"field": "accounting_month", "operator": "before", "value": "2026-01"}) == 1
+    assert _count(client, {"field": "accounting_month", "operator": "after", "value": "2025-12"}) == 2
+    assert _count(client, {"field": "accounting_month", "operator": "between",
+                           "value": "2026-02", "value2": "2025-12"}) == 2
+
+
+def test_search_advanced_accounting_month_bad_value_is_422(client):
+    body = {"conditions": [{"field": "accounting_month", "operator": "on", "value": "2026-13"}]}
+    assert client.post("/api/transactions/search", json=body).status_code == 422
+
+
 def test_search_between_missing_second_bound_is_422_not_500(client):
     for field, value in (("date", "2026-09-01"), ("amount", 1)):
         body = {"conditions": [{"field": field, "operator": "between", "value": value}]}

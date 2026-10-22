@@ -60,6 +60,9 @@ export const listIds = (value: string): number[] =>
   value.split(',').map(v => parseInt(v)).filter(n => !Number.isNaN(n))
 const DATE_FIELDS: FilterField[] = ['date', 'created_at', 'raw_initiated_date', 'raw_booking_date']
 const isDateField = (field: FilterField) => DATE_FIELDS.includes(field)
+/** The month a transaction counts toward (its date shifted by its accounting
+ *  month shift), typed as "YYYY-MM": how the Charts page buckets it. */
+const isMonthField = (field: FilterField) => field === 'accounting_month'
 
 const TEXT_OPERATORS = [
   { value: 'contains', label: 'contains' },
@@ -91,6 +94,7 @@ export const OPERATORS_BY_FIELD: Record<FilterField, { value: string; label: str
   reconciled: [{ value: 'eq', label: 'is' }],
   linked: [{ value: 'eq', label: 'is' }],
   accounting_month_offset: NUMERIC_OPERATORS,
+  accounting_month: DATE_OPERATORS,
   created_at: DATE_OPERATORS,
   raw_counterparty: TEXT_OPERATORS,
   raw_transaction_code: TEXT_OPERATORS,
@@ -110,7 +114,8 @@ export const OPERATORS_BY_FIELD: Record<FilterField, { value: string; label: str
 export const FIELD_LABELS: Record<FilterField, string> = {
   payee: 'Payee', memo: 'Memo', raw_label: 'Original label', amount: 'Amount', amount_abs: 'Amount (abs)', date: 'Date',
   account_id: 'Account', category_id: 'Category', tag_id: 'Tag',
-  reconciled: 'Reconciled', linked: 'Linked', accounting_month_offset: 'Accounting month shift', created_at: 'Added on',
+  reconciled: 'Reconciled', linked: 'Linked', accounting_month_offset: 'Accounting month shift',
+  accounting_month: 'Accounting month', created_at: 'Added on',
   raw_counterparty: 'Counterparty', raw_transaction_code: 'Bank transaction code / type',
   raw_merchant_category_code: 'Merchant category code', raw_merchant_location: 'Merchant location',
   raw_initiated_date: 'Purchase date', raw_booking_date: 'Booking date',
@@ -138,6 +143,10 @@ function isCompleteValue(field: FilterField, value: string): boolean {
   if (isDateField(field)) {
     const m = /^(\d{4})-\d{2}-\d{2}$/.exec(value)
     return !!m && parseInt(m[1]) >= 1000 && !Number.isNaN(Date.parse(value))
+  }
+  if (isMonthField(field)) {
+    const m = /^(\d{4})-(\d{2})$/.exec(value)
+    return !!m && parseInt(m[1]) >= 1000 && parseInt(m[2]) >= 1 && parseInt(m[2]) <= 12
   }
   if (NUMERIC_FIELDS.includes(field)) return parseNumber(value) !== null
   return true
@@ -284,18 +293,18 @@ export default function TransactionConditions({
             numberField(i, c, 'value')
           ) : (
             <Input
-              type={isDateField(c.field) ? 'date' : 'text'}
+              type={isDateField(c.field) ? 'date' : isMonthField(c.field) ? 'month' : 'text'}
               value={c.value}
               onChange={e => updateValue(i, 'value', e.target.value)}
-              className="w-[130px]"
+              className={isMonthField(c.field) ? 'w-[170px]' : 'w-[130px]'}
             />
           )}
           {c.operator === 'between' && (isNumberInput(c.field) ? numberField(i, c, 'value2') : (
             <Input
-              type="date"
+              type={isMonthField(c.field) ? 'month' : 'date'}
               value={c.value2}
               onChange={e => updateValue(i, 'value2', e.target.value)}
-              className="w-[130px]"
+              className={isMonthField(c.field) ? 'w-[170px]' : 'w-[130px]'}
             />
           ))}
           <Button size="sm" variant="danger" onClick={() => onChange(conditions.filter((_, idx) => idx !== i))}>×</Button>

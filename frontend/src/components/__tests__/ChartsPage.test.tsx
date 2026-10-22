@@ -167,7 +167,7 @@ test('shows a currency selector with multiple currencies and filters client-side
   expect(mockFetchCharts.mock.calls.length).toBe(callsBefore)
 })
 
-test('shows a non-interactive Uncategorized legend entry', async () => {
+test('clicking the Uncategorized legend entry opens its transactions over the range', async () => {
   mockFetchCharts.mockResolvedValue({
     ...sampleData,
     by_month_category: [
@@ -179,15 +179,33 @@ test('shows a non-interactive Uncategorized legend entry', async () => {
       { category_id: null, name: 'Uncategorized', color: null, icon: null },
     ],
   })
+  const onOpenTransactions = vi.fn()
 
-  render(<ChartsPage selectedUserId={1} onBack={() => {}} />)
-
-  const button = await screen.findByRole('button', { name: 'Uncategorized' })
-  expect(button).toBeDisabled()
+  render(<ChartsPage selectedUserId={1} onBack={() => {}} onOpenTransactions={onOpenTransactions} />)
 
   const callsBefore = mockFetchCharts.mock.calls.length
-  fireEvent.click(button)
+  fireEvent.click(await screen.findByRole('button', { name: 'Uncategorized' }))
+
+  await waitFor(() => expect(onOpenTransactions).toHaveBeenCalled())
+  expect(onOpenTransactions).toHaveBeenCalledWith([
+    { field: 'category_id', operator: 'in', value: '-1', value2: '' },
+    { field: 'accounting_month', operator: 'between', value: '2025-10', value2: '2026-09' },
+    { field: 'split_weight', operator: 'gt', value: '0', value2: '', userId: '1' },
+  ])
   expect(mockFetchCharts.mock.calls.length).toBe(callsBefore)
+})
+
+test('in a drilldown, clicking a subcategory opens its transactions', async () => {
+  mockFetchCharts.mockResolvedValueOnce(sampleData).mockResolvedValueOnce(drilledData)
+  const onOpenTransactions = vi.fn()
+
+  render(<ChartsPage selectedUserId={1} onBack={() => {}} onOpenTransactions={onOpenTransactions} />)
+
+  fireEvent.click(await screen.findByRole('button', { name: 'Rent' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Electricity' }))
+
+  await waitFor(() => expect(onOpenTransactions).toHaveBeenCalled())
+  expect(onOpenTransactions.mock.calls[0][0][0]).toEqual({ field: 'category_id', operator: 'in', value: '5', value2: '' })
 })
 
 test('clicking a category legend entry drills in and shows a breadcrumb', async () => {

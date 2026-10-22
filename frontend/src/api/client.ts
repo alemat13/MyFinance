@@ -92,7 +92,7 @@ export type TransactionDivideResponse = With<Schemas['TransactionDivideResponse'
 
 export type FilterField = 'payee' | 'memo' | 'raw_label' | 'amount' | 'amount_abs' | 'date' | 'account_id' | 'category_id'
   | 'split_weight' | 'split_share' | 'split_balance' | 'split_share_abs' | 'split_balance_abs' | 'tag_id'
-  | 'reconciled' | 'linked' | 'accounting_month_offset' | 'created_at'
+  | 'reconciled' | 'linked' | 'accounting_month_offset' | 'accounting_month' | 'created_at'
   | 'raw_counterparty' | 'raw_transaction_code' | 'raw_merchant_category_code' | 'raw_merchant_location'
   | 'raw_initiated_date' | 'raw_booking_date'
 

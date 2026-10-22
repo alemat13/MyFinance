@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Sun, Moon, ShieldAlert } from 'lucide-react'
 import { fetchUsers, HistoryGroupRef, User } from './api/client'
+import { ConditionRow } from './components/TransactionConditions'
 import { useTheme } from './context/ThemeContext'
 import { getParam, navigateQueryParams } from './utils/urlState'
 import { isAdminMode } from './utils/admin'
@@ -97,13 +98,14 @@ export default function App() {
   // left over from an earlier visit) before switching the view.
   const navigateToFilteredTransactions = (filter: {
     account_id?: number; tag_id?: number; history_group?: HistoryGroupRef; transaction?: number
+    conditions?: ConditionRow[]
   }) => {
     navigateQueryParams({
       view: 'transactions',
       account_id: filter.account_id ? String(filter.account_id) : undefined,
       tag_id: filter.tag_id ? String(filter.tag_id) : undefined,
       history_group: filter.history_group ? JSON.stringify(filter.history_group) : undefined,
-      mode: undefined,
+      mode: filter.conditions ? 'advanced' : undefined,
       q: undefined,
       date_from: undefined,
       date_to: undefined,
@@ -112,7 +114,7 @@ export default function App() {
       amount_max: undefined,
       reconciled: undefined,
       match: undefined,
-      conditions: undefined,
+      conditions: filter.conditions ? encodeURIComponent(JSON.stringify(filter.conditions)) : undefined,
       page: undefined,
       transaction: filter.transaction ? String(filter.transaction) : undefined,
     })
@@ -222,7 +224,11 @@ export default function App() {
       )}
       {view === 'alerts' && <EmailAlertsPage onBack={() => navigateToView('dashboard')} selectedUserId={selectedUserId} />}
       {view === 'backup' && <BackupPage onBack={() => navigateToView('dashboard')} />}
-      {view === 'charts' && <ChartsPage onBack={() => navigateToView('dashboard')} selectedUserId={selectedUserId} />}
+      {view === 'charts' && <ChartsPage
+        onBack={() => navigateToView('dashboard')}
+        selectedUserId={selectedUserId}
+        onOpenTransactions={conditions => navigateToFilteredTransactions({ conditions })}
+      />}
       {view === 'help' && <HelpPage onBack={() => navigateToView('dashboard')} />}
     </div>
   )
