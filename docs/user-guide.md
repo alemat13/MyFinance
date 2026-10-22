@@ -526,7 +526,10 @@ what the CPAM and the mutuelle paid back, a shared dinner and what the others re
 
 - Tick two or more transactions in the list; a **Link** button appears in the selection
   bar. It opens a short window listing them with their **Net** (their amounts added up,
-  per currency) and an optional **Name** (e.g. "Dentist March"), then **Link**.
+  per currency) and an optional **Name** (e.g. "Dentist March"), then **Link**. The name
+  starts filled in with the words every selected payee shares (e.g. "Virement" for
+  "Virement vers Livret A" and "Virement depuis Joint Checking"), empty when they share
+  none; change or clear it as you like.
 - A linked transaction shows a small link icon next to its payee, in the list and on
   the phone's cards.
 - Opening one shows a **Linked transactions** section (under the Save button): every
