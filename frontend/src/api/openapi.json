@@ -3454,7 +3454,7 @@
         "type": "object"
       },
       "PayeeSuggestionOut": {
-        "description": "One autocompletion entry for the Payee field: a payee as last used, the\ncategory it was filed under then, and that most recent transaction's date\nand amount so two similar entries can be told apart.",
+        "description": "One autocompletion entry for the Payee field: a payee as last used, the\ncategory it was filed under then, and that most recent transaction's date,\namount, memo and original bank label, so two similar entries can be told\napart and a match found outside the payee shows where it was found.",
         "properties": {
           "amount": {
             "title": "Amount",
@@ -3491,9 +3491,31 @@
             "title": "Date",
             "type": "string"
           },
+          "memo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Memo"
+          },
           "payee": {
             "title": "Payee",
             "type": "string"
+          },
+          "raw_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw Label"
           }
         },
         "required": [
@@ -3502,7 +3524,9 @@
           "category_name",
           "date",
           "amount",
-          "currency"
+          "currency",
+          "memo",
+          "raw_label"
         ],
         "title": "PayeeSuggestionOut",
         "type": "object"
@@ -9192,7 +9216,7 @@
     },
     "/api/transactions/payee-suggestions": {
       "get": {
-        "description": "The most recent payees containing `q`, one entry per (payee, category).\n\nBacks the Payee field's autocompletion in the transaction form: picking an\nentry fills both the payee and the category it was last filed under.",
+        "description": "The most recent transactions whose payee, memo or original bank label\ncontains `q`, one entry per (payee, category).\n\nBacks the Payee field's autocompletion in the transaction form: picking an\nentry fills both the payee and the category it was last filed under.\n`exclude_id` leaves out the transaction being edited, which would otherwise\nalways suggest itself.",
         "operationId": "payee_suggestions_api_transactions_payee_suggestions_get",
         "parameters": [
           {
@@ -9215,6 +9239,22 @@
               "minimum": 1,
               "title": "Limit",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "exclude_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Exclude Id"
             }
           }
         ],

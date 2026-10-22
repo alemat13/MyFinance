@@ -45,3 +45,25 @@ def test_limit_and_wildcards_are_literal(client, db, sample_account):
         "/api/transactions/payee-suggestions", params={"q": "b_c"}).json()] == ["Ab_c"]
     assert len(client.get("/api/transactions/payee-suggestions", params={"q": "a", "limit": 2}).json()) == 2
     assert client.get("/api/transactions/payee-suggestions", params={"q": "  "}).json() == []
+
+
+def test_matches_memo_and_original_label_and_excludes_current(client, db, sample_account):
+    db.add_all([
+        Transaction(date=date(2026, 9, 1), payee="Shop A", memo="birthday gift", amount=-5,
+                    account_id=sample_account.id, accounting_month_offset=0),
+        Transaction(date=date(2026, 9, 2), payee="Shop B", raw_label="CARTE 01/09 GIFTSHOP",
+                    amount=-6, account_id=sample_account.id, accounting_month_offset=0),
+        Transaction(date=date(2026, 9, 3), payee="Gift card", amount=-7,
+                    account_id=sample_account.id, accounting_month_offset=0),
+    ])
+    db.commit()
+    current = db.query(Transaction).filter_by(payee="Gift card").one()
+
+    body = client.get("/api/transactions/payee-suggestions", params={"q": "gift"}).json()
+    assert [s["payee"] for s in body] == ["Gift card", "Shop B", "Shop A"]
+    assert body[1]["raw_label"] == "CARTE 01/09 GIFTSHOP"
+    assert body[2]["memo"] == "birthday gift"
+
+    body = client.get("/api/transactions/payee-suggestions",
+                      params={"q": "gift", "exclude_id": current.id}).json()
+    assert [s["payee"] for s in body] == ["Shop B", "Shop A"]

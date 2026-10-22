@@ -1010,10 +1010,13 @@ export interface paths {
         };
         /**
          * Payee Suggestions
-         * @description The most recent payees containing `q`, one entry per (payee, category).
+         * @description The most recent transactions whose payee, memo or original bank label
+         *     contains `q`, one entry per (payee, category).
          *
          *     Backs the Payee field's autocompletion in the transaction form: picking an
          *     entry fills both the payee and the category it was last filed under.
+         *     `exclude_id` leaves out the transaction being edited, which would otherwise
+         *     always suggest itself.
          */
         get: operations["payee_suggestions_api_transactions_payee_suggestions_get"];
         put?: never;
@@ -2311,8 +2314,9 @@ export interface components {
         /**
          * PayeeSuggestionOut
          * @description One autocompletion entry for the Payee field: a payee as last used, the
-         *     category it was filed under then, and that most recent transaction's date
-         *     and amount so two similar entries can be told apart.
+         *     category it was filed under then, and that most recent transaction's date,
+         *     amount, memo and original bank label, so two similar entries can be told
+         *     apart and a match found outside the payee shows where it was found.
          */
         PayeeSuggestionOut: {
             /** Amount */
@@ -2328,8 +2332,12 @@ export interface components {
              * Format: date
              */
             date: string;
+            /** Memo */
+            memo: string | null;
             /** Payee */
             payee: string;
+            /** Raw Label */
+            raw_label: string | null;
         };
         /**
          * RuleActions
@@ -5344,6 +5352,7 @@ export interface operations {
             query: {
                 q: string;
                 limit?: number;
+                exclude_id?: number | null;
             };
             header?: never;
             path?: never;

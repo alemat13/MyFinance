@@ -367,14 +367,17 @@ class TransactionLinkOut(Schema):
 
 class PayeeSuggestionOut(Schema):
     """One autocompletion entry for the Payee field: a payee as last used, the
-    category it was filed under then, and that most recent transaction's date
-    and amount so two similar entries can be told apart."""
+    category it was filed under then, and that most recent transaction's date,
+    amount, memo and original bank label, so two similar entries can be told
+    apart and a match found outside the payee shows where it was found."""
     payee: str
     category_id: Optional[int] = None
     category_name: Optional[str] = None
     date: _DateType
     amount: float
     currency: str
+    memo: Optional[str] = None
+    raw_label: Optional[str] = None
 
 
 class TransactionCreate(Schema):
