@@ -749,7 +749,7 @@ test('payee autocompletion suggests recent payees and applies payee and category
 
   fireEvent.change(input, { target: { value: 'carre' } })
   const list = await screen.findByRole('listbox', { name: 'Payee suggestions' })
-  expect(mockFetchPayeeSuggestions).toHaveBeenCalledWith('carre')
+  expect(mockFetchPayeeSuggestions).toHaveBeenCalledWith('carre', 1)
   expect(within(list).getByText('Groceries')).toBeInTheDocument()
   expect(within(list).getByText('Uncategorized')).toBeInTheDocument()
 
@@ -804,4 +804,22 @@ test('existing transaction shows a WhatsApp share link next to its name', async 
 test('new transaction has no WhatsApp share link', () => {
   renderWithProviders(<TransactionDetail {...baseProps} transactionId={null} />)
   expect(screen.queryByRole('link', { name: 'Share on WhatsApp' })).toBeNull()
+})
+
+test('clicking the payee field suggests from the payee already there, and shows a memo match', async () => {
+  mockFetchTransaction.mockResolvedValue({ ...baseTxn, payee: 'Gift' })
+  mockFetchPayeeSuggestions.mockResolvedValue([
+    { payee: 'Shop A', category_id: null, category_name: null, date: '2026-09-01', amount: -5, currency: 'USD', memo: 'birthday gift', raw_label: null },
+  ])
+
+  renderWithProviders(<TransactionDetail {...baseProps} />)
+  const input = await screen.findByDisplayValue('Gift')
+  await new Promise(r => setTimeout(r, 400))
+  expect(mockFetchPayeeSuggestions).not.toHaveBeenCalled()
+
+  fireEvent.click(input)
+  const list = await screen.findByRole('listbox', { name: 'Payee suggestions' })
+  // The open transaction (id 1) is left out of its own suggestions.
+  expect(mockFetchPayeeSuggestions).toHaveBeenCalledWith('Gift', 1)
+  expect(within(list).getByText('birthday gift')).toBeInTheDocument()
 })

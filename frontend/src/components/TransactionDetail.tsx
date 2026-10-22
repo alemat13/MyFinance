@@ -220,6 +220,7 @@ export default function TransactionDetail({
               className="basis-full w-full"
               value={formData.payee ?? ''}
               categories={categories}
+              excludeId={transactionId}
               onChange={payee => setFormData(f => ({ ...f, payee }))}
               onPick={s => setFormData(f => ({ ...f, payee: s.payee, category_id: s.category_id }))}
             />
