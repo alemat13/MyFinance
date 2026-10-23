@@ -1178,6 +1178,12 @@ Two charts are shown:
   conditions you can then change.
 - **Net income per month** — green income bars and red expense bars per month, plus a
   black line tracing the net (income minus expense) per month.
+  Click a bar to open the Transactions screen on exactly the transactions it adds up:
+  every Income category (subcategories included) for a green bar, every Expense
+  category for a red one, the uncategorized ones for a gray one, by accounting month
+  for that month, the ones you have a share in, and the chart's currency when there
+  are several. A click on Income, Expense or Uncategorized in the legend does the same
+  over the chart's whole range.
   Under the chart, a summary table lists each month's income, expense and net (plus an
   Uncategorized column when some month has uncategorized transactions), with an
   **Average** row at the bottom. The average is taken over every month of the range, a
