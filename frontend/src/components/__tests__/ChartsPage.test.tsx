@@ -2,12 +2,14 @@ import { test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import ChartsPage from '../ChartsPage'
 
-const { mockFetchCharts } = vi.hoisted(() => ({
+const { mockFetchCharts, mockFetchCategories } = vi.hoisted(() => ({
   mockFetchCharts: vi.fn(),
+  mockFetchCategories: vi.fn(),
 }))
 
 vi.mock('../../api/client', () => ({
   fetchCharts: mockFetchCharts,
+  fetchCategories: mockFetchCategories,
 }))
 
 const sampleData = {
@@ -274,3 +276,4 @@ test('refetches when selectedUserId changes', async () => {
     expect(mockFetchCharts).toHaveBeenCalledWith(2, expect.anything())
   })
 })
+

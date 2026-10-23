@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ChartsData, fetchAccounts, fetchCharts } from '../api/client'
+import { ChartsData, fetchAccounts, fetchCategories, fetchCharts } from '../api/client'
 import { Card, Input, Select, StatusMessage, BackButton } from './ui'
 import { getParam, patchQueryParams } from '../utils/urlState'
 import { lastNMonthsRange } from '../utils/dateRange'
@@ -71,15 +71,15 @@ export default function ChartsPage({ selectedUserId, onBack, onOpenTransactions 
     })
   }, [currency, startMonth, endMonth, parentCategoryId])
 
-  // The Transactions screen on exactly the rows a chart segment sums: that one
-  // category (not its subcategories), the month clicked or the whole range by
-  // accounting month (the date shifted by its accounting month shift, as the
-  // chart buckets it), rows the selected user has a share in, and, when there
-  // is more than one currency, the accounts in the one shown.
-  const openTransactions = async (categoryId: number | null, month: string | null) => {
-    if (!onOpenTransactions || selectedUserId == null) return
+  // The Transactions screen on exactly the rows a chart bar sums: its
+  // categories (UNCATEGORIZED_ID for Uncategorized), the month clicked or the
+  // whole range by accounting month (the date shifted by its accounting month
+  // shift, as the charts bucket it), rows the selected user has a share in,
+  // and, when there is more than one currency, the accounts in the one shown.
+  const openTransactions = async (categoryIds: number[], month: string | null) => {
+    if (!onOpenTransactions || selectedUserId == null || categoryIds.length === 0) return
     const conditions: ConditionRow[] = [
-      { field: 'category_id', operator: 'in', value: String(categoryId ?? UNCATEGORIZED_ID), value2: '' },
+      { field: 'category_id', operator: 'in', value: categoryIds.join(','), value2: '' },
       month
         ? { field: 'accounting_month', operator: 'on', value: month, value2: '' }
         : { field: 'accounting_month', operator: 'between', value: startMonth, value2: endMonth },
@@ -95,6 +95,22 @@ export default function ChartsPage({ selectedUserId, onBack, onOpenTransactions 
       }
     }
     onOpenTransactions(conditions)
+  }
+
+  // A Spending per month segment: one category, not its subcategories.
+  const openCategoryTransactions = (categoryId: number | null, month: string | null) =>
+    openTransactions([categoryId ?? UNCATEGORIZED_ID], month)
+
+  // A Net income per month bar: every category of that type (subcategories
+  // share their parent's), or the uncategorized rows.
+  const openTypeTransactions = async (kind: 'Income' | 'Expense' | 'Uncategorized', month: string | null) => {
+    if (kind === 'Uncategorized') return openTransactions([UNCATEGORIZED_ID], month)
+    try {
+      const categories = await fetchCategories()
+      await openTransactions(categories.filter(c => c.type === kind).map(c => c.id), month)
+    } catch (err) {
+      console.error(err)
+    }
   }
 
   const backButton = <BackButton onClick={onBack} />
@@ -156,7 +172,7 @@ export default function ChartsPage({ selectedUserId, onBack, onOpenTransactions 
                 currency={currency}
                 onDrill={setParentCategoryId}
                 onBackToOverview={() => setParentCategoryId(null)}
-                onOpenTransactions={openTransactions}
+                onOpenTransactions={openCategoryTransactions}
               />
               <NetIncomeByMonthChart
                 byMonth={data.by_month.filter(m => m.currency === currency)}
@@ -164,6 +180,7 @@ export default function ChartsPage({ selectedUserId, onBack, onOpenTransactions 
                 startMonth={startMonth}
                 endMonth={endMonth}
                 currency={currency}
+                onOpenTransactions={openTypeTransactions}
               />
             </div>
           )
