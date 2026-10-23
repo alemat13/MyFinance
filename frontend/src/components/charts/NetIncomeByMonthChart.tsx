@@ -14,9 +14,15 @@ interface Props {
   startMonth: string
   endMonth: string
   currency: string | null
+  // A bar's transactions over its month, or over the whole range (null, from
+  // the legend).
+  onOpenTransactions?: (kind: BarKind, month: string | null) => void
 }
 
-export default function NetIncomeByMonthChart({ byMonth, netByMonth, startMonth, endMonth, currency }: Props) {
+export type BarKind = 'Income' | 'Expense' | 'Uncategorized'
+const BAR_KINDS: Record<string, BarKind> = { income: 'Income', expense: 'Expense', uncategorized: 'Uncategorized' }
+
+export default function NetIncomeByMonthChart({ byMonth, netByMonth, startMonth, endMonth, currency, onOpenTransactions }: Props) {
   const money = (v: number) => formatMoney(v, currency ?? '')
   const tooltipFormatter = (value: unknown) => money(Number(value ?? 0))
   const months = monthsBetween(startMonth, endMonth)
@@ -55,12 +61,19 @@ export default function NetIncomeByMonthChart({ byMonth, netByMonth, startMonth,
   const bestNet = Math.max(...nets)
   const worstNet = Math.min(...nets)
   const hasExtremes = merged.length > 1 && bestNet !== worstNet
+  const barClick = (kind: BarKind) => onOpenTransactions ? {
+    cursor: 'pointer',
+    onClick: (entry: { payload?: { month?: string } }) => onOpenTransactions(kind, entry?.payload?.month ?? null),
+  } : {}
   const netClass = (v: number) =>
     v < 0 ? 'text-red-600 dark:text-red-400' : v > 0 ? 'text-green-700 dark:text-green-400' : ''
 
   return (
     <Card className="p-4">
-      <h3 className="font-semibold text-sm text-slate-900 dark:text-slate-100 mb-3">Net income per month</h3>
+      <h3 className={`font-semibold text-sm text-slate-900 dark:text-slate-100 ${onOpenTransactions ? 'mb-1' : 'mb-3'}`}>Net income per month</h3>
+      {onOpenTransactions && !(byMonth.length === 0 && netByMonth.length === 0) && (
+        <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">Click a bar to see its transactions.</p>
+      )}
 
       {byMonth.length === 0 && netByMonth.length === 0 ? (
         <p className="text-sm text-slate-500 dark:text-slate-400">No income or expense data for this range.</p>
@@ -71,11 +84,17 @@ export default function NetIncomeByMonthChart({ byMonth, netByMonth, startMonth,
             <XAxis dataKey="month" {...AXIS_PROPS} />
             <YAxis {...AXIS_PROPS} />
             <Tooltip formatter={tooltipFormatter} cursor={{ fill: 'currentColor', fillOpacity: 0.06 }} />
-            <Legend wrapperStyle={{ fontSize: 12 }} />
-            <Bar dataKey="income" name="Income" fill={POSITIVE} maxBarSize={24} radius={[4, 4, 0, 0]} />
-            <Bar dataKey="expense" name="Expense" fill={NEGATIVE} maxBarSize={24} radius={[4, 4, 0, 0]} />
+            <Legend
+              wrapperStyle={{ fontSize: 12, cursor: onOpenTransactions ? 'pointer' : undefined }}
+              onClick={(entry: { dataKey?: unknown }) => {
+                const kind = BAR_KINDS[String(entry?.dataKey)]
+                if (kind) onOpenTransactions?.(kind, null)
+              }}
+            />
+            <Bar dataKey="income" name="Income" fill={POSITIVE} maxBarSize={24} radius={[4, 4, 0, 0]} {...barClick('Income')} />
+            <Bar dataKey="expense" name="Expense" fill={NEGATIVE} maxBarSize={24} radius={[4, 4, 0, 0]} {...barClick('Expense')} />
             {hasUncategorized && (
-              <Bar dataKey="uncategorized" name="Uncategorized" fill={UNCATEGORIZED} maxBarSize={24} radius={[4, 4, 0, 0]} />
+              <Bar dataKey="uncategorized" name="Uncategorized" fill={UNCATEGORIZED} maxBarSize={24} radius={[4, 4, 0, 0]} {...barClick('Uncategorized')} />
             )}
             <Line dataKey="net" name="Net" stroke={TREND_LINE} dot={false} strokeWidth={2} />
           </ComposedChart>
