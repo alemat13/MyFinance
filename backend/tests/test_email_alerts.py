@@ -388,3 +388,26 @@ def test_each_account_heading_shows_its_current_balance(db, sample_user, sample_
 def test_a_positive_balance_carries_no_plus_sign():
     assert email_alerts._balance(1234.5, "EUR") == "1 234,50 €"
     assert email_alerts._balance(-3.0, "EUR") == "-3,00 €"
+
+
+def test_shows_the_users_balance_per_row_and_overall(db, sample_user, sample_user2, sample_account_with_user, outbox):
+    from models import TransactionSplit
+    last = datetime(2026, 10, 15, 5)
+    # A 60 € purchase on an account the user owns alone, split half each.
+    t = _tx(db, sample_account_with_user, "Restaurant", -60.0, last + timedelta(hours=1))
+    db.add_all([
+        TransactionSplit(transaction_id=t.id, user_id=sample_user.id, weight=1, share_amount=-30.0, source="manual"),
+        TransactionSplit(transaction_id=t.id, user_id=sample_user2.id, weight=1, share_amount=-30.0, source="manual"),
+    ])
+    db.add(EmailAlert(user_id=sample_user.id, email="me@olivex.fr", daily=True, last_daily_sent_at=last))
+    db.commit()
+    email_alerts.run_due_alerts(db, FRI_0500_UTC)
+
+    body = outbox[0].get_body(("html",)).get_content()
+    text = outbox[0].get_body(("plain",)).get_content()
+    # share -30 minus paid -60 (100 % ownership) = +30: the other person owes them.
+    assert f'Balance <span style="color:{email_alerts.CREDIT_COLOR};">+30,00 €</span>' in body
+    assert "(your balance +30,00 €)" in text
+    # Overall: the Dashboard's net position, at the top.
+    assert body.index("Your balance") < body.index("Hello")
+    assert "Your balance: +30,00 €" in text

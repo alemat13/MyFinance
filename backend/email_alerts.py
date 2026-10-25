@@ -31,15 +31,18 @@ import smtplib
 import ssl
 import struct
 import zlib
+from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta, timezone
 from email.message import EmailMessage
 from email.utils import formataddr, make_msgid
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 import account_totals
+import cache_service
+import split_engine
 from models import AccountUser, EmailAlert, Transaction, User
 
 logger = logging.getLogger(__name__)
@@ -148,7 +151,7 @@ def new_transactions(db: Session, user_id: int, start: datetime, end: datetime) 
     )
     return (
         db.query(Transaction)
-        .options(joinedload(Transaction.account), joinedload(Transaction.category))
+        .options(joinedload(Transaction.account), joinedload(Transaction.category), selectinload(Transaction.splits))
         .filter(
             Transaction.account_id.in_(owned),
             Transaction.created_at > start,
@@ -251,6 +254,50 @@ def account_balances(db: Session, rows: list[Transaction]) -> dict[int, float]:
     return {aid: account_totals.account_balance(a, totals.get(aid, 0.0)) for aid, a in accounts.items()}
 
 
+@dataclass
+class AlertFigures:
+    """The balances an email shows beside what it lists."""
+    accounts: dict[int, float] = field(default_factory=dict)  # account id -> balance
+    transactions: dict[int, float] = field(default_factory=dict)  # transaction id -> the user's balance
+    overall: list[tuple[str, float]] = field(default_factory=list)  # (currency, net position)
+
+
+def transaction_balances(db: Session, user_id: int, rows: list[Transaction]) -> dict[int, float]:
+    """The user's balance on each row, as the Transactions screen shows it
+    (utils/transactions.ts's balanceFor()): their share minus the part of the
+    amount their ownership of the account pays."""
+    ownership = dict(
+        db.query(AccountUser.account_id, AccountUser.ownership_percentage)
+        .filter(AccountUser.user_id == user_id, AccountUser.account_id.in_({t.account_id for t in rows}))
+        .all()
+    )
+    return {
+        t.id: round(
+            sum(s.share_amount for s in t.splits if s.user_id == user_id)
+            - t.amount * (ownership.get(t.account_id) or 0.0) / 100,
+            2,
+        )
+        for t in rows
+    }
+
+
+def overall_balances(db: Session, user_id: int) -> list[tuple[str, float]]:
+    """The user's net position per currency, the Dashboard's figure (same
+    cache entry)."""
+    rows = cache_service.get_or_compute(
+        db, "balances", {"user_id": user_id}, lambda: split_engine.compute_balances(db, user_id=user_id),
+    )
+    return sorted((currency, net) for uid, _, currency, net in rows if uid == user_id)
+
+
+def alert_figures(db: Session, user: User, rows: list[Transaction]) -> AlertFigures:
+    return AlertFigures(
+        accounts=account_balances(db, rows),
+        transactions=transaction_balances(db, user.id, rows),
+        overall=overall_balances(db, user.id),
+    )
+
+
 def _balance(amount: float, currency: str) -> str:
     """A balance as the dashboard shows one: a sign only when negative."""
     return _money(amount, currency).lstrip("+")
@@ -258,10 +305,13 @@ def _balance(amount: float, currency: str) -> str:
 
 def build_message(
     user: User, alert: EmailAlert, frequency: str, rows: list[Transaction],
-    balances: dict[int, float] | None = None,
+    figures: AlertFigures | None = None,
 ) -> EmailMessage:
-    """`balances` ({account id: balance}) adds each account's current
-    balance under its heading; an account missing from it shows none."""
+    """`figures` adds the balances: each account's under its heading, the
+    user's own on each row and overall at the top. Whatever it leaves out
+    is not shown."""
+    figures = figures or AlertFigures()
+    balances = figures.accounts
     count = len(rows)
     label = FREQUENCY_LABELS[frequency]
     noun = "transaction" if count == 1 else "transactions"
@@ -284,16 +334,20 @@ def build_message(
     esc = html.escape
 
     # ── Plain text ──
-    text = [f"Hello {user.name},", "", f"{count} new {noun} reached MyFinance on your accounts."]
+    text = [f"Hello {user.name},", ""]
+    text += [f"Your balance: {_money(net, cur)}" for cur, net in figures.overall]
+    text += [f"{count} new {noun} reached MyFinance on your accounts."]
     text += [f"In {_money(i, cur)} · Out {_money(o, cur)}" for cur, (i, o) in sorted(totals.items())]
-    balances = balances or {}
     for account_id, name, currency, group in groups:
         text += ["", f"== {name} =="]
         if account_id in balances:
             text.append(f"Balance: {_balance(balances[account_id], currency)}")
         for t in group:
             category = _category_style(t)[0]
-            text.append(f"{t.date.strftime('%d/%m/%Y')}  {t.payee}  {category}  {_money(t.amount, currency)}")
+            line = f"{t.date.strftime('%d/%m/%Y')}  {t.payee}  {category}  {_money(t.amount, currency)}"
+            if t.id in figures.transactions:
+                line += f" (your balance {_money(figures.transactions[t.id], currency)})"
+            text.append(line)
             if t.memo:
                 text.append(f"    {t.memo}")
     if hidden:
@@ -328,13 +382,20 @@ def build_message(
             f'<tr><td colspan="2" style="padding-top:6px;font-size:12px;color:#64748b;">{esc(t.memo)}</td></tr>'
             if t.memo else ""
         )
+        mine = (
+            f'<div style="font-size:11px;color:#94a3b8;padding-top:2px;white-space:nowrap;">Balance '
+            f'<span style="color:{_amount_color(figures.transactions[t.id])};">'
+            f'{esc(_money(figures.transactions[t.id], currency))}</span></div>'
+            if t.id in figures.transactions else ""
+        )
         return f"""<tr><td style="padding:0 0 8px 0;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;border-collapse:separate;">
 <tr><td style="padding:12px;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-<tr><td style="font-size:15px;font-weight:600;color:#0f172a;word-break:break-word;">{esc(t.payee)}</td>
+<tr><td valign="top" style="font-size:15px;font-weight:600;color:#0f172a;word-break:break-word;">{esc(t.payee)}</td>
 <td align="right" valign="top" style="font-size:15px;padding-left:8px;">{money_span(t.amount, currency)}</td></tr>
-<tr><td colspan="2" style="font-size:12px;color:#64748b;padding-top:2px;">{t.date.strftime('%d/%m/%Y')}</td></tr>
+<tr><td style="font-size:12px;color:#64748b;padding-top:2px;">{t.date.strftime('%d/%m/%Y')}</td>
+<td align="right" valign="top" style="padding-left:8px;">{mine}</td></tr>
 <tr><td colspan="2" style="padding-top:8px;">
 <table role="presentation" cellpadding="0" cellspacing="0"><tr>
 <td width="20" height="20" align="center" valign="middle" bgcolor="{_tint(color)}" style="width:20px;height:20px;background:{_tint(color)};border-radius:6px;line-height:0;">
@@ -364,6 +425,11 @@ def build_message(
         f'<span style="color:#94a3b8;"> &nbsp;·&nbsp; </span>Out {money_span(o, cur)}</div>'
         for cur, (i, o) in sorted(totals.items())
     )
+    overall = "".join(
+        f'<div style="font-size:13px;color:#64748b;">Your balance{f" ({cur})" if len(figures.overall) > 1 else ""}</div>'
+        f'<div style="font-size:24px;font-weight:700;padding-bottom:10px;">{money_span(net, cur, 700)}</div>'
+        for cur, net in figures.overall
+    )
     more = (
         f'<tr><td style="padding:4px;font-size:13px;color:#64748b;">… and {hidden} more.</td></tr>' if hidden else ""
     )
@@ -381,7 +447,7 @@ def build_message(
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;{font}">
 <tr><td style="padding:0 4px 12px 4px;font-size:18px;font-weight:700;color:#4f46e5;">MyFinance</td></tr>
 <tr><td style="background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;padding:14px 16px;color:#0f172a;font-size:14px;">
-Hello {esc(user.name)},<br><strong>{count} new {noun}</strong> reached MyFinance on your accounts.{summary}</td></tr>
+{overall}Hello {esc(user.name)},<br><strong>{count} new {noun}</strong> reached MyFinance on your accounts.{summary}</td></tr>
 {"".join(section(*g) for g in groups)}{more}{button}
 <tr><td style="padding:16px 4px 0 4px;color:#94a3b8;font-size:12px;">You can change or stop these alerts in MyFinance, More → Email alerts.</td></tr>
 </table></td></tr></table></body></html>"""
@@ -432,7 +498,7 @@ def send_alert(db: Session, user: User, alert: EmailAlert, frequency: str, now: 
     rows = new_transactions(db, user.id, start, now)
     sent = False
     if rows:
-        send_message(build_message(user, alert, frequency, rows, account_balances(db, rows)))
+        send_message(build_message(user, alert, frequency, rows, alert_figures(db, user, rows)))
         sent = True
     setattr(alert, f"last_{frequency}_sent_at", now)
     return sent
@@ -488,7 +554,7 @@ def send_test(db: Session, user: User, alert: EmailAlert, now: datetime | None =
     the number of transactions listed."""
     now = now or _utcnow()
     rows = new_transactions(db, user.id, now - FIRST_WINDOW["weekly"], now)
-    message = build_message(user, alert, "weekly", rows, account_balances(db, rows))
+    message = build_message(user, alert, "weekly", rows, alert_figures(db, user, rows))
     message.replace_header("Subject", f"[Test] {message['Subject']}")
     send_message(message)
     return len(rows)
