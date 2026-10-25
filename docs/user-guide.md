@@ -1082,7 +1082,7 @@ Accounts screen, in red when negative). Every transaction is a card like on the
 Transactions screen of a phone: payee, date, the category with its icon and colour, the memo
 if any, and the amount in green for money in and red for money out, with your own balance on that
 transaction in small under it (your share minus what your accounts paid, as in the Balance
-column of the Transactions screen).
+column of the Transactions screen). Tapping the payee opens that transaction in MyFinance.
 
 **Send a test email** sends, right away, what a weekly alert would hold (the last 7
 days), so you can check the address and see what it looks like. It doesn't change when the
