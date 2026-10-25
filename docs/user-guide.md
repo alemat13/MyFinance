@@ -1075,12 +1075,14 @@ On a card:
 
 Tick any combination and press **Save**. A frequency counts from the moment you switch it
 on: the first email only holds what arrives after that, never your whole history. When
-nothing new arrived, no email is sent. Each email has the number of new transactions and the
-money in and out, then up to 100 of them (the most recent first) grouped by account, each
+nothing new arrived, no email is sent. Each email starts with your balance (the same figure as on the Dashboard), then the
+number of new transactions and the money in and out, then up to 100 of them (the most recent first) grouped by account, each
 account with its own count, net amount and current balance (the same figure as on the
 Accounts screen, in red when negative). Every transaction is a card like on the
 Transactions screen of a phone: payee, date, the category with its icon and colour, the memo
-if any, and the amount in green for money in and red for money out.
+if any, and the amount in green for money in and red for money out, with your own balance on that
+transaction in small under it (your share minus what your accounts paid, as in the Balance
+column of the Transactions screen).
 
 **Send a test email** sends, right away, what a weekly alert would hold (the last 7
 days), so you can check the address and see what it looks like. It doesn't change when the
