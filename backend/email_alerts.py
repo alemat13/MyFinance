@@ -388,11 +388,17 @@ def build_message(
             f'{esc(_money(figures.transactions[t.id], currency))}</span></div>'
             if t.id in figures.transactions else ""
         )
+        # Opens the row's detail panel, the same deep link as the WhatsApp share.
+        payee = (
+            f'<a href="{esc(app_url.rstrip("/"))}/?view=transactions&amp;transaction={t.id}" '
+            f'style="color:#0f172a;text-decoration:none;">{esc(t.payee)}</a>'
+            if app_url else esc(t.payee)
+        )
         return f"""<tr><td style="padding:0 0 8px 0;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;border-collapse:separate;">
 <tr><td style="padding:12px;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-<tr><td valign="top" style="font-size:15px;font-weight:600;color:#0f172a;word-break:break-word;">{esc(t.payee)}</td>
+<tr><td valign="top" style="font-size:15px;font-weight:600;color:#0f172a;word-break:break-word;">{payee}</td>
 <td align="right" valign="top" style="font-size:15px;padding-left:8px;">{money_span(t.amount, currency)}</td></tr>
 <tr><td style="font-size:12px;color:#64748b;padding-top:2px;">{t.date.strftime('%d/%m/%Y')}</td>
 <td align="right" valign="top" style="padding-left:8px;">{mine}</td></tr>

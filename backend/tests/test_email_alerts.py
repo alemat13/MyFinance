@@ -411,3 +411,21 @@ def test_shows_the_users_balance_per_row_and_overall(db, sample_user, sample_use
     # Overall: the Dashboard's net position, at the top.
     assert body.index("Your balance") < body.index("Hello")
     assert "Your balance: +30,00 €" in text
+
+
+def test_payee_links_to_the_transaction(db, sample_user, sample_account_with_user, outbox, monkeypatch):
+    last = datetime(2026, 10, 15, 5)
+    t = _tx(db, sample_account_with_user, "Boulangerie", -4.2, last + timedelta(hours=1))
+    db.add(EmailAlert(user_id=sample_user.id, email="me@olivex.fr", daily=True, last_daily_sent_at=last))
+    db.commit()
+
+    monkeypatch.setenv("FRONTEND_BASE_URL", "https://finance.example.com/")
+    email_alerts.run_due_alerts(db, FRI_0500_UTC)
+    body = outbox[0].get_body(("html",)).get_content()
+    assert f'href="https://finance.example.com/?view=transactions&amp;transaction={t.id}"' in body
+
+    # Without a base URL there is nothing to link to: plain text, no broken link.
+    outbox.clear()
+    monkeypatch.delenv("FRONTEND_BASE_URL")
+    body = email_alerts.build_message(sample_user, db.query(EmailAlert).one(), "daily", [t]).get_body(("html",)).get_content()
+    assert "transaction=" not in body and "Boulangerie" in body
