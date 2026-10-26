@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Flag } from 'lucide-react'
 import {
   Transaction, TransactionUpdate, TransactionHistoryEntry, GlobalSplitWeight, SplitSource,
   Account, Category, User, Tag,
@@ -73,6 +74,9 @@ export default function TransactionDetail({
   const [historyError, setHistoryError] = useState<string | null>(null)
   const [divideSiblings, setDivideSiblings] = useState<Transaction[]>([])
   const [adminMode] = useState(isAdminMode)
+  // A new transaction can be created as a checkpoint; an existing one is one
+  // for good (see checkpoints.py).
+  const [newCheckpoint, setNewCheckpoint] = useState(false)
   const { showToast } = useToast()
   // Date, amount and account are what the bank (or the migration) reported, so
   // an existing transaction shows them as plain text. Only creating one, or
@@ -96,6 +100,7 @@ export default function TransactionDetail({
           category_id: t.category_id,
           accounting_month_offset: t.accounting_month_offset,
           reconciled: t.reconciled,
+          ...(t.checkpoint_value != null ? { checkpoint_value: t.checkpoint_value } : {}),
         })
         // Always populated from the transaction's own stored weights — never
         // re-prefilled from current tier config while editing. The 3 quick
@@ -141,7 +146,9 @@ export default function TransactionDetail({
           date: formData.date || new Date().toISOString().slice(0, 10),
           payee: formData.payee ?? '',
           memo: formData.memo,
-          amount: formData.amount ?? 0,
+          // A checkpoint's amount is worked out by the server from its value.
+          amount: newCheckpoint ? 0 : formData.amount ?? 0,
+          checkpoint_value: newCheckpoint ? formData.checkpoint_value ?? 0 : undefined,
           account_id: formData.account_id ?? 0,
           category_id: formData.category_id || null,
           accounting_month_offset: formData.accounting_month_offset ?? undefined,
@@ -151,6 +158,8 @@ export default function TransactionDetail({
         }, selectedUserId)
       : updateTransaction(transactionId, {
           ...(coreEditable ? formData : { ...formData, date: undefined, amount: undefined, account_id: undefined }),
+          // Never sent for a checkpoint: it is derived from the value.
+          ...(isCheckpoint ? { amount: undefined } : {}),
           category_id: formData.category_id || null,
           split_weights: split.map(r => ({ user_id: r.user_id, weight: r.value })),
           split_source: splitSource ?? 'custom',
@@ -177,6 +186,8 @@ export default function TransactionDetail({
   const isNonAnchorDivideSibling = transaction != null
     && transaction.divide_group_id != null
     && transaction.divide_group_id !== transaction.id
+
+  const isCheckpoint = transactionId === null ? newCheckpoint : transaction?.checkpoint_value != null
 
   const currency = accounts.find(a => a.id === formData.account_id)?.currency ?? 'EUR'
   // Archived accounts are hidden from the picker when creating a new transaction, but
@@ -273,7 +284,22 @@ export default function TransactionDetail({
               )}
               <div className="flex gap-2 flex-wrap items-end">
                 <Input type="date" aria-label="Date" value={formData.date ?? ''} onChange={e => setFormData({ ...formData, date: e.target.value })} />
-                <NumberInput placeholder="Amount" signed value={formData.amount ?? 0} onValueChange={v => setFormData({ ...formData, amount: v ?? 0 })} className="w-[110px]" />
+                {!isCheckpoint && (
+                  <NumberInput placeholder="Amount" signed value={formData.amount ?? 0} onValueChange={v => setFormData({ ...formData, amount: v ?? 0 })} className="w-[110px]" />
+                )}
+                {transactionId === null && isCheckpoint && (
+                  <label className="flex items-center gap-1.5 text-sm text-slate-600 dark:text-slate-300">
+                    Account value
+                    <NumberInput
+                      aria-label="Account value"
+                      placeholder="Account value"
+                      signed
+                      value={formData.checkpoint_value ?? 0}
+                      onValueChange={v => setFormData({ ...formData, checkpoint_value: v ?? 0 })}
+                      className="w-[130px]"
+                    />
+                  </label>
+                )}
                 <AccountPicker
                   accounts={pickerAccounts}
                   value={formData.account_id || null}
@@ -283,6 +309,44 @@ export default function TransactionDetail({
                   className="min-w-[140px]"
                 />
               </div>
+              {transactionId === null && (
+                <label className="flex items-center gap-1.5 text-sm px-1 mt-2">
+                  <input
+                    type="checkbox"
+                    checked={newCheckpoint}
+                    onChange={e => setNewCheckpoint(e.target.checked)}
+                  />
+                  Checkpoint: enter what the account is worth on this date
+                </label>
+              )}
+              {transactionId === null && isCheckpoint && (
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 px-1">
+                  The amount will be the gain or loss since the balance before this date, worked out on save.
+                </p>
+              )}
+            </div>
+          )}
+
+          {transactionId !== null && isCheckpoint && (
+            <div className="pt-2 border-t border-slate-200 dark:border-slate-700" data-testid="checkpoint-section">
+              <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1.5 flex items-center gap-1.5">
+                <Flag size={15} className="text-accent" /> Checkpoint
+              </h4>
+              <div className="flex gap-2 flex-wrap items-center text-sm">
+                <span className="text-slate-600 dark:text-slate-300">Account value on {formData.date}</span>
+                <NumberInput
+                  aria-label="Account value"
+                  signed
+                  value={formData.checkpoint_value ?? 0}
+                  onValueChange={v => setFormData({ ...formData, checkpoint_value: v ?? 0 })}
+                  className="w-[130px]"
+                />
+                <span className="text-slate-500 dark:text-slate-400">{currency}</span>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                The amount ({formatMoney(transaction?.amount ?? 0, currency)}) is the gain or loss since the balance
+                before this date. It is worked out again whenever an earlier transaction of the account changes.
+              </p>
             </div>
           )}
 
@@ -301,7 +365,7 @@ export default function TransactionDetail({
 
           <div className="flex gap-2">
             <Button onClick={save}>Save</Button>
-            {transactionId !== null && !isNonAnchorDivideSibling && (
+            {transactionId !== null && !isNonAnchorDivideSibling && !isCheckpoint && (
               <Button variant="secondary" onClick={() => setDividing(true)}>Divide</Button>
             )}
             {transactionId !== null && (

@@ -36,6 +36,7 @@ import audit
 import auto_categorize
 import transaction_rules
 import cache_service
+import checkpoints
 import split_engine
 from audit import record_transaction_history, splits_created_changes
 from models import BankAccountLink, BankConnection, Transaction
@@ -419,6 +420,9 @@ def _legacy_duplicate_counts(db: Session, account_id: int, date_from: date, date
         .filter(
             Transaction.account_id == account_id,
             Transaction.external_id.is_(None),
+            # A checkpoint is the account's value, not something the bank
+            # could hand back: it must never swallow a real row.
+            Transaction.checkpoint_value.is_(None),
             Transaction.date >= date_from,
             Transaction.date <= date_to,
         )
@@ -532,6 +536,7 @@ def import_transactions(db: Session, link: BankAccountLink, rows: list[dict], da
     transaction_rules.apply_quietly(db, imported, fresh=True)
 
     if created:
+        checkpoints.recompute(db, [link.account_id])
         cache_service.invalidate(db, "balances", "charts", "account_totals", "category_usage")
     db.commit()
     return created

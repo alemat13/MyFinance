@@ -17,6 +17,7 @@ export const HISTORY_SOURCE_LABELS: Record<string, string> = {
   rule: 'rule',
   bulk: 'bulk edit',
   link: 'link',
+  checkpoint: 'checkpoint',
 }
 
 interface SplitSnapshotEntry {
@@ -69,6 +70,8 @@ export const describeHistoryChanges = (changes: TransactionHistoryEntry['changes
           ? describeTagsChange(value)
           : field === 'link'
           ? describeLinkChange(value)
+          : field === 'checkpoint_value'
+          ? `account value: ${value.old ?? '—'} → ${value.new ?? '—'}`
           : `${field}: ${value.old ?? '—'} → ${value.new ?? '—'}`
       ).join(', ')
     : ''
@@ -96,6 +99,7 @@ export const describeGroupChanges = (changes: HistoryEntry['changes'], users: Us
         if (field === 'category_id') return `category → ${categoryNameFor(value.new as number | null, categories)}`
         if (field === 'reconciled') return `Reconciled → ${value.new ? 'Yes' : 'No'}`
         if (field === 'link') return value.new != null ? `linked: ${value.new}` : 'unlinked'
+        if (field === 'checkpoint_value') return `account value → ${value.new ?? '—'}`
         return `${field} → ${value.new ?? '—'}`
       }).join(', ')
     : ''

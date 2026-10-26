@@ -880,10 +880,10 @@ test('downloads a CSV with one Weight/Share/Balance column per household user', 
 
   const text: string = await blob.text()
   expect(text).toContain(
-    'ID,Date,Payee,Memo,Amount,Currency,Account,Category,Accounting Month,Reconciled,Divide Group ID,Tags,'
+    'ID,Date,Payee,Memo,Amount,Currency,Account,Category,Accounting Month,Reconciled,Divide Group ID,Tags,Checkpoint Value,'
     + 'Weight Bob,Weight Alice,Share Bob,Share Alice,Balance Bob,Balance Alice',
   )
-  expect(text).toContain('1,2026-01-15,Grocery,,-100,USD,Joint,Salary,2026-01,No,,"Trip, Work",55,45,-55,-45,-5,5')
+  expect(text).toContain('1,2026-01-15,Grocery,,-100,USD,Joint,Salary,2026-01,No,,"Trip, Work",,55,45,-55,-45,-5,5')
 })
 
 test('downloads an Excel file with the same data as the CSV export', async () => {
@@ -908,7 +908,7 @@ test('downloads an Excel file with the same data as the CSV export', async () =>
 
   expect(rows[0]).toEqual([
     'ID', 'Date', 'Payee', 'Memo', 'Amount', 'Currency', 'Account', 'Category',
-    'Accounting Month', 'Reconciled', 'Divide Group ID', 'Tags',
+    'Accounting Month', 'Reconciled', 'Divide Group ID', 'Tags', 'Checkpoint Value',
     'Weight Bob', 'Weight Alice', 'Share Bob', 'Share Alice', 'Balance Bob', 'Balance Alice',
   ])
   expect(rows[1][0]).toBe(1)

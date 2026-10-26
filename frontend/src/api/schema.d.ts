@@ -2056,6 +2056,8 @@ export interface components {
             amount: number;
             /** Category Id */
             category_id?: number | null;
+            /** Checkpoint Value */
+            checkpoint_value?: number | null;
             /**
              * Date
              * Format: date
@@ -2688,6 +2690,8 @@ export interface components {
             amount: number;
             /** Category Id */
             category_id?: number | null;
+            /** Checkpoint Value */
+            checkpoint_value?: number | null;
             /**
              * Date
              * Format: date
@@ -2851,6 +2855,8 @@ export interface components {
             category_id: number | null;
             /** Category Name */
             category_name: string | null;
+            /** Checkpoint Value */
+            checkpoint_value: number | null;
             /** Currency */
             currency: string;
             /**
@@ -3035,6 +3041,8 @@ export interface components {
             amount?: number | null;
             /** Category Id */
             category_id?: number | null;
+            /** Checkpoint Value */
+            checkpoint_value?: number | null;
             /** Date */
             date?: string | null;
             /** Memo */
@@ -4156,7 +4164,7 @@ export interface operations {
                 before_id?: number | null;
                 limit?: number;
                 action?: ("created" | "updated" | "deleted") | null;
-                source?: ("manual" | "bulk" | "rule" | "categorizer" | "csv_import" | "bank_sync" | "divide" | "admin" | "link") | null;
+                source?: ("manual" | "bulk" | "rule" | "categorizer" | "csv_import" | "bank_sync" | "divide" | "admin" | "link" | "checkpoint") | null;
             };
             header?: never;
             path?: never;

@@ -181,6 +181,8 @@ def preview_import(db: Session, raw: bytes, data: ImportPreviewRequest) -> list[
         (account_id, row_date, round(amount, 2))
         for account_id, row_date, amount in db.query(Transaction.account_id, Transaction.date, Transaction.amount)
         .filter(Transaction.account_id.in_(resolved_account_ids))
+        # A checkpoint is the account's value, never a row a file could carry.
+        .filter(Transaction.checkpoint_value.is_(None))
     )
 
     weights_cache: dict[tuple[int | None, int | None], tuple[str | None, dict[int, int]]] = {}

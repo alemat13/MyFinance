@@ -823,3 +823,50 @@ test('clicking the payee field suggests from the payee already there, and shows 
   expect(mockFetchPayeeSuggestions).toHaveBeenCalledWith('Gift', 1)
   expect(within(list).getByText('birthday gift')).toBeInTheDocument()
 })
+
+test('a new transaction can be a checkpoint: the account value is sent, not an amount', async () => {
+  mockCreateTransaction.mockResolvedValue({ ...baseTxn, checkpoint_value: 1500 })
+  renderWithProviders(<TransactionDetail {...baseProps} transactionId={null} allUsers={[alex]} globalWeights={defaultGlobalWeights} />)
+
+  fireEvent.change(screen.getByPlaceholderText('Payee'), { target: { value: 'Valuation' } })
+  fireEvent.click(screen.getByLabelText(/Checkpoint: enter what the account is worth/))
+  expect(screen.queryByPlaceholderText('Amount')).not.toBeInTheDocument()
+  fireEvent.change(screen.getByLabelText('Account value'), { target: { value: '1500' } })
+  pickAccount(screen.getByRole('button', { name: 'Choose account' }), 'Checking')
+
+  fireEvent.click(screen.getByText('Save'))
+
+  await waitFor(() => expect(mockCreateTransaction).toHaveBeenCalledWith(
+    expect.objectContaining({ checkpoint_value: 1500, amount: 0 }), null,
+  ))
+})
+
+test('an existing checkpoint edits its value, never its amount, and cannot be divided', async () => {
+  window.history.replaceState(null, '', '/?admin')
+  try {
+    mockFetchTransaction.mockResolvedValue({
+      ...baseTxn, amount: 300, checkpoint_value: 1500,
+      splits: [{ user_id: 1, user_name: 'Alex', weight: 1, share_amount: 300, source: 'custom' }],
+    })
+    mockUpdateTransaction.mockResolvedValue(baseTxn)
+
+    renderWithProviders(<TransactionDetail {...baseProps} />)
+
+    await screen.findByDisplayValue('Test')
+    const section = screen.getByTestId('checkpoint-section')
+    expect(within(section).getByText(/\$300\.00/)).toBeInTheDocument()
+    // Not even admin mode offers the amount of a checkpoint.
+    expect(screen.queryByPlaceholderText('Amount')).not.toBeInTheDocument()
+    expect(screen.queryByText('Divide')).not.toBeInTheDocument()
+
+    fireEvent.change(within(section).getByLabelText('Account value'), { target: { value: '1600' } })
+    fireEvent.click(screen.getByText('Save'))
+
+    await waitFor(() => expect(mockUpdateTransaction).toHaveBeenCalled())
+    const sent = mockUpdateTransaction.mock.calls[0][1]
+    expect(sent.checkpoint_value).toBe(1600)
+    expect(sent.amount).toBeUndefined()
+  } finally {
+    window.history.replaceState(null, '', '/')
+  }
+})

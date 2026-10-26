@@ -73,6 +73,13 @@ class Transaction(Base):
     # TransactionLink): a transfer's two sides, an expense and its refunds.
     # At most one group per transaction.
     link_id = Column(Integer, ForeignKey("transaction_links.id", ondelete="SET NULL"), nullable=True, index=True)
+    # Set on a checkpoint only (see checkpoints.py): what the whole account
+    # was worth at the end of `date`, as the user typed it. A checkpoint's
+    # `amount` is derived from it — this value minus the balance just before
+    # the checkpoint — and recomputed whenever an earlier row of the account
+    # changes, so the sum of the account's amounts always lands on it. NULL
+    # for every ordinary transaction.
+    checkpoint_value = Column(Float, nullable=True)
     # The identifier the bank gave this transaction, for rows pulled in by
     # bank sync (see enable_banking.py) — an ASPSP's own entry_reference /
     # transaction_id, or a locally derived "fp:" fingerprint when the bank
