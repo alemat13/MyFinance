@@ -110,3 +110,40 @@ def test_get_or_compute_survives_concurrent_miss(db):
     assert cache_service.get_or_compute(db, "account_totals", {}, lambda: [1]) == [1]
     event.remove(db, "before_flush", other_request_stores_it_first)
     assert db.query(AggregateCache).count() == 1
+
+
+def _cached_namespaces(db):
+    return {row.namespace for row in db.query(AggregateCache).all()}
+
+
+def _fill_cache(db):
+    for namespace in ("balances", "charts", "account_totals", "category_usage"):
+        cache_service.get_or_compute(db, namespace, {}, lambda: 1)
+
+
+def test_transaction_edit_keeps_caches_it_cannot_affect(client, db, sample_transaction):
+    """A rename, a memo or a reconciled tick feeds no aggregate, so it must not
+    send the dashboard back to recomputing balances."""
+    _fill_cache(db)
+
+    response = client.put(
+        f"/api/transactions/{sample_transaction.id}",
+        json={"payee": "Renamed", "memo": "note", "reconciled": True},
+    )
+    assert response.status_code == 200
+    db.expire_all()
+    assert _cached_namespaces(db) == {"balances", "charts", "account_totals", "category_usage"}
+
+
+def test_transaction_edit_drops_only_the_caches_it_affects(client, db, sample_transaction):
+    _fill_cache(db)
+    response = client.put(f"/api/transactions/{sample_transaction.id}", json={"amount": 120.0})
+    assert response.status_code == 200
+    db.expire_all()
+    assert _cached_namespaces(db) == {"category_usage"}
+
+    _fill_cache(db)
+    response = client.put(f"/api/transactions/{sample_transaction.id}", json={"category_id": None})
+    assert response.status_code == 200
+    db.expire_all()
+    assert _cached_namespaces(db) == {"balances", "account_totals"}

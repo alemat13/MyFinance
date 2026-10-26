@@ -540,9 +540,34 @@ def update_transaction(transaction_id: int, data: TransactionUpdate, actor_user_
             changes["tags"] = tags_change
     if changes:
         record_transaction_history(db, transaction, "updated", actor_user_id, changes=changes)
-    cache_service.invalidate(db, "balances", "charts", "account_totals", "category_usage")
+    stale = _stale_namespaces(changes)
+    if stale:
+        cache_service.invalidate(db, *stale)
     db.commit()
     return get_transaction_out(db, transaction.id)
+
+
+# Which cached aggregates read each field a single-transaction update can
+# change. A payee rename, a memo, a tag or a reconciled tick feeds none of
+# them, and those are most edits: dropping every namespace on each of them
+# left the dashboard recomputing balances on nearly every load.
+_NAMESPACES_BY_CHANGE = {
+    "amount": ("balances", "charts", "account_totals"),
+    "account_id": ("balances", "charts", "account_totals"),
+    "splits": ("balances", "charts"),
+    "date": ("charts", "account_totals"),
+    "accounting_month_offset": ("charts",),
+    "category_id": ("charts", "category_usage"),
+}
+
+
+def _stale_namespaces(changes: dict) -> list[str]:
+    stale: list[str] = []
+    for field in changes:
+        for namespace in _NAMESPACES_BY_CHANGE.get(field, ()):
+            if namespace not in stale:
+                stale.append(namespace)
+    return stale
 
 
 @router.put("/{transaction_id}/raw", response_model=TransactionOut)

@@ -141,6 +141,7 @@ jobs:
             --set-env-vars=CORS_ALLOWED_ORIGINS=https://${{ vars.DOMAIN }},FRONTEND_BASE_URL=https://${{ vars.DOMAIN }},ONEDRIVE_CLIENT_ID=${{ vars.ONEDRIVE_CLIENT_ID }},ONEDRIVE_REDIRECT_URI=https://${{ vars.DOMAIN }}/api/onedrive/auth/callback,ENABLE_BANKING_APPLICATION_ID=${{ vars.ENABLE_BANKING_APPLICATION_ID }},ENABLE_BANKING_REDIRECT_URL=https://${{ vars.DOMAIN }}/api/bank-sync/callback,SMTP_HOST=${{ vars.SMTP_HOST || 'smtp-relay.brevo.com' }},SMTP_PORT=${{ vars.SMTP_PORT || '587' }},SMTP_USERNAME=${{ vars.SMTP_USERNAME }},ALERT_FROM_ADDRESS=${{ vars.ALERT_FROM_ADDRESS || 'myfinance@olivex.fr' }} \
             --no-allow-unauthenticated \
             --ingress=internal-and-cloud-load-balancing \
+            --min-instances=${{ vars.BACKEND_MIN_INSTANCES || '0' }} \
             --max-instances=2 \
             --concurrency=10 \
             --timeout=120 \
