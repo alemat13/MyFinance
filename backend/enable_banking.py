@@ -84,7 +84,7 @@ RAW_SOURCE = "enable_banking"
 _CONFIG_PATH = Path(__file__).parent / "bank_sync_config.json"
 _LABEL_CLEANUP_PATTERNS: list[re.Pattern] = [
     re.compile(entry["pattern"] if isinstance(entry, dict) else entry)
-    for entry in json.loads(_CONFIG_PATH.read_text()).get("label_cleanup_patterns", [])
+    for entry in json.loads(_CONFIG_PATH.read_text(encoding="utf-8")).get("label_cleanup_patterns", [])
 ]
 
 

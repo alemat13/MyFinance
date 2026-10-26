@@ -24,7 +24,7 @@ _SAMPLE_SIZE = 20
 MAX_IMPORT_ROWS = 5000
 
 _MAPPING_CONFIG_PATH = Path(__file__).parent / "import_mapping_config.json"
-_MAPPING_CONFIG: dict[str, list[str]] = json.loads(_MAPPING_CONFIG_PATH.read_text())
+_MAPPING_CONFIG: dict[str, list[str]] = json.loads(_MAPPING_CONFIG_PATH.read_text(encoding="utf-8"))
 
 logger = logging.getLogger(__name__)
 
