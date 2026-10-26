@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from models import AccountSplitWeight, AccountUser, CategorySplit, GlobalSplitWeight, Transaction, TransactionSplit
@@ -125,42 +126,53 @@ def compute_balances(db: Session, user_id: int | None = None) -> list[tuple[int,
     Driven entirely by TransactionSplit.share_amount and
     AccountUser.ownership_percentage — unaffected by the split-weight
     refactor (weight/source never factor into balance math).
+
+    Both sides are summed in SQL: production holds tens of thousands of
+    splits, and loading them as ORM objects to add them up in Python took
+    over two seconds on a cache miss.
     """
     from models import Account, User
 
     net: dict[tuple[int, str], float] = {}
 
-    splits_query = (
-        db.query(TransactionSplit, Account.currency)
+    received_query = (
+        db.query(TransactionSplit.user_id, Account.currency, func.sum(TransactionSplit.share_amount))
         .join(Transaction, Transaction.id == TransactionSplit.transaction_id)
         .join(Account, Account.id == Transaction.account_id)
+        .group_by(TransactionSplit.user_id, Account.currency)
     )
     if user_id is not None:
-        splits_query = splits_query.filter(TransactionSplit.user_id == user_id)
-    for s, currency in splits_query.all():
-        key = (s.user_id, currency)
-        net[key] = net.get(key, 0.0) + s.share_amount
+        received_query = received_query.filter(TransactionSplit.user_id == user_id)
+    for uid, currency, total in received_query.all():
+        key = (uid, currency)
+        net[key] = net.get(key, 0.0) + float(total or 0.0)
 
     # Only transactions that actually have a resolved split contribute a
     # "paid" side — an unsplit transaction carries no liability claim, so it
     # must not skew anyone's balance. This must consider every split
     # transaction in the household, not just user_id's own splits above.
-    split_transaction_ids = {
-        row[0] for row in db.query(TransactionSplit.transaction_id).distinct().all()
-    }
-    if split_transaction_ids:
-        ownerships_query = (
-            db.query(Transaction.id, Transaction.amount, Account.currency, AccountUser.user_id, AccountUser.ownership_percentage)
-            .join(Account, Account.id == Transaction.account_id)
-            .join(AccountUser, AccountUser.account_id == Transaction.account_id)
-            .filter(Transaction.id.in_(split_transaction_ids))
+    has_split = (
+        db.query(TransactionSplit.transaction_id)
+        .filter(TransactionSplit.transaction_id == Transaction.id)
+        .exists()
+    )
+    paid_query = (
+        db.query(
+            AccountUser.user_id,
+            Account.currency,
+            func.sum(Transaction.amount * AccountUser.ownership_percentage / 100.0),
         )
-        if user_id is not None:
-            ownerships_query = ownerships_query.filter(AccountUser.user_id == user_id)
-        for _, amount, currency, uid, ownership_percentage in ownerships_query.all():
-            paid = amount * ownership_percentage / 100.0
-            key = (uid, currency)
-            net[key] = net.get(key, 0.0) - paid
+        .select_from(Transaction)
+        .join(Account, Account.id == Transaction.account_id)
+        .join(AccountUser, AccountUser.account_id == Transaction.account_id)
+        .filter(has_split)
+        .group_by(AccountUser.user_id, Account.currency)
+    )
+    if user_id is not None:
+        paid_query = paid_query.filter(AccountUser.user_id == user_id)
+    for uid, currency, total in paid_query.all():
+        key = (uid, currency)
+        net[key] = net.get(key, 0.0) - float(total or 0.0)
 
     users_query = db.query(User)
     if user_id is not None:
