@@ -1,8 +1,9 @@
 from datetime import date
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
 import account_totals
+import checkpoints
 from accounting_month import compute_accounting_month
 from models import Account, Category, Transaction, User
 from schemas import (
@@ -88,6 +89,10 @@ def build_transaction_out_from_row(
         divide_group_id=t.divide_group_id,
         link_id=t.link_id,
         checkpoint_value=t.checkpoint_value,
+        checkpoint_since=(
+            checkpoints.previous_checkpoint_date(object_session(t), t)
+            if t.checkpoint_value is not None else None
+        ),
         raw_source=t.raw_source,
         raw_label=t.raw_label,
         raw_counterparty=t.raw_counterparty,

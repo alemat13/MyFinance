@@ -319,6 +319,10 @@ class TransactionOut(Schema):
     # Set on a checkpoint only: the account's value at the end of `date`;
     # `amount` is then derived from it (see checkpoints.py).
     checkpoint_value: Optional[float] = None
+    # On a checkpoint: the previous checkpoint's date on its account, where
+    # the period its gain or loss covers starts (null: since the account's
+    # start, or not a checkpoint).
+    checkpoint_since: Optional[date] = None
     # Read-only throughout: present here and absent from TransactionCreate /
     # TransactionUpdate, so the API can show what the source said without
     # ever letting a client rewrite it. See models.Transaction.

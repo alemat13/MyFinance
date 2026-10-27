@@ -26,7 +26,7 @@ import { UNCATEGORIZED_ID } from '../utils/categoryHierarchy'
 import { UNTAGGED_ID, joinTagNames } from '../utils/tags'
 import { isAdminMode } from '../utils/admin'
 import { RuleDraft, simpleFiltersToConditions } from '../utils/rules'
-import { myShareFor, balanceFor, formatDateGroupHeader } from '../utils/transactions'
+import { myShareFor, balanceFor, formatDateGroupHeader, checkpointPeriodLabel } from '../utils/transactions'
 import { useToast } from '../context/ToastContext'
 import { useIsMobile } from '../hooks/useMediaQuery'
 import { buildCsv } from '../utils/csv'
@@ -123,11 +123,20 @@ const splitsDisplay = (splits: TransactionSplit[], currency: string) => {
 
 // Marks a checkpoint: a row stating what its account is worth, whose amount
 // is worked out from that value.
-function CheckpointIcon() {
+function CheckpointIcon({ since }: { since?: string | null }) {
   return (
-    <span title="Checkpoint: account value" className="inline-flex align-[-2px] text-accent mx-1">
+    <span title={`Checkpoint: gain or loss ${checkpointPeriodLabel(since)}`} className="inline-flex align-[-2px] text-accent mx-1">
       <Flag size={14} aria-label="Checkpoint" />
     </span>
+  )
+}
+
+// The period a checkpoint's amount covers, on its own line under the payee.
+function CheckpointPeriod({ since, className = '' }: { since?: string | null; className?: string }) {
+  return (
+    <div className={`text-xs text-slate-500 dark:text-slate-400 ${className}`} data-testid="checkpoint-period">
+      Gain/loss {checkpointPeriodLabel(since)}
+    </div>
   )
 }
 
@@ -682,7 +691,7 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
                     <div className="flex-1 min-w-0">
                       <div className="flex justify-between gap-2">
                         <span className="font-medium text-slate-900 dark:text-slate-100 truncate">
-                          {t.link_id != null && <LinkedIcon />}{t.checkpoint_value != null && <CheckpointIcon />}
+                          {t.link_id != null && <LinkedIcon />}{t.checkpoint_value != null && <CheckpointIcon since={t.checkpoint_since} />}
                           {t.payee}
                         </span>
                         <span className={`shrink-0 font-semibold ${t.amount >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
@@ -693,6 +702,7 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
                         <CategoryBadge name={t.category_name} color={t.category_color} icon={t.category_icon} />
                         <span className="text-xs text-slate-500 dark:text-slate-400 truncate">{t.account_name}</span>
                       </div>
+                      {t.checkpoint_value != null && <CheckpointPeriod since={t.checkpoint_since} className="mt-1" />}
                       {t.tags && t.tags.length > 0 && <div className="mt-1"><TagChips tags={t.tags} /></div>}
                       {showMyColumns && (
                         <div className="flex justify-between gap-2 text-xs text-slate-500 dark:text-slate-400 mt-1.5">
@@ -773,8 +783,9 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
                         : <Circle size={16} className="text-slate-300 dark:text-slate-600" />}
                     </IconButton>
                     {t.payee}
-                    {t.link_id != null && <LinkedIcon />}{t.checkpoint_value != null && <CheckpointIcon />}
+                    {t.link_id != null && <LinkedIcon />}{t.checkpoint_value != null && <CheckpointIcon since={t.checkpoint_since} />}
                   </span>
+                  {t.checkpoint_value != null && <CheckpointPeriod since={t.checkpoint_since} className="ml-7 mt-0.5" />}
                   {t.tags && t.tags.length > 0 && <div className="ml-7 mt-0.5"><TagChips tags={t.tags} /></div>}
                 </Td>
                 <Td><CategoryBadge name={t.category_name} color={t.category_color} icon={t.category_icon} /></Td>
