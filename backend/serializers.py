@@ -87,6 +87,7 @@ def build_transaction_out_from_row(
         reconciled=t.reconciled,
         divide_group_id=t.divide_group_id,
         link_id=t.link_id,
+        checkpoint_value=t.checkpoint_value,
         raw_source=t.raw_source,
         raw_label=t.raw_label,
         raw_counterparty=t.raw_counterparty,

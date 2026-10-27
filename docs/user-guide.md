@@ -142,6 +142,10 @@ per type.
   transaction, an import you didn't reconcile), just **Edit** the account and type the
   real balance. That restates the account from today onward and leaves every
   transaction untouched; the balance keeps tracking activity from there.
+- For an account whose value moves on its own (investments), record its value with
+  a [checkpoint](#checkpoints-account-value) instead: the difference becomes a dated,
+  visible gain or loss. Once an account has a checkpoint, its balance can no longer be
+  typed here.
 - Every account has two independent sub-tables when you add or edit it:
   - An **ownership** sub-table where you add one or more owners and set each one's
     ownership percentage. This is what determines who an account (and its balance)
@@ -429,6 +433,34 @@ captures:
 The **Delete** button and the **History** panel only appear once the transaction
 already exists — there's nothing to delete or show history for while you're still
 filling in a new one. Deleting a transaction asks for confirmation first.
+
+#### Checkpoints (account value)
+
+For an account whose value moves on its own (an investment, a life-insurance
+policy, a PEA), you don't record every gain or loss: you record what the account
+is worth from time to time, from its statement. That's a **checkpoint**.
+
+- To add one, click **+ New Transaction**, pick the account and the date, tick
+  **Checkpoint: enter what the account is worth on this date**, and type the
+  **Account value** instead of an amount. Give it a payee (e.g. "Valuation") and a
+  category as for any transaction: whether it counts as income or expense in the
+  charts depends on the category you choose.
+- Its **amount** is worked out for you: the value you typed minus the account's
+  balance just before that date. A positive amount is a gain, a negative one a loss.
+  Transactions dated the same day count as before the checkpoint. So the account's
+  balance on that date is exactly the value you typed, and the balance shown on
+  Accounts and the Dashboard is the latest checkpoint plus whatever came after it.
+- It's marked with a flag next to its payee in the list. Its detail panel has a
+  **Checkpoint** section where you can change the value; the amount itself is never
+  editable (not even in admin mode), and a checkpoint can't be divided.
+- Whenever a transaction dated before a checkpoint is added, changed, moved or
+  deleted on that account (by hand, by an import or by the bank sync), the
+  checkpoints after it recompute their amounts so that their values still hold.
+  The change appears in their history as "updated · checkpoint".
+- An import or the bank sync never takes a real transaction for a duplicate of a
+  checkpoint, even with the same date and amount.
+- On an account that has checkpoints, its balance can't be typed on the Accounts
+  screen any more: add a checkpoint instead.
 
 Editing an existing transaction also shows a **Reconciled** checkbox between the
 category field and the accounting month — see the next section for what it means. It's not shown while

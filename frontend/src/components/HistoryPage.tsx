@@ -31,6 +31,7 @@ const ORIGINS: [string, string][] = [
   ['bank_sync', 'Bank sync'],
   ['divide', 'Divide'],
   ['link', 'Links'],
+  ['checkpoint', 'Checkpoints'],
   ['admin', 'Admin'],
 ]
 

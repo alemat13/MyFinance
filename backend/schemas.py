@@ -316,6 +316,9 @@ class TransactionOut(Schema):
     divide_group_id: Optional[int] = None
     # The group of linked transactions it belongs to (models.TransactionLink).
     link_id: Optional[int] = None
+    # Set on a checkpoint only: the account's value at the end of `date`;
+    # `amount` is then derived from it (see checkpoints.py).
+    checkpoint_value: Optional[float] = None
     # Read-only throughout: present here and absent from TransactionCreate /
     # TransactionUpdate, so the API can show what the source said without
     # ever letting a client rewrite it. See models.Transaction.
@@ -392,6 +395,9 @@ class TransactionCreate(Schema):
     split_source: Literal["global", "account", "category", "custom"] | None = None
     # The transaction's tags, by id; omitted or empty means none.
     tag_ids: list[int] | None = None
+    # Makes this a checkpoint: what the account is worth at the end of
+    # `date`. `amount` is then ignored and derived (see checkpoints.py).
+    checkpoint_value: Optional[float] = None
 
 
 class TransactionUpdate(Schema):
@@ -407,6 +413,9 @@ class TransactionUpdate(Schema):
     split_source: Literal["global", "account", "category", "custom"] | None = None
     # Replaces the whole set of tags; omitted leaves them, [] removes them all.
     tag_ids: list[int] | None = None
+    # A checkpoint's new value. Refused on an ordinary transaction; a
+    # checkpoint's own `amount` is derived and can't be set directly.
+    checkpoint_value: Optional[float] = None
 
 
 class TransactionRawFieldsUpdate(Schema):
@@ -1171,6 +1180,9 @@ class TransactionExport(Schema):
     reconciled: bool = False
     divide_group_id: int | None = None
     link_id: int | None = None
+    # A checkpoint's typed value (its amount is stored as derived, so the
+    # archive restores the same balances without recomputing anything).
+    checkpoint_value: float | None = None
     # Carried through so a restore doesn't strip the bank identifiers that
     # keep a later sync from re-importing the same transactions. Defaulted,
     # so archives written before bank sync existed still validate.

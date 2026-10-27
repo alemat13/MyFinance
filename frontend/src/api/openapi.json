@@ -2683,6 +2683,17 @@
             ],
             "title": "Category Id"
           },
+          "checkpoint_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkpoint Value"
+          },
           "date": {
             "format": "date",
             "title": "Date",
@@ -4579,6 +4590,17 @@
             ],
             "title": "Category Id"
           },
+          "checkpoint_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkpoint Value"
+          },
           "date": {
             "format": "date",
             "title": "Date",
@@ -5126,6 +5148,17 @@
             ],
             "title": "Category Name"
           },
+          "checkpoint_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkpoint Value"
+          },
           "currency": {
             "title": "Currency",
             "type": "string"
@@ -5305,6 +5338,7 @@
           "reconciled",
           "divide_group_id",
           "link_id",
+          "checkpoint_value",
           "raw_source",
           "raw_label",
           "raw_counterparty",
@@ -5759,6 +5793,17 @@
               }
             ],
             "title": "Category Id"
+          },
+          "checkpoint_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkpoint Value"
           },
           "date": {
             "anyOf": [
@@ -7519,7 +7564,8 @@
                     "bank_sync",
                     "divide",
                     "admin",
-                    "link"
+                    "link",
+                    "checkpoint"
                   ],
                   "type": "string"
                 },

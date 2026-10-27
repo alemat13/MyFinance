@@ -6,7 +6,7 @@ from datetime import date as date_type
 
 from models import Transaction, TransactionHistory
 
-TRACKED_FIELDS = ("date", "payee", "memo", "amount", "account_id", "category_id", "accounting_month_offset", "reconciled")
+TRACKED_FIELDS = ("date", "payee", "memo", "amount", "account_id", "category_id", "accounting_month_offset", "reconciled", "checkpoint_value")
 
 
 def _jsonify(value):
