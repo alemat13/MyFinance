@@ -2855,6 +2855,8 @@ export interface components {
             category_id: number | null;
             /** Category Name */
             category_name: string | null;
+            /** Checkpoint Since */
+            checkpoint_since: string | null;
             /** Checkpoint Value */
             checkpoint_value: number | null;
             /** Currency */

@@ -16,7 +16,7 @@ import TransactionRawFields from './TransactionRawFields'
 import TransactionLinkSection from './TransactionLinkSection'
 import TagPicker from './TagPicker'
 import { useToast } from '../context/ToastContext'
-import { validateTransactionForm, ACCOUNTING_MONTH_OFFSETS, accountingMonthLabel } from '../utils/transactions'
+import { validateTransactionForm, ACCOUNTING_MONTH_OFFSETS, accountingMonthLabel, checkpointPeriodLabel } from '../utils/transactions'
 import { resolveDefaultSplitRows } from '../utils/splitWeights'
 import { formatServerTimestamp } from '../utils/datetime'
 import { formatMoney } from '../utils/currency'
@@ -344,8 +344,12 @@ export default function TransactionDetail({
                 <span className="text-slate-500 dark:text-slate-400">{currency}</span>
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                The amount ({formatMoney(transaction?.amount ?? 0, currency)}) is the gain or loss since the balance
-                before this date. It is worked out again whenever an earlier transaction of the account changes.
+                The amount ({formatMoney(transaction?.amount ?? 0, currency)}) is the gain or loss{' '}
+                <span data-testid="checkpoint-period" className="font-medium text-slate-700 dark:text-slate-200">
+                  {checkpointPeriodLabel(transaction?.checkpoint_since)}
+                </span>
+                {transaction?.checkpoint_since ? ' (previous checkpoint)' : ' (first checkpoint)'}, deposits and withdrawals
+                in between excluded. It is worked out again whenever an earlier transaction of the account changes.
               </p>
             </div>
           )}

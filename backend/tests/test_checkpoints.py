@@ -186,3 +186,15 @@ def test_bank_sync_never_swallows_a_row_matching_a_checkpoint(db, client, sample
     assert db.get(Transaction, cp["id"]).amount == 0
     shares = db.query(TransactionSplit).filter_by(transaction_id=cp["id"]).all()
     assert [s.share_amount for s in shares] == [0]
+
+
+def test_checkpoint_reports_the_start_of_its_period(client, sample_account, sample_user):
+    cp1 = _post(client, sample_account.id, sample_user.id, "2026-01-31", checkpoint_value=1100)
+    cp2 = _post(client, sample_account.id, sample_user.id, "2026-02-28", checkpoint_value=1250)
+    row = _post(client, sample_account.id, sample_user.id, "2026-02-10", amount=50)
+
+    assert _get(client, cp1["id"])["checkpoint_since"] is None
+    assert _get(client, cp2["id"])["checkpoint_since"] == "2026-01-31"
+    assert _get(client, row["id"])["checkpoint_since"] is None
+    listed = {t["id"]: t for t in client.post("/api/transactions/search", json={}).json()["items"]}
+    assert listed[cp2["id"]]["checkpoint_since"] == "2026-01-31"

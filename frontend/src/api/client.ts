@@ -62,7 +62,7 @@ export type Transaction = Loose<
     splits: TransactionSplit[]
     tags: TagRef[]
   }>,
-  | 'category_color' | 'category_icon' | 'link_id' | 'tags' | 'checkpoint_value'
+  | 'category_color' | 'category_icon' | 'link_id' | 'tags' | 'checkpoint_value' | 'checkpoint_since'
   | 'raw_source' | 'raw_label' | 'raw_counterparty' | 'raw_transaction_code'
   | 'raw_merchant_category_code' | 'raw_merchant_location' | 'raw_initiated_date' | 'raw_booking_date'
 >

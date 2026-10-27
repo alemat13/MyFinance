@@ -845,7 +845,7 @@ test('an existing checkpoint edits its value, never its amount, and cannot be di
   window.history.replaceState(null, '', '/?admin')
   try {
     mockFetchTransaction.mockResolvedValue({
-      ...baseTxn, amount: 300, checkpoint_value: 1500,
+      ...baseTxn, amount: 300, checkpoint_value: 1500, checkpoint_since: '2025-12-31',
       splits: [{ user_id: 1, user_name: 'Alex', weight: 1, share_amount: 300, source: 'custom' }],
     })
     mockUpdateTransaction.mockResolvedValue(baseTxn)
@@ -855,6 +855,7 @@ test('an existing checkpoint edits its value, never its amount, and cannot be di
     await screen.findByDisplayValue('Test')
     const section = screen.getByTestId('checkpoint-section')
     expect(within(section).getByText(/\$300\.00/)).toBeInTheDocument()
+    expect(within(section).getByTestId('checkpoint-period')).toHaveTextContent('since Dec 31, 2025')
     // Not even admin mode offers the amount of a checkpoint.
     expect(screen.queryByPlaceholderText('Amount')).not.toBeInTheDocument()
     expect(screen.queryByText('Divide')).not.toBeInTheDocument()
