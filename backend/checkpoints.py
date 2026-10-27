@@ -17,7 +17,7 @@ counts as the starting balance, which makes the displayed balance equal the
 latest checkpoint's value plus whatever came after it.
 """
 
-from sqlalchemy import case
+from sqlalchemy import and_, case, or_
 from sqlalchemy.orm import Session
 
 import cache_service
@@ -28,6 +28,27 @@ from models import Account, Transaction
 # The source recorded on the history row of a checkpoint whose amount moved
 # because something earlier in its account changed.
 HISTORY_SOURCE = "checkpoint"
+
+
+def previous_checkpoint_date(db: Session, transaction: Transaction):
+    """The date of the checkpoint before this one on its account, i.e. where
+    the period its gain or loss covers starts; None for the first one (the
+    period then runs from the account's start)."""
+    row = (
+        db.query(Transaction.date)
+        .filter(
+            Transaction.account_id == transaction.account_id,
+            Transaction.checkpoint_value.isnot(None),
+            Transaction.id != transaction.id,
+            or_(
+                Transaction.date < transaction.date,
+                and_(Transaction.date == transaction.date, Transaction.id < transaction.id),
+            ),
+        )
+        .order_by(Transaction.date.desc(), Transaction.id.desc())
+        .first()
+    )
+    return row[0] if row else None
 
 
 def has_checkpoints(db: Session, account_id: int) -> bool:

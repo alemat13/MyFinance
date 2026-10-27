@@ -41,6 +41,15 @@ export function formatDateGroupHeader(isoDate: string): string {
   })
 }
 
+// The period a checkpoint's gain or loss covers starts at the previous
+// checkpoint of its account, or at the account's start for the first one.
+export function checkpointPeriodLabel(since: string | null | undefined): string {
+  if (!since) return 'since the account opened'
+  return `since ${new Date(`${since}T00:00:00`).toLocaleDateString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric',
+  })}`
+}
+
 // Shared by the "new transaction" inline form and TransactionDetail's edit
 // form. account_id is falsy both when unset and when left at the select's
 // placeholder value (0). split is optional so callers that don't manage a

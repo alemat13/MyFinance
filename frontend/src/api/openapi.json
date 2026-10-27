@@ -5148,6 +5148,18 @@
             ],
             "title": "Category Name"
           },
+          "checkpoint_since": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkpoint Since"
+          },
           "checkpoint_value": {
             "anyOf": [
               {
@@ -5339,6 +5351,7 @@
           "divide_group_id",
           "link_id",
           "checkpoint_value",
+          "checkpoint_since",
           "raw_source",
           "raw_label",
           "raw_counterparty",

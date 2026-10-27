@@ -450,6 +450,9 @@ is worth from time to time, from its statement. That's a **checkpoint**.
   Transactions dated the same day count as before the checkpoint. So the account's
   balance on that date is exactly the value you typed, and the balance shown on
   Accounts and the Dashboard is the latest checkpoint plus whatever came after it.
+- Next to the flag, the list says which period the gain or loss covers: "since"
+  the date of the account's previous checkpoint, or "since the account opened" for
+  its first one. The detail panel says the same.
 - It's marked with a flag next to its payee in the list. Its detail panel has a
   **Checkpoint** section where you can change the value; the amount itself is never
   editable (not even in admin mode), and a checkpoint can't be divided.
