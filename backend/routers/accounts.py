@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session, selectinload
 
 import account_totals
 import cache_service
+import checkpoints
 from database import get_db
 from models import Account, AccountSplitWeight, AccountUser
 from rules import validate_ownership, validate_users_exist
@@ -70,6 +71,16 @@ def update_account(account_id: int, data: AccountUpdate, db: Session = Depends(g
     # "balance" is what the account is worth right now, not a stored column:
     # back out the offset that makes the account display exactly that today.
     entered_balance = update_data.pop("balance", None)
+    if entered_balance is not None and checkpoints.has_checkpoints(db, account.id):
+        # Its checkpoints set this account's balance: an offset typed here
+        # would be absorbed by the first of them. The form sends the balance
+        # back unchanged with every edit, which is fine.
+        current = account_totals.account_balance(account, account_totals.transaction_total(db, account.id))
+        if abs(entered_balance - current) >= 0.005:
+            raise HTTPException(
+                422, "This account's balance comes from its checkpoints; add a checkpoint instead",
+            )
+        entered_balance = None
     if entered_balance is not None:
         account.balance_offset = account_totals.offset_for_balance(
             db, account.id, entered_balance,

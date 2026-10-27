@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState } from 'react'
-import { ArrowDown, ArrowUp, CheckCircle2, Circle, Link2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, CheckCircle2, Circle, Flag, Link2 } from 'lucide-react'
 import {
   Transaction, TransactionSplit, GlobalSplitWeight,
   Account, Category, User, Tag, TransactionSearchRequest, SavedFilter, HistoryGroupRef,
@@ -119,6 +119,16 @@ function loadInitialSortDir(): typeof SORT_DIR_VALUES[number] {
 const splitsDisplay = (splits: TransactionSplit[], currency: string) => {
   if (splits.length === 0) return <span className="text-slate-400">—</span>
   return splits.map(s => `${s.user_name} ${formatMoney(s.share_amount, currency)}`).join(' / ')
+}
+
+// Marks a checkpoint: a row stating what its account is worth, whose amount
+// is worked out from that value.
+function CheckpointIcon() {
+  return (
+    <span title="Checkpoint: account value" className="inline-flex align-[-2px] text-accent mx-1">
+      <Flag size={14} aria-label="Checkpoint" />
+    </span>
+  )
 }
 
 // Marks a transaction that belongs to a group of linked ones; the group itself
@@ -251,7 +261,7 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
   const buildExportData = (items: Transaction[]) => {
     const headers = [
       'ID', 'Date', 'Payee', 'Memo', 'Amount', 'Currency', 'Account', 'Category',
-      'Accounting Month', 'Reconciled', 'Divide Group ID', 'Tags',
+      'Accounting Month', 'Reconciled', 'Divide Group ID', 'Tags', 'Checkpoint Value',
       ...allUsers.map(u => `Weight ${u.name}`),
       ...allUsers.map(u => `Share ${u.name}`),
       ...allUsers.map(u => `Balance ${u.name}`),
@@ -259,6 +269,7 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
     const rows = items.map(t => [
       t.id, t.date, t.payee, t.memo ?? '', t.amount, t.currency, t.account_name, t.category_name ?? '',
       t.accounting_month, t.reconciled ? 'Yes' : 'No', t.divide_group_id ?? '', joinTagNames(t.tags),
+      t.checkpoint_value ?? '',
       ...allUsers.map(u => t.splits.find(s => s.user_id === u.id)?.weight ?? ''),
       ...allUsers.map(u => myShareFor(t, u.id)),
       ...allUsers.map(u => balanceFor(t, u.id, allAccounts)),
@@ -671,7 +682,7 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
                     <div className="flex-1 min-w-0">
                       <div className="flex justify-between gap-2">
                         <span className="font-medium text-slate-900 dark:text-slate-100 truncate">
-                          {t.link_id != null && <LinkedIcon />}
+                          {t.link_id != null && <LinkedIcon />}{t.checkpoint_value != null && <CheckpointIcon />}
                           {t.payee}
                         </span>
                         <span className={`shrink-0 font-semibold ${t.amount >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
@@ -762,7 +773,7 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
                         : <Circle size={16} className="text-slate-300 dark:text-slate-600" />}
                     </IconButton>
                     {t.payee}
-                    {t.link_id != null && <LinkedIcon />}
+                    {t.link_id != null && <LinkedIcon />}{t.checkpoint_value != null && <CheckpointIcon />}
                   </span>
                   {t.tags && t.tags.length > 0 && <div className="ml-7 mt-0.5"><TagChips tags={t.tags} /></div>}
                 </Td>

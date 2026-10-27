@@ -5,6 +5,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, selectinload
 
 import cache_service
+import checkpoints
 import split_engine
 import tags as tag_service
 import transaction_links
@@ -224,14 +225,21 @@ def create_transaction(data: TransactionCreate, actor_user_id: int | None = Quer
         split_source = data.split_source or "custom"
     new_tags = tag_service.load_tags(db, data.tag_ids)
 
+    is_checkpoint = data.checkpoint_value is not None
     transaction = Transaction(
-        date=data.date, payee=data.payee, memo=data.memo, amount=data.amount,
+        date=data.date, payee=data.payee, memo=data.memo,
+        # A checkpoint's amount is derived from its value just below.
+        amount=0.0 if is_checkpoint else data.amount,
         account_id=data.account_id, category_id=data.category_id,
         accounting_month_offset=data.accounting_month_offset,
+        checkpoint_value=round(data.checkpoint_value, 2) if is_checkpoint else None,
     )
     db.add(transaction)
     db.flush()
     split_engine.apply_split(db, transaction, weights, source=split_source)
+    # A new row moves every later checkpoint of its account; a new checkpoint
+    # gets its own amount here too, recorded by its "created" row below.
+    checkpoints.recompute(db, [transaction.account_id], actor_user_id, quiet_ids={transaction.id})
     changes = splits_created_changes(weights, split_source) or {}
     if new_tags:
         tag_service.set_tags(transaction, new_tags)
@@ -410,7 +418,9 @@ def bulk_update_transactions(data: BulkUpdateTransactionsRequest, actor_user_id:
             .order_by(Transaction.id)
             .all()
         )
+        touched_accounts = set()
         for transaction in transactions:
+            touched_accounts.add(transaction.account_id)
             old_values = {f: getattr(transaction, f) for f in non_split_fields if f in TRACKED_FIELDS}
             if payee_affix is not None or regex_payees is not None:
                 old_values["payee"] = transaction.payee
@@ -443,6 +453,9 @@ def bulk_update_transactions(data: BulkUpdateTransactionsRequest, actor_user_id:
                 record_transaction_history(db, transaction, "updated", actor_user_id, source="bulk", changes=changes)
             updated_ids.append(transaction.id)
 
+        if "account_id" in non_split_fields:
+            # A move changes both accounts' running balances.
+            checkpoints.recompute(db, touched_accounts | {non_split_fields["account_id"]}, actor_user_id)
         cache_service.invalidate(db, "balances", "charts", "account_totals", "category_usage")
         db.commit()
     return BulkUpdateTransactionsResponse(updated_count=len(updated_ids), transaction_ids=updated_ids)
@@ -463,13 +476,16 @@ def bulk_delete_transactions(data: BulkDeleteTransactionsRequest, actor_user_id:
     for start in range(0, len(target_ids), BULK_UPDATE_CHUNK_SIZE):
         chunk_ids = target_ids[start:start + BULK_UPDATE_CHUNK_SIZE]
         link_ids = set()
+        account_ids = set()
         for transaction in db.query(Transaction).filter(Transaction.id.in_(chunk_ids)).order_by(Transaction.id).all():
             record_transaction_history(db, transaction, "deleted", actor_user_id, source="bulk")
             link_ids.add(transaction.link_id)
+            account_ids.add(transaction.account_id)
             db.delete(transaction)
             deleted_ids.append(transaction.id)
         db.flush()
         transaction_links.prune(db, link_ids, actor_user_id)
+        checkpoints.recompute(db, account_ids, actor_user_id)
         cache_service.invalidate(db, "balances", "charts", "account_totals", "category_usage")
         db.commit()
     return BulkDeleteTransactionsResponse(deleted_count=len(deleted_ids), transaction_ids=deleted_ids)
@@ -499,6 +515,23 @@ def update_transaction(transaction_id: int, data: TransactionUpdate, actor_user_
     update_data.pop("split_source", None)
     tags_provided = "tag_ids" in update_data
     new_tags = tag_service.load_tags(db, update_data.pop("tag_ids", None)) if tags_provided else None
+    if transaction.checkpoint_value is not None:
+        # A checkpoint's amount is derived from its value: an unchanged amount
+        # sent back by the form is fine, a different one is refused.
+        if "amount" in update_data:
+            if update_data["amount"] is not None and abs(update_data["amount"] - transaction.amount) >= 0.005:
+                raise HTTPException(422, "A checkpoint's amount is derived from its value; change the value instead")
+            update_data.pop("amount")
+        if "checkpoint_value" in update_data:
+            if update_data["checkpoint_value"] is None:
+                raise HTTPException(422, "A checkpoint's value cannot be cleared; delete the checkpoint instead")
+            update_data["checkpoint_value"] = round(update_data["checkpoint_value"], 2)
+    elif update_data.get("checkpoint_value") is not None:
+        raise HTTPException(422, "Only a checkpoint has a value; create a checkpoint instead")
+    else:
+        update_data.pop("checkpoint_value", None)
+    old_account_id = transaction.account_id
+    old_amount = transaction.amount
 
     old_values = {f: getattr(transaction, f) for f in update_data if f in TRACKED_FIELDS}
     for field, value in update_data.items():
@@ -534,6 +567,14 @@ def update_transaction(transaction_id: int, data: TransactionUpdate, actor_user_
         changes["splits"] = splits_diff
 
     split_engine.apply_split(db, transaction, weights, source)
+    if changes.keys() & {"amount", "date", "account_id", "checkpoint_value"}:
+        # Later checkpoints of the account (both accounts on a move) re-derive
+        # their amounts; this row's own new amount, when it is a checkpoint,
+        # goes on its own history row below.
+        checkpoints.recompute(db, {old_account_id, transaction.account_id}, actor_user_id,
+                              quiet_ids={transaction.id})
+        if "amount" not in changes and transaction.amount != old_amount:
+            changes["amount"] = {"old": old_amount, "new": transaction.amount}
     if new_tags is not None:
         tags_change = tag_service.set_tags(transaction, new_tags)
         if tags_change:
@@ -598,9 +639,11 @@ def delete_transaction(transaction_id: int, actor_user_id: int | None = Query(No
         raise HTTPException(404, "Transaction not found")
     record_transaction_history(db, transaction, "deleted", actor_user_id)
     link_id = transaction.link_id
+    account_id = transaction.account_id
     db.delete(transaction)
     db.flush()
     transaction_links.prune(db, [link_id], actor_user_id)
+    checkpoints.recompute(db, [account_id], actor_user_id)
     cache_service.invalidate(db, "balances", "charts", "account_totals", "category_usage")
     db.commit()
 
@@ -617,6 +660,8 @@ def divide_transaction(transaction_id: int, data: TransactionDivideRequest, acto
     if not transaction:
         raise HTTPException(404, "Transaction not found")
     validate_not_divide_sibling(transaction)
+    if transaction.checkpoint_value is not None:
+        raise HTTPException(422, "A checkpoint cannot be divided")
     validate_account_not_archived(transaction.account)
     validate_divide_parts(data.parts, transaction.amount)
 
@@ -680,6 +725,8 @@ def divide_transaction(transaction_id: int, data: TransactionDivideRequest, acto
                                     changes=part_changes or None)
         created.append(new_transaction)
 
+    # The parts may carry other dates than the original.
+    checkpoints.recompute(db, [transaction.account_id], actor_user_id)
     cache_service.invalidate(db, "balances", "charts", "account_totals", "category_usage")
     db.commit()
     return TransactionDivideResponse(transactions=[get_transaction_out(db, t.id) for t in created])

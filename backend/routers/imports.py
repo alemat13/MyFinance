@@ -4,6 +4,7 @@ from starlette.concurrency import run_in_threadpool
 
 import audit
 import cache_service
+import checkpoints
 import split_engine
 import tags as tag_service
 from audit import record_transaction_history, splits_created_changes
@@ -130,6 +131,7 @@ def import_commit(data: ImportCommitRequest, actor_user_id: int | None = Query(N
     if pending_batch:
         flush_pending_batch()
 
+    checkpoints.recompute(db, {row.account_id for row in data.rows}, actor_user_id)
     cache_service.invalidate(db, "balances", "charts", "account_totals", "category_usage")
     db.commit()
     return ImportCommitResponse(created_count=len(transaction_ids), transaction_ids=transaction_ids)
