@@ -12,6 +12,9 @@ vi.mock('../../api/client', () => ({
   fetchCategories: mockFetchCategories,
 }))
 
+// Tested on its own (AccountValueSection.test.tsx).
+vi.mock('../charts/AccountValueSection', () => ({ default: () => null }))
+
 // recharts draws nothing in jsdom, so the chart is stood in for by buttons
 // calling what a click on a bar or a legend entry calls.
 vi.mock('../charts/NetIncomeByMonthChart', () => ({

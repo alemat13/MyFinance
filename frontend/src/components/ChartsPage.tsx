@@ -5,6 +5,7 @@ import { getParam, patchQueryParams } from '../utils/urlState'
 import { lastNMonthsRange } from '../utils/dateRange'
 import SpendingByMonthChart from './charts/SpendingByMonthChart'
 import NetIncomeByMonthChart from './charts/NetIncomeByMonthChart'
+import AccountValueSection from './charts/AccountValueSection'
 import { ConditionRow } from './TransactionConditions'
 import { UNCATEGORIZED_ID } from '../utils/categoryHierarchy'
 
@@ -186,6 +187,10 @@ export default function ChartsPage({ selectedUserId, onBack, onOpenTransactions 
           )
         })()
       )}
+
+      <div className="mt-5">
+        <AccountValueSection userId={selectedUserId} />
+      </div>
     </div>
   )
 }

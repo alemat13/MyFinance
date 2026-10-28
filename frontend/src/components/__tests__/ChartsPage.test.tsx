@@ -12,6 +12,9 @@ vi.mock('../../api/client', () => ({
   fetchCategories: mockFetchCategories,
 }))
 
+// Tested on its own (AccountValueSection.test.tsx).
+vi.mock('../charts/AccountValueSection', () => ({ default: () => null }))
+
 const sampleData = {
   currencies: ['EUR'],
   by_category: [],

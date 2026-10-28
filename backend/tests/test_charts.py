@@ -612,3 +612,35 @@ def test_charts_cache_invalidated_by_new_transaction_by_month_category(client, s
     by_month_category = after.json()["by_month_category"]
     assert len(by_month_category) == 1
     assert by_month_category[0]["amount"] == -80.0
+
+
+def test_account_value_separates_contributions_from_checkpoint_gains(client, sample_account, db):
+    sample_account.balance_offset = 100.0
+    db.add_all([
+        Transaction(date=date(2026, 1, 5), payee="Deposit", amount=1000.0, account_id=sample_account.id),
+        # Value 1150 at the end of Jan 31: amount = gain since the start.
+        Transaction(date=date(2026, 1, 31), payee="Value", amount=50.0, checkpoint_value=1150.0,
+                    account_id=sample_account.id),
+        Transaction(date=date(2026, 2, 10), payee="Deposit", amount=200.0, account_id=sample_account.id),
+        Transaction(date=date(2026, 2, 28), payee="Withdrawal", amount=-30.0, account_id=sample_account.id),
+        Transaction(date=date(2026, 2, 28), payee="Value", amount=-20.0, checkpoint_value=1300.0,
+                    account_id=sample_account.id),
+    ])
+    db.commit()
+
+    response = client.get(f"/api/charts/account-value?account_ids={sample_account.id}&account_ids=9999")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 1
+    assert data[0]["account_id"] == sample_account.id
+    assert data[0]["currency"] == sample_account.currency
+    assert data[0]["points"] == [
+        {"date": "2026-01-05", "value": 1100.0, "contributions": 1100.0},
+        {"date": "2026-01-31", "value": 1150.0, "contributions": 1100.0},
+        {"date": "2026-02-10", "value": 1350.0, "contributions": 1300.0},
+        {"date": "2026-02-28", "value": 1300.0, "contributions": 1270.0},
+    ]
+
+
+def test_account_value_requires_account_ids(client):
+    assert client.get("/api/charts/account-value").status_code == 422

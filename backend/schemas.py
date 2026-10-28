@@ -734,6 +734,18 @@ class ChartsResponse(Schema):
     parent_category: ParentCategoryOut | None = None
 
 
+class AccountValuePointOut(Schema):
+    date: str
+    value: float
+    contributions: float
+
+
+class AccountValueOut(Schema):
+    account_id: int
+    currency: str
+    points: List[AccountValuePointOut]
+
+
 class TransactionHistoryOut(Schema):
     model_config = ConfigDict(from_attributes=True)
 
