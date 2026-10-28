@@ -483,6 +483,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/charts/account-value": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Account Value
+         * @description Value and money paid in over time, per account, in the order asked;
+         *     an unknown id is left out.
+         */
+        get: operations["get_account_value_api_charts_account_value_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/dashboard": {
         parameters: {
             query?: never;
@@ -1274,6 +1295,24 @@ export interface components {
             user_id: number;
             /** User Name */
             user_name: string;
+        };
+        /** AccountValueOut */
+        AccountValueOut: {
+            /** Account Id */
+            account_id: number;
+            /** Currency */
+            currency: string;
+            /** Points */
+            points: components["schemas"]["AccountValuePointOut"][];
+        };
+        /** AccountValuePointOut */
+        AccountValuePointOut: {
+            /** Contributions */
+            contributions: number;
+            /** Date */
+            date: string;
+            /** Value */
+            value: number;
         };
         /** BankAccountLinkOut */
         BankAccountLinkOut: {
@@ -4116,6 +4155,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChartsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_account_value_api_charts_account_value_get: {
+        parameters: {
+            query: {
+                account_ids: number[];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountValueOut"][];
                 };
             };
             /** @description Validation Error */

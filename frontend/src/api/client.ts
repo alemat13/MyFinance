@@ -131,6 +131,8 @@ export type ChartCategoryOut = Schemas['ChartCategoryOut']
 export type ParentCategoryOut = Schemas['ParentCategoryOut']
 
 export type ChartsData = Schemas['ChartsResponse']
+export type AccountValue = Schemas['AccountValueOut']
+export type AccountValuePoint = Schemas['AccountValuePointOut']
 
 export interface ImportPreviewRequest {
   account_id: number
@@ -501,6 +503,12 @@ export function fetchCharts(userId: number, opts: FetchChartsOptions = {}): Prom
   if (opts.endMonth) params.set('end_month', opts.endMonth)
   if (opts.parentCategoryId != null) params.set('parent_category_id', String(opts.parentCategoryId))
   return request<ChartsData>(`/charts?${params.toString()}`)
+}
+
+export function fetchAccountValue(accountIds: number[]): Promise<AccountValue[]> {
+  const params = new URLSearchParams()
+  for (const id of accountIds) params.append('account_ids', String(id))
+  return request<AccountValue[]>(`/charts/account-value?${params.toString()}`)
 }
 
 export function fetchSplitWeights(): Promise<GlobalSplitWeight[]> {

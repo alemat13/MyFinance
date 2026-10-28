@@ -1238,6 +1238,16 @@ Two charts are shown:
   month with no transactions counting as zero. 🏅 marks the month with the best net and
   🔻 the one with the worst (no marker when every month's net is the same). On a phone the
   table rounds to whole units so every column fits.
+- **Value per account** — at the bottom of the page, pick accounts in the selector
+  (only accounts you own a part of are offered); one card per account shows what it is
+  worth today, and a chart of its value (blue line, set by its checkpoints) against the
+  money paid in (yellow line: every other transaction, deposits minus withdrawals, plus
+  the balance it started with). Above the chart, **Paid in** and **Gain / loss** (the
+  checkpoints' gains and losses) over the period picked under it: **1M**, **6M**,
+  **1Y** or **All** (since the account opened). On a joint account every figure is
+  your share of it ("your share: 50%"). An account with no checkpoint draws both lines
+  on top of each other. The selection is remembered per user on that device; this
+  chart ignores the From/To range and currency above.
 
 ## Admin mode
 
