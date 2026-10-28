@@ -3,13 +3,33 @@ from sqlalchemy.orm import Session
 
 import charts as charts_module
 from database import get_db
-from models import Category
+from models import Account, Category
 from schemas import (
-    CategoryChartItem, ChartCategoryOut, ChartsResponse, MonthChartItem,
+    AccountValueOut, AccountValuePointOut, CategoryChartItem, ChartCategoryOut, ChartsResponse, MonthChartItem,
     MonthCategoryChartItem, NetMonthChartItem, ParentCategoryOut,
 )
 
 router = APIRouter(prefix="/api/charts")
+
+
+@router.get("/account-value", response_model=list[AccountValueOut])
+def get_account_value(
+    account_ids: list[int] = Query(...),
+    db: Session = Depends(get_db),
+):
+    """Value and money paid in over time, per account, in the order asked;
+    an unknown id is left out."""
+    out = []
+    for account_id in dict.fromkeys(account_ids):
+        account = db.get(Account, account_id)
+        if account is None:
+            continue
+        out.append(AccountValueOut(
+            account_id=account.id,
+            currency=account.currency,
+            points=[AccountValuePointOut(**vars(p)) for p in charts_module.account_value_series(db, account.id)],
+        ))
+    return out
 
 
 @router.get("", response_model=ChartsResponse)

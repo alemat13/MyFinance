@@ -1,6 +1,6 @@
 from dataclasses import asdict, dataclass
 
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 import cache_service
@@ -292,3 +292,45 @@ def compute_chart_data_cached(
         chart_categories=[ChartCategory(**c) for c in payload["chart_categories"]],
         parent_category=ParentCategoryInfo(**payload["parent_category"]) if payload["parent_category"] else None,
     )
+
+
+@dataclass
+class AccountValuePoint:
+    date: str  # "YYYY-MM-DD", a day the account moved
+    value: float  # the account's balance at the end of that day
+    contributions: float  # starting balance + every amount except checkpoints'
+
+
+def account_value_series(db: Session, account_id: int) -> list[AccountValuePoint]:
+    """What an account was worth over time against what was paid into it.
+
+    Its value is its balance (internal offset + every amount); what was paid
+    in is the same minus the amounts of its checkpoints, since a checkpoint's
+    amount is exactly the gain or loss since the previous one (see
+    `checkpoints.py`). The difference between the two is the gain. One point
+    per day the account moved, so an account with no checkpoint draws one
+    line twice. Not cached: one GROUP BY over a single account's rows.
+    """
+    account = db.get(Account, account_id)
+    if account is None:
+        return []
+    is_checkpoint = Transaction.checkpoint_value.isnot(None)
+    rows = (
+        db.query(Transaction.date, is_checkpoint, func.sum(Transaction.amount))
+        .filter(Transaction.account_id == account_id)
+        .group_by(Transaction.date, is_checkpoint)
+        .order_by(Transaction.date)
+        .all()
+    )
+    value = contributions = round(account.balance_offset or 0.0, 2)
+    points: list[AccountValuePoint] = []
+    for day, checkpoint, amount in rows:
+        value += amount or 0.0
+        if not checkpoint:
+            contributions += amount or 0.0
+        point = AccountValuePoint(day.isoformat(), round(value, 2), round(contributions, 2))
+        if points and points[-1].date == point.date:
+            points[-1] = point
+        else:
+            points.append(point)
+    return points

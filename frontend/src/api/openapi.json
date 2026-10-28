@@ -270,6 +270,55 @@
         "title": "AccountUserOut",
         "type": "object"
       },
+      "AccountValueOut": {
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "integer"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/AccountValuePointOut"
+            },
+            "title": "Points",
+            "type": "array"
+          }
+        },
+        "required": [
+          "account_id",
+          "currency",
+          "points"
+        ],
+        "title": "AccountValueOut",
+        "type": "object"
+      },
+      "AccountValuePointOut": {
+        "properties": {
+          "contributions": {
+            "title": "Contributions",
+            "type": "number"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "date",
+          "value",
+          "contributions"
+        ],
+        "title": "AccountValuePointOut",
+        "type": "object"
+      },
       "BankAccountLinkOut": {
         "properties": {
           "account_id": {
@@ -7460,6 +7509,53 @@
           }
         },
         "summary": "Get Charts"
+      }
+    },
+    "/api/charts/account-value": {
+      "get": {
+        "description": "Value and money paid in over time, per account, in the order asked;\nan unknown id is left out.",
+        "operationId": "get_account_value_api_charts_account_value_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "account_ids",
+            "required": true,
+            "schema": {
+              "items": {
+                "type": "integer"
+              },
+              "title": "Account Ids",
+              "type": "array"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AccountValueOut"
+                  },
+                  "title": "Response Get Account Value Api Charts Account Value Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Account Value"
       }
     },
     "/api/dashboard": {
