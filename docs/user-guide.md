@@ -110,6 +110,17 @@ The Dashboard is the home screen and gives an at-a-glance summary:
   transaction split between multiple people shows a "Shared · your share: $X" badge
   when a specific user is selected, so you can tell at a glance what your actual
   liability is versus the transaction's full amount.
+- **Net worth** — at the very bottom, what the selected person owns: each open account's
+  balance times their ownership percentage (an account they don't own is left out;
+  with no one selected, the whole household at 100%), grouped by account type, largest
+  type first, each with its total and its share of the accounts total. Click a type to
+  fold it, click an account to open its transactions. A shared account shows the
+  percentage and full balance under its name ("50% of €1,000.00"); an account at zero
+  is counted at the bottom instead of listed. Under the accounts total comes the
+  person's **Balance** with the rest of the household (what they're owed, or what they
+  owe), and the sum of both is the **Net worth**. An investment account counts at its
+  balance, which its latest checkpoint keeps at its real value. Archived accounts are
+  left out, and each currency gets its own card (no conversion).
 
 ## Accounts
 

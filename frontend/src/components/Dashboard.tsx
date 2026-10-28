@@ -4,6 +4,7 @@ import { StatusMessage } from './ui'
 import AccountCard from './AccountCard'
 import TransactionList from './TransactionList'
 import BalanceWidget from './BalanceWidget'
+import NetWorthCard from './NetWorthCard'
 
 interface Props {
   selectedUserId: number | null
@@ -37,6 +38,12 @@ export default function Dashboard({ selectedUserId, onSelectAccount }: Props) {
       </div>
       <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-3">Recent Transactions</h2>
       <TransactionList transactions={data.recent_transactions} selectedUserId={selectedUserId} accounts={data.accounts} />
+      <NetWorthCard
+        accounts={data.accounts}
+        balances={data.balances}
+        selectedUserId={selectedUserId}
+        onSelectAccount={onSelectAccount}
+      />
     </div>
   )
 }
