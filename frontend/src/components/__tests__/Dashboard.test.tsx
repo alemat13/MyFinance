@@ -1,5 +1,5 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import Dashboard from '../Dashboard'
 
 const { mockFetchDashboard } = vi.hoisted(() => ({
@@ -82,4 +82,33 @@ test('clicking an account tile calls onSelectAccount with that account id', asyn
   fireEvent.click(screen.getByRole('button', { name: 'View transactions for Joint Checking' }))
 
   expect(onSelectAccount).toHaveBeenCalledWith(7)
+})
+
+test("shows the selected user's net worth, by account type, under recent transactions", async () => {
+  const onSelectAccount = vi.fn()
+  mockFetchDashboard.mockResolvedValue({
+    accounts: [
+      { id: 1, name: 'Joint', type: 'Checking', balance: 1000, currency: 'EUR', created_at: '2026-01-01', users: [
+        { user_id: 1, user_name: 'Alex', ownership_percentage: 50 },
+        { user_id: 2, user_name: 'Olivia', ownership_percentage: 50 },
+      ] },
+      { id: 2, name: 'PEA', type: 'Investment', balance: 5000, currency: 'EUR', created_at: '2026-01-01', users: [
+        { user_id: 1, user_name: 'Alex', ownership_percentage: 100 },
+      ] },
+    ],
+    recent_transactions: [],
+    balances: [{ user_id: 1, user_name: 'Alex', currency: 'EUR', net_position: -50 }],
+  })
+
+  render(<Dashboard selectedUserId={1} onSelectAccount={onSelectAccount} />)
+
+  const card = await screen.findByTestId('net-worth-EUR')
+  expect(screen.getByRole('heading', { name: 'Net worth' })).toBeInTheDocument()
+  expect(card).toHaveTextContent('50% of €1,000.00')
+  expect(card).toHaveTextContent('You owe (Balance)')
+  expect(card).toHaveTextContent('€5,450.00')
+  fireEvent.click(within(card).getByRole('button', { name: /Joint/ }))
+  expect(onSelectAccount).toHaveBeenCalledWith(1)
+  fireEvent.click(within(card).getByRole('button', { name: /Checking/ }))
+  expect(within(card).queryByRole('button', { name: /Joint/ })).not.toBeInTheDocument()
 })
