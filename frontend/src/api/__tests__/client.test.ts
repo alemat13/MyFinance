@@ -2,7 +2,7 @@ import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
   fetchAccounts, createAccount, updateAccount, deleteAccount,
   fetchCategories, createCategory, updateCategory, deleteCategory,
-  fetchTransactions, createTransaction, updateTransaction, deleteTransaction, searchTransactions,
+  createTransaction, updateTransaction, deleteTransaction, searchTransactions,
   fetchTransactionHistory, divideTransaction, fetchDivideSiblings,
   fetchDashboard,
   fetchSplitWeights, updateSplitWeights, fetchAccountSplitWeights, updateAccountSplitWeights, fetchBalances,
@@ -182,26 +182,6 @@ test('deleteCategory makes DELETE request', async () => {
       method: 'DELETE',
     }),
   )
-})
-
-test('fetchTransactions makes GET request', async () => {
-  const mockData = [{ id: 1, date: '2026-01-15', payee: 'Test', memo: null, amount: 50, account_id: 1, account_name: 'A', category_id: 1, category_name: 'C' }]
-  vi.mocked(globalThis.fetch).mockResolvedValue({
-    ok: true,
-    status: 200,
-    json: () => Promise.resolve(mockData),
-    text: () => Promise.resolve(''),
-  } as Response)
-
-  const result = await fetchTransactions()
-
-  expect(globalThis.fetch).toHaveBeenCalledWith(
-    'http://localhost:8000/api/transactions',
-    expect.objectContaining({
-      headers: { 'Content-Type': 'application/json' },
-    }),
-  )
-  expect(result).toHaveLength(1)
 })
 
 test('searchTransactions makes POST request with the filter body', async () => {

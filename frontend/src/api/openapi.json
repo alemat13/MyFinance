@@ -9156,54 +9156,6 @@
       }
     },
     "/api/transactions": {
-      "get": {
-        "operationId": "get_transactions_api_transactions_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "user_id",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "User Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/TransactionOut"
-                  },
-                  "title": "Response Get Transactions Api Transactions Get",
-                  "type": "array"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Transactions"
-      },
       "post": {
         "operationId": "create_transaction_api_transactions_post",
         "parameters": [

@@ -74,23 +74,6 @@ def _expand_replacement(match: re.Match, replacement: str) -> str:
     return _REPLACEMENT_TOKEN.sub(token, replacement)
 
 
-@router.get("", response_model=list[TransactionOut])
-def get_transactions(user_id: int | None = Query(None), db: Session = Depends(get_db)):
-    query = (
-        db.query(Transaction, Account.name, Account.currency, Category.name, Category.color, Category.icon)
-        .join(Account, Transaction.account_id == Account.id)
-        .outerjoin(Category, Transaction.category_id == Category.id)
-        .options(selectinload(Transaction.splits).joinedload(TransactionSplit.user), selectinload(Transaction.tags))
-    )
-    if user_id is not None:
-        query = query.filter(visible_transaction_filter(db, user_id))
-    results = query.order_by(Transaction.date.desc()).all()
-    return [
-        build_transaction_out_from_row(t, account_name, currency, category_name, category_color, category_icon)
-        for t, account_name, currency, category_name, category_color, category_icon in results
-    ]
-
-
 @router.post("/search", response_model=TransactionSearchResponse)
 def search_transactions(req: TransactionSearchRequest, db: Session = Depends(get_db)):
     query = (

@@ -54,12 +54,9 @@ app = FastAPI(
     openapi_url="/api/openapi.json",
 )
 
-_default_cors_origins = (
-    "http://localhost:5173,"
-    "http://100.127.164.124:5173,"
-    "http://surfacealex.tail047989.ts.net:5173"
-)
-allow_origins = os.environ.get("CORS_ALLOWED_ORIGINS", _default_cors_origins).split(",")
+# Any other dev origin (a LAN or Tailscale address) goes in CORS_ALLOWED_ORIGINS,
+# not here: the repository is public.
+allow_origins = os.environ.get("CORS_ALLOWED_ORIGINS", "http://localhost:5173").split(",")
 
 app.add_middleware(
     CORSMiddleware,

@@ -23,3 +23,12 @@ test('buildCsv joins headers and rows with CRLF and a leading BOM', () => {
   const csv = buildCsv(['Name', 'Amount'], [['Coffee', 3.5], ['Rent, Utilities', 1200]])
   expect(csv).toBe('﻿Name,Amount\r\nCoffee,3.5\r\n"Rent, Utilities",1200')
 })
+
+test('escapeCsvField neutralises text a spreadsheet would run as a formula', () => {
+  expect(escapeCsvField('=HYPERLINK("http://x")')).toBe(`"'=HYPERLINK(""http://x"")"`)
+  expect(escapeCsvField('+33 6 12')).toBe("'+33 6 12")
+  expect(escapeCsvField('-SNCF')).toBe("'-SNCF")
+  expect(escapeCsvField('@SUM(A1)')).toBe("'@SUM(A1)")
+  // Numbers stay numbers, negative ones included.
+  expect(escapeCsvField(-12.5)).toBe('-12.5')
+})

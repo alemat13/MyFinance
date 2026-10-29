@@ -156,7 +156,7 @@ def test_typed_balance_is_refused_on_an_account_with_checkpoints(client, sample_
 def test_import_never_flags_a_real_row_as_duplicate_of_a_checkpoint(client, sample_account, sample_user, sample_category):
     # Same account, date and amount as the file's first row.
     _post(client, sample_account.id, sample_user.id, "2026-01-15", checkpoint_value=957.50)
-    assert _get(client, client.get("/api/transactions").json()[0]["id"])["amount"] == -42.50
+    assert _get(client, client.post("/api/transactions/search", json={"unpaginated": True}).json()["items"][0]["id"])["amount"] == -42.50
 
     from tests.test_import import _preview
     rows = _preview(client, sample_account.id).json()

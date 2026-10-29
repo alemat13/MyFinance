@@ -33,15 +33,15 @@ def test_create_transaction_without_category(client, sample_account, sample_user
 
 
 def test_get_transactions(client, sample_transaction):
-    response = client.get("/api/transactions")
+    response = client.post("/api/transactions/search", json={"unpaginated": True})
     assert response.status_code == 200
-    data = response.json()
+    data = response.json()["items"]
     assert len(data) == 1
 
 
 def test_get_transaction_has_names(client, sample_transaction):
-    response = client.get("/api/transactions")
-    data = response.json()
+    response = client.post("/api/transactions/search", json={"unpaginated": True})
+    data = response.json()["items"]
     assert len(data) == 1
     assert data[0]["account_name"] is not None
     assert data[0]["category_name"] is not None
@@ -147,8 +147,8 @@ def test_update_transaction_on_archived_account_still_succeeds(client, sample_tr
 def test_delete_transaction(client, sample_transaction):
     response = client.delete(f"/api/transactions/{sample_transaction.id}")
     assert response.status_code == 204
-    response = client.get("/api/transactions")
-    assert response.json() == []
+    response = client.post("/api/transactions/search", json={"unpaginated": True})
+    assert response.json()["items"] == []
 
 
 def test_update_transaction_404(client):
@@ -337,17 +337,17 @@ def test_get_transactions_filtered_by_user(client, sample_account_with_user, sam
     db.add(t)
     db.commit()
 
-    response = client.get(f"/api/transactions?user_id={sample_user.id}")
+    response = client.post("/api/transactions/search", json={"user_id": sample_user.id, "unpaginated": True})
     assert response.status_code == 200
-    data = response.json()
+    data = response.json()["items"]
     assert len(data) == 1
     assert data[0]["payee"] == "User Specific"
 
 
 def test_get_transactions_filtered_by_user_no_match(client, sample_user):
-    response = client.get(f"/api/transactions?user_id={sample_user.id}")
+    response = client.post("/api/transactions/search", json={"user_id": sample_user.id, "unpaginated": True})
     assert response.status_code == 200
-    assert response.json() == []
+    assert response.json()["items"] == []
 
 
 def test_get_transactions_visible_via_split_without_ownership(client, sample_account, sample_category, sample_user, sample_user2, db):
@@ -365,9 +365,9 @@ def test_get_transactions_visible_via_split_without_ownership(client, sample_acc
     db.add(TransactionSplit(transaction_id=t.id, user_id=sample_user2.id, share_amount=40.0, source="manual"))
     db.commit()
 
-    response = client.get(f"/api/transactions?user_id={sample_user2.id}")
+    response = client.post("/api/transactions/search", json={"user_id": sample_user2.id, "unpaginated": True})
     assert response.status_code == 200
-    data = response.json()
+    data = response.json()["items"]
     assert len(data) == 1
     assert data[0]["payee"] == "Shared Bill"
 
@@ -759,6 +759,38 @@ def test_search_advanced_text_operators(client, db, sample_account, sample_categ
         assert (total == 1) == should_match, f"{operator} {value!r} expected match={should_match}"
 
 
+# (operator, value, payees expected to match) over "Amazon Prime", "100% bio", "a_b".
+WILDCARD_CASES = [
+    ("contains", "ama*pr", {"Amazon Prime"}),
+    ("contains", "am?zon", {"Amazon Prime"}),
+    ("contains", "%", {"100% bio"}),
+    ("contains", "_", {"a_b"}),
+    ("contains", "a?b", {"a_b"}),
+    ("starts_with", "*bio", {"100% bio"}),
+    ("starts_with", "?mazon", {"Amazon Prime"}),
+    ("ends_with", "pr*", {"Amazon Prime"}),
+    ("ends_with", "_?", {"a_b"}),
+    ("ends_with", "?", {"Amazon Prime", "100% bio", "a_b"}),
+]
+
+
+def test_search_wildcards_star_and_question_mark(client, db, sample_account, sample_category):
+    for payee in ("Amazon Prime", "100% bio", "a_b"):
+        _make_transaction(db, sample_account, sample_category, payee=payee)
+
+    for operator, value, expected in WILDCARD_CASES:
+        response = client.post("/api/transactions/search", json={
+            "conditions": [{"field": "payee", "operator": operator, "value": value}], "unpaginated": True,
+        })
+        assert {t["payee"] for t in response.json()["items"]} == expected, f"{operator} {value!r}"
+
+    # The simple filter's search box reads the same syntax.
+    response = client.post("/api/transactions/search", json={"search": "ama*me", "unpaginated": True})
+    assert [t["payee"] for t in response.json()["items"]] == ["Amazon Prime"]
+    response = client.post("/api/transactions/search", json={"search": "0%", "unpaginated": True})
+    assert [t["payee"] for t in response.json()["items"]] == ["100% bio"]
+
+
 def test_search_advanced_numeric_operators(client, db, sample_account, sample_category):
     _make_transaction(db, sample_account, sample_category, amount=50.0)
 
@@ -1114,16 +1146,6 @@ def test_search_unpaginated_still_applies_filters(client, sample_account_with_us
     assert data["total"] == 1
     assert len(data["items"]) == 1
     assert data["items"][0]["payee"] == "User Specific"
-
-
-def test_search_default_sort_matches_get_transactions(client, db, sample_account, sample_category):
-    from datetime import date
-    _make_transaction(db, sample_account, sample_category, payee="Old", date=date(2026, 1, 1))
-    _make_transaction(db, sample_account, sample_category, payee="New", date=date(2026, 6, 1))
-
-    get_response = client.get("/api/transactions")
-    search_response = client.post("/api/transactions/search", json={})
-    assert [t["id"] for t in get_response.json()] == [t["id"] for t in search_response.json()["items"]]
 
 
 def test_search_sort_by_amount_asc(client, db, sample_account, sample_category):

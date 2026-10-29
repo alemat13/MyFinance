@@ -61,19 +61,28 @@ def coerce_bool(value) -> bool:
     raise ValueError(f'invalid yes/no value: {value!r}')
 
 
+def like_pattern(value: str) -> str:
+    """Turn user text into a LIKE pattern (escape character backslash): `*`
+    matches any run of characters and `?` exactly one, while a literal `%`,
+    `_` or backslash is matched as itself. Mirrored by
+    transaction_rules._wildcard_regex()."""
+    escaped = value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return escaped.replace("*", "%").replace("?", "_")
+
+
 def _text_expr(column, condition: FilterCondition):
     value = str(condition.value).lower()
     lowered = func.lower(column)
     if condition.operator == "contains":
-        return lowered.like(f"%{value}%")
+        return lowered.like(f"%{like_pattern(value)}%", escape="\\")
     if condition.operator == "equals":
         return lowered == value
     if condition.operator == "not_equals":
         return lowered != value
     if condition.operator == "starts_with":
-        return lowered.like(f"{value}%")
+        return lowered.like(f"{like_pattern(value)}%", escape="\\")
     if condition.operator == "ends_with":
-        return lowered.like(f"%{value}")
+        return lowered.like(f"%{like_pattern(value)}", escape="\\")
     raise ValueError(f'unsupported text operator: {condition.operator}')
 
 
@@ -265,10 +274,10 @@ def apply_transaction_filters(query, req, db: Session):
     if req.user_id is not None:
         query = query.filter(visible_transaction_filter(db, req.user_id))
     if req.search:
-        like = f"%{req.search.lower()}%"
+        like = f"%{like_pattern(req.search.lower())}%"
         query = query.filter(or_(
-            func.lower(Transaction.payee).like(like),
-            func.lower(Transaction.memo).like(like),
+            func.lower(Transaction.payee).like(like, escape="\\"),
+            func.lower(Transaction.memo).like(like, escape="\\"),
         ))
     if req.date_from is not None:
         query = query.filter(Transaction.date >= req.date_from)
