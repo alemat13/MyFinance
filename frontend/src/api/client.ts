@@ -263,11 +263,6 @@ export function deleteCategory(id: number): Promise<void> {
   return request<void>(`/categories/${id}`, { method: 'DELETE' })
 }
 
-export function fetchTransactions(userId?: number): Promise<Transaction[]> {
-  const params = userId ? `?user_id=${userId}` : ''
-  return request<Transaction[]>(`/transactions${params}`)
-}
-
 export function searchTransactions(req: TransactionSearchRequest): Promise<TransactionSearchResponse> {
   return request<TransactionSearchResponse>('/transactions/search', { method: 'POST', body: JSON.stringify(req) })
 }

@@ -14,7 +14,16 @@ connect_args = (
     else {}
 )
 
-engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args=connect_args)
+# Two Cloud Run instances share a small Cloud SQL instance (~25 connections),
+# so each keeps at most 5; pre_ping and recycle drop connections the server
+# closed while the instance sat idle. SQLite keeps SQLAlchemy's defaults.
+pool_args = (
+    {}
+    if SQLALCHEMY_DATABASE_URL.startswith("sqlite")
+    else {"pool_size": 3, "max_overflow": 2, "pool_pre_ping": True, "pool_recycle": 1800}
+)
+
+engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args=connect_args, **pool_args)
 
 
 @event.listens_for(engine, "connect")

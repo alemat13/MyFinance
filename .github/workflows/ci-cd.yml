@@ -50,7 +50,9 @@ jobs:
       - run: npm test
 
   test-e2e:
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest moved to 26.04, which the pinned Playwright
+    # (e2e/package.json) can't install Chromium on. Move both together.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
 
@@ -87,6 +89,11 @@ jobs:
   deploy:
     needs: [test-backend, test-frontend, test-e2e]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    # Two merges in quick succession must not deploy (and migrate) at once:
+    # the second waits for the first instead of racing it.
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     permissions:
       contents: read

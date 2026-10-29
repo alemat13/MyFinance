@@ -977,8 +977,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Transactions */
-        get: operations["get_transactions_api_transactions_get"];
+        get?: never;
         put?: never;
         /** Create Transaction */
         post: operations["create_transaction_api_transactions_post"];
@@ -5278,37 +5277,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TransactionLinkOut"] | null;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_transactions_api_transactions_get: {
-        parameters: {
-            query?: {
-                user_id?: number | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TransactionOut"][];
                 };
             };
             /** @description Validation Error */

@@ -37,6 +37,11 @@ export const USER_FIELDS: FilterField[] = [
 ]
 /** The "(abs)" fields, read without their sign; their value is never negative. */
 const ABS_FIELDS: FilterField[] = ['amount_abs', 'split_share_abs', 'split_balance_abs']
+/** Text operators where `*` matches any run of characters and `?` exactly one
+ * (filtering.like_pattern() on the server, mirrored by rules). */
+const WILDCARD_OPERATORS = new Set(['contains', 'starts_with', 'ends_with'])
+const WILDCARD_HINT = '* matches any characters, ? exactly one'
+
 /** Fields a search can use but a rule cannot: the per-user figures (an
  *  imported row has no split yet), when a row was added (it has not been)
  *  and whether it is linked (it is not yet). */
@@ -296,6 +301,7 @@ export default function TransactionConditions({
               type={isDateField(c.field) ? 'date' : isMonthField(c.field) ? 'month' : 'text'}
               value={c.value}
               onChange={e => updateValue(i, 'value', e.target.value)}
+              title={WILDCARD_OPERATORS.has(c.operator) ? WILDCARD_HINT : undefined}
               className={isMonthField(c.field) ? 'w-[170px]' : 'w-[130px]'}
             />
           )}

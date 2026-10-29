@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { ArrowDown, ArrowUp, CheckCircle2, Circle, Flag, Link2 } from 'lucide-react'
 import {
   Transaction, TransactionSplit, GlobalSplitWeight,
@@ -246,10 +246,17 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
     }
   }
 
+  // Searches can overlap (a filter changed while the last one was in flight)
+  // and finish out of order: only the latest one may fill the list, or an
+  // older filter's rows would replace the current one's.
+  const latestSearch = useRef(0)
+
   const loadTransactions = () => {
+    const searchId = ++latestSearch.current
     setLoading(true)
     searchTransactions(buildSearchRequest())
       .then(res => {
+        if (searchId !== latestSearch.current) return
         setTransactions(res.items)
         setTotal(res.total)
         setTotalPages(res.total_pages)
@@ -257,6 +264,7 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
         setSearchError(null)
       })
       .catch(err => {
+        if (searchId !== latestSearch.current) return
         console.error(err)
         setTransactions([])
         setTotal(0)
@@ -264,7 +272,9 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
         setSelectedIds(new Set())
         setSearchError(err.message)
       })
-      .finally(() => setLoading(false))
+      .finally(() => {
+        if (searchId === latestSearch.current) setLoading(false)
+      })
   }
 
   const buildExportData = (items: Transaction[]) => {
@@ -556,7 +566,7 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
 
         {mode === 'simple' ? (
           <div className="flex gap-2 flex-wrap items-end">
-            <Input placeholder="Search payee/memo" value={searchText} onChange={e => setSearchText(e.target.value)} />
+            <Input placeholder="Search payee/memo" title="* matches any characters, ? exactly one" value={searchText} onChange={e => setSearchText(e.target.value)} />
             <Input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(1) }} />
             <Input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(1) }} />
             <AccountPicker
