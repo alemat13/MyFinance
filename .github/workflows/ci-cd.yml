@@ -50,7 +50,9 @@ jobs:
       - run: npm test
 
   test-e2e:
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest moved to 26.04, which the pinned Playwright
+    # (e2e/package.json) can't install Chromium on. Move both together.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
 
