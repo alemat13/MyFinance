@@ -186,6 +186,19 @@ def test_bank_fields_and_reconciled_conditions(db, sample_account):
     assert _evaluate(db, [rule], row).fields == {"payee": "Train"}
 
 
+def test_wildcards_mirror_the_filter(db, sample_account):
+    from tests.test_transactions import WILDCARD_CASES
+    payees = ("Amazon Prime", "100% bio", "a_b")
+    for operator, value, expected in WILDCARD_CASES:
+        matched = {
+            payee for payee in payees
+            if transaction_rules._matches(
+                transaction_rules.FilterCondition(field="payee", operator=operator, value=value), {"payee": payee},
+            )
+        }
+        assert matched == expected, f"{operator} {value!r}"
+
+
 def test_match_mode_any_and_all(db, sample_account):
     row = _txn(db, sample_account.id, "SFR")
     conditions = [_contains("payee", "sfr"), _contains("payee", "orange")]

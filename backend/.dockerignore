@@ -4,3 +4,4 @@ __pycache__/
 finance.db
 tests/
 .git
+seed.py

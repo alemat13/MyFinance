@@ -31,6 +31,7 @@ treatment of NULL: a condition on an empty field never matches, not even
 """
 
 import logging
+import re
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
@@ -102,6 +103,12 @@ def _coerce_date(value) -> date:
     return value if isinstance(value, date) else date.fromisoformat(str(value))
 
 
+def _wildcard_regex(value: str) -> str:
+    """Regex for a text condition's value, mirroring filtering.like_pattern():
+    `*` is any run of characters, `?` exactly one, everything else literal."""
+    return re.escape(value).replace(r"\*", ".*").replace(r"\?", ".")
+
+
 def _matches(condition: FilterCondition, state: dict) -> bool:
     if condition.field in TAG_FIELDS:
         # Mirrors filtering.build_condition_expr(): with no tag named, "is"
@@ -142,13 +149,14 @@ def _matches(condition: FilterCondition, state: dict) -> bool:
         return bool(current) == coerce_bool(condition.value)
     if condition.field in TEXT_FIELDS:
         text, value = str(current).lower(), str(condition.value).lower()
-        return {
-            "contains": value in text,
-            "equals": text == value,
-            "not_equals": text != value,
-            "starts_with": text.startswith(value),
-            "ends_with": text.endswith(value),
-        }[op]
+        if op in ("equals", "not_equals"):
+            return (text == value) == (op == "equals")
+        pattern = _wildcard_regex(value)
+        return bool({
+            "contains": re.search(pattern, text, re.DOTALL),
+            "starts_with": re.match(pattern, text, re.DOTALL),
+            "ends_with": re.search(f"(?:{pattern})\\Z", text, re.DOTALL),
+        }[op])
     if condition.field in DATE_FIELDS:
         current = _coerce_date(current)
         value = _coerce_date(condition.value)

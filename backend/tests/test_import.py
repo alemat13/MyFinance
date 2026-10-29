@@ -215,8 +215,8 @@ def test_import_preview_matches_commit_for_single_owner_account(client, sample_a
     assert response.status_code == 200
     transaction_id = response.json()["transaction_ids"][0]
 
-    response = client.get("/api/transactions")
-    committed = next(t for t in response.json() if t["id"] == transaction_id)
+    response = client.post("/api/transactions/search", json={"unpaginated": True})
+    committed = next(t for t in response.json()["items"] if t["id"] == transaction_id)
     assert len(committed["splits"]) == 1
     assert committed["splits"][0]["share_amount"] == -42.50
 
@@ -255,8 +255,8 @@ def test_import_commit_allows_rows_without_category(client, sample_account, samp
     )
     assert response.status_code == 200
 
-    response = client.get("/api/transactions")
-    data = response.json()
+    response = client.post("/api/transactions/search", json={"unpaginated": True})
+    data = response.json()["items"]
     assert len(data) == 1
     assert data[0]["category_id"] is None
 
@@ -272,8 +272,8 @@ def test_import_commit_rejects_negative_split_weight(client, sample_account, sam
     )
     assert response.status_code == 422
 
-    response = client.get("/api/transactions")
-    assert response.json() == []
+    response = client.post("/api/transactions/search", json={"unpaginated": True})
+    assert response.json()["items"] == []
 
 
 def test_import_commit_creates_transactions(client, sample_account, sample_category, sample_user):
@@ -297,8 +297,8 @@ def test_import_commit_creates_transactions(client, sample_account, sample_categ
     assert data["created_count"] == 2
     assert len(data["transaction_ids"]) == 2
 
-    response = client.get("/api/transactions")
-    assert len(response.json()) == 2
+    response = client.post("/api/transactions/search", json={"unpaginated": True})
+    assert len(response.json()["items"]) == 2
 
 
 def test_import_commit_keeps_csv_label_as_original_label(client, sample_account, sample_user):
@@ -343,8 +343,8 @@ def test_import_commit_creates_transactions_in_distinct_accounts(client, sample_
     )
     assert response.status_code == 200
 
-    response = client.get("/api/transactions")
-    by_payee = {t["payee"]: t for t in response.json()}
+    response = client.post("/api/transactions/search", json={"unpaginated": True})
+    by_payee = {t["payee"]: t for t in response.json()["items"]}
     assert by_payee["Whole Foods"]["account_id"] == sample_account.id
     assert by_payee["Book Store"]["account_id"] == sample_account_2.id
 
@@ -360,8 +360,8 @@ def test_import_commit_creates_unreconciled_transactions(client, sample_account,
     )
     assert response.status_code == 200
 
-    response = client.get("/api/transactions")
-    data = response.json()
+    response = client.post("/api/transactions/search", json={"unpaginated": True})
+    data = response.json()["items"]
     assert len(data) == 1
     assert data[0]["reconciled"] is False
 
@@ -396,8 +396,8 @@ def test_import_commit_rejects_oversized_payload(client, sample_account, sample_
     assert response.status_code == 422
     assert str(MAX_IMPORT_ROWS) in response.json()["detail"]
 
-    response = client.get("/api/transactions")
-    assert response.json() == []
+    response = client.post("/api/transactions/search", json={"unpaginated": True})
+    assert response.json()["items"] == []
 
 
 def test_import_commit_batches_flush_across_partial_batch(client, sample_account, sample_category, sample_user, monkeypatch):
@@ -419,8 +419,8 @@ def test_import_commit_batches_flush_across_partial_batch(client, sample_account
     assert data["created_count"] == 5
     assert len(set(data["transaction_ids"])) == 5
 
-    response = client.get("/api/transactions")
-    committed = response.json()
+    response = client.post("/api/transactions/search", json={"unpaginated": True})
+    committed = response.json()["items"]
     assert len(committed) == 5
     for transaction in committed:
         assert len(transaction["splits"]) == 1

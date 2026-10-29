@@ -145,7 +145,7 @@ def test_import_overwrite_replaces_data(client, db, sample_account, sample_categ
     assert len(accounts[0]["users"]) == 1
     assert len(accounts[0]["split_weights"]) == 1
 
-    transactions = client.get("/api/transactions").json()
+    transactions = client.post("/api/transactions/search", json={"unpaginated": True}).json()["items"]
     assert len(transactions) == 1
     assert transactions[0]["id"] == original_payload["transactions"][0]["id"]
     assert len(transactions[0]["splits"]) == 1
@@ -170,7 +170,7 @@ def test_import_overwrite_with_uncategorized_transaction_succeeds(client, db, sa
     response = _post_import(client, zip_bytes, mode="overwrite")
     assert response.status_code == 200
 
-    transactions = client.get("/api/transactions").json()
+    transactions = client.post("/api/transactions/search", json={"unpaginated": True}).json()["items"]
     assert len(transactions) == 1
     assert transactions[0]["category_id"] is None
 

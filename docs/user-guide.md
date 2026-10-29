@@ -274,7 +274,10 @@ Two filtering modes are available:
   below). **Clear** resets all of these.
 - **Advanced filters**: build arbitrary AND/OR conditions across payee, memo, amount,
   date, account, or category, each with its own operator (contains, equals, between,
-  greater/less than, etc.). **Account** and **Category** use **is in** / **is not in**
+  greater/less than, etc.). In **contains**, **starts with** and **ends with** (and in
+  the simple filter's search box), `*` stands for any run of characters and `?` for
+  exactly one: "Payee contains carte*sncf" finds "CARTE 12/09 SNCF". Every other
+  character, `%` and `_` included, is matched as itself. **Account** and **Category** use **is in** / **is not in**
   with a list where you tick as many accounts or categories as you like (the menu stays
   open while you tick; "Category is in Groceries, Restaurants" lists both). Ticking
   **Uncategorized** in a category list stands for the transactions with no category, so

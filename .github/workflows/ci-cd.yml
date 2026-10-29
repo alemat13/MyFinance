@@ -87,6 +87,11 @@ jobs:
   deploy:
     needs: [test-backend, test-frontend, test-e2e]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    # Two merges in quick succession must not deploy (and migrate) at once:
+    # the second waits for the first instead of racing it.
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     permissions:
       contents: read
