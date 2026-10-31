@@ -106,10 +106,21 @@ def export_to_zip_bytes(db: Session) -> bytes:
     return buffer.getvalue()
 
 
+# Ceiling on the archive's JSON once decompressed. A real household backup is
+# tens of megabytes; this only stops a crafted "zip bomb" from exhausting the
+# instance's memory. Read in a bounded way, so a lying header can't get past it.
+MAX_DECOMPRESSED_BYTES = 1024 * 1024 * 1024
+
+
 def parse_zip_bytes(content: bytes) -> DatabaseExport:
     try:
         with zipfile.ZipFile(io.BytesIO(content)) as zf:
-            raw = zf.read(ZIP_ENTRY_NAME)
+            with zf.open(ZIP_ENTRY_NAME) as entry:
+                raw = entry.read(MAX_DECOMPRESSED_BYTES + 1)
+        if len(raw) > MAX_DECOMPRESSED_BYTES:
+            raise BackupFormatError(
+                f"Backup entry is larger than {MAX_DECOMPRESSED_BYTES // (1024 * 1024)} MB once decompressed"
+            )
     except zipfile.BadZipFile:
         raise BackupFormatError("File is not a valid zip archive")
     except KeyError:
