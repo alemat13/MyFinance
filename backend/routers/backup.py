@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 import backup as backup_module
 from database import get_db
 from schemas import ImportSummary
+from uploads import read_upload
 
 router = APIRouter(prefix="/api/backup")
 
@@ -22,13 +23,21 @@ def export_backup(db: Session = Depends(get_db)):
     )
 
 
+# Ceiling on an uploaded backup archive. Production backups are a few megabytes
+# of zip; this leaves ample room while refusing an upload meant to fill memory.
+MAX_BACKUP_UPLOAD_BYTES = 200 * 1024 * 1024
+
+
+# Plain `def`, not `async def`: the restore is seconds of blocking database
+# work, which FastAPI runs in its thread pool for a sync route instead of
+# freezing every other request on the instance.
 @router.post("/import", response_model=ImportSummary)
-async def import_backup(
+def import_backup(
     mode: Literal["overwrite", "partial"] = Query("overwrite"),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
-    contents = await file.read()
+    contents = read_upload(file, MAX_BACKUP_UPLOAD_BYTES)
     try:
         data = backup_module.parse_zip_bytes(contents)
         return backup_module.import_database(db, data, mode)
