@@ -594,3 +594,26 @@ def test_import_overwrite_failing_mid_restore_keeps_the_existing_data(
     assert db.query(TransactionSplit).count() == 1
     assert db.query(TransactionHistory).count() == 1
     assert db.query(AccountUser).count() == 1
+
+
+def test_import_oversized_upload_returns_413(client, monkeypatch):
+    import routers.backup as backup_router
+    monkeypatch.setattr(backup_router, "MAX_BACKUP_UPLOAD_BYTES", 10)
+    response = client.post(
+        "/api/backup/import",
+        files={"file": ("backup.zip", b"x" * 11, "application/zip")},
+    )
+    assert response.status_code == 413
+
+
+def test_import_refuses_an_archive_too_large_once_decompressed(client, monkeypatch):
+    monkeypatch.setattr(backup, "MAX_DECOMPRESSED_BYTES", 100)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(backup.ZIP_ENTRY_NAME, " " * 1000)
+    response = client.post(
+        "/api/backup/import",
+        files={"file": ("backup.zip", buf.getvalue(), "application/zip")},
+    )
+    assert response.status_code == 422
+    assert "decompressed" in response.json()["detail"]

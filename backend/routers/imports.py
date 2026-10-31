@@ -1,6 +1,5 @@
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from sqlalchemy.orm import Session
-from starlette.concurrency import run_in_threadpool
 
 import audit
 import cache_service
@@ -17,6 +16,7 @@ from rules import (
     validate_transaction_weights_present,
     validate_weights,
 )
+from uploads import read_upload
 from schemas import (
     ImportCommitRequest,
     ImportCommitResponse,
@@ -34,14 +34,21 @@ _IMPORT_FLUSH_BATCH_SIZE = 500
 RAW_SOURCE = "csv_import"
 
 
+# Ceiling on an uploaded CSV/QIF file. An import is capped at MAX_IMPORT_ROWS
+# rows anyway, which is well under a megabyte of text.
+MAX_IMPORT_UPLOAD_BYTES = 20 * 1024 * 1024
+
+
+# Both routes below are plain `def`: parsing a file is blocking work, which
+# FastAPI runs in its thread pool for a sync route instead of on the event loop.
 @router.post("/detect", response_model=ImportDetectResponse)
-async def import_detect(file: UploadFile = File(...)):
-    contents = await file.read()
+def import_detect(file: UploadFile = File(...)):
+    contents = read_upload(file, MAX_IMPORT_UPLOAD_BYTES)
     return detect_import_settings(contents)
 
 
 @router.post("/preview", response_model=list[ImportPreviewRow])
-async def import_preview(
+def import_preview(
     file: UploadFile = File(...),
     account_id: int = Form(...),
     encoding: str = Form(...),
@@ -56,7 +63,7 @@ async def import_preview(
     account_col: str | None = Form(None),
     db: Session = Depends(get_db),
 ):
-    contents = await file.read()
+    contents = read_upload(file, MAX_IMPORT_UPLOAD_BYTES)
     data = ImportPreviewRequest(
         account_id=account_id, encoding=encoding, delimiter=delimiter,
         date_format=date_format, decimal_separator=decimal_separator,
@@ -64,7 +71,7 @@ async def import_preview(
         memo_col=memo_col, category_col=category_col, account_col=account_col,
     )
     try:
-        return await run_in_threadpool(preview_import, db, contents, data)
+        return preview_import(db, contents, data)
     except ValueError as exc:
         raise HTTPException(422, str(exc))
 

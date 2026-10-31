@@ -464,3 +464,13 @@ def test_import_preview_duplicate_counts_identical_rows(client, sample_account, 
     )
     assert response.status_code == 200
     assert [r["status"] for r in response.json()] == ["possible_duplicate", "ok"]
+
+
+def test_detect_oversized_upload_returns_413(client, monkeypatch):
+    import routers.imports as imports_router
+    monkeypatch.setattr(imports_router, "MAX_IMPORT_UPLOAD_BYTES", 10)
+    response = client.post(
+        "/api/import/detect",
+        files={"file": ("big.csv", b"Date,Payee,Amount\n" * 5, "text/csv")},
+    )
+    assert response.status_code == 413

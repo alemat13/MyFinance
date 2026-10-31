@@ -21,6 +21,28 @@ jobs:
       - run: pip-audit -r requirements.txt
       - run: pytest
 
+  # npm audit runs in its own job, which `deploy` does not wait on: an outage
+  # of npm's audit service must not block a release that changed no code.
+  # A finding still shows as a red job on the run.
+  audit-frontend:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with: { node-version: '22', cache: 'npm', cache-dependency-path: frontend/package-lock.json }
+      - name: npm audit
+        run: |
+          for attempt in 1 2 3; do
+            npm audit --audit-level=high && exit 0
+            echo "npm audit attempt $attempt failed (registry issue?), retrying in 15s..."
+            sleep 15
+          done
+          exit 1
+
   test-frontend:
     runs-on: ubuntu-latest
     defaults:
@@ -31,14 +53,6 @@ jobs:
       - uses: actions/setup-node@v7
         with: { node-version: '22', cache: 'npm', cache-dependency-path: frontend/package-lock.json }
       - run: npm ci
-      - name: npm audit
-        run: |
-          for attempt in 1 2 3; do
-            npm audit --audit-level=high && exit 0
-            echo "npm audit attempt $attempt failed (registry issue?), retrying in 15s..."
-            sleep 15
-          done
-          exit 1
       - name: API types match the OpenAPI schema
         run: |
           npm run gen:api

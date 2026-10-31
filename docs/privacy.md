@@ -42,7 +42,10 @@ tiers. Quatre prestataires techniques interviennent, et uniquement à ce titre :
   transmet les données bancaires à l'application.
 - **Google Cloud**, qui héberge l'application et sa base de données.
 - **Microsoft OneDrive**, si la sauvegarde automatique est activée, pour stocker
-  une archive chiffrée de la base dans l'espace personnel du propriétaire.
+  une copie de la base dans l'espace personnel du propriétaire. Cette copie est
+  une archive zip **non chiffrée** : elle n'est protégée que par l'accès au
+  compte Microsoft du propriétaire. Une sauvegarde est gardée par jour, semaine,
+  mois et année selon les réglages (par défaut, dix ans pour les annuelles).
 - **Brevo** (ou le service d'envoi d'emails configuré), si un utilisateur active
   les alertes par email, pour lui envoyer la liste de ses nouvelles transactions.
 
