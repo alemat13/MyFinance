@@ -38,7 +38,12 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    if "pytest" not in sys.modules:
+    # Only a local SQLite database is shaped at startup (MYF-19). Production
+    # (Postgres) is shaped by Alembic alone, run by the deploy job before the
+    # new revision starts, so its schema always matches the migration history;
+    # CI's `alembic check` fails while models.py has a change no migration
+    # carries.
+    if "pytest" not in sys.modules and engine.dialect.name == "sqlite":
         Base.metadata.create_all(bind=engine)
         sync_schema(engine)
     yield

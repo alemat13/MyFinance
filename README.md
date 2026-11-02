@@ -146,7 +146,7 @@ Uses `vitest` with `@testing-library/react` and `jsdom`. Component tests mock th
 
 ```
 backend/
-├── database.py         SQLAlchemy engine, session, sync_schema() (additive prod migration)
+├── database.py         SQLAlchemy engine, session, sync_schema() (additive, local SQLite only)
 ├── main.py             FastAPI app and route definitions
 ├── models.py           ORM models: User, Account, Category, Transaction, AccountUser,
 │                          CategorySplit, GlobalSplitWeight, TransactionSplit, TransactionHistory
