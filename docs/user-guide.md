@@ -112,8 +112,9 @@ The Dashboard is the home screen and gives an at-a-glance summary:
   liability is versus the transaction's full amount.
 - **Net worth** — at the very bottom, what the selected person owns: each open account's
   balance times their ownership percentage (an account they don't own is left out;
-  with no one selected, the whole household at 100%), grouped by account type, largest
-  type first, each with its total and its share of the accounts total. Click a type to
+  with no one selected, the whole household at 100%), grouped by account type, in the order
+  set on the Accounts screen (**Reorder types**; types never placed come after, largest
+  first), each with its total and its share of the accounts total. Click a type to
   fold it, click an account to open its transactions. A shared account shows the
   percentage and full balance under its name ("50% of €1,000.00"); an account at zero
   is counted at the bottom instead of listed. Under the accounts total comes the
@@ -127,9 +128,16 @@ The Dashboard is the home screen and gives an at-a-glance summary:
 Manage your checking accounts, savings accounts, credit cards, and so on.
 
 The accounts table lists **Name, Balance, Currency, Owners, Split weights,** and row
-actions, grouped under one collapsible header per account **Type** (alphabetical, with
-the number of accounts; click a header to fold it). Accounts are alphabetical inside
-their group. With **Show archived** checked, archived accounts appear together under
+actions, grouped under one collapsible header per account **Type** (with the number of
+accounts; click a header to fold it). Accounts are alphabetical inside their group.
+
+The groups show in the order you choose: **Reorder types** (next to **+ New Account**,
+shown once there are at least two types) opens a list of every type with up and down
+arrows; **Save order** keeps it for the whole household, on every device. The same
+order applies wherever accounts are grouped by type: this screen, the account picker
+(Transactions, import, bank sync, charts) and the dashboard's **Net worth**. A type you
+never placed (a new one, for instance) comes after the placed ones, alphabetically here
+and in the picker, largest first in Net worth. With **Show archived** checked, archived accounts appear together under
 one **Archived** header at the bottom, sorted by type then name with a small heading
 per type.
 

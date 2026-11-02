@@ -11,6 +11,7 @@ from sqlalchemy.exc import IntegrityError
 
 from database import Base, engine, sync_schema
 from routers import (
+    account_types,
     accounts,
     backup,
     balances,
@@ -144,6 +145,7 @@ def _handle_unexpected_error(request, exc):
 
 app.include_router(users.router)
 app.include_router(accounts.router)
+app.include_router(account_types.router)
 app.include_router(categories.router)
 app.include_router(transactions.router)
 app.include_router(split_weights.router)

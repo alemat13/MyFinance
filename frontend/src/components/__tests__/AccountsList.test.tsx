@@ -4,13 +4,14 @@ import { renderWithProviders } from '../../test-utils'
 import AccountsList from '../AccountsList'
 import { Account } from '../../api/client'
 
-const { mockFetchAccounts, mockCreateAccount, mockUpdateAccount, mockDeleteAccount, mockFetchUsers, mockUpdateAccountSplitWeights } = vi.hoisted(() => ({
+const { mockFetchAccounts, mockCreateAccount, mockUpdateAccount, mockDeleteAccount, mockFetchUsers, mockUpdateAccountSplitWeights, mockSetAccountTypeOrder } = vi.hoisted(() => ({
   mockFetchAccounts: vi.fn(),
   mockCreateAccount: vi.fn(),
   mockUpdateAccount: vi.fn(),
   mockDeleteAccount: vi.fn(),
   mockFetchUsers: vi.fn().mockResolvedValue([]),
   mockUpdateAccountSplitWeights: vi.fn(),
+  mockSetAccountTypeOrder: vi.fn(),
 }))
 
 vi.mock('../../api/client', () => ({
@@ -20,6 +21,7 @@ vi.mock('../../api/client', () => ({
   deleteAccount: mockDeleteAccount,
   fetchUsers: mockFetchUsers,
   updateAccountSplitWeights: mockUpdateAccountSplitWeights,
+  setAccountTypeOrder: mockSetAccountTypeOrder,
 }))
 
 const baseAccount = { id: 1, name: 'Checking', type: 'Checking', balance: 100, currency: 'EUR', created_at: '2026-01-01', archived: false, users: [], split_weights: [] }
@@ -347,4 +349,49 @@ test('on mobile, renders cards instead of a table, still grouped and showing spl
   fireEvent.click(within(cards[1]).getByText('Edit'))
   expect(screen.getByLabelText('Name')).toHaveValue('Revolut')
   vi.restoreAllMocks()
+})
+
+test('groups follow the saved type order, unplaced types last', async () => {
+  mockFetchAccounts.mockResolvedValue([
+    { ...baseAccount, id: 1, name: 'CCF', type: 'Checking' },
+    { ...baseAccount, id: 2, name: 'Livret A', type: 'Savings', type_position: 0 },
+    { ...baseAccount, id: 3, name: 'PEA', type: 'Investment', type_position: 1 },
+  ])
+
+  renderWithProviders(<AccountsList onBack={() => {}} selectedUserId={null} />)
+
+  await waitFor(() => expect(screen.getByText('CCF')).toBeInTheDocument())
+  const headers = screen.getAllByRole('button', { expanded: true }).map(b => b.textContent)
+  expect(headers).toEqual(['Savings1', 'Investment1', 'Checking1'])
+})
+
+test('reorders the type groups and saves the new order', async () => {
+  mockFetchAccounts.mockResolvedValue([
+    { ...baseAccount, id: 1, name: 'CCF', type: 'Checking' },
+    { ...baseAccount, id: 2, name: 'Livret A', type: 'Savings' },
+  ])
+  mockSetAccountTypeOrder.mockResolvedValue(['savings', 'checking'])
+
+  renderWithProviders(<AccountsList onBack={() => {}} selectedUserId={null} />)
+
+  fireEvent.click(await screen.findByRole('button', { name: /reorder types/i }))
+  const list = screen.getByRole('list', { name: 'Account types' })
+  expect(within(list).getAllByRole('listitem').map(li => li.textContent)).toEqual(['1Checking1', '2Savings1'])
+  expect(screen.getByRole('button', { name: 'Move Checking up' })).toBeDisabled()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Move Savings up' }))
+  expect(within(list).getAllByRole('listitem').map(li => li.textContent)).toEqual(['1Savings1', '2Checking1'])
+
+  fireEvent.click(screen.getByRole('button', { name: 'Save order' }))
+  await waitFor(() => expect(mockSetAccountTypeOrder).toHaveBeenCalledWith(['savings', 'checking']))
+  await waitFor(() => expect(mockFetchAccounts).toHaveBeenCalledTimes(2))
+})
+
+test('hides the reorder button with a single type', async () => {
+  mockFetchAccounts.mockResolvedValue([baseAccount])
+
+  renderWithProviders(<AccountsList onBack={() => {}} selectedUserId={null} />)
+
+  await waitFor(() => expect(screen.getByText(/100/)).toBeInTheDocument())
+  expect(screen.queryByRole('button', { name: /reorder types/i })).not.toBeInTheDocument()
 })

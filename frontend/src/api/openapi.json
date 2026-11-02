@@ -89,6 +89,17 @@
             "title": "Type",
             "type": "string"
           },
+          "type_position": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type Position"
+          },
           "users": {
             "default": [],
             "items": {
@@ -108,7 +119,8 @@
           "archived",
           "users",
           "split_weights",
-          "last_transaction_date"
+          "last_transaction_date",
+          "type_position"
         ],
         "title": "AccountOut",
         "type": "object"
@@ -152,6 +164,23 @@
           "weight"
         ],
         "title": "AccountSplitWeightUpdateItem",
+        "type": "object"
+      },
+      "AccountTypeOrderRequest": {
+        "description": "Account types, first group to last. Matched case-insensitively and\ntrimmed; types left out go back to the alphabetical tail.",
+        "properties": {
+          "types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Types",
+            "type": "array"
+          }
+        },
+        "required": [
+          "types"
+        ],
+        "title": "AccountTypeOrderRequest",
         "type": "object"
       },
       "AccountUpdate": {
@@ -3125,6 +3154,11 @@
             "title": "Account Split Weights",
             "type": "integer"
           },
+          "account_type_order": {
+            "default": 0,
+            "title": "Account Type Order",
+            "type": "integer"
+          },
           "account_users": {
             "title": "Account Users",
             "type": "integer"
@@ -3226,6 +3260,7 @@
           "bank_account_links",
           "transaction_rules",
           "saved_filters",
+          "account_type_order",
           "email_alerts",
           "tags",
           "transaction_tags",
@@ -6125,6 +6160,69 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/account-types/order": {
+      "get": {
+        "description": "The positioned type keys, first to last.",
+        "operationId": "get_account_type_order_api_account_types_order_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "title": "Response Get Account Type Order Api Account Types Order Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Account Type Order"
+      },
+      "put": {
+        "operationId": "set_account_type_order_api_account_types_order_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountTypeOrderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "title": "Response Set Account Type Order Api Account Types Order Put",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Account Type Order"
+      }
+    },
     "/api/accounts": {
       "get": {
         "operationId": "get_accounts_api_accounts_get",

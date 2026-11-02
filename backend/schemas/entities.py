@@ -73,6 +73,16 @@ class AccountOut(Schema):
     # Only filled by GET /api/dashboard; None elsewhere, or when the account
     # has no transactions.
     last_transaction_date: date | None = None
+    # Where the account's type group sits (models.AccountTypeOrder), None when
+    # the user never placed that type: such groups come last, alphabetically.
+    type_position: int | None = None
+
+
+class AccountTypeOrderRequest(Schema):
+    """Account types, first group to last. Matched case-insensitively and
+    trimmed; types left out go back to the alphabetical tail."""
+
+    types: list[str]
 
 
 class AccountCreate(Schema):
