@@ -150,7 +150,7 @@ backend/
 ├── main.py             FastAPI app and route definitions
 ├── models.py           ORM models: User, Account, Category, Transaction, AccountUser,
 │                          CategorySplit, GlobalSplitWeight, TransactionSplit, TransactionHistory
-├── schemas.py          Pydantic I/O schemas
+├── schemas/            Pydantic I/O schemas, one module per area
 ├── seed.py             Database seeder (destructive)
 ├── accounting_month.py Derives accounting_month from date + accounting_month_offset
 ├── audit.py            Writes TransactionHistory snapshots on create/update/delete
