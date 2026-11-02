@@ -575,6 +575,12 @@ date) simply peel an amount off into its own row.
   sibling parts, so you can jump between them. A part can be divided again to add
   more siblings to the same group; but if you open one of the *other* parts, its
   Divide button won't appear — divide the original part instead.
+- Deleting a part keeps the total right: its amount goes back to the original part
+  (shown in that part's History), so the parts still add up to what the bank reported.
+  Once no other part remains, the original part is an ordinary transaction again.
+  The original part itself can't be deleted while other parts remain; delete those
+  first. Bulk delete in admin mode follows the same rules, and removes a group whose
+  parts are all selected.
 
 ### Linking transactions
 
