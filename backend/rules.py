@@ -113,6 +113,17 @@ def validate_not_divide_sibling(transaction) -> None:
         )
 
 
+def validate_divide_anchors_deletable(members: dict[int, set[int]], deleted_ids: set[int]) -> None:
+    """The anchor is what a deleted part's amount goes back to, so it can only
+    go once none of its other parts stay behind. `members` lists each divide
+    group's row ids by group (anchor) id."""
+    for group_id, ids in members.items():
+        if group_id in deleted_ids and ids - deleted_ids:
+            raise RuleViolation(
+                "This is the original part of a divided transaction; delete its other parts first"
+            )
+
+
 def validate_alert_email(email: str | None, any_frequency_on: bool) -> None:
     """An alert needs somewhere to go. A deliberately loose check (one @, a
     dot in the domain, no spaces): the real test is the test email."""
