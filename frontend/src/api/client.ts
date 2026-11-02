@@ -17,7 +17,7 @@ export type AccountSplitWeightCreate = Schemas['AccountSplitWeightUpdateItem']
 
 // last_transaction_date is only filled by GET /api/dashboard (null elsewhere);
 // optional so fixtures and hand-built accounts can leave it out.
-export type Account = Loose<Schemas['AccountOut'], 'last_transaction_date'>
+export type Account = Loose<Schemas['AccountOut'], 'last_transaction_date' | 'type_position'>
 
 export type AccountUserCreate = Schemas['AccountUserCreate']
 
@@ -246,6 +246,11 @@ export function createAccount(data: AccountCreate): Promise<Account> {
 
 export function updateAccount(id: number, data: AccountUpdate): Promise<Account> {
   return request<Account>(`/accounts/${id}`, { method: 'PUT', body: JSON.stringify(data) })
+}
+
+/** Replaces the order of account type groups, first to last; returns the stored keys. */
+export function setAccountTypeOrder(types: string[]): Promise<string[]> {
+  return request<string[]>('/account-types/order', { method: 'PUT', body: JSON.stringify({ types }) })
 }
 
 export function deleteAccount(id: number): Promise<void> {

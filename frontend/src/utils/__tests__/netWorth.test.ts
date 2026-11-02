@@ -51,4 +51,10 @@ describe('computeNetWorth', () => {
     expect(eur.groups.flatMap(g => g.accounts.map(a => a.account.name))).toEqual(['Olivia savings', 'Joint checking'])
     expect(eur.netWorth).toBe(3370.5)
   })
+
+  test('types follow the saved order first, the unplaced ones after by total', () => {
+    const placed = accounts.map(a => a.type === 'Savings' ? { ...a, type_position: 0 } : a.type === 'Checking' ? { ...a, type_position: 1 } : a)
+    const [eur] = computeNetWorth(placed, balances, null)
+    expect(eur.groups.map(g => g.label)).toEqual(['Savings', 'Checking', 'Investment'])
+  })
 })

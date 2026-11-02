@@ -3,6 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 import account_totals
+import account_types
 import cache_service
 import split_engine
 from database import get_db
@@ -74,9 +75,11 @@ def get_dashboard(user_id: int | None = Query(None), db: Session = Depends(get_d
         for uid, user_name, currency, net_position in balances_rows
     ]
 
+    positions = account_types.positions(db)
     return DashboardResponse(
         accounts=[
-            build_account_out(a, totals.get(a.id, 0.0), last_dates.get(a.id)) for a in accounts
+            build_account_out(a, totals.get(a.id, 0.0), last_dates.get(a.id), positions)
+            for a in accounts
         ],
         recent_transactions=recent_transactions,
         balances=balances,

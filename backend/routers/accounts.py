@@ -3,6 +3,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, selectinload
 
 import account_totals
+import account_types
 import cache_service
 import checkpoints
 from database import get_db
@@ -43,7 +44,8 @@ def get_accounts(user_id: int | None = Query(None), db: Session = Depends(get_db
         )
     accounts = db.scalars(query).all()
     totals = account_totals.get_transaction_totals(db)
-    return [build_account_out(a, totals.get(a.id, 0.0)) for a in accounts]
+    positions = account_types.positions(db)
+    return [build_account_out(a, totals.get(a.id, 0.0), type_positions=positions) for a in accounts]
 
 
 @router.post("", response_model=AccountOut, status_code=201)
@@ -70,7 +72,7 @@ def create_account(data: AccountCreate, db: Session = Depends(get_db)):
         )
     db.commit()
     db.refresh(account)
-    return build_account_out(account, 0.0)
+    return build_account_out(account, 0.0, type_positions=account_types.positions(db))
 
 
 @router.put("/{account_id}", response_model=AccountOut)
@@ -114,7 +116,11 @@ def update_account(account_id: int, data: AccountUpdate, db: Session = Depends(g
     cache_service.invalidate(db, "balances", "charts")
     db.commit()
     db.refresh(account)
-    return build_account_out(account, account_totals.transaction_total(db, account.id))
+    return build_account_out(
+        account,
+        account_totals.transaction_total(db, account.id),
+        type_positions=account_types.positions(db),
+    )
 
 
 @router.delete("/{account_id}", status_code=204)

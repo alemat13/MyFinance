@@ -1,5 +1,5 @@
-import { Fragment, ReactNode, useState } from 'react'
-import { Archive, ChevronDown, ChevronRight } from 'lucide-react'
+import { Fragment, ReactNode, useMemo, useState } from 'react'
+import { Archive, ArrowUpDown, ChevronDown, ChevronRight } from 'lucide-react'
 import {
   Account, AccountCreate, AccountUpdate, AccountUserCreate, AccountSplitWeightCreate,
   User, fetchAccounts, createAccount, updateAccount, deleteAccount,
@@ -10,7 +10,8 @@ import { useToast } from '../context/ToastContext'
 import { useCrudList } from '../hooks/useCrudList'
 import { Button, Input, Select, Table, Thead, Tbody, Tr, Th, Td, StatusMessage, ConfirmDialog, BackButton, NumberInput } from './ui'
 import { CURRENCY_OPTIONS, formatMoney } from '../utils/currency'
-import { AccountTypeGroup, groupAccounts } from '../utils/accountGroups'
+import { AccountTypeGroup, allTypeGroups, groupAccounts } from '../utils/accountGroups'
+import AccountTypeOrderDialog from './AccountTypeOrderDialog'
 import { useIsMobile } from '../hooks/useMediaQuery'
 
 const ARCHIVED_KEY = 'archived'
@@ -87,6 +88,7 @@ export default function AccountsList({ onBack, selectedUserId }: Props) {
   const [newSplitWeights, setNewSplitWeights] = useState<SplitRow[]>([])
   const [showArchived, setShowArchived] = useState(false)
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+  const [reordering, setReordering] = useState(false)
   const isMobile = useIsMobile()
   const { showToast } = useToast()
 
@@ -111,6 +113,7 @@ export default function AccountsList({ onBack, selectedUserId }: Props) {
     }),
     deps: [selectedUserId],
   })
+  const typeGroups = useMemo(() => allTypeGroups(accounts), [accounts])
 
   // Split-weight tier isn't part of AccountUpdate/AccountCreate — it's saved via
   // its own endpoint (updateAccountSplitWeights), so it's kept as separate state
@@ -414,6 +417,11 @@ export default function AccountsList({ onBack, selectedUserId }: Props) {
             <input type="checkbox" checked={showArchived} onChange={e => setShowArchived(e.target.checked)} />
             Show archived
           </label>
+          {typeGroups.length > 1 && (
+            <Button variant="secondary" onClick={() => setReordering(true)}>
+              <ArrowUpDown size={14} />Reorder types
+            </Button>
+          )}
           <Button onClick={() => setShowNew(true)}>+ New Account</Button>
         </div>
       </div>
@@ -449,6 +457,13 @@ export default function AccountsList({ onBack, selectedUserId }: Props) {
       <StatusMessage loading={loading} />
 
       {!loading && (isMobile ? cards : table)}
+
+      <AccountTypeOrderDialog
+        isOpen={reordering}
+        groups={typeGroups}
+        onClose={() => setReordering(false)}
+        onSaved={load}
+      />
 
       <ConfirmDialog
         isOpen={deletingAccount !== null}

@@ -300,6 +300,14 @@ The automatic rules (`backend/transaction_rules.py`, `routers/transaction_rules.
 
 A rule leaves `reconciled` as it is unless one of its actions sets it (an earlier version unreconciled every row it changed, which sent already-reviewed rows back to review on a mere rename), and a row it changes gets a `transaction_history` row with `source="rule"`. On a bank sync, a rule that sets a category without its own split re-resolves the new row's split through the usual cascade (`fresh=True`), since that row's split was resolved before any category was known; an existing row keeps its split, as with Bulk Edit.
 
+### `account_type_order`
+The order of the account type groups (`routers/account_types.py`), set with **Reorder types** on the Accounts screen and applied wherever accounts are grouped by type. One order for the whole household. Part of the backup archive (`account_type_order`), restored in overwrite mode only.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `type_key` | String(50) | Primary key. The account `type`, trimmed and lower-cased, so "Checking" and "checking " share one position. No foreign key: the type is free text on `accounts`, and a key no account carries any more is simply unused |
+| `position` | Integer | Required. 0 is the first group; a type with no row comes after every placed one |
+
 ### `saved_filters`
 The Transactions screen's saved filters (`routers/saved_filters.py`): a filter saved under a name and shown as a button next to Simple/Advanced. One list for the whole household (not per user), so a filter saved on one device shows on every other. Nothing references a saved filter, and it names accounts and categories only by id inside its JSON, so deleting one of those is never blocked — the filter then simply matches nothing on that field. Part of the backup archive (`saved_filters`), restored in overwrite mode only, for the same reason as `transaction_rules`.
 

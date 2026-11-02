@@ -40,6 +40,23 @@ class Account(Base):
     )
 
 
+class AccountTypeOrder(Base):
+    """Where each account type's group sits wherever accounts are grouped by
+    type (Accounts screen, account picker, net worth), as the user arranged
+    it on the Accounts screen. `type_key` is the account's type trimmed and
+    lower-cased, the same key the frontend groups by, so "Checking" and
+    "checking " share one position. A type with no row sorts after every
+    positioned one, alphabetically. Not tied to the accounts by a foreign key:
+    the type is free text on the account, and a position whose type no
+    account carries any more is simply unused.
+    """
+
+    __tablename__ = "account_type_order"
+
+    type_key = Column(String(50), primary_key=True)
+    position = Column(Integer, nullable=False)
+
+
 class Category(Base):
     __tablename__ = "categories"
 
