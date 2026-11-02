@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, afterEach } from 'vitest'
+import { test, expect, beforeEach, afterEach } from 'vitest'
 import { getParam, navigateQueryParams, patchQueryParams } from '../urlState'
 
 beforeEach(() => {

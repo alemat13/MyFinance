@@ -11,7 +11,7 @@ backend/   FastAPI + SQLAlchemy 2.x + SQLite (single finance.db) locally, Postgr
 frontend/  React 19, TypeScript 5.9, Vite 8, Tailwind CSS v4, recharts, lucide-react
 ```
 
-No monorepo tool, no workspaces. No linters/formatters/type-checking configured on the Python side. No routing or state-management libs on the frontend. For local/dev, day-to-day schema changes go through `drop_all`/`create_all` via `seed.py` — fast and destructive, unrelated to Alembic below. Production (Cloud SQL Postgres, persistent real data, never reseeded on deploy) is shaped by **Alembic** (`backend/alembic/`) alone (MYF-19): `alembic upgrade head` runs automatically in CI/CD before every production deploy (see `.github/workflows/ci-cd.yml`'s `deploy` job), and nothing alters the schema at startup there. `create_all` + `database.sync_schema()` (adds any model column missing from an existing table, additive only) run at startup only on a local SQLite database. `test-backend` runs `alembic upgrade head` then `alembic check` on a throwaway Postgres, so a model change without its migration fails CI — see "Database migrations" below for the authoring workflow.
+No monorepo tool, no workspaces. Lint/format/types (MYF-34): ruff + mypy on the backend (`ruff.toml`, `mypy.ini`, tools in `requirements-dev.txt`), ESLint on the frontend (`eslint.config.js`), all run by CI. No routing or state-management libs on the frontend. For local/dev, day-to-day schema changes go through `drop_all`/`create_all` via `seed.py` — fast and destructive, unrelated to Alembic below. Production (Cloud SQL Postgres, persistent real data, never reseeded on deploy) is shaped by **Alembic** (`backend/alembic/`) alone (MYF-19): `alembic upgrade head` runs automatically in CI/CD before every production deploy (see `.github/workflows/ci-cd.yml`'s `deploy` job), and nothing alters the schema at startup there. `create_all` + `database.sync_schema()` (adds any model column missing from an existing table, additive only) run at startup only on a local SQLite database. `test-backend` runs `alembic upgrade head` then `alembic check` on a throwaway Postgres, so a model change without its migration fails CI — see "Database migrations" below for the authoring workflow.
 
 ## Git workflow
 
@@ -31,6 +31,9 @@ python seed.py                           # drops & recreates all data
 pytest                                   # run all backend tests
 pytest tests/test_accounts.py            # run a single test file
 pytest tests/test_accounts.py::test_name # run a single test
+pip install -r requirements-dev.txt      # ruff + mypy (dev only, not in the image)
+ruff check --fix . && ruff format .      # lint + format; CI runs `ruff check .` and `ruff format --check .`
+mypy .                                   # type check; modules listed in mypy.ini still have errors silenced: fix one, remove it
 ```
 
 ### Database migrations
@@ -74,6 +77,7 @@ optional too. A model used both ways comes out as `X-Input`/`X-Output`.
 cd frontend
 npm install
 npm run dev                     # Vite dev server on :5173
+npm run lint                    # ESLint (errors fail CI; react-hooks dependency warnings don't)
 npm run build                   # tsc && vite build
 npm test                        # vitest, run once
 npm test -- --watch             # vitest, watch mode

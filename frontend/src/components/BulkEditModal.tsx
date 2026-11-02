@@ -75,7 +75,7 @@ function offsetLabel(offset: number): string {
 }
 
 export default function BulkEditModal({
-  transactionIds, transactions, accounts, categories, tags = [], onTagCreated, allUsers, globalWeights, selectedUserId, onClose, onSaved,
+  transactionIds, transactions, categories, tags = [], onTagCreated, allUsers, globalWeights, selectedUserId, onClose, onSaved,
   searchFilter, matchingTotal, moveAccounts, adminMode = false,
 }: Props) {
   const canSelectAllMatching = searchFilter != null && matchingTotal != null && matchingTotal > transactionIds.length

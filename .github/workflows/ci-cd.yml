@@ -92,6 +92,7 @@ jobs:
             echo "src/api/schema.d.ts is stale: run 'npm run gen:api' in frontend/ and commit it."
             exit 1
           }
+      - run: npm run lint
       - run: npm run build
       - run: npm test
 

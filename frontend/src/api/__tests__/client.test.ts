@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest'
+import { test, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
   fetchAccounts, createAccount, updateAccount, deleteAccount,
   fetchCategories, createCategory, updateCategory, deleteCategory,

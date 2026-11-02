@@ -7,7 +7,7 @@ Personal finance dashboard for tracking accounts and transactions.
 | Layer | Technology |
 |-------|-----------|
 | Backend | Python 3.11+, FastAPI, SQLAlchemy 2.x, SQLite (local/dev) / Postgres (production, via `DATABASE_URL`) |
-| Frontend | React 19, TypeScript 5.6, Vite 6, Tailwind CSS v4, recharts, lucide-react |
+| Frontend | React 19, TypeScript 5.9, Vite 8, Tailwind CSS v4, recharts, lucide-react |
 
 ## Architecture
 
