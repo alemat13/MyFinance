@@ -11,6 +11,7 @@ from .base import (
 from .entities import (
     AccountCreate,
     AccountOut,
+    AccountTypeOrderRequest,
     AccountSplitWeightOut,
     AccountSplitWeightUpdateItem,
     AccountUpdate,
@@ -149,6 +150,7 @@ from .backup import (
     GlobalSplitWeightExport,
     ImportSummary,
     SavedFilterExport,
+    AccountTypeOrderExport,
     TagExport,
     TransactionExport,
     TransactionHistoryExport,

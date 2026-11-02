@@ -219,6 +219,13 @@ class TransactionTagExport(Schema):
     tag_id: int
 
 
+class AccountTypeOrderExport(Schema):
+    model_config = ConfigDict(from_attributes=True)
+
+    type_key: str
+    position: int
+
+
 class SavedFilterExport(Schema):
     model_config = ConfigDict(from_attributes=True)
 
@@ -260,6 +267,10 @@ class DatabaseExport(Schema):
     # as the rules (they name account and category ids). `None` is an archive
     # from before saved filters.
     saved_filters: list[SavedFilterExport] | None = None
+    # The order of account type groups (models.AccountTypeOrder). Restored in
+    # overwrite mode only: a partial restore adds data and leaves this
+    # configuration as it is. `None` is an archive from before it existed.
+    account_type_order: list[AccountTypeOrderExport] | None = None
     # Each user's email alert settings, same overwrite-only contract (a
     # partial restore doesn't recreate users). `None` is an archive from
     # before email alerts.
@@ -290,6 +301,7 @@ class ImportSummary(Schema):
     bank_account_links: int = 0
     transaction_rules: int = 0
     saved_filters: int = 0
+    account_type_order: int = 0
     email_alerts: int = 0
     tags: int = 0
     transaction_tags: int = 0

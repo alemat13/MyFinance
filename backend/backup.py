@@ -14,6 +14,7 @@ from database import Base
 from models import (
     Account,
     AccountSplitWeight,
+    AccountTypeOrder,
     AccountUser,
     BankAccountLink,
     BankConnection,
@@ -36,6 +37,7 @@ from models import (
 from schemas import (
     AccountExport,
     AccountSplitWeightExport,
+    AccountTypeOrderExport,
     AccountUserExport,
     BankAccountLinkExport,
     BankConnectionExport,
@@ -155,6 +157,10 @@ def build_export(db: Session) -> DatabaseExport:
         ],
         saved_filters=[
             SavedFilterExport.model_validate(f) for f in db.scalars(select(SavedFilter)).all()
+        ],
+        account_type_order=[
+            AccountTypeOrderExport.model_validate(o)
+            for o in db.scalars(select(AccountTypeOrder)).all()
         ],
         email_alerts=[
             EmailAlertExport.model_validate(a) for a in db.scalars(select(EmailAlert)).all()
@@ -354,6 +360,8 @@ def import_database(
         )
         saved_filters = data.saved_filters or []
         session.add_all(SavedFilter(**f.model_dump(exclude_none=True)) for f in saved_filters)
+        account_type_order = data.account_type_order or []
+        session.add_all(AccountTypeOrder(**o.model_dump()) for o in account_type_order)
         email_alerts = data.email_alerts or []
         session.add_all(EmailAlert(**a.model_dump()) for a in email_alerts)
         # An archive from before tags (None) restores with none.
@@ -392,6 +400,7 @@ def import_database(
         bank_account_links=len(bank_account_links),
         transaction_rules=len(transaction_rules),
         saved_filters=len(saved_filters),
+        account_type_order=len(account_type_order),
         email_alerts=len(email_alerts),
         tags=len(tags),
         transaction_tags=len(transaction_tags),

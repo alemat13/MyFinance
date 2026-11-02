@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, object_session
 
 import account_totals
+import account_types
 import checkpoints
 from accounting_month import compute_accounting_month
 from models import Account, Category, Transaction, User
@@ -23,6 +24,7 @@ def build_account_out(
     account: Account,
     transaction_total: float = 0.0,
     last_transaction_date: date | None = None,
+    type_positions: dict[str, int] | None = None,
 ) -> AccountOut:
     """`transaction_total` is the sum of the account's transaction amounts
     (account_totals.py); the balance reported to the client is that plus the
@@ -36,6 +38,7 @@ def build_account_out(
         created_at=account.created_at,
         archived=account.archived,
         last_transaction_date=last_transaction_date,
+        type_position=(type_positions or {}).get(account_types.type_key(account.type)),
         users=[
             AccountUserOut(
                 user_id=au.user_id,

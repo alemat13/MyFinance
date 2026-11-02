@@ -4,6 +4,27 @@
  */
 
 export interface paths {
+    "/api/account-types/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Account Type Order
+         * @description The positioned type keys, first to last.
+         */
+        get: operations["get_account_type_order_api_account_types_order_get"];
+        /** Set Account Type Order */
+        put: operations["set_account_type_order_api_account_types_order_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/accounts": {
         parameters: {
             query?: never;
@@ -1242,6 +1263,8 @@ export interface components {
             split_weights: components["schemas"]["AccountSplitWeightOut"][];
             /** Type */
             type: string;
+            /** Type Position */
+            type_position: number | null;
             /**
              * Users
              * @default []
@@ -1263,6 +1286,15 @@ export interface components {
             user_id: number;
             /** Weight */
             weight: number;
+        };
+        /**
+         * AccountTypeOrderRequest
+         * @description Account types, first group to last. Matched case-insensitively and
+         *     trimmed; types left out go back to the alphabetical tail.
+         */
+        AccountTypeOrderRequest: {
+            /** Types */
+            types: string[];
         };
         /** AccountUpdate */
         AccountUpdate: {
@@ -2202,6 +2234,11 @@ export interface components {
         ImportSummary: {
             /** Account Split Weights */
             account_split_weights: number;
+            /**
+             * Account Type Order
+             * @default 0
+             */
+            account_type_order: number;
             /** Account Users */
             account_users: number;
             /** Accounts */
@@ -3159,6 +3196,59 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    get_account_type_order_api_account_types_order_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": string[];
+                };
+            };
+        };
+    };
+    set_account_type_order_api_account_types_order_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountTypeOrderRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": string[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_accounts_api_accounts_get: {
         parameters: {
             query?: {

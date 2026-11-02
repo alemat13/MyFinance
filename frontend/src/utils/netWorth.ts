@@ -1,5 +1,5 @@
 import { Account, UserBalance } from '../api/client'
-import { OTHER_TYPE_LABEL } from './accountGroups'
+import { OTHER_TYPE_LABEL, comparePositions } from './accountGroups'
 
 export interface NetWorthAccount {
   account: Account
@@ -12,6 +12,7 @@ export interface NetWorthAccount {
 export interface NetWorthTypeGroup {
   key: string
   label: string
+  position: number | null
   total: number
   accounts: NetWorthAccount[]
 }
@@ -36,7 +37,8 @@ const compare = (a: string, b: string) => a.localeCompare(b, undefined, { sensit
 /** The user's net worth, per currency then per account type: each open account's
  *  balance times the user's ownership percentage (the whole balance with no user
  *  selected), plus the user's net position with the rest of the household. Types are
- *  ordered by total, largest first; accounts by share, then name. */
+ *  in the user's order (Accounts screen), the unplaced ones after by total, largest
+ *  first; accounts by share, then name. */
 export function computeNetWorth(
   accounts: Account[],
   balances: UserBalance[],
@@ -68,7 +70,7 @@ export function computeNetWorth(
     const key = label.toLowerCase()
     let group = c.groups.find(g => g.key === key)
     if (!group) {
-      group = { key, label, total: 0, accounts: [] }
+      group = { key, label, position: account.type_position ?? null, total: 0, accounts: [] }
       c.groups.push(group)
     }
     group.accounts.push({ account, percentage, share })
@@ -92,7 +94,7 @@ export function computeNetWorth(
           ...g,
           accounts: [...g.accounts].sort((x, y) => y.share - x.share || compare(x.account.name, y.account.name)),
         }))
-        .sort((x, y) => y.total - x.total || compare(x.label, y.label)),
+        .sort((x, y) => comparePositions(x.position, y.position) || y.total - x.total || compare(x.label, y.label)),
       netWorth: round2(c.accountsTotal + (c.netPosition ?? 0)),
     }))
     .filter(c => c.groups.length > 0 || c.netPosition !== null || c.zeroCount > 0)
