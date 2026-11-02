@@ -5,12 +5,13 @@ global OneDriveBackupSettings row (see models.py). No restore path here;
 restoring from a downloaded archive still goes through backup.py/the
 existing Import Backup UI only.
 """
+
 import base64
 import hashlib
 import hmac
 import os
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from urllib.parse import urlencode
 
 import httpx
@@ -91,30 +92,36 @@ def build_authorize_url(state: str, code_verifier: str) -> str:
 def _token_request(data: dict) -> dict:
     response = httpx.post(TOKEN_URL, data=data, timeout=30.0)
     if response.status_code != 200:
-        raise OneDriveError(f"Microsoft token request failed ({response.status_code}): {response.text}")
+        raise OneDriveError(
+            f"Microsoft token request failed ({response.status_code}): {response.text}"
+        )
     return response.json()
 
 
 def exchange_code_for_tokens(code: str, code_verifier: str) -> dict:
-    return _token_request({
-        "client_id": os.environ.get("ONEDRIVE_CLIENT_ID", ""),
-        "client_secret": os.environ.get("ONEDRIVE_CLIENT_SECRET", ""),
-        "redirect_uri": os.environ.get("ONEDRIVE_REDIRECT_URI", ""),
-        "grant_type": "authorization_code",
-        "code": code,
-        "code_verifier": code_verifier,
-        "scope": SCOPE,
-    })
+    return _token_request(
+        {
+            "client_id": os.environ.get("ONEDRIVE_CLIENT_ID", ""),
+            "client_secret": os.environ.get("ONEDRIVE_CLIENT_SECRET", ""),
+            "redirect_uri": os.environ.get("ONEDRIVE_REDIRECT_URI", ""),
+            "grant_type": "authorization_code",
+            "code": code,
+            "code_verifier": code_verifier,
+            "scope": SCOPE,
+        }
+    )
 
 
 def refresh_access_token(refresh_token: str) -> dict:
-    return _token_request({
-        "client_id": os.environ.get("ONEDRIVE_CLIENT_ID", ""),
-        "client_secret": os.environ.get("ONEDRIVE_CLIENT_SECRET", ""),
-        "grant_type": "refresh_token",
-        "refresh_token": refresh_token,
-        "scope": SCOPE,
-    })
+    return _token_request(
+        {
+            "client_id": os.environ.get("ONEDRIVE_CLIENT_ID", ""),
+            "client_secret": os.environ.get("ONEDRIVE_CLIENT_SECRET", ""),
+            "grant_type": "refresh_token",
+            "refresh_token": refresh_token,
+            "scope": SCOPE,
+        }
+    )
 
 
 def _persist_tokens(db: Session, settings: OneDriveBackupSettings, token_data: dict) -> None:
@@ -122,11 +129,15 @@ def _persist_tokens(db: Session, settings: OneDriveBackupSettings, token_data: d
     # Microsoft may rotate the refresh token; only overwrite when one comes back.
     if token_data.get("refresh_token"):
         settings.refresh_token_encrypted = encrypt_token(token_data["refresh_token"])
-    settings.token_expires_at = datetime.now(timezone.utc) + timedelta(seconds=token_data.get("expires_in", 3600))
+    settings.token_expires_at = datetime.now(UTC) + timedelta(
+        seconds=token_data.get("expires_in", 3600)
+    )
     db.commit()
 
 
-def complete_connection(db: Session, settings: OneDriveBackupSettings, code: str, code_verifier: str) -> None:
+def complete_connection(
+    db: Session, settings: OneDriveBackupSettings, code: str, code_verifier: str
+) -> None:
     token_data = exchange_code_for_tokens(code, code_verifier)
     _persist_tokens(db, settings, token_data)
     access_token = decrypt_token(settings.access_token_encrypted)
@@ -140,8 +151,8 @@ def get_valid_access_token(db: Session, settings: OneDriveBackupSettings) -> str
         raise OneDriveError("OneDrive is not connected")
     expires_at = settings.token_expires_at
     if expires_at is not None and expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
-    if expires_at is None or expires_at <= datetime.now(timezone.utc) + timedelta(minutes=2):
+        expires_at = expires_at.replace(tzinfo=UTC)
+    if expires_at is None or expires_at <= datetime.now(UTC) + timedelta(minutes=2):
         token_data = refresh_access_token(decrypt_token(settings.refresh_token_encrypted))
         _persist_tokens(db, settings, token_data)
     return decrypt_token(settings.access_token_encrypted)
@@ -150,7 +161,9 @@ def get_valid_access_token(db: Session, settings: OneDriveBackupSettings) -> str
 def fetch_account_email(access_token: str) -> str | None:
     response = httpx.get(f"{GRAPH_BASE}/me", headers=_auth_header(access_token), timeout=30.0)
     if response.status_code != 200:
-        raise OneDriveError(f"Failed to fetch OneDrive account info ({response.status_code}): {response.text}")
+        raise OneDriveError(
+            f"Failed to fetch OneDrive account info ({response.status_code}): {response.text}"
+        )
     data = response.json()
     return data.get("mail") or data.get("userPrincipalName")
 
@@ -164,14 +177,21 @@ def ensure_folder(access_token: str, folder_path: str) -> None:
     for segment in segments:
         built.append(segment)
         current_path = "/".join(built)
-        check = httpx.get(f"{GRAPH_BASE}/me/drive/root:/{current_path}", headers=_auth_header(access_token), timeout=30.0)
+        check = httpx.get(
+            f"{GRAPH_BASE}/me/drive/root:/{current_path}",
+            headers=_auth_header(access_token),
+            timeout=30.0,
+        )
         if check.status_code == 200:
             continue
         if check.status_code != 404:
-            raise OneDriveError(f"Failed to check OneDrive folder '{current_path}' ({check.status_code}): {check.text}")
+            raise OneDriveError(
+                f"Failed to check OneDrive folder '{current_path}' ({check.status_code}): {check.text}"
+            )
         parent_path = "/".join(built[:-1])
         children_url = (
-            f"{GRAPH_BASE}/me/drive/root:/{parent_path}:/children" if parent_path
+            f"{GRAPH_BASE}/me/drive/root:/{parent_path}:/children"
+            if parent_path
             else f"{GRAPH_BASE}/me/drive/root/children"
         )
         create = httpx.post(
@@ -181,7 +201,9 @@ def ensure_folder(access_token: str, folder_path: str) -> None:
             timeout=30.0,
         )
         if create.status_code not in (200, 201, 409):
-            raise OneDriveError(f"Failed to create OneDrive folder '{current_path}' ({create.status_code}): {create.text}")
+            raise OneDriveError(
+                f"Failed to create OneDrive folder '{current_path}' ({create.status_code}): {create.text}"
+            )
 
 
 def upload_backup(access_token: str, folder_path: str, filename: str, content: bytes) -> None:
@@ -193,7 +215,9 @@ def upload_backup(access_token: str, folder_path: str, filename: str, content: b
         timeout=60.0,
     )
     if response.status_code not in (200, 201):
-        raise OneDriveError(f"Failed to upload backup to OneDrive ({response.status_code}): {response.text}")
+        raise OneDriveError(
+            f"Failed to upload backup to OneDrive ({response.status_code}): {response.text}"
+        )
 
 
 # Only files the app itself uploaded (see run_backup's filename) are ever
@@ -212,7 +236,11 @@ def backup_timestamp(name: str) -> datetime | None:
 
 
 def select_backups_to_keep(
-    timestamps: list[datetime], keep_daily: int, keep_weekly: int, keep_monthly: int, keep_yearly: int,
+    timestamps: list[datetime],
+    keep_daily: int,
+    keep_weekly: int,
+    keep_monthly: int,
+    keep_yearly: int,
 ) -> set[datetime]:
     """Grandfather-father-son retention, like a NAS snapshot schedule: each
     tier keeps the newest backup of each of its N most recent buckets (days,
@@ -250,7 +278,9 @@ def list_folder_items(access_token: str, folder_path: str) -> list[dict]:
     while url:
         response = httpx.get(url, headers=_auth_header(access_token), params=params, timeout=30.0)
         if response.status_code != 200:
-            raise OneDriveError(f"Failed to list OneDrive backup folder ({response.status_code}): {response.text}")
+            raise OneDriveError(
+                f"Failed to list OneDrive backup folder ({response.status_code}): {response.text}"
+            )
         data = response.json()
         items.extend(data.get("value", []))
         url = data.get("@odata.nextLink")
@@ -269,26 +299,36 @@ def apply_retention(access_token: str, settings: OneDriveBackupSettings) -> None
         if ts is not None:
             backups.setdefault(ts, []).append(item)
     kept = select_backups_to_keep(
-        list(backups), settings.keep_daily, settings.keep_weekly, settings.keep_monthly, settings.keep_yearly,
+        list(backups),
+        settings.keep_daily,
+        settings.keep_weekly,
+        settings.keep_monthly,
+        settings.keep_yearly,
     )
     for ts, same_name in backups.items():
         if ts in kept:
             continue
         for item in same_name:
-            delete = httpx.delete(f"{GRAPH_BASE}/me/drive/items/{item['id']}", headers=_auth_header(access_token), timeout=30.0)
+            delete = httpx.delete(
+                f"{GRAPH_BASE}/me/drive/items/{item['id']}",
+                headers=_auth_header(access_token),
+                timeout=30.0,
+            )
             if delete.status_code not in (200, 204, 404):
-                raise OneDriveError(f"Failed to delete old OneDrive backup '{item.get('name')}' ({delete.status_code}): {delete.text}")
+                raise OneDriveError(
+                    f"Failed to delete old OneDrive backup '{item.get('name')}' ({delete.status_code}): {delete.text}"
+                )
 
 
 def is_backup_due(settings: OneDriveBackupSettings, now: datetime | None = None) -> bool:
     if not settings.connected:
         return False
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     if settings.last_backup_at is None:
         return True
     last = settings.last_backup_at
     if last.tzinfo is None:
-        last = last.replace(tzinfo=timezone.utc)
+        last = last.replace(tzinfo=UTC)
     return now - last >= BACKUP_INTERVAL
 
 
@@ -298,14 +338,14 @@ def run_backup(db: Session, settings: OneDriveBackupSettings) -> None:
     scheduler endpoint call this and always want a clean response. Writes
     last_backup_at *before* doing any Graph work so a concurrent/duplicate
     scheduler call sees the run as already claimed (see is_backup_due)."""
-    settings.last_backup_at = datetime.now(timezone.utc)
+    settings.last_backup_at = datetime.now(UTC)
     db.commit()
     try:
         if not settings.folder_path:
             raise OneDriveError("No OneDrive folder configured")
         access_token = get_valid_access_token(db, settings)
         ensure_folder(access_token, settings.folder_path)
-        filename = f"myfinance-backup-{datetime.now(timezone.utc):%Y%m%d-%H%M%S}.zip"
+        filename = f"myfinance-backup-{datetime.now(UTC):%Y%m%d-%H%M%S}.zip"
         content = backup_module.export_to_zip_bytes(db)
         upload_backup(access_token, settings.folder_path, filename, content)
         apply_retention(access_token, settings)

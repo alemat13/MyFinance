@@ -1,10 +1,16 @@
 from datetime import date
 
 import split_engine
-from database import engine, SessionLocal, Base
+from database import Base, SessionLocal, engine
 from models import (
-    Account, Category, Transaction, User, AccountUser,
-    CategorySplit, GlobalSplitWeight, AccountSplitWeight,
+    Account,
+    AccountSplitWeight,
+    AccountUser,
+    Category,
+    CategorySplit,
+    GlobalSplitWeight,
+    Transaction,
+    User,
 )
 
 
@@ -32,11 +38,13 @@ def seed():
     session.add_all(accounts)
     session.flush()
 
-    session.add_all([
-        AccountUser(account_id=accounts[0].id, user_id=users[0].id, ownership_percentage=50.0),
-        AccountUser(account_id=accounts[0].id, user_id=users[1].id, ownership_percentage=50.0),
-        AccountUser(account_id=accounts[1].id, user_id=users[0].id, ownership_percentage=100.0),
-    ])
+    session.add_all(
+        [
+            AccountUser(account_id=accounts[0].id, user_id=users[0].id, ownership_percentage=50.0),
+            AccountUser(account_id=accounts[0].id, user_id=users[1].id, ownership_percentage=50.0),
+            AccountUser(account_id=accounts[1].id, user_id=users[0].id, ownership_percentage=100.0),
+        ]
+    )
 
     categories = [
         Category(name="Salary", type="Income", color="#16a34a", icon="Landmark"),
@@ -56,7 +64,15 @@ def seed():
     session.add(housing)
     session.flush()
     categories[2].parent_id = housing.id  # Rent
-    session.add(Category(name="Home Insurance", type="Expense", color="#f97316", icon="Home", parent_id=housing.id))
+    session.add(
+        Category(
+            name="Home Insurance",
+            type="Expense",
+            color="#f97316",
+            icon="Home",
+            parent_id=housing.id,
+        )
+    )
     session.flush()
 
     transactions = [
@@ -209,26 +225,32 @@ def seed():
     session.flush()
 
     # Global default split weights (lowest priority) — income-proportional fallback.
-    session.add_all([
-        GlobalSplitWeight(user_id=users[0].id, weight=52000),
-        GlobalSplitWeight(user_id=users[1].id, weight=48000),
-    ])
+    session.add_all(
+        [
+            GlobalSplitWeight(user_id=users[0].id, weight=52000),
+            GlobalSplitWeight(user_id=users[1].id, weight=48000),
+        ]
+    )
 
     # Account-level split weights (highest priority) — deliberately different
     # from both ownership (50/50) and the global weight above, so seeded
     # data visibly exercises the account tier, which outranks any category
     # default on Joint Checking transactions.
-    session.add_all([
-        AccountSplitWeight(account_id=accounts[0].id, user_id=users[0].id, weight=55),
-        AccountSplitWeight(account_id=accounts[0].id, user_id=users[1].id, weight=45),
-    ])
+    session.add_all(
+        [
+            AccountSplitWeight(account_id=accounts[0].id, user_id=users[0].id, weight=55),
+            AccountSplitWeight(account_id=accounts[0].id, user_id=users[1].id, weight=45),
+        ]
+    )
 
     # Category default split (middle priority, after account weights) — Transfer is always split 50/50.
     transfer_category = categories[6]
-    session.add_all([
-        CategorySplit(category_id=transfer_category.id, user_id=users[0].id, weight=50),
-        CategorySplit(category_id=transfer_category.id, user_id=users[1].id, weight=50),
-    ])
+    session.add_all(
+        [
+            CategorySplit(category_id=transfer_category.id, user_id=users[0].id, weight=50),
+            CategorySplit(category_id=transfer_category.id, user_id=users[1].id, weight=50),
+        ]
+    )
     session.flush()
 
     # Resolve a split for every seeded transaction, exactly as the interactive
@@ -238,13 +260,16 @@ def seed():
     for transaction in transactions:
         if transaction is rent_transaction:
             split_engine.apply_split(
-                session, transaction,
+                session,
+                transaction,
                 weights={users[0].id: 1, users[1].id: 1},
                 source="custom",
             )
         else:
             source, weights = split_engine.resolve_default_weights(
-                session, transaction.category_id, transaction.account_id,
+                session,
+                transaction.category_id,
+                transaction.account_id,
             )
             split_engine.apply_split(session, transaction, weights or None, source or "custom")
 

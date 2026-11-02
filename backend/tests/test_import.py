@@ -41,8 +41,12 @@ def test_import_detect_maps_columns_and_formats(client):
     assert body["date_format"] == "%Y-%m-%d"
     assert body["decimal_separator"] == "."
     assert body["column_mapping"] == {
-        "date": "Date", "payee": "Label", "amount": "Amount",
-        "memo": None, "category": "Category", "account": None,
+        "date": "Date",
+        "payee": "Label",
+        "amount": "Amount",
+        "memo": None,
+        "category": "Category",
+        "account": None,
     }
     assert body["headers"] == ["Date", "Label", "Amount", "Category"]
     assert len(body["sample_rows"]) == 2
@@ -90,10 +94,19 @@ def test_import_detect_leaves_unknown_columns_unmapped(client):
     response = client.post("/api/import/detect", files=_csv_file(text))
     assert response.status_code == 200
     mapping = response.json()["column_mapping"]
-    assert mapping == {"date": None, "payee": None, "amount": None, "memo": None, "category": None, "account": None}
+    assert mapping == {
+        "date": None,
+        "payee": None,
+        "amount": None,
+        "memo": None,
+        "category": None,
+        "account": None,
+    }
 
 
-def test_import_preview_resolves_category_and_flags_unknown(client, sample_account, sample_category):
+def test_import_preview_resolves_category_and_flags_unknown(
+    client, sample_account, sample_category
+):
     response = _preview(client, sample_account.id)
     assert response.status_code == 200
     rows = response.json()
@@ -106,11 +119,18 @@ def test_import_preview_resolves_category_and_flags_unknown(client, sample_accou
 
 def test_import_preview_flags_possible_duplicate(client, sample_account, sample_category, db):
     from datetime import date
+
     from models import Transaction
-    db.add(Transaction(
-        date=date(2026, 1, 15), payee="Whole Foods", amount=-42.50,
-        account_id=sample_account.id, category_id=sample_category.id,
-    ))
+
+    db.add(
+        Transaction(
+            date=date(2026, 1, 15),
+            payee="Whole Foods",
+            amount=-42.50,
+            account_id=sample_account.id,
+            category_id=sample_category.id,
+        )
+    )
     db.commit()
 
     response = _preview(client, sample_account.id)
@@ -119,7 +139,9 @@ def test_import_preview_flags_possible_duplicate(client, sample_account, sample_
     assert rows[0]["status"] == "possible_duplicate"
 
 
-def test_import_preview_resolves_account_by_name(client, sample_account, sample_account_2, sample_category):
+def test_import_preview_resolves_account_by_name(
+    client, sample_account, sample_account_2, sample_category
+):
     response = client.post(
         "/api/import/preview",
         files=_csv_file(MULTI_ACCOUNT_CSV),
@@ -133,7 +155,9 @@ def test_import_preview_resolves_account_by_name(client, sample_account, sample_
     assert rows[1]["account_matched"] is True
 
 
-def test_import_preview_falls_back_to_default_account_when_unmatched(client, sample_account, sample_account_2, sample_category):
+def test_import_preview_falls_back_to_default_account_when_unmatched(
+    client, sample_account, sample_account_2, sample_category
+):
     response = client.post(
         "/api/import/preview",
         files=_csv_file(MULTI_ACCOUNT_CSV),
@@ -149,13 +173,22 @@ def test_import_preview_falls_back_to_default_account_when_unmatched(client, sam
     assert rows[3]["account_name"] is None
 
 
-def test_import_preview_duplicate_detection_scoped_per_account(client, sample_account, sample_account_2, sample_category, db):
+def test_import_preview_duplicate_detection_scoped_per_account(
+    client, sample_account, sample_account_2, sample_category, db
+):
     from datetime import date
+
     from models import Transaction
-    db.add(Transaction(
-        date=date(2026, 1, 15), payee="Whole Foods", amount=-42.50,
-        account_id=sample_account.id, category_id=sample_category.id,
-    ))
+
+    db.add(
+        Transaction(
+            date=date(2026, 1, 15),
+            payee="Whole Foods",
+            amount=-42.50,
+            account_id=sample_account.id,
+            category_id=sample_category.id,
+        )
+    )
     db.commit()
 
     text = (
@@ -175,7 +208,7 @@ def test_import_preview_duplicate_detection_scoped_per_account(client, sample_ac
 
 
 def test_import_preview_european_number_format(client, sample_account, sample_category):
-    text = "Date,Label,Amount,Category\n2026-01-15,Whole Foods,\"-1234,50\",Test Salary\n"
+    text = 'Date,Label,Amount,Category\n2026-01-15,Whole Foods,"-1234,50",Test Salary\n'
     response = client.post(
         "/api/import/preview",
         files=_csv_file(text),
@@ -186,7 +219,9 @@ def test_import_preview_european_number_format(client, sample_account, sample_ca
     assert rows[0]["amount"] == -1234.50
 
 
-def test_import_preview_matches_commit_for_single_owner_account(client, sample_account, sample_category, sample_user):
+def test_import_preview_matches_commit_for_single_owner_account(
+    client, sample_account, sample_category, sample_user
+):
     # sample_account has no AccountUser owners at all (a degenerate single/no-owner
     # account). The old single-owner skip no longer exists — global split weights
     # apply regardless of owner count, and preview/commit must resolve identically.
@@ -207,10 +242,17 @@ def test_import_preview_matches_commit_for_single_owner_account(client, sample_a
 
     response = client.post(
         "/api/import/commit",
-        json={"rows": [{
-            "date": "2026-01-15", "payee": "Whole Foods", "amount": -42.50,
-            "account_id": sample_account.id, "category_id": sample_category.id,
-        }]},
+        json={
+            "rows": [
+                {
+                    "date": "2026-01-15",
+                    "payee": "Whole Foods",
+                    "amount": -42.50,
+                    "account_id": sample_account.id,
+                    "category_id": sample_category.id,
+                }
+            ]
+        },
     )
     assert response.status_code == 200
     transaction_id = response.json()["transaction_ids"][0]
@@ -221,17 +263,26 @@ def test_import_preview_matches_commit_for_single_owner_account(client, sample_a
     assert committed["splits"][0]["share_amount"] == -42.50
 
 
-def test_import_commit_invalidates_charts_cache(client, sample_account, sample_category, sample_user):
+def test_import_commit_invalidates_charts_cache(
+    client, sample_account, sample_category, sample_user
+):
     warm = client.get(f"/api/charts?user_id={sample_user.id}")
     assert warm.json()["by_category"] == []
 
     response = client.post(
         "/api/import/commit",
-        json={"rows": [{
-            "date": "2026-01-15", "payee": "Whole Foods", "amount": -42.50,
-            "account_id": sample_account.id, "category_id": sample_category.id,
-            "split_weights": [{"user_id": sample_user.id, "weight": 1}],
-        }]},
+        json={
+            "rows": [
+                {
+                    "date": "2026-01-15",
+                    "payee": "Whole Foods",
+                    "amount": -42.50,
+                    "account_id": sample_account.id,
+                    "category_id": sample_category.id,
+                    "split_weights": [{"user_id": sample_user.id, "weight": 1}],
+                }
+            ]
+        },
     )
     assert response.status_code == 200
 
@@ -247,11 +298,18 @@ def test_import_commit_allows_rows_without_category(client, sample_account, samp
     # be the one place that still requires it.
     response = client.post(
         "/api/import/commit",
-        json={"rows": [{
-            "date": "2026-01-15", "payee": "Whole Foods", "amount": -42.50,
-            "account_id": sample_account.id, "category_id": None,
-            "split_weights": [{"user_id": sample_user.id, "weight": 1}],
-        }]},
+        json={
+            "rows": [
+                {
+                    "date": "2026-01-15",
+                    "payee": "Whole Foods",
+                    "amount": -42.50,
+                    "account_id": sample_account.id,
+                    "category_id": None,
+                    "split_weights": [{"user_id": sample_user.id, "weight": 1}],
+                }
+            ]
+        },
     )
     assert response.status_code == 200
 
@@ -261,14 +319,23 @@ def test_import_commit_allows_rows_without_category(client, sample_account, samp
     assert data[0]["category_id"] is None
 
 
-def test_import_commit_rejects_negative_split_weight(client, sample_account, sample_category, sample_user):
+def test_import_commit_rejects_negative_split_weight(
+    client, sample_account, sample_category, sample_user
+):
     response = client.post(
         "/api/import/commit",
-        json={"rows": [{
-            "date": "2026-01-15", "payee": "Whole Foods", "amount": -42.50,
-            "account_id": sample_account.id, "category_id": sample_category.id,
-            "split_weights": [{"user_id": sample_user.id, "weight": -5}],
-        }]},
+        json={
+            "rows": [
+                {
+                    "date": "2026-01-15",
+                    "payee": "Whole Foods",
+                    "amount": -42.50,
+                    "account_id": sample_account.id,
+                    "category_id": sample_category.id,
+                    "split_weights": [{"user_id": sample_user.id, "weight": -5}],
+                }
+            ]
+        },
     )
     assert response.status_code == 422
 
@@ -279,18 +346,26 @@ def test_import_commit_rejects_negative_split_weight(client, sample_account, sam
 def test_import_commit_creates_transactions(client, sample_account, sample_category, sample_user):
     response = client.post(
         "/api/import/commit",
-        json={"rows": [
-            {
-                "date": "2026-01-15", "payee": "Whole Foods", "amount": -42.50,
-                "account_id": sample_account.id, "category_id": sample_category.id,
-                "split_weights": [{"user_id": sample_user.id, "weight": 1}],
-            },
-            {
-                "date": "2026-01-16", "payee": "Trader Joe's", "amount": -20.00,
-                "account_id": sample_account.id, "category_id": sample_category.id,
-                "split_weights": [{"user_id": sample_user.id, "weight": 1}],
-            },
-        ]},
+        json={
+            "rows": [
+                {
+                    "date": "2026-01-15",
+                    "payee": "Whole Foods",
+                    "amount": -42.50,
+                    "account_id": sample_account.id,
+                    "category_id": sample_category.id,
+                    "split_weights": [{"user_id": sample_user.id, "weight": 1}],
+                },
+                {
+                    "date": "2026-01-16",
+                    "payee": "Trader Joe's",
+                    "amount": -20.00,
+                    "account_id": sample_account.id,
+                    "category_id": sample_category.id,
+                    "split_weights": [{"user_id": sample_user.id, "weight": 1}],
+                },
+            ]
+        },
     )
     assert response.status_code == 200
     data = response.json()
@@ -304,11 +379,18 @@ def test_import_commit_creates_transactions(client, sample_account, sample_categ
 def test_import_commit_keeps_csv_label_as_original_label(client, sample_account, sample_user):
     response = client.post(
         "/api/import/commit",
-        json={"rows": [{
-            "date": "2026-01-15", "payee": "CB CARREFOUR MARKET 14/01", "memo": "Courses",
-            "amount": -42.50, "account_id": sample_account.id,
-            "split_weights": [{"user_id": sample_user.id, "weight": 1}],
-        }]},
+        json={
+            "rows": [
+                {
+                    "date": "2026-01-15",
+                    "payee": "CB CARREFOUR MARKET 14/01",
+                    "memo": "Courses",
+                    "amount": -42.50,
+                    "account_id": sample_account.id,
+                    "split_weights": [{"user_id": sample_user.id, "weight": 1}],
+                }
+            ]
+        },
     )
     assert response.status_code == 200
     transaction_id = response.json()["transaction_ids"][0]
@@ -325,21 +407,31 @@ def test_import_commit_keeps_csv_label_as_original_label(client, sample_account,
     assert transaction["raw_label"] == "CB CARREFOUR MARKET 14/01"
 
 
-def test_import_commit_creates_transactions_in_distinct_accounts(client, sample_account, sample_account_2, sample_category, sample_user):
+def test_import_commit_creates_transactions_in_distinct_accounts(
+    client, sample_account, sample_account_2, sample_category, sample_user
+):
     response = client.post(
         "/api/import/commit",
-        json={"rows": [
-            {
-                "date": "2026-01-15", "payee": "Whole Foods", "amount": -42.50,
-                "account_id": sample_account.id, "category_id": sample_category.id,
-                "split_weights": [{"user_id": sample_user.id, "weight": 1}],
-            },
-            {
-                "date": "2026-01-16", "payee": "Book Store", "amount": -15.00,
-                "account_id": sample_account_2.id, "category_id": sample_category.id,
-                "split_weights": [{"user_id": sample_user.id, "weight": 1}],
-            },
-        ]},
+        json={
+            "rows": [
+                {
+                    "date": "2026-01-15",
+                    "payee": "Whole Foods",
+                    "amount": -42.50,
+                    "account_id": sample_account.id,
+                    "category_id": sample_category.id,
+                    "split_weights": [{"user_id": sample_user.id, "weight": 1}],
+                },
+                {
+                    "date": "2026-01-16",
+                    "payee": "Book Store",
+                    "amount": -15.00,
+                    "account_id": sample_account_2.id,
+                    "category_id": sample_category.id,
+                    "split_weights": [{"user_id": sample_user.id, "weight": 1}],
+                },
+            ]
+        },
     )
     assert response.status_code == 200
 
@@ -349,14 +441,23 @@ def test_import_commit_creates_transactions_in_distinct_accounts(client, sample_
     assert by_payee["Book Store"]["account_id"] == sample_account_2.id
 
 
-def test_import_commit_creates_unreconciled_transactions(client, sample_account, sample_category, sample_user):
+def test_import_commit_creates_unreconciled_transactions(
+    client, sample_account, sample_category, sample_user
+):
     response = client.post(
         "/api/import/commit",
-        json={"rows": [{
-            "date": "2026-01-15", "payee": "Whole Foods", "amount": -42.50,
-            "account_id": sample_account.id, "category_id": sample_category.id,
-            "split_weights": [{"user_id": sample_user.id, "weight": 1}],
-        }]},
+        json={
+            "rows": [
+                {
+                    "date": "2026-01-15",
+                    "payee": "Whole Foods",
+                    "amount": -42.50,
+                    "account_id": sample_account.id,
+                    "category_id": sample_category.id,
+                    "split_weights": [{"user_id": sample_user.id, "weight": 1}],
+                }
+            ]
+        },
     )
     assert response.status_code == 200
 
@@ -368,6 +469,7 @@ def test_import_commit_creates_unreconciled_transactions(client, sample_account,
 
 def test_import_preview_rejects_oversized_file(client, sample_account):
     from import_csv import MAX_IMPORT_ROWS
+
     lines = ["Date,Label,Amount,Category"]
     lines += [f"2026-01-15,Payee {i},-1.00,Test Salary" for i in range(MAX_IMPORT_ROWS + 1)]
     text = "\n".join(lines) + "\n"
@@ -381,12 +483,18 @@ def test_import_preview_rejects_oversized_file(client, sample_account):
     assert str(MAX_IMPORT_ROWS) in response.json()["detail"]
 
 
-def test_import_commit_rejects_oversized_payload(client, sample_account, sample_category, sample_user):
+def test_import_commit_rejects_oversized_payload(
+    client, sample_account, sample_category, sample_user
+):
     from import_csv import MAX_IMPORT_ROWS
+
     rows = [
         {
-            "date": "2026-01-15", "payee": f"Payee {i}", "amount": -1.00,
-            "account_id": sample_account.id, "category_id": sample_category.id,
+            "date": "2026-01-15",
+            "payee": f"Payee {i}",
+            "amount": -1.00,
+            "account_id": sample_account.id,
+            "category_id": sample_category.id,
             "split_weights": [{"user_id": sample_user.id, "weight": 1}],
         }
         for i in range(MAX_IMPORT_ROWS + 1)
@@ -400,14 +508,20 @@ def test_import_commit_rejects_oversized_payload(client, sample_account, sample_
     assert response.json()["items"] == []
 
 
-def test_import_commit_batches_flush_across_partial_batch(client, sample_account, sample_category, sample_user, monkeypatch):
+def test_import_commit_batches_flush_across_partial_batch(
+    client, sample_account, sample_category, sample_user, monkeypatch
+):
     import routers.imports as imports_router
+
     monkeypatch.setattr(imports_router, "_IMPORT_FLUSH_BATCH_SIZE", 2)
 
     rows = [
         {
-            "date": "2026-01-15", "payee": f"Payee {i}", "amount": -1.00 * (i + 1),
-            "account_id": sample_account.id, "category_id": sample_category.id,
+            "date": "2026-01-15",
+            "payee": f"Payee {i}",
+            "amount": -1.00 * (i + 1),
+            "account_id": sample_account.id,
+            "category_id": sample_category.id,
             "split_weights": [{"user_id": sample_user.id, "weight": 1}],
         }
         for i in range(5)
@@ -426,15 +540,24 @@ def test_import_commit_batches_flush_across_partial_batch(client, sample_account
         assert len(transaction["splits"]) == 1
 
 
-def test_import_preview_duplicate_ignores_renamed_payee_and_missing_category(client, sample_account, sample_category, db):
+def test_import_preview_duplicate_ignores_renamed_payee_and_missing_category(
+    client, sample_account, sample_category, db
+):
     """A row already imported and since renamed (by hand or a rule) is still a duplicate,
     and a file without categories (every QIF) still gets its duplicates flagged."""
     from datetime import date
+
     from models import Transaction
-    db.add(Transaction(
-        date=date(2026, 1, 15), payee="Picard [Joint]", amount=-42.50,
-        account_id=sample_account.id, category_id=sample_category.id,
-    ))
+
+    db.add(
+        Transaction(
+            date=date(2026, 1, 15),
+            payee="Picard [Joint]",
+            amount=-42.50,
+            account_id=sample_account.id,
+            category_id=sample_category.id,
+        )
+    )
     db.commit()
 
     text = "Date,Label,Amount\n2026-01-15,PICARD SA 879,-42.50\n2026-01-16,PICARD SA 879,-42.50\n"
@@ -448,19 +571,30 @@ def test_import_preview_duplicate_ignores_renamed_payee_and_missing_category(cli
     assert [r["status"] for r in rows] == ["possible_duplicate", "needs_category"]
 
 
-def test_import_preview_duplicate_counts_identical_rows(client, sample_account, sample_category, db):
+def test_import_preview_duplicate_counts_identical_rows(
+    client, sample_account, sample_category, db
+):
     """Two identical purchases the same day in the file, one already in MyFinance: only one is a duplicate."""
     from datetime import date
+
     from models import Transaction
-    db.add(Transaction(
-        date=date(2026, 1, 15), payee="Whole Foods", amount=-42.50,
-        account_id=sample_account.id, category_id=sample_category.id,
-    ))
+
+    db.add(
+        Transaction(
+            date=date(2026, 1, 15),
+            payee="Whole Foods",
+            amount=-42.50,
+            account_id=sample_account.id,
+            category_id=sample_category.id,
+        )
+    )
     db.commit()
 
     text = "Date,Label,Amount,Category\n2026-01-15,Whole Foods,-42.50,Test Salary\n2026-01-15,Whole Foods,-42.50,Test Salary\n"
     response = client.post(
-        "/api/import/preview", files=_csv_file(text), data={**PREVIEW_FORM, "account_id": sample_account.id},
+        "/api/import/preview",
+        files=_csv_file(text),
+        data={**PREVIEW_FORM, "account_id": sample_account.id},
     )
     assert response.status_code == 200
     assert [r["status"] for r in response.json()] == ["possible_duplicate", "ok"]
@@ -468,6 +602,7 @@ def test_import_preview_duplicate_counts_identical_rows(client, sample_account, 
 
 def test_detect_oversized_upload_returns_413(client, monkeypatch):
     import routers.imports as imports_router
+
     monkeypatch.setattr(imports_router, "MAX_IMPORT_UPLOAD_BYTES", 10)
     response = client.post(
         "/api/import/detect",

@@ -1,5 +1,6 @@
 """Endpoints for the History screen: the timeline of every change to every
 transaction, a bulk action shown as one entry (see history.py)."""
+
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
@@ -20,12 +21,21 @@ def _user_names(db: Session) -> dict[int, str]:
 
 def _row_out(r: TransactionHistory, names: dict[int, str]) -> TransactionHistoryOut:
     return TransactionHistoryOut(
-        id=r.id, transaction_id=r.transaction_id, action=r.action, source=r.source,
-        changed_at=r.changed_at, changed_by_user_id=r.changed_by_user_id,
+        id=r.id,
+        transaction_id=r.transaction_id,
+        action=r.action,
+        source=r.source,
+        changed_at=r.changed_at,
+        changed_by_user_id=r.changed_by_user_id,
         changed_by_user_name=names.get(r.changed_by_user_id),
-        date=r.date, payee=r.payee, memo=r.memo, amount=r.amount,
-        account_id=r.account_id, category_id=r.category_id,
-        accounting_month_offset=r.accounting_month_offset, changes=r.changes,
+        date=r.date,
+        payee=r.payee,
+        memo=r.memo,
+        amount=r.amount,
+        account_id=r.account_id,
+        category_id=r.category_id,
+        accounting_month_offset=r.accounting_month_offset,
+        changes=r.changes,
     )
 
 
@@ -33,9 +43,15 @@ def _entry_out(entry: history.Entry, names: dict[int, str]) -> HistoryEntryOut:
     first = entry.first
     single = entry.count == 1
     return HistoryEntryOut(
-        first_id=first.id, last_id=entry.last.id, action=first.action, source=first.source,
-        changed_by_user_id=first.changed_by_user_id, batch_id=first.batch_id,
-        count=entry.count, changed_at=first.changed_at, started_at=entry.last.changed_at,
+        first_id=first.id,
+        last_id=entry.last.id,
+        action=first.action,
+        source=first.source,
+        changed_by_user_id=first.changed_by_user_id,
+        batch_id=first.batch_id,
+        count=entry.count,
+        changed_at=first.changed_at,
+        started_at=entry.last.changed_at,
         changed_by_user_name=names.get(first.changed_by_user_id),
         transaction_id=first.transaction_id if single else None,
         date=first.date if single else None,
@@ -55,9 +71,13 @@ def list_history(
     source: Literal[history.SOURCES] | None = Query(None),
     db: Session = Depends(get_db),
 ):
-    entries, next_before_id = history.scan(db, before_id=before_id, limit=limit, action=action, source=source)
+    entries, next_before_id = history.scan(
+        db, before_id=before_id, limit=limit, action=action, source=source
+    )
     names = _user_names(db)
-    return HistoryPageOut(items=[_entry_out(e, names) for e in entries], next_before_id=next_before_id)
+    return HistoryPageOut(
+        items=[_entry_out(e, names) for e in entries], next_before_id=next_before_id
+    )
 
 
 @router.get("/rows", response_model=HistoryRowsOut)
@@ -75,8 +95,11 @@ def list_entry_rows(
     """The rows behind one entry, newest first: what each transaction looked
     like and what changed on it, deleted ones included."""
     query = select(TransactionHistory).where(
-        history.group_filter(first_id, last_id, action, source, changed_by_user_id, batch_id))
+        history.group_filter(first_id, last_id, action, source, changed_by_user_id, batch_id)
+    )
     total = db.scalar(select(func.count()).select_from(query.subquery()))
-    rows = db.scalars(query.order_by(TransactionHistory.id.desc()).offset(offset).limit(limit)).all()
+    rows = db.scalars(
+        query.order_by(TransactionHistory.id.desc()).offset(offset).limit(limit)
+    ).all()
     names = _user_names(db)
     return HistoryRowsOut(items=[_row_out(r, names) for r in rows], total=total)

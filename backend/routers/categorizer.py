@@ -29,7 +29,7 @@ import cache_service
 import categorizer
 from database import get_db, utcnow
 from filtering import apply_transaction_filters
-from models import Category, CategorizerModel, Transaction
+from models import CategorizerModel, Category, Transaction
 from schemas import (
     CategorizerApplyRequest,
     CategorizerApplyResponse,
@@ -74,18 +74,21 @@ def _active_model(db: Session) -> tuple[CategorizerModel, "categorizer._Model"]:
 
 def _prune(db: Session) -> None:
     keep = [
-        m.id for m in db.scalars(
+        m.id
+        for m in db.scalars(
             select(CategorizerModel)
             .where(CategorizerModel.status == "ready")
             .order_by(CategorizerModel.created_at.desc())
             .limit(KEEP_MODELS)
         ).all()
     ]
-    for model in db.scalars(select(CategorizerModel).where(
-        CategorizerModel.status == "ready",
-        CategorizerModel.is_active.is_(False),
-        CategorizerModel.id.notin_(keep),
-    )).all():
+    for model in db.scalars(
+        select(CategorizerModel).where(
+            CategorizerModel.status == "ready",
+            CategorizerModel.is_active.is_(False),
+            CategorizerModel.id.notin_(keep),
+        )
+    ).all():
         db.delete(model)
 
 
@@ -93,8 +96,10 @@ def _prune(db: Session) -> None:
 def train_model(req: CategorizerTrainRequest, db: Session = Depends(get_db)):
     in_flight = db.scalar(
         select(CategorizerModel)
-        .where(CategorizerModel.status == "training",
-               CategorizerModel.created_at > utcnow() - STALE_TRAINING_AFTER)
+        .where(
+            CategorizerModel.status == "training",
+            CategorizerModel.created_at > utcnow() - STALE_TRAINING_AFTER,
+        )
         .limit(1)
     )
     if in_flight is not None:
@@ -118,7 +123,9 @@ def train_model(req: CategorizerTrainRequest, db: Session = Depends(get_db)):
             f"category and a label to learn it from; at least {categorizer.MIN_TRAINING_ROWS} are needed.",
         )
     if len({t.category_id for t in learnable}) < 2:
-        raise HTTPException(422, "The training selection covers a single category; nothing to learn.")
+        raise HTTPException(
+            422, "The training selection covers a single category; nothing to learn."
+        )
     if not categorizer.trainable(test_rows):
         raise HTTPException(
             422,
@@ -133,7 +140,9 @@ def train_model(req: CategorizerTrainRequest, db: Session = Depends(get_db)):
     try:
         model, params = categorizer.train(learnable)
         categories = _categories(db)
-        metrics = categorizer.evaluate(model, categorizer.trainable(test_rows), learnable, categories)
+        metrics = categorizer.evaluate(
+            model, categorizer.trainable(test_rows), learnable, categories
+        )
         record.blob = categorizer.dumps(model)
         record.params = params
         record.metrics = metrics
@@ -144,9 +153,11 @@ def train_model(req: CategorizerTrainRequest, db: Session = Depends(get_db)):
         db.flush()
         _prune(db)
         db.commit()
-    except Exception as e:  # noqa: BLE001 - the failure is reported, not swallowed
+    except Exception as e:
         db.rollback()
-        record = db.scalar(select(CategorizerModel).where(CategorizerModel.id == record.id).limit(1))
+        record = db.scalar(
+            select(CategorizerModel).where(CategorizerModel.id == record.id).limit(1)
+        )
         if record is not None:
             record.status = "failed"
             record.error = f"{type(e).__name__}: {e}"[:2000]
@@ -159,10 +170,7 @@ def train_model(req: CategorizerTrainRequest, db: Session = Depends(get_db)):
 
 @router.get("/models", response_model=list[CategorizerModelOut])
 def list_models(db: Session = Depends(get_db)):
-    return db.scalars(
-        select(CategorizerModel)
-        .order_by(CategorizerModel.created_at.desc())
-    ).all()
+    return db.scalars(select(CategorizerModel).order_by(CategorizerModel.created_at.desc())).all()
 
 
 @router.post("/models/{model_id}/activate", response_model=CategorizerModelOut)
@@ -172,7 +180,9 @@ def activate_model(model_id: int, db: Session = Depends(get_db)):
         raise HTTPException(404, "Model not found")
     if model.status != "ready" or model.blob is None:
         raise HTTPException(422, "Only a model that finished training can be activated.")
-    for other in db.scalars(select(CategorizerModel).where(CategorizerModel.is_active.is_(True))).all():
+    for other in db.scalars(
+        select(CategorizerModel).where(CategorizerModel.is_active.is_(True))
+    ).all():
         other.is_active = False
     model.is_active = True
     db.commit()
@@ -215,20 +225,22 @@ def suggest(req: CategorizerSuggestRequest, db: Session = Depends(get_db)):
     for t, (category_id, confidence) in zip(rows, predictions):
         category = categories.get(category_id)
         current = categories.get(t.category_id) if t.category_id else None
-        items.append(CategorizerSuggestion(
-            transaction_id=t.id,
-            date=t.date,
-            payee=t.payee,
-            raw_label=t.raw_label,
-            amount=t.amount,
-            current_category_id=t.category_id,
-            current_category_name=current.name if current else None,
-            suggested_category_id=category_id,
-            suggested_category_name=category.name if category else None,
-            confidence=confidence,
-            high_confidence=confidence >= threshold,
-            category_changed=category_id != t.category_id,
-        ))
+        items.append(
+            CategorizerSuggestion(
+                transaction_id=t.id,
+                date=t.date,
+                payee=t.payee,
+                raw_label=t.raw_label,
+                amount=t.amount,
+                current_category_id=t.category_id,
+                current_category_name=current.name if current else None,
+                suggested_category_id=category_id,
+                suggested_category_name=category.name if category else None,
+                confidence=confidence,
+                high_confidence=confidence >= threshold,
+                category_changed=category_id != t.category_id,
+            )
+        )
 
     return CategorizerSuggestResponse(
         model_id=record.id,
@@ -241,7 +253,11 @@ def suggest(req: CategorizerSuggestRequest, db: Session = Depends(get_db)):
 
 @router.post("/apply", response_model=CategorizerApplyResponse)
 @audit.batched
-def apply(req: CategorizerApplyRequest, actor_user_id: int | None = Query(None), db: Session = Depends(get_db)):
+def apply(
+    req: CategorizerApplyRequest,
+    actor_user_id: int | None = Query(None),
+    db: Session = Depends(get_db),
+):
     """Write one category per transaction.
 
     Deliberately not /api/transactions/bulk-update: that endpoint applies the
@@ -259,14 +275,18 @@ def apply(req: CategorizerApplyRequest, actor_user_id: int | None = Query(None),
     if len(set(ids)) != len(ids):
         raise HTTPException(422, "The same transaction appears more than once.")
 
-    transactions = {t.id: t for t in db.scalars(select(Transaction).where(Transaction.id.in_(ids))).all()}
+    transactions = {
+        t.id: t for t in db.scalars(select(Transaction).where(Transaction.id.in_(ids))).all()
+    }
     missing = sorted(set(ids) - set(transactions))
     if missing:
         raise HTTPException(404, f"Transaction(s) not found: {missing}")
 
     category_ids = {i.category_id for i in req.items}
     if category_ids:
-        known = {c.id for c in db.scalars(select(Category).where(Category.id.in_(category_ids))).all()}
+        known = {
+            c.id for c in db.scalars(select(Category).where(Category.id.in_(category_ids))).all()
+        }
         unknown = sorted(category_ids - known)
         if unknown:
             raise HTTPException(404, f"Category(ies) not found: {unknown}")

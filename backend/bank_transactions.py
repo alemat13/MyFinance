@@ -6,6 +6,7 @@ the payee clean-up and the deduplication fingerprint can be read (and tested)
 on their own. enable_banking re-exports clean_label, normalize_transactions and
 RAW_SOURCE, so existing callers are unchanged.
 """
+
 import hashlib
 import json
 import re
@@ -29,12 +30,14 @@ RAW_SOURCE = "enable_banking"
 _CONFIG_PATH = Path(__file__).parent / "bank_sync_config.json"
 _LABEL_CLEANUP_PATTERNS: list[re.Pattern] = [
     re.compile(entry["pattern"] if isinstance(entry, dict) else entry)
-    for entry in json.loads(_CONFIG_PATH.read_text(encoding="utf-8")).get("label_cleanup_patterns", [])
+    for entry in json.loads(_CONFIG_PATH.read_text(encoding="utf-8")).get(
+        "label_cleanup_patterns", []
+    )
 ]
 
 
-
 # ── Normalising a bank transaction into a MyFinance one ───────────────
+
 
 def _parse_amount(raw: dict, credit_debit_indicator: str) -> float:
     """Enable Banking always reports a positive amount plus a direction;
@@ -185,25 +188,30 @@ def normalize_transactions(raw_transactions: list[dict]) -> list[dict]:
             fingerprint_counts[base] = occurrence + 1
             external_id = _fingerprint(fingerprint_date, amount, payee, occurrence)
 
-        normalized.append({
-            "date": row_date,
-            # Cleaned only now, after the fingerprint: it is computed from the
-            # uncleaned payee so that editing the patterns never changes an
-            # already-imported row's external_id, which would re-import it.
-            "payee": clean_label(payee),
-            "memo": remittance,
-            "amount": amount,
-            "external_id": external_id,
-            # Frozen copies of what the bank said, never edited afterwards.
-            # raw_label deliberately duplicates memo at import time: memo is
-            # the user's to rewrite, this is not.
-            "raw_source": RAW_SOURCE,
-            "raw_label": remittance,
-            "raw_counterparty": _counterparty_name(raw, indicator),
-            "raw_transaction_code": _bank_transaction_code(raw),
-            "raw_merchant_category_code": (str(raw["merchant_category_code"])[:10]
-                                           if raw.get("merchant_category_code") else None),
-            "raw_initiated_date": _initiated_date(raw),
-            "raw_booking_date": _booking_date(raw),
-        })
+        normalized.append(
+            {
+                "date": row_date,
+                # Cleaned only now, after the fingerprint: it is computed from the
+                # uncleaned payee so that editing the patterns never changes an
+                # already-imported row's external_id, which would re-import it.
+                "payee": clean_label(payee),
+                "memo": remittance,
+                "amount": amount,
+                "external_id": external_id,
+                # Frozen copies of what the bank said, never edited afterwards.
+                # raw_label deliberately duplicates memo at import time: memo is
+                # the user's to rewrite, this is not.
+                "raw_source": RAW_SOURCE,
+                "raw_label": remittance,
+                "raw_counterparty": _counterparty_name(raw, indicator),
+                "raw_transaction_code": _bank_transaction_code(raw),
+                "raw_merchant_category_code": (
+                    str(raw["merchant_category_code"])[:10]
+                    if raw.get("merchant_category_code")
+                    else None
+                ),
+                "raw_initiated_date": _initiated_date(raw),
+                "raw_booking_date": _booking_date(raw),
+            }
+        )
     return normalized

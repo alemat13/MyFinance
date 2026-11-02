@@ -3,7 +3,14 @@ from dataclasses import dataclass
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from models import AccountSplitWeight, AccountUser, CategorySplit, GlobalSplitWeight, Transaction, TransactionSplit
+from models import (
+    AccountSplitWeight,
+    AccountUser,
+    CategorySplit,
+    GlobalSplitWeight,
+    Transaction,
+    TransactionSplit,
+)
 
 
 @dataclass
@@ -45,7 +52,9 @@ def prorate(amount: float, weights: dict[int, int]) -> list[Share]:
 
 
 def resolve_default_weights(
-    db: Session, category_id: int | None, account_id: int | None,
+    db: Session,
+    category_id: int | None,
+    account_id: int | None,
 ) -> tuple[str | None, dict[int, int]]:
     """Resolve default weights to prefill a transaction's split with.
 
@@ -57,16 +66,22 @@ def resolve_default_weights(
     split, which is always driven by its own stored weights.
     """
     if account_id is not None:
-        acct_weights = db.scalars(select(AccountSplitWeight).where(
-            AccountSplitWeight.account_id == account_id, AccountSplitWeight.weight > 0,
-        )).all()
+        acct_weights = db.scalars(
+            select(AccountSplitWeight).where(
+                AccountSplitWeight.account_id == account_id,
+                AccountSplitWeight.weight > 0,
+            )
+        ).all()
         if acct_weights:
             return "account", {w.user_id: w.weight for w in acct_weights}
 
     if category_id is not None:
-        cat_splits = db.scalars(select(CategorySplit).where(
-            CategorySplit.category_id == category_id, CategorySplit.weight > 0,
-        )).all()
+        cat_splits = db.scalars(
+            select(CategorySplit).where(
+                CategorySplit.category_id == category_id,
+                CategorySplit.weight > 0,
+            )
+        ).all()
         if cat_splits:
             return "category", {c.user_id: c.weight for c in cat_splits}
 
@@ -78,7 +93,10 @@ def resolve_default_weights(
 
 
 def apply_split(
-    db: Session, transaction: Transaction, weights: dict[int, int] | None, source: str = "custom",
+    db: Session,
+    transaction: Transaction,
+    weights: dict[int, int] | None,
+    source: str = "custom",
 ) -> None:
     """(Re)computes and persists TransactionSplit rows for a transaction.
 
@@ -98,13 +116,15 @@ def apply_split(
 
     shares = prorate(transaction.amount, weights)
     for share in shares:
-        db.add(TransactionSplit(
-            transaction_id=transaction.id,
-            user_id=share.user_id,
-            weight=share.weight,
-            share_amount=share.share_amount,
-            source=source,
-        ))
+        db.add(
+            TransactionSplit(
+                transaction_id=transaction.id,
+                user_id=share.user_id,
+                weight=share.weight,
+                share_amount=share.share_amount,
+                source=source,
+            )
+        )
 
 
 def compute_balances(db: Session, user_id: int | None = None) -> list[tuple[int, str, str, float]]:

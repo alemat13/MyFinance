@@ -15,7 +15,8 @@ aggregation never requires touching this file.
 """
 
 import json
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
@@ -29,7 +30,9 @@ def _build_key(namespace: str, params: dict[str, Any]) -> str:
     return f"{namespace}:{parts}" if parts else namespace
 
 
-def get_or_compute(db: Session, namespace: str, params: dict[str, Any], compute: Callable[[], Any]) -> Any:
+def get_or_compute(
+    db: Session, namespace: str, params: dict[str, Any], compute: Callable[[], Any]
+) -> Any:
     """Return the cached payload for (namespace, params); compute and store it on a miss.
 
     `compute` must return JSON-serializable data (dicts/lists/primitives -

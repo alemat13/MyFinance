@@ -125,7 +125,7 @@ export default function CsvImportPage({ onBack, selectedUserId }: Props) {
   const withoutCategory = suggestable.filter(r => !r.category_id)
   const ruleRows = rows.filter(r => r.status !== 'error' && r.rules)
 
-  const useSuggestions = (target: ImportPreviewRow[]) => {
+  const applySuggestions = (target: ImportPreviewRow[]) => {
     const next = { ...rowCategoryOverride }
     for (const row of target) next[row.row_number] = row.suggested_category_id as number
     setRowCategoryOverride(next)
@@ -370,11 +370,11 @@ export default function CsvImportPage({ onBack, selectedUserId }: Props) {
                 <Button
                   size="sm"
                   disabled={withoutCategory.length === 0}
-                  onClick={() => useSuggestions(withoutCategory)}
+                  onClick={() => applySuggestions(withoutCategory)}
                 >
                   Use where the file has none ({withoutCategory.length})
                 </Button>
-                <Button size="sm" variant="secondary" onClick={() => useSuggestions(suggestable)}>
+                <Button size="sm" variant="secondary" onClick={() => applySuggestions(suggestable)}>
                   Use for every row ({suggestable.length})
                 </Button>
                 {Object.keys(rowCategoryOverride).length > 0 && (
@@ -484,7 +484,7 @@ export default function CsvImportPage({ onBack, selectedUserId }: Props) {
                                 </span>
                               </span>
                               {resolvedCategoryId(r) !== r.suggested_category_id && (
-                                <Button size="sm" variant="secondary" onClick={() => useSuggestions([r])}>
+                                <Button size="sm" variant="secondary" onClick={() => applySuggestions([r])}>
                                   Use
                                 </Button>
                               )}

@@ -1,4 +1,11 @@
-def _create_transaction(client, sample_account, sample_category, actor_user_id=None, payee="Test Payee", split_user_id=None):
+def _create_transaction(
+    client,
+    sample_account,
+    sample_category,
+    actor_user_id=None,
+    payee="Test Payee",
+    split_user_id=None,
+):
     params = f"?actor_user_id={actor_user_id}" if actor_user_id is not None else ""
     payload = {
         "account_id": sample_account.id,
@@ -12,8 +19,16 @@ def _create_transaction(client, sample_account, sample_category, actor_user_id=N
     return client.post(f"/api/transactions{params}", json=payload)
 
 
-def test_create_transaction_writes_history_row(client, sample_account, sample_category, sample_user):
-    response = _create_transaction(client, sample_account, sample_category, actor_user_id=sample_user.id, split_user_id=sample_user.id)
+def test_create_transaction_writes_history_row(
+    client, sample_account, sample_category, sample_user
+):
+    response = _create_transaction(
+        client,
+        sample_account,
+        sample_category,
+        actor_user_id=sample_user.id,
+        split_user_id=sample_user.id,
+    )
     transaction_id = response.json()["id"]
 
     history = client.get(f"/api/transactions/{transaction_id}/history").json()
@@ -25,12 +40,19 @@ def test_create_transaction_writes_history_row(client, sample_account, sample_ca
     assert history[0]["payee"] == "Test Payee"
     # Splits are mandatory, so creation always records the initial split too.
     assert history[0]["changes"] == {
-        "splits": {"old": None, "new": [{"user_id": sample_user.id, "weight": 1, "source": "custom"}]},
+        "splits": {
+            "old": None,
+            "new": [{"user_id": sample_user.id, "weight": 1, "source": "custom"}],
+        },
     }
 
 
-def test_create_transaction_without_actor_leaves_changed_by_null(client, sample_account, sample_category, sample_user):
-    response = _create_transaction(client, sample_account, sample_category, split_user_id=sample_user.id)
+def test_create_transaction_without_actor_leaves_changed_by_null(
+    client, sample_account, sample_category, sample_user
+):
+    response = _create_transaction(
+        client, sample_account, sample_category, split_user_id=sample_user.id
+    )
     transaction_id = response.json()["id"]
 
     history = client.get(f"/api/transactions/{transaction_id}/history").json()
@@ -52,7 +74,9 @@ def test_update_transaction_writes_diff_only_for_changed_fields(client, sample_t
     assert history[0]["changes"] == {"payee": {"old": "Test Payee", "new": "New Payee"}}
 
 
-def test_update_transaction_with_full_unchanged_payload_writes_no_history(client, sample_transaction):
+def test_update_transaction_with_full_unchanged_payload_writes_no_history(
+    client, sample_transaction
+):
     response = client.put(
         f"/api/transactions/{sample_transaction.id}",
         json={
@@ -81,7 +105,9 @@ def test_update_transaction_date_change_is_json_serializable(client, sample_tran
     assert history[0]["changes"] == {"date": {"old": "2026-01-15", "new": "2026-02-01"}}
 
 
-def test_update_transaction_split_only_change_writes_splits_diff(client, sample_transaction, sample_user):
+def test_update_transaction_split_only_change_writes_splits_diff(
+    client, sample_transaction, sample_user
+):
     # sample_transaction's fixture-baked split is weight=1 for sample_user;
     # use a different weight here so there's a genuine diff to record.
     response = client.put(
@@ -101,7 +127,9 @@ def test_update_transaction_split_only_change_writes_splits_diff(client, sample_
     }
 
 
-def test_update_transaction_non_split_field_leaves_splits_untouched_in_history(client, sample_transaction, sample_user):
+def test_update_transaction_non_split_field_leaves_splits_untouched_in_history(
+    client, sample_transaction, sample_user
+):
     # A different weight than the fixture's baked-in 1, so this first PUT
     # actually records a history row to set up the scenario.
     client.put(
@@ -121,7 +149,9 @@ def test_update_transaction_non_split_field_leaves_splits_untouched_in_history(c
     assert history[1]["changes"] == {"payee": {"old": "Test Payee", "new": "Renamed Payee"}}
 
 
-def test_update_transaction_clearing_split_weights_rejected(client, sample_transaction, sample_user):
+def test_update_transaction_clearing_split_weights_rejected(
+    client, sample_transaction, sample_user
+):
     """Splits are mandatory: an explicit empty list can no longer be used to
     clear a transaction's split (see test_transactions.py's equivalent)."""
     client.put(
@@ -139,7 +169,9 @@ def test_update_transaction_clearing_split_weights_rejected(client, sample_trans
     assert len(history) == 1
 
 
-def test_create_transaction_with_split_weights_records_initial_splits(client, sample_account, sample_category, sample_user):
+def test_create_transaction_with_split_weights_records_initial_splits(
+    client, sample_account, sample_category, sample_user
+):
     response = client.post(
         "/api/transactions",
         json={
@@ -165,7 +197,9 @@ def test_create_transaction_with_split_weights_records_initial_splits(client, sa
     }
 
 
-def test_import_commit_with_split_weights_records_initial_splits(client, sample_account, sample_category, sample_user):
+def test_import_commit_with_split_weights_records_initial_splits(
+    client, sample_account, sample_category, sample_user
+):
     response = client.post(
         "/api/import/commit",
         json={
@@ -205,8 +239,12 @@ def test_delete_transaction_writes_history_and_survives_deletion(client, sample_
     assert history[0]["payee"] == "Test Payee"
 
 
-def test_full_lifecycle_history_ordered_oldest_first(client, sample_account, sample_category, sample_user):
-    response = _create_transaction(client, sample_account, sample_category, split_user_id=sample_user.id)
+def test_full_lifecycle_history_ordered_oldest_first(
+    client, sample_account, sample_category, sample_user
+):
+    response = _create_transaction(
+        client, sample_account, sample_category, split_user_id=sample_user.id
+    )
     transaction_id = response.json()["id"]
 
     client.put(f"/api/transactions/{transaction_id}", json={"payee": "Renamed"})
@@ -222,7 +260,9 @@ def test_history_for_unknown_transaction_returns_empty_list(client):
     assert response.json() == []
 
 
-def test_import_commit_writes_history_with_csv_source(client, sample_account, sample_category, sample_user):
+def test_import_commit_writes_history_with_csv_source(
+    client, sample_account, sample_category, sample_user
+):
     response = client.post(
         f"/api/import/commit?actor_user_id={sample_user.id}",
         json={

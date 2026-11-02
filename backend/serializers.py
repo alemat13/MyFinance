@@ -8,9 +8,14 @@ import checkpoints
 from accounting_month import compute_accounting_month
 from models import Account, Category, Transaction, User
 from schemas import (
-    AccountOut, AccountSplitWeightOut, AccountUserOut,
-    CategoryOut, CategorySplitOut,
-    TagRef, TransactionOut, TransactionSplitOut,
+    AccountOut,
+    AccountSplitWeightOut,
+    AccountUserOut,
+    CategoryOut,
+    CategorySplitOut,
+    TagRef,
+    TransactionOut,
+    TransactionSplitOut,
 )
 
 
@@ -92,7 +97,8 @@ def build_transaction_out_from_row(
         checkpoint_value=t.checkpoint_value,
         checkpoint_since=(
             checkpoints.previous_checkpoint_date(object_session(t), t)
-            if t.checkpoint_value is not None else None
+            if t.checkpoint_value is not None
+            else None
         ),
         raw_source=t.raw_source,
         raw_label=t.raw_label,
@@ -108,16 +114,23 @@ def build_transaction_out_from_row(
 
 
 def get_transaction_out(db: Session, transaction_id: int) -> TransactionOut:
-    t, account_name, currency, category_name, category_color, category_icon = (
-        db.execute(
-            select(Transaction, Account.name, Account.currency, Category.name, Category.color, Category.icon)
-            .join(Account, Transaction.account_id == Account.id)
-            .outerjoin(Category, Transaction.category_id == Category.id)
-            .where(Transaction.id == transaction_id)
-            .limit(1)
-        ).first()
+    t, account_name, currency, category_name, category_color, category_icon = db.execute(
+        select(
+            Transaction,
+            Account.name,
+            Account.currency,
+            Category.name,
+            Category.color,
+            Category.icon,
+        )
+        .join(Account, Transaction.account_id == Account.id)
+        .outerjoin(Category, Transaction.category_id == Category.id)
+        .where(Transaction.id == transaction_id)
+        .limit(1)
+    ).first()
+    return build_transaction_out_from_row(
+        t, account_name, currency, category_name, category_color, category_icon
     )
-    return build_transaction_out_from_row(t, account_name, currency, category_name, category_color, category_icon)
 
 
 def build_category_out(category: Category) -> CategoryOut:
@@ -142,6 +155,5 @@ def build_category_out(category: Category) -> CategoryOut:
 
 def build_split_weight_rows(weights_by_user: dict[int, int], users: list[User], out_cls):
     return [
-        out_cls(user_id=u.id, user_name=u.name, weight=weights_by_user.get(u.id, 0))
-        for u in users
+        out_cls(user_id=u.id, user_name=u.name, weight=weights_by_user.get(u.id, 0)) for u in users
     ]

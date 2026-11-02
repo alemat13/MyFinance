@@ -21,17 +21,29 @@ def global_weights(db, sample_user):
 
 
 def _make(db, account, category, n):
-    rows = [Transaction(date=date(2026, 1, 1 + i), payee=f"Shop {i}", amount=10.0 + i,
-                        account_id=account.id, category_id=category.id) for i in range(n)]
+    rows = [
+        Transaction(
+            date=date(2026, 1, 1 + i),
+            payee=f"Shop {i}",
+            amount=10.0 + i,
+            account_id=account.id,
+            category_id=category.id,
+        )
+        for i in range(n)
+    ]
     db.add_all(rows)
     db.commit()
     return [t.id for t in rows]
 
 
-def test_bulk_edit_is_one_entry_with_its_rows_and_transactions(client, db, sample_account, sample_category, groceries):
+def test_bulk_edit_is_one_entry_with_its_rows_and_transactions(
+    client, db, sample_account, sample_category, groceries
+):
     ids = _make(db, sample_account, sample_category, 5)
-    response = client.put("/api/transactions/bulk-update",
-                          json={"transaction_ids": ids, "update": {"category_id": groceries.id}})
+    response = client.put(
+        "/api/transactions/bulk-update",
+        json={"transaction_ids": ids, "update": {"category_id": groceries.id}},
+    )
     assert response.status_code == 200
 
     page = client.get("/api/history").json()
@@ -55,8 +67,14 @@ def test_bulk_edit_is_one_entry_with_its_rows_and_transactions(client, db, sampl
 
 def test_two_bulk_edits_stay_two_entries(client, db, sample_account, sample_category, groceries):
     ids = _make(db, sample_account, sample_category, 3)
-    client.put("/api/transactions/bulk-update", json={"transaction_ids": ids, "update": {"category_id": groceries.id}})
-    client.put("/api/transactions/bulk-update", json={"transaction_ids": ids, "update": {"category_id": sample_category.id}})
+    client.put(
+        "/api/transactions/bulk-update",
+        json={"transaction_ids": ids, "update": {"category_id": groceries.id}},
+    )
+    client.put(
+        "/api/transactions/bulk-update",
+        json={"transaction_ids": ids, "update": {"category_id": sample_category.id}},
+    )
 
     items = client.get("/api/history").json()["items"]
     assert [e["count"] for e in items] == [3, 3]
@@ -74,19 +92,29 @@ def test_single_edit_carries_its_own_snapshot(client, sample_transaction, grocer
 
 def test_bulk_rename_reports_payee_as_mixed(client, db, sample_account, sample_category):
     ids = _make(db, sample_account, sample_category, 2)
-    client.put("/api/transactions/bulk-update",
-               json={"transaction_ids": ids, "update": {"payee": "CB ", "payee_mode": "prepend"}})
+    client.put(
+        "/api/transactions/bulk-update",
+        json={"transaction_ids": ids, "update": {"payee": "CB ", "payee_mode": "prepend"}},
+    )
     [entry] = client.get("/api/history").json()["items"]
     assert entry["changes"] == {"payee": {"new": None, "mixed": True}}
 
 
 def _legacy(db, transaction_id, at, new_category, actor=None):
-    db.add(TransactionHistory(transaction_id=transaction_id, action="updated", changed_at=at,
-                              changed_by_user_id=actor,
-                              changes={"category_id": {"old": None, "new": new_category}}))
+    db.add(
+        TransactionHistory(
+            transaction_id=transaction_id,
+            action="updated",
+            changed_at=at,
+            changed_by_user_id=actor,
+            changes={"category_id": {"old": None, "new": new_category}},
+        )
+    )
 
 
-def test_rows_without_batch_are_grouped_by_change_and_time(client, db, sample_account, sample_category, groceries):
+def test_rows_without_batch_are_grouped_by_change_and_time(
+    client, db, sample_account, sample_category, groceries
+):
     ids = _make(db, sample_account, sample_category, 6)
     start = datetime(2026, 10, 1, 12, 0, 0)
     # A pre-batch bulk edit: four rows a second apart...
@@ -106,24 +134,37 @@ def test_rows_without_batch_are_grouped_by_change_and_time(client, db, sample_ac
     assert sorted(r["transaction_id"] for r in rows["items"]) == sorted(ids[:4])
 
 
-def test_pagination_never_splits_an_entry(client, db, global_weights, sample_account, sample_category, groceries, monkeypatch):
+def test_pagination_never_splits_an_entry(
+    client, db, global_weights, sample_account, sample_category, groceries, monkeypatch
+):
     import history
+
     monkeypatch.setattr(history, "SCAN_CHUNK", 3)
     ids = _make(db, sample_account, sample_category, 7)
-    client.put("/api/transactions/bulk-update", json={"transaction_ids": ids, "update": {"category_id": groceries.id}})
+    client.put(
+        "/api/transactions/bulk-update",
+        json={"transaction_ids": ids, "update": {"category_id": groceries.id}},
+    )
     client.put(f"/api/transactions/{ids[0]}", json={"payee": "Renamed"})
     client.put(f"/api/transactions/{ids[1]}", json={"memo": "Note"})
 
     first = client.get("/api/history", params={"limit": 2}).json()
     assert [e["count"] for e in first["items"]] == [1, 1]
-    second = client.get("/api/history", params={"limit": 2, "before_id": first["next_before_id"]}).json()
+    second = client.get(
+        "/api/history", params={"limit": 2, "before_id": first["next_before_id"]}
+    ).json()
     assert [e["count"] for e in second["items"]] == [7]
     assert second["next_before_id"] is None
 
 
-def test_filters_by_action_and_origin(client, db, sample_account, sample_category, groceries, sample_transaction):
+def test_filters_by_action_and_origin(
+    client, db, sample_account, sample_category, groceries, sample_transaction
+):
     ids = _make(db, sample_account, sample_category, 2)
-    client.put("/api/transactions/bulk-update", json={"transaction_ids": ids, "update": {"category_id": groceries.id}})
+    client.put(
+        "/api/transactions/bulk-update",
+        json={"transaction_ids": ids, "update": {"category_id": groceries.id}},
+    )
     client.put(f"/api/transactions/{sample_transaction.id}", json={"payee": "Renamed"})
     client.delete(f"/api/transactions/{ids[0]}")
 
@@ -137,18 +178,31 @@ def test_filters_by_action_and_origin(client, db, sample_account, sample_categor
 
 def test_bulk_delete_is_one_entry_and_keeps_snapshots(client, db, sample_account, sample_category):
     ids = _make(db, sample_account, sample_category, 3)
-    response = client.request("DELETE", "/api/transactions/bulk-delete", json={"transaction_ids": ids})
+    response = client.request(
+        "DELETE", "/api/transactions/bulk-delete", json={"transaction_ids": ids}
+    )
     assert response.status_code == 200
     [entry] = client.get("/api/history").json()["items"]
     assert (entry["action"], entry["source"], entry["count"]) == ("deleted", "bulk", 3)
-    rows = client.get("/api/history/rows", params={k: entry[k] for k in ("first_id", "last_id", "action", "source", "batch_id")}).json()
+    rows = client.get(
+        "/api/history/rows",
+        params={k: entry[k] for k in ("first_id", "last_id", "action", "source", "batch_id")},
+    ).json()
     assert sorted(r["payee"] for r in rows["items"]) == ["Shop 0", "Shop 1", "Shop 2"]
 
 
 def test_csv_import_commit_is_one_batch(client, sample_account, sample_category, sample_user):
-    rows = [{"date": "2026-02-0%d" % (i + 1), "payee": f"Imp {i}", "amount": -5.0, "account_id": sample_account.id,
-             "category_id": sample_category.id, "split_weights": [{"user_id": sample_user.id, "weight": 1}]}
-            for i in range(3)]
+    rows = [
+        {
+            "date": "2026-02-0%d" % (i + 1),
+            "payee": f"Imp {i}",
+            "amount": -5.0,
+            "account_id": sample_account.id,
+            "category_id": sample_category.id,
+            "split_weights": [{"user_id": sample_user.id, "weight": 1}],
+        }
+        for i in range(3)
+    ]
     assert client.post("/api/import/commit", json={"rows": rows}).status_code == 200
     [entry] = client.get("/api/history").json()["items"]
     assert (entry["action"], entry["source"], entry["count"]) == ("created", "csv_import", 3)

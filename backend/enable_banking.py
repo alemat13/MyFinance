@@ -18,12 +18,12 @@ same resolve_default_weights() cascade, same audit rows, same cache
 invalidation — a synced transaction is an ordinary transaction that happens to
 carry an external_id.
 """
+
 import hmac
-import json
 import os
 import time
 import uuid
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 
 import httpx
 import jwt
@@ -32,10 +32,10 @@ from sqlalchemy.orm import Session
 
 import audit
 import auto_categorize
-import transaction_rules
 import cache_service
 import checkpoints
 import split_engine
+import transaction_rules
 from audit import record_transaction_history, splits_created_changes
 from bank_transactions import (  # noqa: F401  (re-exported)
     DISPLAY_DATE_FIELDS,
@@ -74,12 +74,14 @@ MIN_SYNC_INTERVAL_HOURS = 6
 # writer of those columns is the Linxo GDPR export backfill, which uses its
 # own value — the two vocabularies don't overlap.
 
+
 class EnableBankingError(Exception):
     """Any failed Enable Banking call. Message text is safe to persist
     verbatim to BankConnection.last_error / BankAccountLink.last_sync_error."""
 
 
 # ── Authentication ────────────────────────────────────────────────────
+
 
 def _application_id() -> str:
     application_id = os.environ.get("ENABLE_BANKING_APPLICATION_ID")
@@ -123,17 +125,22 @@ def build_jwt(now: int | None = None) -> str:
 def _request(method: str, path: str, **kwargs) -> dict:
     headers = {"Authorization": f"Bearer {build_jwt()}", "Accept": "application/json"}
     try:
-        response = httpx.request(method, f"{API_BASE}{path}", headers=headers, timeout=60.0, **kwargs)
+        response = httpx.request(
+            method, f"{API_BASE}{path}", headers=headers, timeout=60.0, **kwargs
+        )
     except httpx.HTTPError as exc:
         raise EnableBankingError(f"Enable Banking is unreachable: {exc}")
     if response.status_code >= 400:
-        raise EnableBankingError(f"Enable Banking {method} {path} failed ({response.status_code}): {response.text}")
+        raise EnableBankingError(
+            f"Enable Banking {method} {path} failed ({response.status_code}): {response.text}"
+        )
     if not response.content:
         return {}
     return response.json()
 
 
 # ── API calls ─────────────────────────────────────────────────────────
+
 
 def list_aspsps(country: str = "FR") -> list[dict]:
     return _request("GET", "/aspsps", params={"country": country}).get("aspsps", [])
@@ -155,19 +162,27 @@ def _consent_valid_until(aspsp_name: str, country: str) -> datetime:
         # The catalogue is only an optimisation here — if it's unavailable,
         # fall back to the default and let /auth reject it if it must.
         pass
-    return datetime.now(timezone.utc) + requested
+    return datetime.now(UTC) + requested
 
 
-def start_authorization(aspsp_name: str, country: str, state: str, redirect_url: str, language: str = "fr") -> dict:
+def start_authorization(
+    aspsp_name: str, country: str, state: str, redirect_url: str, language: str = "fr"
+) -> dict:
     valid_until = _consent_valid_until(aspsp_name, country)
-    return _request("POST", "/auth", json={
-        "access": {"valid_until": valid_until.replace(microsecond=0).isoformat().replace("+00:00", "Z")},
-        "aspsp": {"name": aspsp_name, "country": country},
-        "state": state,
-        "redirect_url": redirect_url,
-        "psu_type": "personal",
-        "language": language,
-    })
+    return _request(
+        "POST",
+        "/auth",
+        json={
+            "access": {
+                "valid_until": valid_until.replace(microsecond=0).isoformat().replace("+00:00", "Z")
+            },
+            "aspsp": {"name": aspsp_name, "country": country},
+            "state": state,
+            "redirect_url": redirect_url,
+            "psu_type": "personal",
+            "language": language,
+        },
+    )
 
 
 def create_session(code: str) -> dict:
@@ -212,7 +227,10 @@ def fetch_transactions(account_uid: str, date_from: date, date_to: date) -> list
 
 # ── Sync ──────────────────────────────────────────────────────────────
 
-def _legacy_duplicate_counts(db: Session, account_id: int, date_from: date, date_to: date) -> dict[tuple[date, float], int]:
+
+def _legacy_duplicate_counts(
+    db: Session, account_id: int, date_from: date, date_to: date
+) -> dict[tuple[date, float], int]:
     """How many pre-existing rows in the window carry no external_id, per
     (date, amount).
 
@@ -226,8 +244,7 @@ def _legacy_duplicate_counts(db: Session, account_id: int, date_from: date, date
     """
     counts: dict[tuple[date, float], int] = {}
     rows = db.execute(
-        select(Transaction.date, Transaction.amount)
-        .where(
+        select(Transaction.date, Transaction.amount).where(
             Transaction.account_id == account_id,
             Transaction.external_id.is_(None),
             # A checkpoint is the account's value, not something the bank
@@ -245,7 +262,7 @@ def _legacy_duplicate_counts(db: Session, account_id: int, date_from: date, date
 
 def sync_window(link: BankAccountLink, today: date | None = None) -> tuple[date, date]:
     """The date range one run of this link should ask the bank for."""
-    today = today or datetime.now(timezone.utc).date()
+    today = today or datetime.now(UTC).date()
     if link.last_synced_at is not None and link.last_sync_status == "success":
         start = link.last_synced_at.date() - timedelta(days=SYNC_OVERLAP_DAYS)
     elif link.sync_from_date is not None:
@@ -264,26 +281,34 @@ def is_sync_due(link: BankAccountLink, now: datetime | None = None) -> bool:
         return False
     if link.last_synced_at is None:
         return True
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     last = link.last_synced_at
     if last.tzinfo is None:
-        last = last.replace(tzinfo=timezone.utc)
+        last = last.replace(tzinfo=UTC)
     return now - last >= timedelta(hours=MIN_SYNC_INTERVAL_HOURS)
 
 
 @audit.batched
-def import_transactions(db: Session, link: BankAccountLink, rows: list[dict], date_from: date, date_to: date) -> int:
+def import_transactions(
+    db: Session, link: BankAccountLink, rows: list[dict], date_from: date, date_to: date
+) -> int:
     """Insert the rows this account hasn't already got, resolving each one's
     split through the normal cascade. Commits once, at the end — the row cap
     in fetch/normalize is what keeps that single transaction short."""
-    existing_external_ids = set(db.scalars(
-        select(Transaction.external_id)
-        .where(Transaction.account_id == link.account_id, Transaction.external_id.isnot(None))
-    ).all())
+    existing_external_ids = set(
+        db.scalars(
+            select(Transaction.external_id).where(
+                Transaction.account_id == link.account_id, Transaction.external_id.isnot(None)
+            )
+        ).all()
+    )
     # Widened by the overlap: the window is asked of the bank by booking date,
     # and a row's own date (when it was made) can fall a few days before it.
     legacy_counts = _legacy_duplicate_counts(
-        db, link.account_id, date_from - timedelta(days=SYNC_OVERLAP_DAYS), date_to,
+        db,
+        link.account_id,
+        date_from - timedelta(days=SYNC_OVERLAP_DAYS),
+        date_to,
     )
 
     source, weights = split_engine.resolve_default_weights(db, None, link.account_id)
@@ -327,8 +352,14 @@ def import_transactions(db: Session, link: BankAccountLink, rows: list[dict], da
         db.add(transaction)
         db.flush()
         split_engine.apply_split(db, transaction, weights, source or "custom")
-        record_transaction_history(db, transaction, "created", None, source="bank_sync",
-                                   changes=splits_created_changes(weights, source or "custom"))
+        record_transaction_history(
+            db,
+            transaction,
+            "created",
+            None,
+            source="bank_sync",
+            changes=splits_created_changes(weights, source or "custom"),
+        )
         existing_external_ids.add(row["external_id"])
         imported.append(transaction)
         created += 1
@@ -360,7 +391,7 @@ def sync_link(db: Session, link: BankAccountLink) -> int:
     banks cut account endpoints off at 4 calls a day, so retrying a broken
     link every minute would burn the day's quota for nothing.
     """
-    started_at = datetime.now(timezone.utc)
+    started_at = datetime.now(UTC)
     link.last_synced_at = started_at
     db.commit()
     try:
@@ -404,10 +435,12 @@ def run_due_syncs(db: Session) -> tuple[int, int]:
     """Sync every link that's due. Returns (links synced, transactions
     created). Each link commits on its own, so one bank being down can't
     strand another's work in an open transaction."""
-    links = db.scalars(select(BankAccountLink).where(
-        BankAccountLink.sync_enabled.is_(True),
-        BankAccountLink.account_id.isnot(None),
-    )).all()
+    links = db.scalars(
+        select(BankAccountLink).where(
+            BankAccountLink.sync_enabled.is_(True),
+            BankAccountLink.account_id.isnot(None),
+        )
+    ).all()
     synced = 0
     created = 0
     for link in links:
@@ -420,11 +453,16 @@ def run_due_syncs(db: Session) -> tuple[int, int]:
 
 # ── Connections ───────────────────────────────────────────────────────
 
+
 def redirect_url() -> str:
-    return os.environ.get("ENABLE_BANKING_REDIRECT_URL", "http://localhost:8000/api/bank-sync/callback")
+    return os.environ.get(
+        "ENABLE_BANKING_REDIRECT_URL", "http://localhost:8000/api/bank-sync/callback"
+    )
 
 
-def create_connection(db: Session, aspsp_name: str, country: str, language: str = "fr") -> tuple[BankConnection, str]:
+def create_connection(
+    db: Session, aspsp_name: str, country: str, language: str = "fr"
+) -> tuple[BankConnection, str]:
     """Registers a pending connection and returns the consent URL to send the
     browser to. The row exists before the redirect so the callback has
     something to match its `state` against."""
@@ -438,7 +476,9 @@ def create_connection(db: Session, aspsp_name: str, country: str, language: str 
     db.commit()
     db.refresh(connection)
     try:
-        result = start_authorization(aspsp_name, country, connection.state, redirect_url(), language)
+        result = start_authorization(
+            aspsp_name, country, connection.state, redirect_url(), language
+        )
     except EnableBankingError:
         db.delete(connection)
         db.commit()
@@ -452,7 +492,11 @@ def _parse_valid_until(value: str | None) -> datetime | None:
     if not value:
         return None
     try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc).replace(tzinfo=None)
+        return (
+            datetime.fromisoformat(value.replace("Z", "+00:00"))
+            .astimezone(UTC)
+            .replace(tzinfo=None)
+        )
     except ValueError:
         return None
 

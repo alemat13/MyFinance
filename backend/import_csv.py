@@ -15,7 +15,12 @@ import transaction_rules
 from import_qif import QIF_DELIMITER, is_qif, qif_to_csv_text
 from models import Account, Category, Transaction
 from rules import RuleViolation
-from schemas import ImportDetectResponse, ImportPreviewRequest, ImportPreviewRow, ImportPreviewSplitShare
+from schemas import (
+    ImportDetectResponse,
+    ImportPreviewRequest,
+    ImportPreviewRow,
+    ImportPreviewSplitShare,
+)
 from split_engine import prorate, resolve_default_weights
 
 _ENCODINGS = ["utf-8-sig", "utf-8", "cp1252", "latin-1"]
@@ -114,7 +119,9 @@ def detect_import_settings(raw: bytes) -> ImportDetectResponse:
 
     decimal_separator = "."
     if mapping.get("amount"):
-        decimal_separator = detect_decimal_separator([r.get(mapping["amount"], "") for r in sample_rows])
+        decimal_separator = detect_decimal_separator(
+            [r.get(mapping["amount"], "") for r in sample_rows]
+        )
 
     return ImportDetectResponse(
         headers=headers,
@@ -141,7 +148,9 @@ def _parse_amount(raw: str, decimal_separator: str) -> float:
     return float(cleaned)
 
 
-def _resolve_account(raw_row: dict, data: ImportPreviewRequest, accounts_by_name: dict) -> tuple[int, str | None, bool]:
+def _resolve_account(
+    raw_row: dict, data: ImportPreviewRequest, accounts_by_name: dict
+) -> tuple[int, str | None, bool]:
     if data.account_col:
         raw_value = (raw_row.get(data.account_col) or "").strip()
         if raw_value:
@@ -192,18 +201,30 @@ def preview_import(db: Session, raw: bytes, data: ImportPreviewRequest) -> list[
 
     rows: list[ImportPreviewRow] = []
     for i, raw_row in enumerate(raw_rows, start=1):
-        account_id, account_name, account_matched = _resolve_account(raw_row, data, accounts_by_name)
+        account_id, account_name, account_matched = _resolve_account(
+            raw_row, data, accounts_by_name
+        )
 
         try:
             row_date = _parse_date(raw_row[data.date_col], data.date_format)
             payee = raw_row[data.payee_col].strip()
             amount = _parse_amount(raw_row[data.amount_col], data.decimal_separator)
-            memo = raw_row[data.memo_col].strip() if data.memo_col and raw_row.get(data.memo_col) else None
+            memo = (
+                raw_row[data.memo_col].strip()
+                if data.memo_col and raw_row.get(data.memo_col)
+                else None
+            )
         except (KeyError, ValueError) as exc:
-            rows.append(ImportPreviewRow(
-                row_number=i, account_id=account_id, account_name=account_name, account_matched=account_matched,
-                status="error", error_message=str(exc),
-            ))
+            rows.append(
+                ImportPreviewRow(
+                    row_number=i,
+                    account_id=account_id,
+                    account_name=account_name,
+                    account_matched=account_matched,
+                    status="error",
+                    error_message=str(exc),
+                )
+            )
             continue
 
         category = None
@@ -232,24 +253,31 @@ def preview_import(db: Session, raw: bytes, data: ImportPreviewRequest) -> list[
             source, weights = weights_cache[weights_key]
             shares = prorate(amount, weights) if weights else []
             preview_split = [
-                ImportPreviewSplitShare(user_id=s.user_id, weight=s.weight, share_amount=s.share_amount, source=source or "custom")
+                ImportPreviewSplitShare(
+                    user_id=s.user_id,
+                    weight=s.weight,
+                    share_amount=s.share_amount,
+                    source=source or "custom",
+                )
                 for s in shares
             ]
 
-        rows.append(ImportPreviewRow(
-            row_number=i,
-            transaction_date=row_date,
-            payee=payee,
-            memo=memo,
-            amount=amount,
-            account_id=account_id,
-            account_name=account_name,
-            account_matched=account_matched,
-            category_id=category.id if category else None,
-            category_name=category.name if category else None,
-            status=status,
-            preview_split=preview_split,
-        ))
+        rows.append(
+            ImportPreviewRow(
+                row_number=i,
+                transaction_date=row_date,
+                payee=payee,
+                memo=memo,
+                amount=amount,
+                account_id=account_id,
+                account_name=account_name,
+                account_matched=account_matched,
+                category_id=category.id if category else None,
+                category_name=category.name if category else None,
+                status=status,
+                preview_split=preview_split,
+            )
+        )
 
     _attach_suggestions(db, rows)
     _attach_rules(db, rows)
@@ -274,14 +302,20 @@ def _attach_rules(db: Session, rows: list[ImportPreviewRow]) -> None:
             return
         shims = [
             auto_categorize.Candidate(
-                raw_label=r.payee, payee=r.payee, memo=r.memo, amount=r.amount,
-                account_id=r.account_id, category_id=r.category_id,
-                date=r.transaction_date, accounting_month_offset=0, reconciled=False,
+                raw_label=r.payee,
+                payee=r.payee,
+                memo=r.memo,
+                amount=r.amount,
+                account_id=r.account_id,
+                category_id=r.category_id,
+                date=r.transaction_date,
+                accounting_month_offset=0,
+                reconciled=False,
             )
             for r in candidates
         ]
         outcomes = transaction_rules.evaluate_many(db, rules, shims)
-    except Exception:  # noqa: BLE001 - the preview is worth more than the rules
+    except Exception:
         logger.exception("Could not evaluate the automatic rules on the import preview")
         return
     names = {c.id: c.name for c in db.scalars(select(Category)).all()}
@@ -326,7 +360,7 @@ def _attach_suggestions(db: Session, rows: list[ImportPreviewRow]) -> None:
             for row in scorable
         ]
         predictions = model.predict(candidates)
-    except Exception:  # noqa: BLE001 - the preview is worth more than the suggestion
+    except Exception:
         logger.exception("Could not score the import preview; showing it without suggestions")
         return
 

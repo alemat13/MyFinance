@@ -1,4 +1,5 @@
 """MYF-14: a request that changes data must carry the client's own header."""
+
 from fastapi.testclient import TestClient
 
 from main import CSRF_HEADER, app

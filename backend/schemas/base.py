@@ -1,9 +1,8 @@
 """The `Schema` base class every request/response model derives from."""
-import re
-from datetime import date, datetime
-from typing import List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from datetime import date
+
+from pydantic import BaseModel, ConfigDict
 
 
 class Schema(BaseModel):
@@ -13,6 +12,7 @@ class Schema(BaseModel):
     # `memo: string | null` rather than an optional `memo?:`. Request schemas
     # are unaffected: a defaulted field stays optional there.
     model_config = ConfigDict(json_schema_serialization_defaults_required=True)
+
 
 # Alias used where a model field is itself named `date`: pydantic v2 resolves
 # annotations using the class's own namespace, and a field named the same as

@@ -121,7 +121,7 @@ def file_rows_quietly(db: Session, transactions: list, *, actor_user_id: int | N
     """
     try:
         return file_rows(db, transactions, actor_user_id=actor_user_id)
-    except Exception:  # noqa: BLE001 - logged, and the import itself still stands
+    except Exception:
         logger.exception("Automatic categorisation failed; rows were imported uncategorised")
         return 0
 
@@ -148,6 +148,7 @@ def write_fields(db: Session, transaction, fields: dict, actor_user_id: int | No
     }
     if not changes:
         return False
-    record_transaction_history(db, transaction, "updated", actor_user_id,
-                               source=HISTORY_SOURCE, changes=changes)
+    record_transaction_history(
+        db, transaction, "updated", actor_user_id, source=HISTORY_SOURCE, changes=changes
+    )
     return True

@@ -1,0 +1,39 @@
+# Linter and formatter for the backend (MYF-34). CI runs `ruff check` and
+# `ruff format --check`; locally, `ruff check --fix . && ruff format .`.
+target-version = "py311"
+line-length = 100
+# Applied migrations are history: never rewritten, so never linted.
+extend-exclude = ["alembic/versions", "migrations"]
+
+[lint]
+# pycodestyle errors, pyflakes, import order, pyupgrade, bugbear, and the
+# few ruff-specific rules that catch real mistakes.
+select = ["E", "F", "W", "I", "UP", "B", "RUF100"]
+ignore = [
+    "E501",  # long lines: the formatter wraps code; long strings/comments stay readable
+    "B008",  # FastAPI's Depends()/Query() in argument defaults is the idiom
+    "B904",  # `raise HTTPException(...)` inside except is deliberate
+    "B905",
+    "E731",  # a one-line lambda as a local sort key reads fine
+    "E741",  # `l` for a link in a comprehension is clear enough here  # zip(strict=) would change behaviour; not worth a blanket rewrite
+]
+
+[lint.isort]
+known-first-party = [
+    "account_totals", "accounting_month", "audit", "auto_categorize", "backup",
+    "bank_transactions", "cache_service", "categorizer", "charts", "checkpoints",
+    "database", "email_alerts", "enable_banking", "filtering", "history",
+    "import_csv", "import_qif", "main", "models", "onedrive", "routers", "rules",
+    "schemas", "seed", "serializers", "split_engine", "tags", "transaction_links",
+    "transaction_rules", "uploads",
+]
+
+[lint.per-file-ignores]
+# Package __init__ files re-export their modules' names on purpose.
+"**/__init__.py" = ["F401"]
+# Its import order is the order the schema modules resolve each other's
+# forward references in: keep it as written.
+"schemas/__init__.py" = ["F401", "I001"]
+# pytest fixtures are imported from another test module and then requested
+# by name as arguments, which pyflakes reads as a redefinition.
+"tests/**" = ["F811", "UP031"]

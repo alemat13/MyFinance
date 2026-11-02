@@ -9,6 +9,7 @@ the frontend as a type error instead of a field silently missing on one side.
 
 Importing `main` builds the app without starting it, so no database is touched.
 """
+
 import json
 import sys
 from pathlib import Path

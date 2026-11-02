@@ -1,9 +1,10 @@
 """Users, accounts, categories, split weights and tags."""
+
 import re
 from datetime import date, datetime
-from typing import List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import ConfigDict, Field, field_validator
 
 from .base import Schema
 
@@ -88,11 +89,11 @@ class AccountCreate(Schema):
 
 
 class AccountUpdate(Schema):
-    name: Optional[str] = None
-    type: Optional[str] = None
-    balance: Optional[float] = None
-    currency: Optional[str] = None
-    archived: Optional[bool] = None
+    name: str | None = None
+    type: str | None = None
+    balance: float | None = None
+    currency: str | None = None
+    archived: bool | None = None
     users: list[AccountUserCreate] | None = None
 
     @field_validator("currency")
@@ -117,13 +118,61 @@ _COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
 # Keep in sync with CATEGORY_ICON_NAMES in frontend/src/utils/categoryIcons.ts.
 _VALID_CATEGORY_ICONS = {
-    "ShoppingCart", "Home", "Utensils", "Car", "Plane", "Wifi", "Tv", "Music", "Heart", "PiggyBank",
-    "Landmark", "Briefcase", "GraduationCap", "Gift", "Gamepad2", "Dumbbell", "Stethoscope",
-    "Fuel", "CreditCard", "Wallet", "Coffee", "ShoppingBag", "Dog", "Smartphone", "ArrowLeftRight",
-    "Shield", "Zap", "TrainFront", "Bus", "Mail", "Receipt", "TrendingUp", "Baby", "Sofa", "Shirt",
-    "Scissors", "Banknote", "Ticket", "Sparkles", "Laptop", "BookOpen", "Film", "Palette", "Trophy",
-    "Hammer", "Flower2", "HeartHandshake", "ParkingCircle", "Ship", "Sandwich", "Umbrella",
-    "Building2", "School", "Bike", "PartyPopper",
+    "ShoppingCart",
+    "Home",
+    "Utensils",
+    "Car",
+    "Plane",
+    "Wifi",
+    "Tv",
+    "Music",
+    "Heart",
+    "PiggyBank",
+    "Landmark",
+    "Briefcase",
+    "GraduationCap",
+    "Gift",
+    "Gamepad2",
+    "Dumbbell",
+    "Stethoscope",
+    "Fuel",
+    "CreditCard",
+    "Wallet",
+    "Coffee",
+    "ShoppingBag",
+    "Dog",
+    "Smartphone",
+    "ArrowLeftRight",
+    "Shield",
+    "Zap",
+    "TrainFront",
+    "Bus",
+    "Mail",
+    "Receipt",
+    "TrendingUp",
+    "Baby",
+    "Sofa",
+    "Shirt",
+    "Scissors",
+    "Banknote",
+    "Ticket",
+    "Sparkles",
+    "Laptop",
+    "BookOpen",
+    "Film",
+    "Palette",
+    "Trophy",
+    "Hammer",
+    "Flower2",
+    "HeartHandshake",
+    "ParkingCircle",
+    "Ship",
+    "Sandwich",
+    "Umbrella",
+    "Building2",
+    "School",
+    "Bike",
+    "PartyPopper",
 }
 
 
@@ -188,10 +237,10 @@ class CategoryCreate(Schema):
 
 
 class CategoryUpdate(Schema):
-    name: Optional[str] = None
-    type: Optional[CategoryType] = None
-    color: Optional[str] = None
-    icon: Optional[str] = None
+    name: str | None = None
+    type: CategoryType | None = None
+    color: str | None = None
+    icon: str | None = None
     parent_id: int | None = None
     splits: list[CategorySplitCreate] | None = None
 
@@ -241,21 +290,23 @@ class UserBalanceOut(Schema):
 
 class TagRef(Schema):
     """A tag as a transaction carries it."""
+
     model_config = ConfigDict(from_attributes=True)
 
     id: int
     name: str
-    color: Optional[str] = None
+    color: str | None = None
 
 
 class TagOut(TagRef):
     """A tag as the tag list shows it, with how many transactions carry it."""
+
     transaction_count: int = 0
 
 
 class TagCreate(Schema):
     name: str = Field(..., min_length=1, max_length=50)
-    color: Optional[str] = None
+    color: str | None = None
 
     @field_validator("name")
     @classmethod
@@ -280,4 +331,5 @@ class TagCreate(Schema):
 
 class TagUpdate(TagCreate):
     """Rename or recolour; omitted fields stay (exclude_unset)."""
-    name: Optional[str] = Field(None, min_length=1, max_length=50)
+
+    name: str | None = Field(None, min_length=1, max_length=50)

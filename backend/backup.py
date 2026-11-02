@@ -1,7 +1,7 @@
 import io
 import json
 import zipfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Literal
 
 from pydantic import ValidationError
@@ -12,18 +12,48 @@ import account_totals
 import cache_service
 from database import Base
 from models import (
-    Account, Category, Transaction, User, AccountUser,
-    CategorySplit, GlobalSplitWeight, AccountSplitWeight, TransactionSplit, TransactionHistory,
-    BankConnection, BankAccountLink, CategorizerModel, OneDriveBackupSettings, TransactionRule,
-    SavedFilter, EmailAlert, Tag, TransactionTag, TransactionLink,
+    Account,
+    AccountSplitWeight,
+    AccountUser,
+    BankAccountLink,
+    BankConnection,
+    CategorizerModel,
+    Category,
+    CategorySplit,
+    EmailAlert,
+    GlobalSplitWeight,
+    OneDriveBackupSettings,
+    SavedFilter,
+    Tag,
+    Transaction,
+    TransactionHistory,
+    TransactionLink,
+    TransactionRule,
+    TransactionSplit,
+    TransactionTag,
+    User,
 )
 from schemas import (
-    DatabaseExport, ImportSummary,
-    UserExport, AccountExport, CategoryExport, AccountUserExport,
-    CategorySplitExport, GlobalSplitWeightExport, AccountSplitWeightExport, TransactionExport,
-    TransactionSplitExport, TransactionHistoryExport,
-    BankConnectionExport, BankAccountLinkExport, TransactionRuleExport,
-    SavedFilterExport, EmailAlertExport, TagExport, TransactionTagExport, TransactionLinkExport,
+    AccountExport,
+    AccountSplitWeightExport,
+    AccountUserExport,
+    BankAccountLinkExport,
+    BankConnectionExport,
+    CategoryExport,
+    CategorySplitExport,
+    DatabaseExport,
+    EmailAlertExport,
+    GlobalSplitWeightExport,
+    ImportSummary,
+    SavedFilterExport,
+    TagExport,
+    TransactionExport,
+    TransactionHistoryExport,
+    TransactionLinkExport,
+    TransactionRuleExport,
+    TransactionSplitExport,
+    TransactionTagExport,
+    UserExport,
 )
 
 SCHEMA_VERSION = 1
@@ -32,9 +62,17 @@ ZIP_ENTRY_NAME = "backup.json"
 # Tables with a single-column integer PK whose Postgres sequence needs
 # resyncing after an import inserts explicit id values.
 _SERIAL_PK_TABLES = [
-    "users", "accounts", "categories", "transactions", "transaction_history",
-    "bank_connections", "bank_account_links", "transaction_rules",
-    "saved_filters", "tags", "transaction_links",
+    "users",
+    "accounts",
+    "categories",
+    "transactions",
+    "transaction_history",
+    "bank_connections",
+    "bank_account_links",
+    "transaction_rules",
+    "saved_filters",
+    "tags",
+    "transaction_links",
 ]
 
 # Survive an overwrite restore untouched, and are never in an archive. The
@@ -75,25 +113,61 @@ def _export_accounts(db: Session) -> list[AccountExport]:
 def build_export(db: Session) -> DatabaseExport:
     return DatabaseExport(
         schema_version=SCHEMA_VERSION,
-        exported_at=datetime.now(timezone.utc),
+        exported_at=datetime.now(UTC),
         users=[UserExport.model_validate(u) for u in db.scalars(select(User)).all()],
         accounts=_export_accounts(db),
         categories=[CategoryExport.model_validate(c) for c in db.scalars(select(Category)).all()],
-        account_users=[AccountUserExport.model_validate(au) for au in db.scalars(select(AccountUser)).all()],
-        category_splits=[CategorySplitExport.model_validate(cs) for cs in db.scalars(select(CategorySplit)).all()],
-        global_split_weights=[GlobalSplitWeightExport.model_validate(w) for w in db.scalars(select(GlobalSplitWeight)).all()],
-        account_split_weights=[AccountSplitWeightExport.model_validate(w) for w in db.scalars(select(AccountSplitWeight)).all()],
-        transactions=[TransactionExport.model_validate(t) for t in db.scalars(select(Transaction)).all()],
-        transaction_splits=[TransactionSplitExport.model_validate(s) for s in db.scalars(select(TransactionSplit)).all()],
-        transaction_history=[TransactionHistoryExport.model_validate(h) for h in db.scalars(select(TransactionHistory)).all()],
-        bank_connections=[BankConnectionExport.model_validate(c) for c in db.scalars(select(BankConnection)).all()],
-        bank_account_links=[BankAccountLinkExport.model_validate(l) for l in db.scalars(select(BankAccountLink)).all()],
-        transaction_rules=[TransactionRuleExport.model_validate(r) for r in db.scalars(select(TransactionRule)).all()],
-        saved_filters=[SavedFilterExport.model_validate(f) for f in db.scalars(select(SavedFilter)).all()],
-        email_alerts=[EmailAlertExport.model_validate(a) for a in db.scalars(select(EmailAlert)).all()],
+        account_users=[
+            AccountUserExport.model_validate(au) for au in db.scalars(select(AccountUser)).all()
+        ],
+        category_splits=[
+            CategorySplitExport.model_validate(cs) for cs in db.scalars(select(CategorySplit)).all()
+        ],
+        global_split_weights=[
+            GlobalSplitWeightExport.model_validate(w)
+            for w in db.scalars(select(GlobalSplitWeight)).all()
+        ],
+        account_split_weights=[
+            AccountSplitWeightExport.model_validate(w)
+            for w in db.scalars(select(AccountSplitWeight)).all()
+        ],
+        transactions=[
+            TransactionExport.model_validate(t) for t in db.scalars(select(Transaction)).all()
+        ],
+        transaction_splits=[
+            TransactionSplitExport.model_validate(s)
+            for s in db.scalars(select(TransactionSplit)).all()
+        ],
+        transaction_history=[
+            TransactionHistoryExport.model_validate(h)
+            for h in db.scalars(select(TransactionHistory)).all()
+        ],
+        bank_connections=[
+            BankConnectionExport.model_validate(c) for c in db.scalars(select(BankConnection)).all()
+        ],
+        bank_account_links=[
+            BankAccountLinkExport.model_validate(l)
+            for l in db.scalars(select(BankAccountLink)).all()
+        ],
+        transaction_rules=[
+            TransactionRuleExport.model_validate(r)
+            for r in db.scalars(select(TransactionRule)).all()
+        ],
+        saved_filters=[
+            SavedFilterExport.model_validate(f) for f in db.scalars(select(SavedFilter)).all()
+        ],
+        email_alerts=[
+            EmailAlertExport.model_validate(a) for a in db.scalars(select(EmailAlert)).all()
+        ],
         tags=[TagExport.model_validate(t) for t in db.scalars(select(Tag)).all()],
-        transaction_tags=[TransactionTagExport.model_validate(tt) for tt in db.scalars(select(TransactionTag)).all()],
-        transaction_links=[TransactionLinkExport.model_validate(l) for l in db.scalars(select(TransactionLink)).all()],
+        transaction_tags=[
+            TransactionTagExport.model_validate(tt)
+            for tt in db.scalars(select(TransactionTag)).all()
+        ],
+        transaction_links=[
+            TransactionLinkExport.model_validate(l)
+            for l in db.scalars(select(TransactionLink)).all()
+        ],
     )
 
 
@@ -197,14 +271,18 @@ def _validate_referential_integrity(data: DatabaseExport) -> None:
 def _reset_postgres_sequences(bind) -> None:
     with bind.connect() as conn:
         for table in _SERIAL_PK_TABLES:
-            conn.execute(text(
-                f"SELECT setval(pg_get_serial_sequence('{table}', 'id'), "
-                f"COALESCE((SELECT MAX(id) FROM {table}), 1))"
-            ))
+            conn.execute(
+                text(
+                    f"SELECT setval(pg_get_serial_sequence('{table}', 'id'), "
+                    f"COALESCE((SELECT MAX(id) FROM {table}), 1))"
+                )
+            )
         conn.commit()
 
 
-def import_database(db: Session, data: DatabaseExport, mode: Literal["overwrite", "partial"]) -> ImportSummary:
+def import_database(
+    db: Session, data: DatabaseExport, mode: Literal["overwrite", "partial"]
+) -> ImportSummary:
     if mode == "partial":
         return import_partial(db, data)
 
@@ -250,7 +328,9 @@ def import_database(db: Session, data: DatabaseExport, mode: Literal["overwrite"
         # Before the transactions, which name them. An archive from before
         # links (None) restores with none.
         transaction_links = data.transaction_links or []
-        session.add_all(TransactionLink(**l.model_dump(exclude_none=True)) for l in transaction_links)
+        session.add_all(
+            TransactionLink(**l.model_dump(exclude_none=True)) for l in transaction_links
+        )
         session.flush()
 
         # Restoring an already-valid snapshot, not fresh user input, so this
@@ -341,8 +421,14 @@ def import_partial(db: Session, data: DatabaseExport) -> ImportSummary:
     existing_account_ids = set(db.scalars(select(Account.id)).all())
     existing_category_ids = set(db.scalars(select(Category.id)).all())
     existing_user_ids = set(db.scalars(select(User.id)).all())
-    existing_category_by_name = {name: cid for cid, name in db.execute(select(Category.id, Category.name)).all()}
-    reused_categories = {c.id: existing_category_by_name[c.name] for c in data.categories if c.name in existing_category_by_name}
+    existing_category_by_name = {
+        name: cid for cid, name in db.execute(select(Category.id, Category.name)).all()
+    }
+    reused_categories = {
+        c.id: existing_category_by_name[c.name]
+        for c in data.categories
+        if c.name in existing_category_by_name
+    }
     archive_account_ids = {a.id for a in data.accounts}
     archive_category_ids = {c.id for c in data.categories}
     archive_transaction_ids = {t.id for t in data.transactions}
@@ -355,15 +441,26 @@ def import_partial(db: Session, data: DatabaseExport) -> ImportSummary:
 
     def _user_exists(label: str, value: int) -> None:
         if value not in existing_user_ids:
-            raise BackupFormatError(f"{label} {value} is not an existing user; nothing was restored")
+            raise BackupFormatError(
+                f"{label} {value} is not an existing user; nothing was restored"
+            )
 
     for c in data.categories:
         if c.parent_id is not None:
-            _resolves("categories.parent_id", c.parent_id, archive_category_ids, existing_category_ids)
+            _resolves(
+                "categories.parent_id", c.parent_id, archive_category_ids, existing_category_ids
+            )
     for t in data.transactions:
-        _resolves("transactions.account_id", t.account_id, archive_account_ids, existing_account_ids)
+        _resolves(
+            "transactions.account_id", t.account_id, archive_account_ids, existing_account_ids
+        )
         if t.category_id is not None:
-            _resolves("transactions.category_id", t.category_id, archive_category_ids, existing_category_ids)
+            _resolves(
+                "transactions.category_id",
+                t.category_id,
+                archive_category_ids,
+                existing_category_ids,
+            )
     for s in data.transaction_splits:
         if s.transaction_id not in archive_transaction_ids:
             raise BackupFormatError(
@@ -372,9 +469,12 @@ def import_partial(db: Session, data: DatabaseExport) -> ImportSummary:
             )
         _user_exists("transaction_splits.user_id", s.user_id)
     account_users = [au for au in data.account_users if au.account_id in archive_account_ids]
-    account_split_weights = [w for w in data.account_split_weights if w.account_id in archive_account_ids]
+    account_split_weights = [
+        w for w in data.account_split_weights if w.account_id in archive_account_ids
+    ]
     category_splits = [
-        cs for cs in data.category_splits
+        cs
+        for cs in data.category_splits
         if cs.category_id in archive_category_ids and cs.category_id not in reused_categories
     ]
     for au in account_users:
@@ -388,7 +488,8 @@ def import_partial(db: Session, data: DatabaseExport) -> ImportSummary:
     # tag that already exists here is reused, the others are created.
     archive_tag_ids = {t.id for t in data.tags or []}
     transaction_tags = [
-        tt for tt in data.transaction_tags or []
+        tt
+        for tt in data.transaction_tags or []
         if tt.transaction_id in archive_transaction_ids and tt.tag_id in archive_tag_ids
     ]
 
@@ -396,16 +497,18 @@ def import_partial(db: Session, data: DatabaseExport) -> ImportSummary:
     # (account_id, external_id) would reject a restored row whose bank id an
     # existing account already holds, so say which up front.
     restored_external = {
-        (t.account_id, t.external_id) for t in data.transactions
+        (t.account_id, t.external_id)
+        for t in data.transactions
         if t.external_id is not None and t.account_id not in archive_account_ids
     }
     if restored_external:
         clash_accounts = {account_id for account_id, _ in restored_external}
         existing_external = {
-            (account_id, external_id) for account_id, external_id in
-            db.execute(
-                select(Transaction.account_id, Transaction.external_id)
-                .where(Transaction.account_id.in_(clash_accounts), Transaction.external_id.isnot(None))
+            (account_id, external_id)
+            for account_id, external_id in db.execute(
+                select(Transaction.account_id, Transaction.external_id).where(
+                    Transaction.account_id.in_(clash_accounts), Transaction.external_id.isnot(None)
+                )
             ).all()
         }
         clashes = sorted(restored_external & existing_external)
@@ -442,7 +545,9 @@ def import_partial(db: Session, data: DatabaseExport) -> ImportSummary:
         for c in sorted(data.categories, key=lambda c: c.parent_id in archive_category_ids):
             if c.id in reused_categories:
                 continue
-            category = Category(**c.model_dump(exclude={"id", "parent_id"}), parent_id=_category(c.parent_id))
+            category = Category(
+                **c.model_dump(exclude={"id", "parent_id"}), parent_id=_category(c.parent_id)
+            )
             db.add(category)
             db.flush()
             category_map[c.id] = category.id
@@ -452,11 +557,15 @@ def import_partial(db: Session, data: DatabaseExport) -> ImportSummary:
             for au in account_users
         )
         db.add_all(
-            AccountSplitWeight(**w.model_dump(exclude={"account_id"}), account_id=_account(w.account_id))
+            AccountSplitWeight(
+                **w.model_dump(exclude={"account_id"}), account_id=_account(w.account_id)
+            )
             for w in account_split_weights
         )
         db.add_all(
-            CategorySplit(**cs.model_dump(exclude={"category_id"}), category_id=_category(cs.category_id))
+            CategorySplit(
+                **cs.model_dump(exclude={"category_id"}), category_id=_category(cs.category_id)
+            )
             for cs in category_splits
         )
 
@@ -464,7 +573,9 @@ def import_partial(db: Session, data: DatabaseExport) -> ImportSummary:
         # archive can carry the whole ledger.
         new_transactions = [
             Transaction(
-                **t.model_dump(exclude={"id", "account_id", "category_id", "divide_group_id", "link_id"}),
+                **t.model_dump(
+                    exclude={"id", "account_id", "category_id", "divide_group_id", "link_id"}
+                ),
                 account_id=_account(t.account_id),
                 category_id=_category(t.category_id),
             )
@@ -489,7 +600,9 @@ def import_partial(db: Session, data: DatabaseExport) -> ImportSummary:
         for old_link_id, members in sorted(members_by_link.items()):
             if len(members) < 2:
                 continue
-            group = TransactionLink(**archive_links[old_link_id].model_dump(exclude={"id"}, exclude_none=True))
+            group = TransactionLink(
+                **archive_links[old_link_id].model_dump(exclude={"id"}, exclude_none=True)
+            )
             db.add(group)
             db.flush()
             for new in members:
@@ -497,7 +610,10 @@ def import_partial(db: Session, data: DatabaseExport) -> ImportSummary:
             created_links += 1
 
         db.add_all(
-            TransactionSplit(**s.model_dump(exclude={"transaction_id"}), transaction_id=transaction_map[s.transaction_id])
+            TransactionSplit(
+                **s.model_dump(exclude={"transaction_id"}),
+                transaction_id=transaction_map[s.transaction_id],
+            )
             for s in data.transaction_splits
         )
         existing_tags = {t.name.lower(): t for t in db.scalars(select(Tag)).all()}
@@ -512,18 +628,30 @@ def import_partial(db: Session, data: DatabaseExport) -> ImportSummary:
                 existing_tags[t.name.lower()] = tag
                 created_tags += 1
             tag_map[t.id] = tag.id
-        pairs = {(transaction_map[tt.transaction_id], tag_map[tt.tag_id]) for tt in transaction_tags}
+        pairs = {
+            (transaction_map[tt.transaction_id], tag_map[tt.tag_id]) for tt in transaction_tags
+        }
         db.add_all(TransactionTag(transaction_id=tid, tag_id=gid) for tid, gid in sorted(pairs))
         # History snapshots point at the restored rows' new ids; an account or
         # category id the archive doesn't recreate is kept as it was, like the
         # transactions themselves.
         db.add_all(
             TransactionHistory(
-                **h.model_dump(exclude={"id", "transaction_id", "account_id", "category_id", "changed_by_user_id"}),
+                **h.model_dump(
+                    exclude={
+                        "id",
+                        "transaction_id",
+                        "account_id",
+                        "category_id",
+                        "changed_by_user_id",
+                    }
+                ),
                 transaction_id=transaction_map[h.transaction_id],
                 account_id=None if h.account_id is None else _account(h.account_id),
                 category_id=_category(h.category_id),
-                changed_by_user_id=h.changed_by_user_id if h.changed_by_user_id in existing_user_ids else None,
+                changed_by_user_id=h.changed_by_user_id
+                if h.changed_by_user_id in existing_user_ids
+                else None,
             )
             for h in history
         )

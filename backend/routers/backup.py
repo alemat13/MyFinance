@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Literal
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile
@@ -15,7 +15,7 @@ router = APIRouter(prefix="/api/backup")
 @router.get("/export")
 def export_backup(db: Session = Depends(get_db)):
     zip_bytes = backup_module.export_to_zip_bytes(db)
-    filename = f"myfinance-backup-{datetime.now(timezone.utc):%Y%m%d-%H%M%S}.zip"
+    filename = f"myfinance-backup-{datetime.now(UTC):%Y%m%d-%H%M%S}.zip"
     return Response(
         content=zip_bytes,
         media_type="application/zip",

@@ -15,11 +15,13 @@ router = APIRouter(prefix="/api/categories")
 def _sync_category_splits(db: Session, category: Category, splits: list[CategorySplitCreate]):
     db.execute(delete(CategorySplit).where(CategorySplit.category_id == category.id))
     for s in splits:
-        db.add(CategorySplit(
-            category_id=category.id,
-            user_id=s.user_id,
-            weight=s.weight,
-        ))
+        db.add(
+            CategorySplit(
+                category_id=category.id,
+                user_id=s.user_id,
+                weight=s.weight,
+            )
+        )
 
 
 def _usage_counts(db: Session) -> dict[int, int]:
@@ -31,6 +33,7 @@ def _usage_counts(db: Session) -> dict[int, int]:
     a subcategory under another parent needs no invalidation: the roll-up is
     redone from the current hierarchy on every read.
     """
+
     def compute():
         rows = db.execute(
             select(Transaction.category_id, func.count(Transaction.id))
@@ -63,16 +66,20 @@ def order_by_usage(categories: list[Category], counts: dict[int, int]) -> list[C
         ordered.append(p)
         ordered.extend(sorted(children.get(p.id, []), key=lambda ch: (-own(ch), name(ch))))
     # A subcategory whose parent is missing cannot happen (FK), but never drop a row.
-    ordered.extend(c for c in categories if c.parent_id is not None and c.parent_id not in parent_ids)
+    ordered.extend(
+        c for c in categories if c.parent_id is not None and c.parent_id not in parent_ids
+    )
     return ordered
 
 
 @router.get("", response_model=list[CategoryOut])
 def get_categories(db: Session = Depends(get_db)):
-    categories = db.scalars(select(Category).options(
-        joinedload(Category.parent),
-        selectinload(Category.splits).joinedload(CategorySplit.user),
-    )).all()
+    categories = db.scalars(
+        select(Category).options(
+            joinedload(Category.parent),
+            selectinload(Category.splits).joinedload(CategorySplit.user),
+        )
+    ).all()
     return [build_category_out(c) for c in order_by_usage(categories, _usage_counts(db))]
 
 
@@ -80,7 +87,9 @@ def get_categories(db: Session = Depends(get_db)):
 def create_category(data: CategoryCreate, db: Session = Depends(get_db)):
     validate_weights(data.splits)
     validate_category_hierarchy(db, None, data.parent_id, data.type)
-    category = Category(name=data.name, type=data.type, color=data.color, icon=data.icon, parent_id=data.parent_id)
+    category = Category(
+        name=data.name, type=data.type, color=data.color, icon=data.icon, parent_id=data.parent_id
+    )
     db.add(category)
     db.flush()
     _sync_category_splits(db, category, data.splits)

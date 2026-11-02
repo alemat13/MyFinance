@@ -204,7 +204,7 @@ async function parseErrorMessage(res: Response): Promise<string> {
     if (typeof detail === 'string') return detail
     if (Array.isArray(detail)) {
       return detail
-        .map((e: any) => {
+        .map((e: { loc?: unknown; msg?: string } | null) => {
           const loc = Array.isArray(e?.loc)
             ? e.loc.filter((p: unknown) => p !== 'body' && p !== 'query' && p !== 'path').join('.')
             : 'value'

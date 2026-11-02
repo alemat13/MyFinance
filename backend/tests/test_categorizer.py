@@ -2,11 +2,9 @@ from datetime import date, datetime, timedelta
 
 import pytest
 
-from database import utcnow
-
 import categorizer
-from models import Category, CategorizerModel, Transaction, TransactionHistory
-
+from database import utcnow
+from models import CategorizerModel, Category, Transaction, TransactionHistory
 
 # Two merchants with distinct wording and distinct categories, repeated often
 # enough that a linear model has something to fit. Dates are split either side
@@ -43,15 +41,39 @@ def history(db, sample_account, categories):
     """60 training rows and 10 test rows over two unmistakable merchants."""
     groceries, transport = categories
     for i in range(30):
-        _add(db, sample_account.id, f"CARTE 0{i % 9 + 1}/03 SUPERMARCHE DU COIN", groceries.id,
-             date(2026, 3, i % 28 + 1), payee="SUPERMARCHE DU COIN")
-        _add(db, sample_account.id, f"CARTE 0{i % 9 + 1}/04 METRO TICKET BUREAU", transport.id,
-             date(2026, 4, i % 28 + 1), payee="METRO TICKET BUREAU")
+        _add(
+            db,
+            sample_account.id,
+            f"CARTE 0{i % 9 + 1}/03 SUPERMARCHE DU COIN",
+            groceries.id,
+            date(2026, 3, i % 28 + 1),
+            payee="SUPERMARCHE DU COIN",
+        )
+        _add(
+            db,
+            sample_account.id,
+            f"CARTE 0{i % 9 + 1}/04 METRO TICKET BUREAU",
+            transport.id,
+            date(2026, 4, i % 28 + 1),
+            payee="METRO TICKET BUREAU",
+        )
     for i in range(5):
-        _add(db, sample_account.id, f"CARTE 1{i}/07 SUPERMARCHE DU COIN", groceries.id,
-             date(2026, 7, i + 1), payee="SUPERMARCHE DU COIN")
-        _add(db, sample_account.id, f"CARTE 1{i}/07 METRO TICKET BUREAU", transport.id,
-             date(2026, 7, i + 1), payee="METRO TICKET BUREAU")
+        _add(
+            db,
+            sample_account.id,
+            f"CARTE 1{i}/07 SUPERMARCHE DU COIN",
+            groceries.id,
+            date(2026, 7, i + 1),
+            payee="SUPERMARCHE DU COIN",
+        )
+        _add(
+            db,
+            sample_account.id,
+            f"CARTE 1{i}/07 METRO TICKET BUREAU",
+            transport.id,
+            date(2026, 7, i + 1),
+            payee="METRO TICKET BUREAU",
+        )
     db.commit()
     return groceries, transport
 
@@ -67,26 +89,39 @@ def _train_body(**overrides):
 
 # ── the engine itself ────────────────────────────────────────────
 
+
 def test_label_text_prefers_the_raw_label_and_falls_back_to_payee(db, sample_account):
-    with_raw = Transaction(date=date(2026, 1, 1), payee="Renamed", amount=-1.0,
-                           account_id=sample_account.id, raw_label="CARTE 01/01 SHOP")
-    without = Transaction(date=date(2026, 1, 1), payee="Renamed", amount=-1.0,
-                          account_id=sample_account.id)
+    with_raw = Transaction(
+        date=date(2026, 1, 1),
+        payee="Renamed",
+        amount=-1.0,
+        account_id=sample_account.id,
+        raw_label="CARTE 01/01 SHOP",
+    )
+    without = Transaction(
+        date=date(2026, 1, 1), payee="Renamed", amount=-1.0, account_id=sample_account.id
+    )
     assert categorizer.label_text(with_raw) == "CARTE 01/01 SHOP"
     assert categorizer.label_text(without) == "Renamed"
 
 
 def test_merchant_key_ignores_dates_and_reference_numbers():
-    assert (categorizer.merchant_key("CARTE 06/10/26 DECATHLON 1375 CB*4325")
-            == categorizer.merchant_key("CARTE 11/02 DECATHLON 1375 CB*9999"))
+    assert categorizer.merchant_key(
+        "CARTE 06/10/26 DECATHLON 1375 CB*4325"
+    ) == categorizer.merchant_key("CARTE 11/02 DECATHLON 1375 CB*9999")
 
 
 def test_trainable_drops_rows_with_no_category_or_no_text(db, sample_account, categories):
     groceries, _ = categories
     good = _add(db, sample_account.id, "CARTE 01/01 SHOP", groceries.id, date(2026, 1, 1))
     no_category = _add(db, sample_account.id, "CARTE 01/01 SHOP", None, date(2026, 1, 2))
-    no_text = Transaction(date=date(2026, 1, 3), payee="", amount=-1.0,
-                          account_id=sample_account.id, category_id=groceries.id)
+    no_text = Transaction(
+        date=date(2026, 1, 3),
+        payee="",
+        amount=-1.0,
+        account_id=sample_account.id,
+        category_id=groceries.id,
+    )
     db.add(no_text)
     db.commit()
     assert categorizer.trainable([good, no_category, no_text]) == [good]
@@ -114,6 +149,7 @@ def test_a_trained_model_round_trips_through_its_blob(db, history):
 
 # ── POST /train ──────────────────────────────────────────────────
 
+
 def test_train_stores_a_model_with_metrics_and_leaves_it_inactive(client, db, history):
     groceries, transport = history
     response = client.post("/api/categorizer/train", json=_train_body(note="first"))
@@ -129,7 +165,9 @@ def test_train_stores_a_model_with_metrics_and_leaves_it_inactive(client, db, hi
     assert body["metrics"]["accuracy"] == pytest.approx(1.0)
     assert body["metrics"]["parent_accuracy"] == pytest.approx(1.0)
     assert "baseline" in body["metrics"]
-    assert [t["threshold"] for t in body["metrics"]["thresholds"]] == list(categorizer.REPORT_THRESHOLDS)
+    assert [t["threshold"] for t in body["metrics"]["thresholds"]] == list(
+        categorizer.REPORT_THRESHOLDS
+    )
 
     stored = db.query(CategorizerModel).one()
     assert stored.blob is not None
@@ -150,10 +188,13 @@ def test_a_failed_training_is_recorded_on_its_model(client, db, history, monkeyp
 
 
 def test_train_rejects_overlapping_selections(client, history):
-    response = client.post("/api/categorizer/train", json={
-        "train": {"date_to": TRAIN_UNTIL.isoformat()},
-        "test": {},  # everything, so it swallows the training rows
-    })
+    response = client.post(
+        "/api/categorizer/train",
+        json={
+            "train": {"date_to": TRAIN_UNTIL.isoformat()},
+            "test": {},  # everything, so it swallows the training rows
+        },
+    )
     assert response.status_code == 422
     assert "overlap" in response.json()["detail"]
 
@@ -185,8 +226,7 @@ def test_train_refuses_while_another_run_is_in_flight(client, db, history):
 
 
 def test_a_stale_training_row_does_not_block_forever(client, db, history):
-    db.add(CategorizerModel(status="training",
-                            created_at=utcnow() - timedelta(hours=2)))
+    db.add(CategorizerModel(status="training", created_at=utcnow() - timedelta(hours=2)))
     db.commit()
     assert client.post("/api/categorizer/train", json=_train_body()).status_code == 200
 
@@ -197,11 +237,16 @@ def test_train_keeps_only_the_most_recent_models(client, db, history):
     db.commit()
     client.post("/api/categorizer/train", json=_train_body())
     from routers.categorizer import KEEP_MODELS
-    assert db.query(CategorizerModel).filter(CategorizerModel.status == "ready").count() == KEEP_MODELS
+
+    assert (
+        db.query(CategorizerModel).filter(CategorizerModel.status == "ready").count() == KEEP_MODELS
+    )
 
 
 def test_pruning_never_drops_the_active_model(client, db, history):
-    active = CategorizerModel(status="ready", blob=b"x", is_active=True, created_at=datetime(2019, 1, 1))
+    active = CategorizerModel(
+        status="ready", blob=b"x", is_active=True, created_at=datetime(2019, 1, 1)
+    )
     db.add(active)
     for i in range(6):
         db.add(CategorizerModel(status="ready", blob=b"x", created_at=datetime(2020, 1, i + 1)))
@@ -213,9 +258,12 @@ def test_pruning_never_drops_the_active_model(client, db, history):
 
 # ── models list / activate / delete ──────────────────────────────
 
+
 def test_activate_moves_the_active_flag(client, db, history):
     first = client.post("/api/categorizer/train", json=_train_body()).json()
-    assert client.post(f"/api/categorizer/models/{first['id']}/activate").json()["is_active"] is True
+    assert (
+        client.post(f"/api/categorizer/models/{first['id']}/activate").json()["is_active"] is True
+    )
     second = client.post("/api/categorizer/train", json=_train_body()).json()
     client.post(f"/api/categorizer/models/{second['id']}/activate")
 
@@ -245,6 +293,7 @@ def test_delete_removes_an_inactive_model(client, db, history):
 
 # ── POST /suggest ────────────────────────────────────────────────
 
+
 @pytest.fixture()
 def active_model(client, history):
     model = client.post("/api/categorizer/train", json=_train_body()).json()
@@ -254,14 +303,24 @@ def active_model(client, history):
 
 def test_suggest_needs_an_active_model(client, db, history):
     client.post("/api/categorizer/train", json=_train_body())
-    response = client.post("/api/categorizer/suggest", json={"selection": {"date_from": "2026-06-01"}})
+    response = client.post(
+        "/api/categorizer/suggest", json={"selection": {"date_from": "2026-06-01"}}
+    )
     assert response.status_code == 409
 
 
-def test_suggest_reports_a_category_and_its_confidence(client, db, active_model, sample_account, history):
+def test_suggest_reports_a_category_and_its_confidence(
+    client, db, active_model, sample_account, history
+):
     groceries, _ = history
-    target = _add(db, sample_account.id, "CARTE 02/08 SUPERMARCHE DU COIN", None, date(2026, 8, 1),
-                  payee="whatever")
+    target = _add(
+        db,
+        sample_account.id,
+        "CARTE 02/08 SUPERMARCHE DU COIN",
+        None,
+        date(2026, 8, 1),
+        payee="whatever",
+    )
     db.commit()
 
     body = client.post("/api/categorizer/suggest", json={"transaction_ids": [target.id]}).json()
@@ -276,13 +335,17 @@ def test_suggest_reports_a_category_and_its_confidence(client, db, active_model,
 
 
 def test_suggest_accepts_a_selection_and_honours_its_limit(client, active_model):
-    body = client.post("/api/categorizer/suggest",
-                       json={"selection": {"date_from": "2026-06-01"}, "limit": 3}).json()
+    body = client.post(
+        "/api/categorizer/suggest", json={"selection": {"date_from": "2026-06-01"}, "limit": 3}
+    ).json()
     assert len(body["items"]) == 3
 
 
 def test_suggest_404s_on_an_unknown_transaction(client, active_model):
-    assert client.post("/api/categorizer/suggest", json={"transaction_ids": [999999]}).status_code == 404
+    assert (
+        client.post("/api/categorizer/suggest", json={"transaction_ids": [999999]}).status_code
+        == 404
+    )
 
 
 def test_suggest_needs_something_to_work_on(client, active_model):
@@ -291,17 +354,25 @@ def test_suggest_needs_something_to_work_on(client, active_model):
 
 # ── POST /apply ──────────────────────────────────────────────────
 
-def test_apply_writes_a_category_per_row_and_leaves_it_unreconciled(client, db, sample_account, categories):
+
+def test_apply_writes_a_category_per_row_and_leaves_it_unreconciled(
+    client, db, sample_account, categories
+):
     groceries, transport = categories
     a = _add(db, sample_account.id, "A", None, date(2026, 1, 1))
     b = _add(db, sample_account.id, "B", None, date(2026, 1, 2))
     a.reconciled = True
     db.commit()
 
-    response = client.post("/api/categorizer/apply", json={"items": [
-        {"transaction_id": a.id, "category_id": groceries.id},
-        {"transaction_id": b.id, "category_id": transport.id},
-    ]})
+    response = client.post(
+        "/api/categorizer/apply",
+        json={
+            "items": [
+                {"transaction_id": a.id, "category_id": groceries.id},
+                {"transaction_id": b.id, "category_id": transport.id},
+            ]
+        },
+    )
     assert response.status_code == 200
     assert response.json()["updated_count"] == 2
 
@@ -318,9 +389,12 @@ def test_apply_leaves_a_hand_set_category_alone_by_default(client, db, sample_ac
     t = _add(db, sample_account.id, "A", groceries.id, date(2026, 1, 1))
     db.commit()
 
-    body = client.post("/api/categorizer/apply", json={
-        "items": [{"transaction_id": t.id, "category_id": transport.id}],
-    }).json()
+    body = client.post(
+        "/api/categorizer/apply",
+        json={
+            "items": [{"transaction_id": t.id, "category_id": transport.id}],
+        },
+    ).json()
     assert body["updated_count"] == 0
     assert body["skipped_transaction_ids"] == [t.id]
     db.refresh(t)
@@ -331,10 +405,13 @@ def test_apply_overwrites_when_explicitly_asked(client, db, sample_account, cate
     groceries, transport = categories
     t = _add(db, sample_account.id, "A", groceries.id, date(2026, 1, 1))
     db.commit()
-    client.post("/api/categorizer/apply", json={
-        "items": [{"transaction_id": t.id, "category_id": transport.id}],
-        "overwrite_category": True,
-    })
+    client.post(
+        "/api/categorizer/apply",
+        json={
+            "items": [{"transaction_id": t.id, "category_id": transport.id}],
+            "overwrite_category": True,
+        },
+    )
     db.refresh(t)
     assert t.category_id == transport.id
 
@@ -343,8 +420,10 @@ def test_apply_records_history_tagged_as_the_categorizer(client, db, sample_acco
     groceries, _ = categories
     t = _add(db, sample_account.id, "A", None, date(2026, 1, 1))
     db.commit()
-    client.post("/api/categorizer/apply",
-                json={"items": [{"transaction_id": t.id, "category_id": groceries.id}]})
+    client.post(
+        "/api/categorizer/apply",
+        json={"items": [{"transaction_id": t.id, "category_id": groceries.id}]},
+    )
     row = db.query(TransactionHistory).filter(TransactionHistory.transaction_id == t.id).one()
     assert row.source == "categorizer"
     assert row.changes["category_id"]["new"] == groceries.id
@@ -361,31 +440,42 @@ def test_apply_rejects_the_same_transaction_twice(client, db, sample_account, ca
     groceries, transport = categories
     t = _add(db, sample_account.id, "A", None, date(2026, 1, 1))
     db.commit()
-    response = client.post("/api/categorizer/apply", json={"items": [
-        {"transaction_id": t.id, "category_id": groceries.id},
-        {"transaction_id": t.id, "category_id": transport.id},
-    ]})
+    response = client.post(
+        "/api/categorizer/apply",
+        json={
+            "items": [
+                {"transaction_id": t.id, "category_id": groceries.id},
+                {"transaction_id": t.id, "category_id": transport.id},
+            ]
+        },
+    )
     assert response.status_code == 422
 
 
 def test_apply_404s_on_an_unknown_category(client, db, sample_account):
     t = _add(db, sample_account.id, "A", None, date(2026, 1, 1))
     db.commit()
-    response = client.post("/api/categorizer/apply",
-                           json={"items": [{"transaction_id": t.id, "category_id": 999999}]})
+    response = client.post(
+        "/api/categorizer/apply", json={"items": [{"transaction_id": t.id, "category_id": 999999}]}
+    )
     assert response.status_code == 404
 
 
 def test_apply_invalidates_the_aggregate_caches(client, db, sample_account, categories):
     import cache_service
+
     groceries, _ = categories
     t = _add(db, sample_account.id, "A", None, date(2026, 1, 1))
     db.commit()
     cache_service.get_or_compute(db, "charts", {"user_id": 1}, lambda: {"stale": True})
 
-    client.post("/api/categorizer/apply",
-                json={"items": [{"transaction_id": t.id, "category_id": groceries.id}]})
-    assert cache_service.get_or_compute(db, "charts", {"user_id": 1}, lambda: {"fresh": True}) == {"fresh": True}
+    client.post(
+        "/api/categorizer/apply",
+        json={"items": [{"transaction_id": t.id, "category_id": groceries.id}]},
+    )
+    assert cache_service.get_or_compute(db, "charts", {"user_id": 1}, lambda: {"fresh": True}) == {
+        "fresh": True
+    }
 
 
 def test_a_trained_model_survives_an_overwrite_restore(client, db, history):
@@ -407,11 +497,12 @@ def test_a_trained_model_survives_an_overwrite_restore(client, db, history):
 
 
 def test_train_refuses_a_test_selection_it_cannot_score(client, history):
-    response = client.post("/api/categorizer/train", json={
-        "train": {"date_to": TRAIN_UNTIL.isoformat()},
-        "test": {"date_from": "2030-01-01"},
-    })
+    response = client.post(
+        "/api/categorizer/train",
+        json={
+            "train": {"date_to": TRAIN_UNTIL.isoformat()},
+            "test": {"date_from": "2030-01-01"},
+        },
+    )
     assert response.status_code == 422
     assert "could not be scored" in response.json()["detail"]
-
-

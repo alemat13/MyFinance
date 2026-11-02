@@ -27,18 +27,21 @@ def _qif_file(text: str = QIF_TEXT, encoding: str = "utf-8"):
     return {"file": ("releve.qif", text.encode(encoding), "application/qif")}
 
 
-@pytest.mark.parametrize("raw,expected", [
-    ("15/01/2026", "15/01/2026"),
-    ("5/1/2026", "05/01/2026"),
-    ("1/ 5'98", "01/05/1998"),
-    ("1/5'05", "01/05/2005"),
-    ("01/05/05", "01/05/2005"),
-    ("01/05/98", "01/05/1998"),
-    ("15.01.2026", "15/01/2026"),
-    ("15-01-2026", "15/01/2026"),
-    ("2026-01-15", "2026-01-15"),
-    ("2026/1/5", "2026-01-05"),
-])
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("15/01/2026", "15/01/2026"),
+        ("5/1/2026", "05/01/2026"),
+        ("1/ 5'98", "01/05/1998"),
+        ("1/5'05", "01/05/2005"),
+        ("01/05/05", "01/05/2005"),
+        ("01/05/98", "01/05/1998"),
+        ("15.01.2026", "15/01/2026"),
+        ("15-01-2026", "15/01/2026"),
+        ("2026-01-15", "2026-01-15"),
+        ("2026/1/5", "2026-01-05"),
+    ],
+)
 def test_normalize_qif_date(raw, expected):
     assert normalize_qif_date(raw) == expected
 
@@ -67,7 +70,9 @@ T100.00
 ^
 """
     rows = parse_qif(text)
-    assert rows == [{"Date": "03/02/2026", "Amount": "-9.99", "Payee": "NETFLIX", "Category": "Loisirs"}]
+    assert rows == [
+        {"Date": "03/02/2026", "Amount": "-9.99", "Payee": "NETFLIX", "Category": "Loisirs"}
+    ]
 
 
 def test_parse_qif_ignores_split_lines_and_falls_back_to_memo_for_payee():
@@ -81,7 +86,14 @@ SCarburant
 $-10.00
 ^"""
     rows = parse_qif(text)
-    assert rows == [{"Date": "03/02/2026", "Amount": "-30.00", "Memo": "Courses et essence", "Payee": "Courses et essence"}]
+    assert rows == [
+        {
+            "Date": "03/02/2026",
+            "Amount": "-30.00",
+            "Memo": "Courses et essence",
+            "Payee": "Courses et essence",
+        }
+    ]
 
 
 def test_parse_qif_rejects_file_without_transactions():
@@ -99,12 +111,19 @@ def test_import_detect_reads_qif(client):
     assert body["decimal_separator"] == ","
     assert body["headers"] == ["Date", "Payee", "Amount", "Memo", "Category"]
     assert body["column_mapping"] == {
-        "date": "Date", "payee": "Payee", "amount": "Amount",
-        "memo": "Memo", "category": "Category", "account": None,
+        "date": "Date",
+        "payee": "Payee",
+        "amount": "Amount",
+        "memo": "Memo",
+        "category": "Category",
+        "account": None,
     }
     assert body["sample_rows"][0] == {
-        "Date": "15/01/2026", "Payee": "CB CARREFOUR MARKET", "Amount": "-42,50",
-        "Memo": "Courses", "Category": "Test Salary",
+        "Date": "15/01/2026",
+        "Payee": "CB CARREFOUR MARKET",
+        "Amount": "-42,50",
+        "Memo": "Courses",
+        "Category": "Test Salary",
     }
     assert body["sample_rows"][2]["Payee"] == "Retrait sans libelle"
     assert body["sample_rows"][2]["Category"] == ""
@@ -126,16 +145,23 @@ def test_import_detect_rejects_qif_without_transactions(client):
 
 def test_import_preview_reads_qif(client, sample_account, sample_category):
     detected = client.post("/api/import/detect", files=_qif_file()).json()
-    response = client.post("/api/import/preview", files=_qif_file(), data={
-        "account_id": sample_account.id,
-        "encoding": detected["encoding"],
-        # Whatever delimiter comes back, a QIF file is always read as the converted CSV.
-        "delimiter": ";",
-        "date_format": detected["date_format"],
-        "decimal_separator": detected["decimal_separator"],
-        "date_col": "Date", "payee_col": "Payee", "amount_col": "Amount",
-        "memo_col": "Memo", "category_col": "Category",
-    })
+    response = client.post(
+        "/api/import/preview",
+        files=_qif_file(),
+        data={
+            "account_id": sample_account.id,
+            "encoding": detected["encoding"],
+            # Whatever delimiter comes back, a QIF file is always read as the converted CSV.
+            "delimiter": ";",
+            "date_format": detected["date_format"],
+            "decimal_separator": detected["decimal_separator"],
+            "date_col": "Date",
+            "payee_col": "Payee",
+            "amount_col": "Amount",
+            "memo_col": "Memo",
+            "category_col": "Category",
+        },
+    )
     assert response.status_code == 200
     rows = response.json()
     assert [r["status"] for r in rows] == ["ok", "ok", "needs_category"]

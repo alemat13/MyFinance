@@ -1,5 +1,5 @@
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import Column, create_engine, event, inspect, text
 from sqlalchemy.engine import Engine
@@ -7,13 +7,11 @@ from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 SQLALCHEMY_DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./finance.db")
 if SQLALCHEMY_DATABASE_URL.startswith("postgresql://"):
-    SQLALCHEMY_DATABASE_URL = "postgresql+psycopg://" + SQLALCHEMY_DATABASE_URL[len("postgresql://"):]
+    SQLALCHEMY_DATABASE_URL = (
+        "postgresql+psycopg://" + SQLALCHEMY_DATABASE_URL[len("postgresql://") :]
+    )
 
-connect_args = (
-    {"check_same_thread": False}
-    if SQLALCHEMY_DATABASE_URL.startswith("sqlite")
-    else {}
-)
+connect_args = {"check_same_thread": False} if SQLALCHEMY_DATABASE_URL.startswith("sqlite") else {}
 
 # Two Cloud Run instances share a small Cloud SQL instance (~25 connections),
 # so each keeps at most 5; pre_ping and recycle drop connections the server
@@ -34,7 +32,9 @@ def _enable_sqlite_fk(dbapi_connection, connection_record):
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.close()
 
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
 
 class Base(DeclarativeBase):
     pass
@@ -46,7 +46,7 @@ def utcnow() -> datetime:
     Replaces the deprecated `datetime.utcnow()` (MYF-33) without changing what
     gets written: the columns are timezone-naive and hold UTC.
     """
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 def get_db():

@@ -52,13 +52,24 @@ def previous_checkpoint_date(db: Session, transaction: Transaction):
 
 
 def has_checkpoints(db: Session, account_id: int) -> bool:
-    return db.execute(select(Transaction.id).where(
-        Transaction.account_id == account_id, Transaction.checkpoint_value.isnot(None),
-    ).limit(1)).first() is not None
+    return (
+        db.execute(
+            select(Transaction.id)
+            .where(
+                Transaction.account_id == account_id,
+                Transaction.checkpoint_value.isnot(None),
+            )
+            .limit(1)
+        ).first()
+        is not None
+    )
 
 
 def recompute(
-    db: Session, account_ids, actor_user_id: int | None = None, quiet_ids=(),
+    db: Session,
+    account_ids,
+    actor_user_id: int | None = None,
+    quiet_ids=(),
 ) -> list[int]:
     """Re-derive every checkpoint amount of these accounts; returns the ids
     whose amount changed. Cheap for an account without checkpoints (one
@@ -102,7 +113,11 @@ def recompute(
                 db.expire(transaction, ["splits"])
             if transaction.id not in quiet_ids:
                 record_transaction_history(
-                    db, transaction, "updated", actor_user_id, source=HISTORY_SOURCE,
+                    db,
+                    transaction,
+                    "updated",
+                    actor_user_id,
+                    source=HISTORY_SOURCE,
                     changes={"amount": {"old": old, "new": amount}},
                 )
             changed.append(transaction.id)

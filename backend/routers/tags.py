@@ -33,14 +33,18 @@ def _check_unique(db: Session, name: str, tag_id: int | None = None) -> None:
 
 
 def _out(db: Session, tag: Tag) -> TagOut:
-    count = db.scalar(select(func.count()).select_from(TransactionTag).where(TransactionTag.tag_id == tag.id))
+    count = db.scalar(
+        select(func.count()).select_from(TransactionTag).where(TransactionTag.tag_id == tag.id)
+    )
     return TagOut(id=tag.id, name=tag.name, color=tag.color, transaction_count=count or 0)
 
 
 @router.get("", response_model=list[TagOut])
 def list_tags(db: Session = Depends(get_db)):
     counts = dict(
-        db.execute(select(TransactionTag.tag_id, func.count()).group_by(TransactionTag.tag_id)).all()
+        db.execute(
+            select(TransactionTag.tag_id, func.count()).group_by(TransactionTag.tag_id)
+        ).all()
     )
     return [
         TagOut(id=t.id, name=t.name, color=t.color, transaction_count=counts.get(t.id, 0))
@@ -78,18 +82,18 @@ def delete_tag(tag_id: int, actor_user_id: int | None = Query(None), db: Session
     """Removes the tag from every transaction carrying it, each one getting a
     history row like any other tag change."""
     tag = _get(db, tag_id)
-    carrying = (
-        db.scalars(
-            select(Transaction)
-            .join(TransactionTag, TransactionTag.transaction_id == Transaction.id)
-            .where(TransactionTag.tag_id == tag_id)
-            .options(selectinload(Transaction.tags))
-        ).all()
-    )
+    carrying = db.scalars(
+        select(Transaction)
+        .join(TransactionTag, TransactionTag.transaction_id == Transaction.id)
+        .where(TransactionTag.tag_id == tag_id)
+        .options(selectinload(Transaction.tags))
+    ).all()
     for transaction in carrying:
         change = tags.add_remove_tags(transaction, [], [tag])
         if change:
-            record_transaction_history(db, transaction, "updated", actor_user_id, changes={"tags": change})
+            record_transaction_history(
+                db, transaction, "updated", actor_user_id, changes={"tags": change}
+            )
     db.flush()
     db.delete(tag)
     db.commit()
