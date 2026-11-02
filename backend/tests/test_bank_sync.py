@@ -4,6 +4,7 @@ import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
+import bank_transactions
 import enable_banking
 from models import (
     Account,
@@ -193,7 +194,7 @@ def test_label_cleanup_does_not_change_the_fingerprint(monkeypatch):
     every row in the overlap window a new external_id and import it twice."""
     raw = [_booked("3.50", "DBIT", "2026-03-04", remittance_information=["CARTE 03/03 CAFE"])]
     with_cleanup = enable_banking.normalize_transactions(raw)
-    monkeypatch.setattr(enable_banking, "_LABEL_CLEANUP_PATTERNS", [])
+    monkeypatch.setattr(bank_transactions, "_LABEL_CLEANUP_PATTERNS", [])
     without_cleanup = enable_banking.normalize_transactions(raw)
     assert with_cleanup[0]["payee"] == "CAFE"
     assert without_cleanup[0]["payee"] == "CARTE 03/03 CAFE"
