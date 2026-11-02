@@ -3,7 +3,7 @@ from datetime import datetime, date
 from sqlalchemy import Column, Integer, String, Float, DateTime, Date, Text, ForeignKey, JSON, Boolean, Index, LargeBinary
 from sqlalchemy.orm import relationship
 
-from database import Base
+from database import Base, utcnow
 
 
 class Account(Base):
@@ -17,7 +17,7 @@ class Account(Base):
     # AccountOut.balance is the computed total, not this column.
     balance_offset = Column(Float, default=0.0)
     currency = Column(String(3), nullable=False, default="EUR")
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
     archived = Column(Boolean, nullable=False, default=False)
 
     transactions = relationship("Transaction", back_populates="account")
@@ -60,7 +60,7 @@ class Transaction(Base):
     # Manually set by the user once they've reviewed the transaction; never
     # set by create/import — those always default to unreconciled.
     reconciled = Column(Boolean, nullable=False, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
     # Groups the transactions produced by "dividing" one transaction into
     # several (by category/date/amount — unrelated to TransactionSplit, which
     # divides a transaction's amount among users). Set to the anchor part's
@@ -140,7 +140,7 @@ class TransactionLink(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(100), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
 
 
 class Tag(Base):
@@ -154,7 +154,7 @@ class Tag(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(50), nullable=False, unique=True)
     color = Column(String(7), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
 
 
 class TransactionTag(Base):
@@ -172,7 +172,7 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), nullable=False)
     email = Column(String(200), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
 
     account_associations = relationship("AccountUser", back_populates="user")
 
@@ -260,7 +260,7 @@ class AggregateCache(Base):
     cache_key = Column(String, primary_key=True)
     namespace = Column(String, nullable=False, index=True)
     payload = Column(Text, nullable=False)
-    computed_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    computed_at = Column(DateTime, default=utcnow, nullable=False)
 
 
 class CategorizerModel(Base):
@@ -284,7 +284,7 @@ class CategorizerModel(Base):
     __tablename__ = "categorizer_models"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=utcnow, nullable=False)
     status = Column(String(20), nullable=False, default="ready")  # 'training' | 'ready' | 'failed'
     is_active = Column(Boolean, nullable=False, default=False)
     trained_rows = Column(Integer, nullable=False, default=0)
@@ -348,7 +348,7 @@ class BankConnection(Base):
     # When the bank's consent lapses (90 days for most French ASPSPs).
     # Re-consenting is a fresh authorization, not a token refresh.
     access_valid_until = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
     last_error = Column(Text, nullable=True)
 
     account_links = relationship("BankAccountLink", back_populates="connection", cascade="all, delete-orphan")
@@ -402,7 +402,7 @@ class TransactionHistory(Base):
     # | 'admin' (raw fields edited) | 'rule' | 'categorizer' | 'bulk' (bulk edit or delete);
     # NULL on an edit made by hand in the transaction form.
     source = Column(String(20), nullable=True)
-    changed_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    changed_at = Column(DateTime, default=utcnow, nullable=False, index=True)
     # Shared by every row one action wrote (audit.batch()): a bulk edit, an
     # import, a sync. NULL on a row written alone, and on every row written
     # before batches existed (the History screen groups those by guesswork).
@@ -445,8 +445,8 @@ class TransactionRule(Base):
     match_mode = Column(String(3), nullable=False, default="all")  # 'all' | 'any'
     conditions = Column(JSON, nullable=False)
     actions = Column(JSON, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=utcnow, nullable=False)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow, nullable=False)
 
 
 class SavedFilter(Base):
@@ -467,8 +467,8 @@ class SavedFilter(Base):
     position = Column(Integer, nullable=False, default=0)
     mode = Column(String(10), nullable=False)  # 'simple' | 'advanced'
     filters = Column(JSON, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=utcnow, nullable=False)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow, nullable=False)
 
 
 class EmailAlert(Base):

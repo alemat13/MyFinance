@@ -33,7 +33,7 @@ MAX_BACKUP_UPLOAD_BYTES = 200 * 1024 * 1024
 # freezing every other request on the instance.
 @router.post("/import", response_model=ImportSummary)
 def import_backup(
-    mode: Literal["overwrite", "partial"] = Query("overwrite"),
+    mode: Literal["overwrite", "partial"] = Query(...),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):

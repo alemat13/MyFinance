@@ -1,8 +1,9 @@
 import os
+from datetime import datetime, timezone
 
 from sqlalchemy import Column, create_engine, event, inspect, text
 from sqlalchemy.engine import Engine
-from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 SQLALCHEMY_DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./finance.db")
 if SQLALCHEMY_DATABASE_URL.startswith("postgresql://"):
@@ -35,7 +36,17 @@ def _enable_sqlite_fk(dbapi_connection, connection_record):
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-Base = declarative_base()
+class Base(DeclarativeBase):
+    pass
+
+
+def utcnow() -> datetime:
+    """Current UTC time as a naive datetime, what every DateTime column stores.
+
+    Replaces the deprecated `datetime.utcnow()` (MYF-33) without changing what
+    gets written: the columns are timezone-naive and hold UTC.
+    """
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def get_db():
@@ -48,7 +59,7 @@ def get_db():
 
 def _server_default_literal(column: Column) -> str | None:
     """A SQL literal for column's Python-side default, if it's a plain
-    scalar (not a callable like `datetime.utcnow`) — needed so ADD COLUMN
+    scalar (not a callable like `utcnow`) — needed so ADD COLUMN
     can backfill existing rows instead of leaving nulls in a NOT NULL column."""
     default = column.default
     if default is None or not getattr(default, "is_scalar", False):
