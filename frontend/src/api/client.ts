@@ -218,9 +218,14 @@ async function parseErrorMessage(res: Response): Promise<string> {
   return text
 }
 
+// Sent on every call: the backend refuses a request that changes data without
+// it (MYF-14), which is what keeps another site from posting to the API with
+// the user's IAP cookie, since a cross-site page can't set it.
+export const CLIENT_HEADER = { 'X-MyFinance-Client': '1' }
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...CLIENT_HEADER },
     ...options,
   })
   if (!res.ok) {
@@ -529,7 +534,7 @@ export function fetchBalances(): Promise<UserBalance[]> {
 export async function detectImport(file: File): Promise<ImportDetectResponse> {
   const formData = new FormData()
   formData.append('file', file)
-  const res = await fetch(`${API_BASE}/import/detect`, { method: 'POST', body: formData })
+  const res = await fetch(`${API_BASE}/import/detect`, { method: 'POST', body: formData, headers: CLIENT_HEADER })
   if (!res.ok) throw new Error(await parseErrorMessage(res))
   return res.json()
 }
@@ -540,7 +545,7 @@ export async function previewImport(file: File, data: ImportPreviewRequest): Pro
   for (const [key, value] of Object.entries(data)) {
     if (value !== null && value !== undefined) formData.append(key, String(value))
   }
-  const res = await fetch(`${API_BASE}/import/preview`, { method: 'POST', body: formData })
+  const res = await fetch(`${API_BASE}/import/preview`, { method: 'POST', body: formData, headers: CLIENT_HEADER })
   if (!res.ok) throw new Error(await parseErrorMessage(res))
   return res.json()
 }
@@ -551,7 +556,7 @@ export function commitImport(rows: ImportCommitRow[], actorUserId?: number | nul
 }
 
 export async function exportDatabase(): Promise<Blob> {
-  const res = await fetch(`${API_BASE}/backup/export`)
+  const res = await fetch(`${API_BASE}/backup/export`, { headers: CLIENT_HEADER })
   if (!res.ok) throw new Error(await parseErrorMessage(res))
   return res.blob()
 }
@@ -559,7 +564,7 @@ export async function exportDatabase(): Promise<Blob> {
 export async function importDatabase(file: File, mode: BackupImportMode): Promise<ImportSummary> {
   const formData = new FormData()
   formData.append('file', file)
-  const res = await fetch(`${API_BASE}/backup/import?mode=${mode}`, { method: 'POST', body: formData })
+  const res = await fetch(`${API_BASE}/backup/import?mode=${mode}`, { method: 'POST', body: formData, headers: CLIENT_HEADER })
   if (!res.ok) throw new Error(await parseErrorMessage(res))
   return res.json()
 }

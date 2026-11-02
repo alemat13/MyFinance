@@ -148,6 +148,7 @@ committing the version bump.
 
 ## Key gotchas
 
+- **CSRF guard** (`backend/main.py`, MYF-14): every `POST`/`PUT`/`PATCH`/`DELETE` must carry an `X-MyFinance-Client` header (any value; `client.ts`'s `CLIENT_HEADER` sends it on every call) or gets a 403. A cross-site page can't set it without a CORS preflight, which `allow_origins` refuses, so the IAP cookie alone no longer lets another site write. Only the two Cloud Scheduler `run-due` endpoints (shared-secret header of their own) are exempt; a script writing to the API, test clients included (`conftest.py`), must send it. `POST /api/backup/import` also requires `mode` now.
 - **Text search wildcards**: `contains`/`starts_with`/`ends_with` conditions and the simple filter's search box read `*` (any run) and `?` (one character); `%`, `_` and `\` are literal (`filtering.like_pattern()`, mirrored by `transaction_rules._wildcard_regex()`).
 - **Frontend nginx** (`frontend/nginx.conf`) sends a strict Content-Security-Policy (`script-src 'self'`, so no inline script: the dark-mode bootstrap is `public/theme.js`), `X-Frame-Options`, `nosniff`, and `Cache-Control` (immutable under `/assets/`, `no-cache` elsewhere so a deploy shows at once). An external script, font, image or API call needs a CSP change there.
 - `seed.py` **destroys existing data** — `drop_all` then re-inserts sample rows. Never run it against production.

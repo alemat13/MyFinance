@@ -7,7 +7,7 @@ from sqlalchemy.pool import StaticPool
 from fastapi.testclient import TestClient
 
 from database import Base, get_db
-from main import app
+from main import CSRF_HEADER, app
 from models import Account, AccountUser, Category, Transaction, TransactionSplit, User
 
 
@@ -41,7 +41,7 @@ def db():
 
 @pytest.fixture()
 def client(db):
-    with TestClient(app) as c:
+    with TestClient(app, headers={CSRF_HEADER: "test"}) as c:
         yield c
 
 

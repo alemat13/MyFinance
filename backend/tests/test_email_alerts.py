@@ -2,6 +2,8 @@ from datetime import date, datetime, timedelta
 
 import pytest
 
+from database import utcnow
+
 import email_alerts
 from models import Account, AccountUser, EmailAlert, Transaction
 
@@ -228,7 +230,7 @@ def test_html_body_escapes_payees(db, sample_user, sample_account_with_user, out
 def test_test_email_sends_the_last_week_without_moving_windows(client, db, sample_user, sample_account_with_user, outbox):
     db.add(EmailAlert(user_id=sample_user.id, email="me@olivex.fr", daily=True, last_daily_sent_at=datetime(2026, 1, 1)))
     db.commit()
-    _tx(db, sample_account_with_user, "Carrefour", -1.0, datetime.utcnow() - timedelta(days=2))
+    _tx(db, sample_account_with_user, "Carrefour", -1.0, utcnow() - timedelta(days=2))
     response = client.post(f"/api/alerts/users/{sample_user.id}/test")
     assert response.status_code == 200
     assert response.json() == {"sent_to": "me@olivex.fr", "transaction_count": 1}

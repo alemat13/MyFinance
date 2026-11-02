@@ -2,6 +2,8 @@ from datetime import date, datetime, timedelta
 
 import pytest
 
+from database import utcnow
+
 import categorizer
 from models import Category, CategorizerModel, Transaction, TransactionHistory
 
@@ -170,7 +172,7 @@ def test_train_refuses_while_another_run_is_in_flight(client, db, history):
 
 def test_a_stale_training_row_does_not_block_forever(client, db, history):
     db.add(CategorizerModel(status="training",
-                            created_at=datetime.utcnow() - timedelta(hours=2)))
+                            created_at=utcnow() - timedelta(hours=2)))
     db.commit()
     assert client.post("/api/categorizer/train", json=_train_body()).status_code == 200
 

@@ -46,7 +46,7 @@ def test_saved_filters_round_trip_through_an_overwrite_restore(client, db):
     db.query(SavedFilter).delete()
     db.commit()
 
-    response = client.post("/api/backup/import", data={"mode": "overwrite"},
+    response = client.post("/api/backup/import", params={"mode": "overwrite"},
                            files={"file": ("backup.zip", archive, "application/zip")})
     assert response.status_code == 200, response.text
     assert response.json()["saved_filters"] == 1

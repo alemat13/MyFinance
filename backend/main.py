@@ -3,7 +3,7 @@ import os
 import sys
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -58,6 +58,36 @@ app = FastAPI(
 # not here: the repository is public.
 allow_origins = os.environ.get("CORS_ALLOWED_ORIGINS", "http://localhost:5173").split(",")
 
+# CSRF guard (MYF-14). A request that changes data must carry this header,
+# which the app's own client always sends. A page on another site cannot set
+# it without a CORS preflight, which `allow_origins` refuses, so a cross-site
+# form or fetch is turned away here instead of riding the IAP cookie. The two
+# Cloud Scheduler endpoints are exempt: they are not called by a browser and
+# carry their own shared-secret header instead.
+CSRF_HEADER = "X-MyFinance-Client"
+CSRF_EXEMPT_PATHS = frozenset({
+    "/api/bank-sync/run-due",
+    "/api/onedrive/backup/run-due",
+})
+_SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
+
+@app.middleware("http")
+async def _require_csrf_header(request: Request, call_next):
+    if (
+        request.method not in _SAFE_METHODS
+        and request.url.path not in CSRF_EXEMPT_PATHS
+        and not request.headers.get(CSRF_HEADER)
+    ):
+        return JSONResponse(
+            status_code=403,
+            content={"detail": f"Missing {CSRF_HEADER} header"},
+        )
+    return await call_next(request)
+
+
+# Added after the CSRF guard so it wraps it: a refused request still gets its
+# CORS headers, and a preflight is answered before the guard sees it.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allow_origins,

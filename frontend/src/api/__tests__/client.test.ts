@@ -31,7 +31,7 @@ test('fetchAccounts makes GET request', async () => {
   expect(globalThis.fetch).toHaveBeenCalledWith(
     'http://localhost:8000/api/accounts',
     expect.objectContaining({
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-MyFinance-Client': '1' },
     }),
   )
   expect(result).toEqual(mockData)
@@ -105,7 +105,7 @@ test('fetchCategories makes GET request', async () => {
   expect(globalThis.fetch).toHaveBeenCalledWith(
     'http://localhost:8000/api/categories',
     expect.objectContaining({
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-MyFinance-Client': '1' },
     }),
   )
   expect(result).toEqual(mockData)
@@ -320,7 +320,7 @@ test('fetchTransactionHistory makes GET request', async () => {
 
   expect(globalThis.fetch).toHaveBeenCalledWith(
     'http://localhost:8000/api/transactions/1/history',
-    expect.objectContaining({ headers: { 'Content-Type': 'application/json' } }),
+    expect.objectContaining({ headers: { 'Content-Type': 'application/json', 'X-MyFinance-Client': '1' } }),
   )
   expect(result).toEqual(mockData)
 })
@@ -379,7 +379,7 @@ test('fetchDivideSiblings makes GET request', async () => {
 
   expect(globalThis.fetch).toHaveBeenCalledWith(
     'http://localhost:8000/api/transactions/1/divide-siblings',
-    expect.objectContaining({ headers: { 'Content-Type': 'application/json' } }),
+    expect.objectContaining({ headers: { 'Content-Type': 'application/json', 'X-MyFinance-Client': '1' } }),
   )
   expect(result).toEqual(mockData)
 })
@@ -398,7 +398,7 @@ test('fetchDashboard makes GET request', async () => {
   expect(globalThis.fetch).toHaveBeenCalledWith(
     'http://localhost:8000/api/dashboard',
     expect.objectContaining({
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-MyFinance-Client': '1' },
     }),
   )
   expect(result).toEqual(mockData)
@@ -417,7 +417,7 @@ test('fetchSplitWeights makes GET request', async () => {
 
   expect(globalThis.fetch).toHaveBeenCalledWith(
     'http://localhost:8000/api/split-weights',
-    expect.objectContaining({ headers: { 'Content-Type': 'application/json' } }),
+    expect.objectContaining({ headers: { 'Content-Type': 'application/json', 'X-MyFinance-Client': '1' } }),
   )
   expect(result).toEqual(mockData)
 })
@@ -454,7 +454,7 @@ test('fetchAccountSplitWeights makes GET request', async () => {
 
   expect(globalThis.fetch).toHaveBeenCalledWith(
     'http://localhost:8000/api/accounts/3/split-weights',
-    expect.objectContaining({ headers: { 'Content-Type': 'application/json' } }),
+    expect.objectContaining({ headers: { 'Content-Type': 'application/json', 'X-MyFinance-Client': '1' } }),
   )
   expect(result).toEqual(mockData)
 })
@@ -491,7 +491,7 @@ test('fetchBalances makes GET request', async () => {
 
   expect(globalThis.fetch).toHaveBeenCalledWith(
     'http://localhost:8000/api/balances',
-    expect.objectContaining({ headers: { 'Content-Type': 'application/json' } }),
+    expect.objectContaining({ headers: { 'Content-Type': 'application/json', 'X-MyFinance-Client': '1' } }),
   )
   expect(result).toEqual(mockData)
 })
