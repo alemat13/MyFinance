@@ -20,6 +20,7 @@ instance serving up to ten concurrent requests — hence the `training` row.
 from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 import audit
@@ -51,16 +52,16 @@ KEEP_MODELS = 5
 
 
 def _select(db: Session, req) -> list[Transaction]:
-    query = db.query(Transaction)
+    query = select(Transaction)
     try:
         query = apply_transaction_filters(query, req, db)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
-    return query.order_by(Transaction.date).all()
+    return list(db.scalars(query.order_by(Transaction.date)).all())
 
 
 def _categories(db: Session) -> dict[int, Category]:
-    return {c.id: c for c in db.query(Category).all()}
+    return {c.id: c for c in db.scalars(select(Category)).all()}
 
 
 def _active_model(db: Session) -> tuple[CategorizerModel, "categorizer._Model"]:
@@ -73,27 +74,28 @@ def _active_model(db: Session) -> tuple[CategorizerModel, "categorizer._Model"]:
 
 def _prune(db: Session) -> None:
     keep = [
-        m.id for m in db.query(CategorizerModel)
-        .filter(CategorizerModel.status == "ready")
-        .order_by(CategorizerModel.created_at.desc())
-        .limit(KEEP_MODELS)
-        .all()
+        m.id for m in db.scalars(
+            select(CategorizerModel)
+            .where(CategorizerModel.status == "ready")
+            .order_by(CategorizerModel.created_at.desc())
+            .limit(KEEP_MODELS)
+        ).all()
     ]
-    for model in db.query(CategorizerModel).filter(
+    for model in db.scalars(select(CategorizerModel).where(
         CategorizerModel.status == "ready",
         CategorizerModel.is_active.is_(False),
         CategorizerModel.id.notin_(keep),
-    ).all():
+    )).all():
         db.delete(model)
 
 
 @router.post("/train", response_model=CategorizerModelOut)
 def train_model(req: CategorizerTrainRequest, db: Session = Depends(get_db)):
-    in_flight = (
-        db.query(CategorizerModel)
-        .filter(CategorizerModel.status == "training",
-                CategorizerModel.created_at > utcnow() - STALE_TRAINING_AFTER)
-        .first()
+    in_flight = db.scalar(
+        select(CategorizerModel)
+        .where(CategorizerModel.status == "training",
+               CategorizerModel.created_at > utcnow() - STALE_TRAINING_AFTER)
+        .limit(1)
     )
     if in_flight is not None:
         raise HTTPException(409, "A training run is already in progress.")
@@ -144,7 +146,7 @@ def train_model(req: CategorizerTrainRequest, db: Session = Depends(get_db)):
         db.commit()
     except Exception as e:  # noqa: BLE001 - the failure is reported, not swallowed
         db.rollback()
-        record = db.query(CategorizerModel).filter(CategorizerModel.id == record.id).first()
+        record = db.scalar(select(CategorizerModel).where(CategorizerModel.id == record.id).limit(1))
         if record is not None:
             record.status = "failed"
             record.error = f"{type(e).__name__}: {e}"[:2000]
@@ -157,21 +159,20 @@ def train_model(req: CategorizerTrainRequest, db: Session = Depends(get_db)):
 
 @router.get("/models", response_model=list[CategorizerModelOut])
 def list_models(db: Session = Depends(get_db)):
-    return (
-        db.query(CategorizerModel)
+    return db.scalars(
+        select(CategorizerModel)
         .order_by(CategorizerModel.created_at.desc())
-        .all()
-    )
+    ).all()
 
 
 @router.post("/models/{model_id}/activate", response_model=CategorizerModelOut)
 def activate_model(model_id: int, db: Session = Depends(get_db)):
-    model = db.query(CategorizerModel).filter(CategorizerModel.id == model_id).first()
+    model = db.scalar(select(CategorizerModel).where(CategorizerModel.id == model_id).limit(1))
     if model is None:
         raise HTTPException(404, "Model not found")
     if model.status != "ready" or model.blob is None:
         raise HTTPException(422, "Only a model that finished training can be activated.")
-    for other in db.query(CategorizerModel).filter(CategorizerModel.is_active.is_(True)).all():
+    for other in db.scalars(select(CategorizerModel).where(CategorizerModel.is_active.is_(True))).all():
         other.is_active = False
     model.is_active = True
     db.commit()
@@ -181,7 +182,7 @@ def activate_model(model_id: int, db: Session = Depends(get_db)):
 
 @router.delete("/models/{model_id}", status_code=204)
 def delete_model(model_id: int, db: Session = Depends(get_db)):
-    model = db.query(CategorizerModel).filter(CategorizerModel.id == model_id).first()
+    model = db.scalar(select(CategorizerModel).where(CategorizerModel.id == model_id).limit(1))
     if model is None:
         raise HTTPException(404, "Model not found")
     if model.is_active:
@@ -198,7 +199,7 @@ def suggest(req: CategorizerSuggestRequest, db: Session = Depends(get_db)):
     if req.transaction_ids is not None:
         if not req.transaction_ids:
             raise HTTPException(422, "transaction_ids must not be empty")
-        rows = db.query(Transaction).filter(Transaction.id.in_(req.transaction_ids)).all()
+        rows = db.scalars(select(Transaction).where(Transaction.id.in_(req.transaction_ids))).all()
         missing = sorted(set(req.transaction_ids) - {t.id for t in rows})
         if missing:
             raise HTTPException(404, f"Transaction(s) not found: {missing}")
@@ -258,14 +259,14 @@ def apply(req: CategorizerApplyRequest, actor_user_id: int | None = Query(None),
     if len(set(ids)) != len(ids):
         raise HTTPException(422, "The same transaction appears more than once.")
 
-    transactions = {t.id: t for t in db.query(Transaction).filter(Transaction.id.in_(ids)).all()}
+    transactions = {t.id: t for t in db.scalars(select(Transaction).where(Transaction.id.in_(ids))).all()}
     missing = sorted(set(ids) - set(transactions))
     if missing:
         raise HTTPException(404, f"Transaction(s) not found: {missing}")
 
     category_ids = {i.category_id for i in req.items}
     if category_ids:
-        known = {c.id for c in db.query(Category).filter(Category.id.in_(category_ids)).all()}
+        known = {c.id for c in db.scalars(select(Category).where(Category.id.in_(category_ids))).all()}
         unknown = sorted(category_ids - known)
         if unknown:
             raise HTTPException(404, f"Category(ies) not found: {unknown}")

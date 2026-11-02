@@ -35,6 +35,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 import cache_service
@@ -89,12 +90,12 @@ class Outcome:
 def load_rules(db: Session, rule_ids: list[int] | None = None) -> list[TransactionRule]:
     """The rules to run, in their order: every enabled one, or exactly the
     given ones (enabled or not) when a person picked them by hand."""
-    query = db.query(TransactionRule)
+    query = select(TransactionRule)
     if rule_ids is None:
-        query = query.filter(TransactionRule.enabled.is_(True))
+        query = query.where(TransactionRule.enabled.is_(True))
     else:
-        query = query.filter(TransactionRule.id.in_(rule_ids))
-    return query.order_by(TransactionRule.position, TransactionRule.id).all()
+        query = query.where(TransactionRule.id.in_(rule_ids))
+    return list(db.scalars(query.order_by(TransactionRule.position, TransactionRule.id)).all())
 
 
 def _coerce_date(value) -> date:
@@ -196,11 +197,11 @@ class Tiers:
     @classmethod
     def load(cls, db: Session) -> "Tiers":
         tiers = cls()
-        for w in db.query(GlobalSplitWeight).filter(GlobalSplitWeight.weight > 0).all():
+        for w in db.scalars(select(GlobalSplitWeight).where(GlobalSplitWeight.weight > 0)).all():
             tiers.global_weights[w.user_id] = w.weight
-        for w in db.query(AccountSplitWeight).filter(AccountSplitWeight.weight > 0).all():
+        for w in db.scalars(select(AccountSplitWeight).where(AccountSplitWeight.weight > 0)).all():
             tiers.by_account.setdefault(w.account_id, {})[w.user_id] = w.weight
-        for w in db.query(CategorySplit).filter(CategorySplit.weight > 0).all():
+        for w in db.scalars(select(CategorySplit).where(CategorySplit.weight > 0)).all():
             tiers.by_category.setdefault(w.category_id, {})[w.user_id] = w.weight
         return tiers
 
@@ -283,9 +284,9 @@ def evaluate(rules: list[TransactionRule], row, *, known_categories: set[int],
 
 
 def evaluate_many(db: Session, rules: list[TransactionRule], rows: list) -> list[Outcome]:
-    known_categories = {row[0] for row in db.query(Category.id).all()}
-    known_users = {row[0] for row in db.query(User.id).all()}
-    known_tags = {row[0] for row in db.query(Tag.id).all()}
+    known_categories = set(db.scalars(select(Category.id)).all())
+    known_users = set(db.scalars(select(User.id)).all())
+    known_tags = set(db.scalars(select(Tag.id)).all())
     tiers = Tiers.load(db)
     return [evaluate(rules, row, known_categories=known_categories, known_users=known_users, tiers=tiers,
                      known_tags=known_tags)
@@ -293,7 +294,7 @@ def evaluate_many(db: Session, rules: list[TransactionRule], rows: list) -> list
 
 
 def tag_names(db: Session) -> dict[int, str]:
-    return {t.id: t.name for t in db.query(Tag).all()}
+    return {t.id: t.name for t in db.scalars(select(Tag)).all()}
 
 
 def outcome_out(outcome: Outcome, category_names: dict[int, str],
@@ -356,7 +357,7 @@ def write(db: Session, transaction: Transaction, outcome: Outcome, actor_user_id
         db.flush()
         existing = {
             s.user_id: (s.weight, s.source) for s in
-            db.query(TransactionSplit).filter(TransactionSplit.transaction_id == transaction.id).all()
+            db.scalars(select(TransactionSplit).where(TransactionSplit.transaction_id == transaction.id)).all()
         }
         splits_diff = diff_splits(existing, {uid: (w, source) for uid, w in weights.items()})
         if splits_diff:

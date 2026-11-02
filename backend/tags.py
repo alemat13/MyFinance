@@ -7,6 +7,7 @@ names before and after, so a tag renamed or deleted later still reads as it
 was then.
 """
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from models import Tag, Transaction
@@ -18,7 +19,7 @@ def load_tags(db: Session, tag_ids: list[int] | None) -> list[Tag]:
     ids = sorted(set(tag_ids or []))
     if not ids:
         return []
-    tags = db.query(Tag).filter(Tag.id.in_(ids)).order_by(Tag.name).all()
+    tags = db.scalars(select(Tag).where(Tag.id.in_(ids)).order_by(Tag.name)).all()
     missing = sorted(set(ids) - {t.id for t in tags})
     if missing:
         raise RuleViolation(f"Tag(s) not found: {missing}")

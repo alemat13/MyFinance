@@ -19,7 +19,7 @@ would be persisted into the offset rather than just displayed.
 
 from datetime import date
 
-from sqlalchemy import func
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 import cache_service
@@ -35,9 +35,10 @@ def compute_transaction_totals(db: Session) -> list[list]:
     through JSON, which would turn integer keys into strings.
     """
     rows = (
-        db.query(Transaction.account_id, func.sum(Transaction.amount))
-        .group_by(Transaction.account_id)
-        .all()
+        db.execute(
+            select(Transaction.account_id, func.sum(Transaction.amount))
+            .group_by(Transaction.account_id)
+        ).all()
     )
     return [[account_id, float(total or 0.0)] for account_id, total in rows]
 
@@ -53,9 +54,10 @@ def get_transaction_totals(db: Session) -> dict[int, float]:
 def compute_last_transaction_dates(db: Session) -> list[list]:
     """[[account_id, "YYYY-MM-DD"], ...]: each account's latest transaction date."""
     rows = (
-        db.query(Transaction.account_id, func.max(Transaction.date))
-        .group_by(Transaction.account_id)
-        .all()
+        db.execute(
+            select(Transaction.account_id, func.max(Transaction.date))
+            .group_by(Transaction.account_id)
+        ).all()
     )
     return [[account_id, last.isoformat()] for account_id, last in rows if last is not None]
 
@@ -77,9 +79,10 @@ def get_last_transaction_dates(db: Session) -> dict[int, date]:
 def transaction_total(db: Session, account_id: int) -> float:
     """Uncached transaction total for one account."""
     total = (
-        db.query(func.sum(Transaction.amount))
-        .filter(Transaction.account_id == account_id)
-        .scalar()
+        db.scalar(
+            select(func.sum(Transaction.amount))
+            .where(Transaction.account_id == account_id)
+        )
     )
     return float(total or 0.0)
 

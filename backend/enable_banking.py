@@ -30,6 +30,7 @@ from pathlib import Path
 
 import httpx
 import jwt
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 import audit
@@ -415,9 +416,9 @@ def _legacy_duplicate_counts(db: Session, account_id: int, date_from: date, date
     them.
     """
     counts: dict[tuple[date, float], int] = {}
-    rows = (
-        db.query(Transaction.date, Transaction.amount)
-        .filter(
+    rows = db.execute(
+        select(Transaction.date, Transaction.amount)
+        .where(
             Transaction.account_id == account_id,
             Transaction.external_id.is_(None),
             # A checkpoint is the account's value, not something the bank
@@ -426,8 +427,7 @@ def _legacy_duplicate_counts(db: Session, account_id: int, date_from: date, date
             Transaction.date >= date_from,
             Transaction.date <= date_to,
         )
-        .all()
-    )
+    ).all()
     for row_date, amount in rows:
         key = (row_date, round(amount, 2))
         counts[key] = counts.get(key, 0) + 1
@@ -467,12 +467,10 @@ def import_transactions(db: Session, link: BankAccountLink, rows: list[dict], da
     """Insert the rows this account hasn't already got, resolving each one's
     split through the normal cascade. Commits once, at the end — the row cap
     in fetch/normalize is what keeps that single transaction short."""
-    existing_external_ids = {
-        row[0] for row in
-        db.query(Transaction.external_id)
-        .filter(Transaction.account_id == link.account_id, Transaction.external_id.isnot(None))
-        .all()
-    }
+    existing_external_ids = set(db.scalars(
+        select(Transaction.external_id)
+        .where(Transaction.account_id == link.account_id, Transaction.external_id.isnot(None))
+    ).all())
     # Widened by the overlap: the window is asked of the bank by booking date,
     # and a row's own date (when it was made) can fall a few days before it.
     legacy_counts = _legacy_duplicate_counts(
@@ -597,10 +595,10 @@ def run_due_syncs(db: Session) -> tuple[int, int]:
     """Sync every link that's due. Returns (links synced, transactions
     created). Each link commits on its own, so one bank being down can't
     strand another's work in an open transaction."""
-    links = db.query(BankAccountLink).filter(
+    links = db.scalars(select(BankAccountLink).where(
         BankAccountLink.sync_enabled.is_(True),
         BankAccountLink.account_id.isnot(None),
-    ).all()
+    )).all()
     synced = 0
     created = 0
     for link in links:

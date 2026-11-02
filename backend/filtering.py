@@ -250,10 +250,10 @@ def build_where_clause(conditions: list[FilterCondition], match_mode: str):
 
 def visible_transaction_filter(db: Session, user_id: int):
     """Transactions visible to user_id: in an account they own, or bearing a split share for them."""
-    owned_account_ids = db.query(AccountUser.account_id).filter(
+    owned_account_ids = select(AccountUser.account_id).where(
         AccountUser.user_id == user_id, AccountUser.ownership_percentage > 0
     )
-    split_txn_ids = db.query(TransactionSplit.transaction_id).filter(
+    split_txn_ids = select(TransactionSplit.transaction_id).where(
         TransactionSplit.user_id == user_id
     )
     return or_(

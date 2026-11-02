@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import RedirectResponse
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 import email_alerts
@@ -76,7 +77,7 @@ def list_institutions(country: str = Query("FR", min_length=2, max_length=2)):
 
 @router.get("/connections", response_model=list[BankConnectionOut])
 def list_connections(db: Session = Depends(get_db)):
-    connections = db.query(BankConnection).order_by(BankConnection.id).all()
+    connections = db.scalars(select(BankConnection).order_by(BankConnection.id)).all()
     # A pending connection is one the user walked away from mid-consent; it
     # has no session and nothing to show, so it isn't listed.
     return [_build_connection_out(c) for c in connections if c.status != "pending"]
@@ -104,7 +105,7 @@ def callback(
     redirect to the frontend, never JSON — a human is looking at this."""
     frontend_url = os.environ.get("FRONTEND_BASE_URL", "http://localhost:5173")
     connection = (
-        db.query(BankConnection).filter(BankConnection.state == state).first()
+        db.scalar(select(BankConnection).where(BankConnection.state == state).limit(1))
         if state else None
     )
     if error or not code or connection is None:

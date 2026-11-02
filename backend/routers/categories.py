@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 import cache_service
@@ -13,7 +13,7 @@ router = APIRouter(prefix="/api/categories")
 
 
 def _sync_category_splits(db: Session, category: Category, splits: list[CategorySplitCreate]):
-    db.query(CategorySplit).filter(CategorySplit.category_id == category.id).delete()
+    db.execute(delete(CategorySplit).where(CategorySplit.category_id == category.id))
     for s in splits:
         db.add(CategorySplit(
             category_id=category.id,
@@ -32,12 +32,11 @@ def _usage_counts(db: Session) -> dict[int, int]:
     redone from the current hierarchy on every read.
     """
     def compute():
-        rows = (
-            db.query(Transaction.category_id, func.count(Transaction.id))
-            .filter(Transaction.category_id.isnot(None))
+        rows = db.execute(
+            select(Transaction.category_id, func.count(Transaction.id))
+            .where(Transaction.category_id.isnot(None))
             .group_by(Transaction.category_id)
-            .all()
-        )
+        ).all()
         return {str(cid): n for cid, n in rows}
 
     cached = cache_service.get_or_compute(db, "category_usage", {}, compute)
@@ -70,10 +69,10 @@ def order_by_usage(categories: list[Category], counts: dict[int, int]) -> list[C
 
 @router.get("", response_model=list[CategoryOut])
 def get_categories(db: Session = Depends(get_db)):
-    categories = db.query(Category).options(
+    categories = db.scalars(select(Category).options(
         joinedload(Category.parent),
         selectinload(Category.splits).joinedload(CategorySplit.user),
-    ).all()
+    )).all()
     return [build_category_out(c) for c in order_by_usage(categories, _usage_counts(db))]
 
 
@@ -92,7 +91,7 @@ def create_category(data: CategoryCreate, db: Session = Depends(get_db)):
 
 @router.put("/{category_id}", response_model=CategoryOut)
 def update_category(category_id: int, data: CategoryUpdate, db: Session = Depends(get_db)):
-    category = db.query(Category).filter(Category.id == category_id).first()
+    category = db.scalar(select(Category).where(Category.id == category_id).limit(1))
     if not category:
         raise HTTPException(404, "Category not found")
     update_data = data.model_dump(exclude_unset=True)
@@ -116,7 +115,7 @@ def update_category(category_id: int, data: CategoryUpdate, db: Session = Depend
 
 @router.delete("/{category_id}", status_code=204)
 def delete_category(category_id: int, db: Session = Depends(get_db)):
-    category = db.query(Category).filter(Category.id == category_id).first()
+    category = db.scalar(select(Category).where(Category.id == category_id).limit(1))
     if not category:
         raise HTTPException(404, "Category not found")
     if category.transactions:

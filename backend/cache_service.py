@@ -17,6 +17,7 @@ aggregation never requires touching this file.
 import json
 from typing import Any, Callable
 
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -36,7 +37,7 @@ def get_or_compute(db: Session, namespace: str, params: dict[str, Any], compute:
     endpoints don't otherwise commit.
     """
     key = _build_key(namespace, params)
-    row = db.query(AggregateCache).filter(AggregateCache.cache_key == key).first()
+    row = db.scalar(select(AggregateCache).where(AggregateCache.cache_key == key).limit(1))
     if row is not None:
         return json.loads(row.payload)
 
@@ -60,10 +61,13 @@ def invalidate(db: Session, *namespaces: str) -> None:
     so the invalidation lands atomically with the change that made it
     necessary.
     """
-    db.query(AggregateCache).filter(AggregateCache.namespace.in_(namespaces)).delete(synchronize_session=False)
+    db.execute(
+        delete(AggregateCache).where(AggregateCache.namespace.in_(namespaces)),
+        execution_options={"synchronize_session": False},
+    )
 
 
 def invalidate_all(db: Session) -> None:
     """Drop every cached entry, any namespace - for mutation paths (bulk backup
     restore) that bypass per-site invalidation entirely. Does not commit."""
-    db.query(AggregateCache).delete(synchronize_session=False)
+    db.execute(delete(AggregateCache), execution_options={"synchronize_session": False})
