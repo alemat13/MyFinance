@@ -1,9 +1,9 @@
 """The Transactions screen's search request and its advanced-filter conditions."""
-import re
-from datetime import date, datetime
-from typing import List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from datetime import date
+from typing import Literal
+
+from pydantic import model_validator
 
 from .base import Schema
 from .transactions import (
@@ -11,7 +11,6 @@ from .transactions import (
     BulkUpdateTransactionsRequest,
     TransactionOut,
 )
-
 
 TEXT_OPERATORS = {"contains", "equals", "not_equals", "starts_with", "ends_with"}
 NUMERIC_OPERATORS = {"eq", "ne", "gt", "gte", "lt", "lte", "between"}
@@ -21,8 +20,13 @@ DATE_OPERATORS = {"on", "before", "after", "between"}
 # a transaction, so a chart's segment can open its own transactions.
 MONTH_FIELDS = {"accounting_month"}
 TEXT_FIELDS = {
-    "payee", "memo", "raw_label",
-    "raw_counterparty", "raw_transaction_code", "raw_merchant_category_code", "raw_merchant_location",
+    "payee",
+    "memo",
+    "raw_label",
+    "raw_counterparty",
+    "raw_transaction_code",
+    "raw_merchant_category_code",
+    "raw_merchant_location",
 }
 # created_at is when the row reached MyFinance ("Added on"), compared by day.
 DATE_FIELDS = {"date", "raw_initiated_date", "raw_booking_date", "created_at"}
@@ -46,7 +50,13 @@ LIST_OPERATORS = {"in", "not_in"}
 # the amount their ownership of the account pays). Searched only: a rule has
 # no use for them, since the import preview runs rules on rows with no split.
 # The _abs ones read the share or balance without its sign.
-USER_FIELDS = {"split_weight", "split_share", "split_balance", "split_share_abs", "split_balance_abs"}
+USER_FIELDS = {
+    "split_weight",
+    "split_share",
+    "split_balance",
+    "split_share_abs",
+    "split_balance_abs",
+}
 
 OPERATORS_BY_FIELD = {
     **{f: TEXT_OPERATORS for f in TEXT_FIELDS},
@@ -62,11 +72,31 @@ OPERATORS_BY_FIELD = {
 
 class FilterCondition(Schema):
     field: Literal[
-        "payee", "memo", "raw_label", "amount", "amount_abs", "date", "account_id", "category_id",
-        "split_weight", "split_share", "split_balance", "split_share_abs", "split_balance_abs", "tag_id",
-        "reconciled", "linked", "accounting_month_offset", "accounting_month", "created_at",
-        "raw_counterparty", "raw_transaction_code", "raw_merchant_category_code", "raw_merchant_location",
-        "raw_initiated_date", "raw_booking_date",
+        "payee",
+        "memo",
+        "raw_label",
+        "amount",
+        "amount_abs",
+        "date",
+        "account_id",
+        "category_id",
+        "split_weight",
+        "split_share",
+        "split_balance",
+        "split_share_abs",
+        "split_balance_abs",
+        "tag_id",
+        "reconciled",
+        "linked",
+        "accounting_month_offset",
+        "accounting_month",
+        "created_at",
+        "raw_counterparty",
+        "raw_transaction_code",
+        "raw_merchant_category_code",
+        "raw_merchant_location",
+        "raw_initiated_date",
+        "raw_booking_date",
     ]
     operator: str
     value: bool | str | float | int | list[int | None] | None = None
@@ -78,11 +108,15 @@ class FilterCondition(Schema):
     def _validate_operator(self):
         allowed = OPERATORS_BY_FIELD[self.field]
         if self.operator not in allowed:
-            raise ValueError(f'operator "{self.operator}" not valid for field "{self.field}" (allowed: {sorted(allowed)})')
+            raise ValueError(
+                f'operator "{self.operator}" not valid for field "{self.field}" (allowed: {sorted(allowed)})'
+            )
         if self.field in USER_FIELDS and self.user_id is None:
             raise ValueError(f'field "{self.field}" needs a user_id')
         if (self.operator in LIST_OPERATORS) != isinstance(self.value, list):
-            raise ValueError(f'operator "{self.operator}" takes {"a list" if self.operator in LIST_OPERATORS else "a single value"}')
+            raise ValueError(
+                f'operator "{self.operator}" takes {"a list" if self.operator in LIST_OPERATORS else "a single value"}'
+            )
         if isinstance(self.value, list) and not self.value:
             raise ValueError(f'"{self.operator}" needs at least one value')
         return self
@@ -91,6 +125,7 @@ class FilterCondition(Schema):
 class HistoryGroupRef(Schema):
     """One History entry's rows (history.group_filter()): the id range they
     span plus what they share."""
+
     first_id: int
     last_id: int
     action: str

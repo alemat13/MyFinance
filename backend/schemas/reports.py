@@ -1,20 +1,20 @@
 """Dashboard, charts and history timeline responses."""
-import re
-from datetime import date, datetime
-from typing import List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from datetime import datetime
+from typing import Literal
+
+from pydantic import ConfigDict
 
 from .base import Schema, _DateType
 from .entities import AccountOut, UserBalanceOut
-from .transactions import TransactionOut
 from .search import HistoryGroupRef
+from .transactions import TransactionOut
 
 
 class DashboardResponse(Schema):
-    accounts: List[AccountOut]
-    recent_transactions: List[TransactionOut]
-    balances: List[UserBalanceOut] = []
+    accounts: list[AccountOut]
+    recent_transactions: list[TransactionOut]
+    balances: list[UserBalanceOut] = []
 
 
 class CategoryChartItem(Schema):
@@ -60,12 +60,12 @@ class ParentCategoryOut(Schema):
 
 
 class ChartsResponse(Schema):
-    currencies: List[str]
-    by_category: List[CategoryChartItem]
-    by_month: List[MonthChartItem]
-    net_by_month: List[NetMonthChartItem]
-    by_month_category: List[MonthCategoryChartItem] = []
-    chart_categories: List[ChartCategoryOut] = []
+    currencies: list[str]
+    by_category: list[CategoryChartItem]
+    by_month: list[MonthChartItem]
+    net_by_month: list[NetMonthChartItem]
+    by_month_category: list[MonthCategoryChartItem] = []
+    chart_categories: list[ChartCategoryOut] = []
     parent_category: ParentCategoryOut | None = None
 
 
@@ -78,7 +78,7 @@ class AccountValuePointOut(Schema):
 class AccountValueOut(Schema):
     account_id: int
     currency: str
-    points: List[AccountValuePointOut]
+    points: list[AccountValuePointOut]
 
 
 class TransactionHistoryOut(Schema):
@@ -87,30 +87,31 @@ class TransactionHistoryOut(Schema):
     id: int
     transaction_id: int
     action: str
-    source: Optional[str] = None
+    source: str | None = None
     changed_at: datetime
-    changed_by_user_id: Optional[int] = None
-    changed_by_user_name: Optional[str] = None
-    date: Optional[_DateType] = None
-    payee: Optional[str] = None
-    memo: Optional[str] = None
-    amount: Optional[float] = None
-    account_id: Optional[int] = None
-    category_id: Optional[int] = None
-    accounting_month_offset: Optional[int] = None
-    changes: Optional[dict] = None
+    changed_by_user_id: int | None = None
+    changed_by_user_name: str | None = None
+    date: _DateType | None = None
+    payee: str | None = None
+    memo: str | None = None
+    amount: float | None = None
+    account_id: int | None = None
+    category_id: int | None = None
+    accounting_month_offset: int | None = None
+    changes: dict | None = None
 
 
 class HistoryEntryOut(HistoryGroupRef):
     """One line of the History timeline: a single history row (count 1, with
     its own snapshot and `changes`) or the rows one action wrote (count > 1,
     `changes` then holding history.summary()'s shared values)."""
+
     count: int
     changed_at: datetime  # the newest row's
     started_at: datetime  # the oldest row's
     changed_by_user_name: str | None = None
     transaction_id: int | None = None
-    date: Optional[_DateType] = None
+    date: _DateType | None = None
     payee: str | None = None
     amount: float | None = None
     account_id: int | None = None

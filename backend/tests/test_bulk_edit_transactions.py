@@ -8,6 +8,7 @@ from models import Transaction
 @pytest.fixture()
 def sample_category2(db):
     from models import Category
+
     category = Category(name="Test Groceries", type="Expense")
     db.add(category)
     db.commit()
@@ -16,8 +17,13 @@ def sample_category2(db):
 
 
 def _make_transaction(db, account, category, **overrides):
-    defaults = dict(date=date(2026, 1, 15), payee="Payee", amount=100.0,
-                     account_id=account.id, category_id=category.id)
+    defaults = dict(
+        date=date(2026, 1, 15),
+        payee="Payee",
+        amount=100.0,
+        account_id=account.id,
+        category_id=category.id,
+    )
     defaults.update(overrides)
     transaction = Transaction(**defaults)
     db.add(transaction)
@@ -26,7 +32,9 @@ def _make_transaction(db, account, category, **overrides):
     return transaction
 
 
-def test_bulk_update_category_applies_to_all_selected(client, db, sample_account, sample_category, sample_category2):
+def test_bulk_update_category_applies_to_all_selected(
+    client, db, sample_account, sample_category, sample_category2
+):
     t1 = _make_transaction(db, sample_account, sample_category)
     t2 = _make_transaction(db, sample_account, sample_category)
 
@@ -41,7 +49,9 @@ def test_bulk_update_category_applies_to_all_selected(client, db, sample_account
         assert client.get(f"/api/transactions/{tid}").json()["category_id"] == sample_category2.id
 
 
-def test_bulk_update_accounting_month_offset_applies_per_transaction_own_date(client, db, sample_account, sample_category):
+def test_bulk_update_accounting_month_offset_applies_per_transaction_own_date(
+    client, db, sample_account, sample_category
+):
     t1 = _make_transaction(db, sample_account, sample_category, date=date(2026, 1, 15))
     t2 = _make_transaction(db, sample_account, sample_category, date=date(2026, 3, 15))
 
@@ -59,7 +69,9 @@ def test_bulk_update_accounting_month_offset_applies_per_transaction_own_date(cl
     assert data2["accounting_month"] == "2026-04"
 
 
-def test_bulk_update_split_weights_reprorates_against_each_transactions_own_amount(client, db, sample_account, sample_category, sample_user):
+def test_bulk_update_split_weights_reprorates_against_each_transactions_own_amount(
+    client, db, sample_account, sample_category, sample_user
+):
     t1 = _make_transaction(db, sample_account, sample_category, amount=100.0)
     t2 = _make_transaction(db, sample_account, sample_category, amount=200.0)
 
@@ -78,7 +90,9 @@ def test_bulk_update_split_weights_reprorates_against_each_transactions_own_amou
     assert splits2[0]["weight"] == 1 and splits2[0]["share_amount"] == 200.0
 
 
-def test_bulk_update_two_fields_at_once(client, db, sample_account, sample_category, sample_category2):
+def test_bulk_update_two_fields_at_once(
+    client, db, sample_account, sample_category, sample_category2
+):
     t1 = _make_transaction(db, sample_account, sample_category)
 
     response = client.put(
@@ -94,7 +108,9 @@ def test_bulk_update_two_fields_at_once(client, db, sample_account, sample_categ
     assert data["accounting_month_offset"] == 2
 
 
-def test_bulk_update_reconciled_applies_to_all_selected(client, db, sample_account, sample_category):
+def test_bulk_update_reconciled_applies_to_all_selected(
+    client, db, sample_account, sample_category
+):
     t1 = _make_transaction(db, sample_account, sample_category)
     t2 = _make_transaction(db, sample_account, sample_category)
 
@@ -113,7 +129,9 @@ def test_bulk_update_reconciled_applies_to_all_selected(client, db, sample_accou
         assert updated[0]["changes"]["reconciled"] == {"old": False, "new": True}
 
 
-def test_bulk_update_reconciled_and_category_at_once(client, db, sample_account, sample_category, sample_category2):
+def test_bulk_update_reconciled_and_category_at_once(
+    client, db, sample_account, sample_category, sample_category2
+):
     t1 = _make_transaction(db, sample_account, sample_category)
 
     response = client.put(
@@ -129,7 +147,9 @@ def test_bulk_update_reconciled_and_category_at_once(client, db, sample_account,
     assert data["category_id"] == sample_category2.id
 
 
-def test_bulk_update_missing_transaction_id_404_and_no_mutation(client, db, sample_account, sample_category, sample_category2):
+def test_bulk_update_missing_transaction_id_404_and_no_mutation(
+    client, db, sample_account, sample_category, sample_category2
+):
     t1 = _make_transaction(db, sample_account, sample_category)
 
     response = client.put(
@@ -142,7 +162,9 @@ def test_bulk_update_missing_transaction_id_404_and_no_mutation(client, db, samp
     assert data["category_id"] == sample_category.id
 
 
-def test_bulk_update_invalid_weights_422_and_no_mutation(client, db, sample_account, sample_category, sample_user):
+def test_bulk_update_invalid_weights_422_and_no_mutation(
+    client, db, sample_account, sample_category, sample_user
+):
     t1 = _make_transaction(db, sample_account, sample_category)
 
     response = client.put(
@@ -176,7 +198,9 @@ def test_bulk_update_no_fields_set_422(client, db, sample_account, sample_catego
     assert response.status_code == 422
 
 
-def test_bulk_update_writes_one_history_row_per_changed_transaction(client, db, sample_account, sample_category, sample_category2):
+def test_bulk_update_writes_one_history_row_per_changed_transaction(
+    client, db, sample_account, sample_category, sample_category2
+):
     t1 = _make_transaction(db, sample_account, sample_category)
     t2 = _make_transaction(db, sample_account, sample_category)
 
@@ -193,7 +217,9 @@ def test_bulk_update_writes_one_history_row_per_changed_transaction(client, db, 
         }
 
 
-def test_bulk_update_split_only_change_writes_history_row(client, db, sample_account, sample_category, sample_user):
+def test_bulk_update_split_only_change_writes_history_row(
+    client, db, sample_account, sample_category, sample_user
+):
     t1 = _make_transaction(db, sample_account, sample_category)
 
     client.put(
@@ -214,8 +240,11 @@ def test_bulk_update_split_only_change_writes_history_row(client, db, sample_acc
     }
 
 
-def test_bulk_update_mixed_accounts_and_currencies_succeeds(client, db, sample_category, sample_user):
+def test_bulk_update_mixed_accounts_and_currencies_succeeds(
+    client, db, sample_category, sample_user
+):
     from models import Account
+
     eur_account = Account(name="EUR Checking", type="Checking", balance_offset=0.0, currency="EUR")
     usd_account = Account(name="USD Checking", type="Checking", balance_offset=0.0, currency="USD")
     db.add_all([eur_account, usd_account])
@@ -240,7 +269,9 @@ def test_bulk_update_mixed_accounts_and_currencies_succeeds(client, db, sample_c
     assert client.get(f"/api/transactions/{t2.id}").json()["splits"][0]["share_amount"] == 75.0
 
 
-def test_bulk_update_actor_user_id_recorded_in_history(client, db, sample_account, sample_category, sample_category2, sample_user):
+def test_bulk_update_actor_user_id_recorded_in_history(
+    client, db, sample_account, sample_category, sample_category2, sample_user
+):
     t1 = _make_transaction(db, sample_account, sample_category)
 
     client.put(
@@ -252,8 +283,13 @@ def test_bulk_update_actor_user_id_recorded_in_history(client, db, sample_accoun
     assert history[0]["changed_by_user_id"] == sample_user.id
 
 
-def test_bulk_update_by_filter_applies_to_every_matching_row_across_pages(client, db, sample_account, sample_category, sample_category2):
-    matching = [_make_transaction(db, sample_account, sample_category, payee=f"Boulangerie {i}") for i in range(3)]
+def test_bulk_update_by_filter_applies_to_every_matching_row_across_pages(
+    client, db, sample_account, sample_category, sample_category2
+):
+    matching = [
+        _make_transaction(db, sample_account, sample_category, payee=f"Boulangerie {i}")
+        for i in range(3)
+    ]
     other = _make_transaction(db, sample_account, sample_category, payee="Garage")
 
     response = client.put(
@@ -267,28 +303,42 @@ def test_bulk_update_by_filter_applies_to_every_matching_row_across_pages(client
         },
     )
     assert response.status_code == 200
-    assert response.json() == {"updated_count": 3, "transaction_ids": sorted(t.id for t in matching)}
+    assert response.json() == {
+        "updated_count": 3,
+        "transaction_ids": sorted(t.id for t in matching),
+    }
     for t in matching:
         assert client.get(f"/api/transactions/{t.id}").json()["category_id"] == sample_category2.id
     assert client.get(f"/api/transactions/{other.id}").json()["category_id"] == sample_category.id
 
 
-def test_bulk_update_by_filter_refuses_when_match_count_changed(client, db, sample_account, sample_category, sample_category2):
+def test_bulk_update_by_filter_refuses_when_match_count_changed(
+    client, db, sample_account, sample_category, sample_category2
+):
     t1 = _make_transaction(db, sample_account, sample_category, payee="Boulangerie")
     _make_transaction(db, sample_account, sample_category, payee="Boulangerie bis")
 
     response = client.put(
         "/api/transactions/bulk-update",
-        json={"filter": {"search": "boulangerie"}, "expected_count": 1, "update": {"category_id": sample_category2.id}},
+        json={
+            "filter": {"search": "boulangerie"},
+            "expected_count": 1,
+            "update": {"category_id": sample_category2.id},
+        },
     )
     assert response.status_code == 409
     assert client.get(f"/api/transactions/{t1.id}").json()["category_id"] == sample_category.id
 
 
-def test_bulk_update_by_filter_commits_in_chunks(client, db, sample_account, sample_category, sample_category2, monkeypatch):
+def test_bulk_update_by_filter_commits_in_chunks(
+    client, db, sample_account, sample_category, sample_category2, monkeypatch
+):
     import routers.transactions as transactions_router
+
     monkeypatch.setattr(transactions_router, "BULK_UPDATE_CHUNK_SIZE", 2)
-    rows = [_make_transaction(db, sample_account, sample_category, payee=f"Chunk {i}") for i in range(5)]
+    rows = [
+        _make_transaction(db, sample_account, sample_category, payee=f"Chunk {i}") for i in range(5)
+    ]
 
     response = client.put(
         "/api/transactions/bulk-update",
@@ -300,35 +350,59 @@ def test_bulk_update_by_filter_commits_in_chunks(client, db, sample_account, sam
         assert client.get(f"/api/transactions/{t.id}").json()["reconciled"] is True
 
 
-def test_bulk_update_rejects_both_ids_and_filter(client, db, sample_account, sample_category, sample_category2):
+def test_bulk_update_rejects_both_ids_and_filter(
+    client, db, sample_account, sample_category, sample_category2
+):
     t1 = _make_transaction(db, sample_account, sample_category)
     response = client.put(
         "/api/transactions/bulk-update",
-        json={"transaction_ids": [t1.id], "filter": {}, "update": {"category_id": sample_category2.id}},
+        json={
+            "transaction_ids": [t1.id],
+            "filter": {},
+            "update": {"category_id": sample_category2.id},
+        },
     )
     assert response.status_code == 422
 
 
-def test_bulk_update_by_filter_matching_nothing_is_rejected(client, db, sample_account, sample_category, sample_category2):
+def test_bulk_update_by_filter_matching_nothing_is_rejected(
+    client, db, sample_account, sample_category, sample_category2
+):
     _make_transaction(db, sample_account, sample_category, payee="Garage")
     response = client.put(
         "/api/transactions/bulk-update",
-        json={"filter": {"search": "nothing-matches-this"}, "update": {"category_id": sample_category2.id}},
+        json={
+            "filter": {"search": "nothing-matches-this"},
+            "update": {"category_id": sample_category2.id},
+        },
     )
     assert response.status_code == 422
 
 
-def test_bulk_update_moves_to_another_account_keeping_splits(client, db, sample_account, sample_category, sample_user):
+def test_bulk_update_moves_to_another_account_keeping_splits(
+    client, db, sample_account, sample_category, sample_user
+):
     from models import Account, TransactionHistory, TransactionSplit
+
     other = Account(name="Other", type="Savings", balance_offset=0.0, currency="EUR")
     db.add(other)
     db.commit()
     t1 = _make_transaction(db, sample_account, sample_category)
-    db.add(TransactionSplit(transaction_id=t1.id, user_id=sample_user.id, weight=7, share_amount=100.0, source="custom"))
+    db.add(
+        TransactionSplit(
+            transaction_id=t1.id,
+            user_id=sample_user.id,
+            weight=7,
+            share_amount=100.0,
+            source="custom",
+        )
+    )
     db.commit()
 
-    response = client.put("/api/transactions/bulk-update",
-                          json={"transaction_ids": [t1.id], "update": {"account_id": other.id}})
+    response = client.put(
+        "/api/transactions/bulk-update",
+        json={"transaction_ids": [t1.id], "update": {"account_id": other.id}},
+    )
     assert response.status_code == 200
     db.refresh(t1)
     assert t1.account_id == other.id
@@ -339,30 +413,41 @@ def test_bulk_update_moves_to_another_account_keeping_splits(client, db, sample_
 
 def test_bulk_update_move_to_unknown_account_422(client, db, sample_account, sample_category):
     t1 = _make_transaction(db, sample_account, sample_category)
-    response = client.put("/api/transactions/bulk-update",
-                          json={"transaction_ids": [t1.id], "update": {"account_id": 9999}})
+    response = client.put(
+        "/api/transactions/bulk-update",
+        json={"transaction_ids": [t1.id], "update": {"account_id": 9999}},
+    )
     assert response.status_code == 422
     db.refresh(t1)
     assert t1.account_id == sample_account.id
 
 
-def test_bulk_update_move_refuses_a_bank_id_the_target_already_has(client, db, sample_account, sample_category):
+def test_bulk_update_move_refuses_a_bank_id_the_target_already_has(
+    client, db, sample_account, sample_category
+):
     from models import Account
+
     other = Account(name="Other", type="Savings", balance_offset=0.0, currency="EUR")
     db.add(other)
     db.commit()
     moving = _make_transaction(db, sample_account, sample_category, external_id="bank-1")
     _make_transaction(db, other, sample_category, external_id="bank-1")
 
-    response = client.put("/api/transactions/bulk-update",
-                          json={"transaction_ids": [moving.id], "update": {"account_id": other.id}})
+    response = client.put(
+        "/api/transactions/bulk-update",
+        json={"transaction_ids": [moving.id], "update": {"account_id": other.id}},
+    )
     assert response.status_code == 409
     db.refresh(moving)
     assert moving.account_id == sample_account.id
 
 
-def test_bulk_update_payee_renames_every_selected_row_and_keeps_memo(client, db, sample_account, sample_category):
-    t1 = _make_transaction(db, sample_account, sample_category, payee="CARTE 12/09 SNCF", memo="Train Lyon")
+def test_bulk_update_payee_renames_every_selected_row_and_keeps_memo(
+    client, db, sample_account, sample_category
+):
+    t1 = _make_transaction(
+        db, sample_account, sample_category, payee="CARTE 12/09 SNCF", memo="Train Lyon"
+    )
     t2 = _make_transaction(db, sample_account, sample_category, payee="PRLV SNCF CONNECT")
     untouched = _make_transaction(db, sample_account, sample_category, payee="Garage")
 
@@ -382,7 +467,9 @@ def test_bulk_update_payee_renames_every_selected_row_and_keeps_memo(client, db,
 
 
 @pytest.mark.parametrize("payee", ["", "   ", None])
-def test_bulk_update_blank_payee_422_and_no_mutation(client, db, sample_account, sample_category, payee):
+def test_bulk_update_blank_payee_422_and_no_mutation(
+    client, db, sample_account, sample_category, payee
+):
     t1 = _make_transaction(db, sample_account, sample_category, payee="Boulangerie")
 
     response = client.put(
@@ -393,25 +480,39 @@ def test_bulk_update_blank_payee_422_and_no_mutation(client, db, sample_account,
     assert client.get(f"/api/transactions/{t1.id}").json()["payee"] == "Boulangerie"
 
 
-def test_bulk_update_payee_by_filter_renames_every_matching_row(client, db, sample_account, sample_category):
-    matching = [_make_transaction(db, sample_account, sample_category, payee=f"CB AMAZON {i}") for i in range(3)]
+def test_bulk_update_payee_by_filter_renames_every_matching_row(
+    client, db, sample_account, sample_category
+):
+    matching = [
+        _make_transaction(db, sample_account, sample_category, payee=f"CB AMAZON {i}")
+        for i in range(3)
+    ]
 
     response = client.put(
         "/api/transactions/bulk-update",
-        json={"filter": {"search": "amazon", "page": 1, "page_size": 1}, "expected_count": 3, "update": {"payee": "Amazon"}},
+        json={
+            "filter": {"search": "amazon", "page": 1, "page_size": 1},
+            "expected_count": 3,
+            "update": {"payee": "Amazon"},
+        },
     )
     assert response.status_code == 200
     for t in matching:
         assert client.get(f"/api/transactions/{t.id}").json()["payee"] == "Amazon"
 
 
-def test_bulk_update_payee_prepend_and_append_keep_each_row_own_payee(client, db, sample_account, sample_category):
+def test_bulk_update_payee_prepend_and_append_keep_each_row_own_payee(
+    client, db, sample_account, sample_category
+):
     t1 = _make_transaction(db, sample_account, sample_category, payee="SNCF", memo="Train Lyon")
     t2 = _make_transaction(db, sample_account, sample_category, payee="Uber")
 
     response = client.put(
         "/api/transactions/bulk-update",
-        json={"transaction_ids": [t1.id, t2.id], "update": {"payee": "Pro - ", "payee_mode": "prepend"}},
+        json={
+            "transaction_ids": [t1.id, t2.id],
+            "update": {"payee": "Pro - ", "payee_mode": "prepend"},
+        },
     )
     assert response.status_code == 200
     assert client.get(f"/api/transactions/{t1.id}").json()["payee"] == "Pro - SNCF"
@@ -419,7 +520,10 @@ def test_bulk_update_payee_prepend_and_append_keep_each_row_own_payee(client, db
 
     response = client.put(
         "/api/transactions/bulk-update",
-        json={"transaction_ids": [t1.id], "update": {"payee": " (remboursé)", "payee_mode": "append"}},
+        json={
+            "transaction_ids": [t1.id],
+            "update": {"payee": " (remboursé)", "payee_mode": "append"},
+        },
     )
     assert response.status_code == 200
     first = client.get(f"/api/transactions/{t1.id}").json()
@@ -427,29 +531,42 @@ def test_bulk_update_payee_prepend_and_append_keep_each_row_own_payee(client, db
     assert first["memo"] == "Train Lyon"
 
     history = client.get(f"/api/transactions/{t1.id}/history").json()
-    assert {"payee": {"old": "Pro - SNCF", "new": "Pro - SNCF (remboursé)"}} in [h["changes"] for h in history]
+    assert {"payee": {"old": "Pro - SNCF", "new": "Pro - SNCF (remboursé)"}} in [
+        h["changes"] for h in history
+    ]
 
 
 def test_bulk_update_payee_append_by_filter(client, db, sample_account, sample_category):
-    matching = [_make_transaction(db, sample_account, sample_category, payee=f"Amazon {i}") for i in range(3)]
+    matching = [
+        _make_transaction(db, sample_account, sample_category, payee=f"Amazon {i}")
+        for i in range(3)
+    ]
 
     response = client.put(
         "/api/transactions/bulk-update",
-        json={"filter": {"search": "amazon", "page": 1, "page_size": 1}, "expected_count": 3,
-              "update": {"payee": " *", "payee_mode": "append"}},
+        json={
+            "filter": {"search": "amazon", "page": 1, "page_size": 1},
+            "expected_count": 3,
+            "update": {"payee": " *", "payee_mode": "append"},
+        },
     )
     assert response.status_code == 200
     for i, t in enumerate(matching):
         assert client.get(f"/api/transactions/{t.id}").json()["payee"] == f"Amazon {i} *"
 
 
-def test_bulk_update_payee_append_too_long_422_and_no_mutation(client, db, sample_account, sample_category):
+def test_bulk_update_payee_append_too_long_422_and_no_mutation(
+    client, db, sample_account, sample_category
+):
     t1 = _make_transaction(db, sample_account, sample_category, payee="x" * 195)
     t2 = _make_transaction(db, sample_account, sample_category, payee="Short")
 
     response = client.put(
         "/api/transactions/bulk-update",
-        json={"transaction_ids": [t1.id, t2.id], "update": {"payee": " suffix", "payee_mode": "append"}},
+        json={
+            "transaction_ids": [t1.id, t2.id],
+            "update": {"payee": " suffix", "payee_mode": "append"},
+        },
     )
     assert response.status_code == 422
     assert client.get(f"/api/transactions/{t2.id}").json()["payee"] == "Short"
@@ -466,15 +583,25 @@ def test_bulk_update_blank_affix_422(client, db, sample_account, sample_category
     assert client.get(f"/api/transactions/{t1.id}").json()["payee"] == "Boulangerie"
 
 
-def test_bulk_update_payee_regex_rewrites_matches_with_groups(client, db, sample_account, sample_category):
-    t1 = _make_transaction(db, sample_account, sample_category, payee="PRLV SEPA FREE MOBILE", memo="Forfait")
+def test_bulk_update_payee_regex_rewrites_matches_with_groups(
+    client, db, sample_account, sample_category
+):
+    t1 = _make_transaction(
+        db, sample_account, sample_category, payee="PRLV SEPA FREE MOBILE", memo="Forfait"
+    )
     t2 = _make_transaction(db, sample_account, sample_category, payee="Boulangerie")
 
     response = client.put(
         "/api/transactions/bulk-update",
-        json={"transaction_ids": [t1.id, t2.id], "update": {
-            "payee": r"^prlv sepa (\w+) (\w+)$", "payee_mode": "regex",
-            "payee_replacement": "$2 ($1) $$", "payee_ignore_case": True}},
+        json={
+            "transaction_ids": [t1.id, t2.id],
+            "update": {
+                "payee": r"^prlv sepa (\w+) (\w+)$",
+                "payee_mode": "regex",
+                "payee_replacement": "$2 ($1) $$",
+                "payee_ignore_case": True,
+            },
+        },
     )
     assert response.status_code == 200
     first = client.get(f"/api/transactions/{t1.id}").json()
@@ -482,22 +609,35 @@ def test_bulk_update_payee_regex_rewrites_matches_with_groups(client, db, sample
     assert first["memo"] == "Forfait"
     assert client.get(f"/api/transactions/{t2.id}").json()["payee"] == "Boulangerie"
     history = client.get(f"/api/transactions/{t1.id}/history").json()
-    assert {"payee": {"old": "PRLV SEPA FREE MOBILE", "new": "MOBILE (FREE) $"}} in [h["changes"] for h in history]
-    assert [h for h in client.get(f"/api/transactions/{t2.id}/history").json() if "payee" in (h["changes"] or {})] == []
+    assert {"payee": {"old": "PRLV SEPA FREE MOBILE", "new": "MOBILE (FREE) $"}} in [
+        h["changes"] for h in history
+    ]
+    assert [
+        h
+        for h in client.get(f"/api/transactions/{t2.id}/history").json()
+        if "payee" in (h["changes"] or {})
+    ] == []
 
 
-def test_bulk_update_payee_regex_strips_and_deletes_text(client, db, sample_account, sample_category):
+def test_bulk_update_payee_regex_strips_and_deletes_text(
+    client, db, sample_account, sample_category
+):
     t1 = _make_transaction(db, sample_account, sample_category, payee="CARTE 12/09 Carrefour")
     response = client.put(
         "/api/transactions/bulk-update",
-        json={"transaction_ids": [t1.id], "update": {"payee": r"CARTE \d\d/\d\d", "payee_mode": "regex"}},
+        json={
+            "transaction_ids": [t1.id],
+            "update": {"payee": r"CARTE \d\d/\d\d", "payee_mode": "regex"},
+        },
     )
     assert response.status_code == 200
     assert client.get(f"/api/transactions/{t1.id}").json()["payee"] == "Carrefour"
 
 
 @pytest.mark.parametrize("pattern", ["(unclosed", ".*"])
-def test_bulk_update_payee_regex_invalid_or_blanking_422_and_no_mutation(client, db, sample_account, sample_category, pattern):
+def test_bulk_update_payee_regex_invalid_or_blanking_422_and_no_mutation(
+    client, db, sample_account, sample_category, pattern
+):
     t1 = _make_transaction(db, sample_account, sample_category, payee="Boulangerie")
     response = client.put(
         "/api/transactions/bulk-update",

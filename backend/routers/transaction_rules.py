@@ -40,13 +40,15 @@ def _validate(db: Session, data: RuleCreate | RuleUpdate) -> None:
             raise RuleViolation("A rule cannot test a person's split, share or balance.")
         if condition.field == "created_at":
             # A row being imported or synced has not been added yet.
-            raise RuleViolation('A rule cannot test the date a transaction was added.')
+            raise RuleViolation("A rule cannot test the date a transaction was added.")
         if condition.field == "linked":
             # Nor linked to anything.
-            raise RuleViolation('A rule cannot test whether a transaction is linked.')
+            raise RuleViolation("A rule cannot test whether a transaction is linked.")
         if condition.field == "tag_id" and condition.value is None:
             pass  # "has no tag" / "has some tag"
-        elif condition.value is None or (isinstance(condition.value, str) and not condition.value.strip()):
+        elif condition.value is None or (
+            isinstance(condition.value, str) and not condition.value.strip()
+        ):
             raise RuleViolation(f'The condition on "{condition.field}" has no value.')
         if condition.operator == "between" and condition.value2 is None:
             raise RuleViolation(f'The "between" condition on "{condition.field}" needs two values.')
@@ -61,7 +63,12 @@ def _validate(db: Session, data: RuleCreate | RuleUpdate) -> None:
     if actions.payee is not None and not actions.payee.strip():
         raise RuleViolation("The new payee cannot be blank.")
     if actions.category_id is not None:
-        if db.execute(select(Category.id).where(Category.id == actions.category_id).limit(1)).first() is None:
+        if (
+            db.execute(
+                select(Category.id).where(Category.id == actions.category_id).limit(1)
+            ).first()
+            is None
+        ):
             raise HTTPException(404, f"Category {actions.category_id} not found")
     if actions.add_tag_ids:
         tag_ids = set(actions.add_tag_ids)
@@ -70,7 +77,9 @@ def _validate(db: Session, data: RuleCreate | RuleUpdate) -> None:
             raise HTTPException(404, f"Tag(s) not found: {sorted(tag_ids - known)}")
     if actions.split_weights is not None:
         if not actions.split_weights:
-            raise RuleViolation("A split needs at least one person; leave the split action off instead.")
+            raise RuleViolation(
+                "A split needs at least one person; leave the split action off instead."
+            )
         validate_weights(actions.split_weights)
         user_ids = {w.user_id for w in actions.split_weights}
         known = set(db.scalars(select(User.id).where(User.id.in_(user_ids))).all())
@@ -88,7 +97,9 @@ def _store(rule: TransactionRule, data: RuleCreate | RuleUpdate) -> None:
 
 @router.get("", response_model=list[RuleOut])
 def list_rules(db: Session = Depends(get_db)):
-    return db.scalars(select(TransactionRule).order_by(TransactionRule.position, TransactionRule.id)).all()
+    return db.scalars(
+        select(TransactionRule).order_by(TransactionRule.position, TransactionRule.id)
+    ).all()
 
 
 @router.post("", response_model=RuleOut, status_code=201)
@@ -115,18 +126,18 @@ def reorder_rules(data: RuleOrderRequest, db: Session = Depends(get_db)):
     return list_rules(db)
 
 
-def _selection(db: Session, req: RulePreviewRequest) -> tuple[list[Transaction], list[TransactionRule]]:
+def _selection(
+    db: Session, req: RulePreviewRequest
+) -> tuple[list[Transaction], list[TransactionRule]]:
     if not req.transaction_ids:
         raise HTTPException(422, "transaction_ids must not be empty")
     if len(req.transaction_ids) > MAX_RULE_SELECTION:
         raise RuleViolation(f"At most {MAX_RULE_SELECTION} transactions at a time.")
-    rows = (
-        db.scalars(
-            select(Transaction)
-            .where(Transaction.id.in_(req.transaction_ids))
-            .order_by(Transaction.date.desc(), Transaction.id.desc())
-        ).all()
-    )
+    rows = db.scalars(
+        select(Transaction)
+        .where(Transaction.id.in_(req.transaction_ids))
+        .order_by(Transaction.date.desc(), Transaction.id.desc())
+    ).all()
     missing = sorted(set(req.transaction_ids) - {t.id for t in rows})
     if missing:
         raise HTTPException(404, f"Transaction(s) not found: {missing}")
@@ -163,7 +174,9 @@ def preview_rules(req: RulePreviewRequest, db: Session = Depends(get_db)):
 
 @router.post("/apply", response_model=RuleApplyResponse)
 @audit.batched
-def apply_rules(req: RuleApplyRequest, actor_user_id: int | None = Query(None), db: Session = Depends(get_db)):
+def apply_rules(
+    req: RuleApplyRequest, actor_user_id: int | None = Query(None), db: Session = Depends(get_db)
+):
     rows, rules = _selection(db, req)
     changed = transaction_rules.apply_to(db, rows, rules, actor_user_id=actor_user_id)
     db.commit()

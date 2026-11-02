@@ -78,7 +78,9 @@ def get_settings(db: Session = Depends(get_db)):
 @router.put("/settings", response_model=OneDriveSettingsOut)
 def update_settings(data: OneDriveSettingsUpdate, db: Session = Depends(get_db)):
     validate_onedrive_folder_path(data.folder_path)
-    validate_onedrive_retention(data.keep_daily, data.keep_weekly, data.keep_monthly, data.keep_yearly)
+    validate_onedrive_retention(
+        data.keep_daily, data.keep_weekly, data.keep_monthly, data.keep_yearly
+    )
     settings = onedrive_module.get_or_create_settings(db)
     settings.folder_path = data.folder_path
     settings.keep_daily = data.keep_daily
@@ -103,7 +105,9 @@ def run_now(db: Session = Depends(get_db)):
     if not settings.connected:
         raise HTTPException(422, "OneDrive is not connected")
     onedrive_module.run_backup(db, settings)
-    return OneDriveBackupRunResult(ran=True, status=settings.last_backup_status, error=settings.last_backup_error)
+    return OneDriveBackupRunResult(
+        ran=True, status=settings.last_backup_status, error=settings.last_backup_error
+    )
 
 
 @router.post("/backup/run-due", response_model=OneDriveBackupRunResult)
@@ -117,4 +121,6 @@ def run_due(
     if not onedrive_module.is_backup_due(settings):
         return OneDriveBackupRunResult(ran=False)
     onedrive_module.run_backup(db, settings)
-    return OneDriveBackupRunResult(ran=True, status=settings.last_backup_status, error=settings.last_backup_error)
+    return OneDriveBackupRunResult(
+        ran=True, status=settings.last_backup_status, error=settings.last_backup_error
+    )

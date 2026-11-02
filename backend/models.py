@@ -1,6 +1,17 @@
-from datetime import datetime, date
-
-from sqlalchemy import Column, Integer, String, Float, DateTime, Date, Text, ForeignKey, JSON, Boolean, Index, LargeBinary
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Column,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    LargeBinary,
+    String,
+    Text,
+)
 from sqlalchemy.orm import relationship
 
 from database import Base, utcnow
@@ -21,8 +32,12 @@ class Account(Base):
     archived = Column(Boolean, nullable=False, default=False)
 
     transactions = relationship("Transaction", back_populates="account")
-    user_associations = relationship("AccountUser", back_populates="account", cascade="all, delete-orphan")
-    split_weight_associations = relationship("AccountSplitWeight", back_populates="account", cascade="all, delete-orphan")
+    user_associations = relationship(
+        "AccountUser", back_populates="account", cascade="all, delete-orphan"
+    )
+    split_weight_associations = relationship(
+        "AccountSplitWeight", back_populates="account", cascade="all, delete-orphan"
+    )
 
 
 class Category(Base):
@@ -72,7 +87,9 @@ class Transaction(Base):
     # The group of linked transactions this one belongs to, if any (see
     # TransactionLink): a transfer's two sides, an expense and its refunds.
     # At most one group per transaction.
-    link_id = Column(Integer, ForeignKey("transaction_links.id", ondelete="SET NULL"), nullable=True, index=True)
+    link_id = Column(
+        Integer, ForeignKey("transaction_links.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     # Set on a checkpoint only (see checkpoints.py): what the whole account
     # was worth at the end of `date`, as the user typed it. A checkpoint's
     # `amount` is derived from it — this value minus the balance just before
@@ -105,7 +122,9 @@ class Transaction(Base):
     # raw_transaction_code is an ISO 20022 code from a bank and a Linxo
     # transaction type from the export, and nothing can tell them apart
     # from the value alone.
-    raw_source = Column(String(20), nullable=True)  # 'enable_banking' | 'csv_import' | 'linxo_export'
+    raw_source = Column(
+        String(20), nullable=True
+    )  # 'enable_banking' | 'csv_import' | 'linxo_export'
     raw_label = Column(Text, nullable=True)
     raw_counterparty = Column(String(200), nullable=True)
     raw_transaction_code = Column(String(60), nullable=True)
@@ -118,7 +137,9 @@ class Transaction(Base):
 
     account = relationship("Account", back_populates="transactions")
     category = relationship("Category", back_populates="transactions")
-    splits = relationship("TransactionSplit", back_populates="transaction", cascade="all, delete-orphan")
+    splits = relationship(
+        "TransactionSplit", back_populates="transaction", cascade="all, delete-orphan"
+    )
     # Free labels, several per transaction and shared by many (see Tag).
     tags = relationship("Tag", secondary="transaction_tags", order_by="Tag.name")
 
@@ -136,6 +157,7 @@ class TransactionLink(Base):
     detail panel can list them with their net. Means nothing to balances,
     charts or splits. Always at least two members: a link left with fewer is
     deleted (transaction_links.prune())."""
+
     __tablename__ = "transaction_links"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -149,6 +171,7 @@ class Tag(Base):
     transactions. Unlike a category it means nothing to balances, charts or
     splits; it only groups rows for searching (a trip, a project, a refund
     to chase). Names are unique, compared as typed."""
+
     __tablename__ = "tags"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -160,10 +183,15 @@ class Tag(Base):
 class TransactionTag(Base):
     """One tag on one transaction. Written through Transaction.tags; mapped
     as its own class so a backup can read and restore the pairs directly."""
+
     __tablename__ = "transaction_tags"
 
-    transaction_id = Column(Integer, ForeignKey("transactions.id", ondelete="CASCADE"), primary_key=True)
-    tag_id = Column(Integer, ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True, index=True)
+    transaction_id = Column(
+        Integer, ForeignKey("transactions.id", ondelete="CASCADE"), primary_key=True
+    )
+    tag_id = Column(
+        Integer, ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True, index=True
+    )
 
 
 class User(Base):
@@ -255,6 +283,7 @@ class AggregateCache(Base):
     column purely so invalidation can target every key in a namespace without
     a LIKE scan.
     """
+
     __tablename__ = "aggregate_cache"
 
     cache_key = Column(String, primary_key=True)
@@ -281,6 +310,7 @@ class CategorizerModel(Base):
     naive baseline it was compared against, so the numbers behind an
     activation decision stay auditable after the fact.
     """
+
     __tablename__ = "categorizer_models"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -302,6 +332,7 @@ class OneDriveBackupSettings(Base):
     onedrive.py. Always exactly one row, id=1 (get_or_create'd there).
     Token columns are Fernet-encrypted at rest and never serialized by the
     API (see schemas.OneDriveSettingsOut)."""
+
     __tablename__ = "onedrive_backup_settings"
 
     id = Column(Integer, primary_key=True)
@@ -334,6 +365,7 @@ class BankConnection(Base):
     a JWT signed on the fly from ENABLE_BANKING_PRIVATE_KEY, and session_id
     is only an identifier, useless to anyone without that key.
     """
+
     __tablename__ = "bank_connections"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -344,14 +376,18 @@ class BankConnection(Base):
     state = Column(String(64), nullable=False, index=True)
     authorization_id = Column(String(64), nullable=True)
     session_id = Column(String(64), nullable=True)
-    status = Column(String(20), nullable=False, default="pending")  # 'pending' | 'linked' | 'expired' | 'error'
+    status = Column(
+        String(20), nullable=False, default="pending"
+    )  # 'pending' | 'linked' | 'expired' | 'error'
     # When the bank's consent lapses (90 days for most French ASPSPs).
     # Re-consenting is a fresh authorization, not a token refresh.
     access_valid_until = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=utcnow)
     last_error = Column(Text, nullable=True)
 
-    account_links = relationship("BankAccountLink", back_populates="connection", cascade="all, delete-orphan")
+    account_links = relationship(
+        "BankAccountLink", back_populates="connection", cascade="all, delete-orphan"
+    )
 
 
 class BankAccountLink(Base):
@@ -361,6 +397,7 @@ class BankAccountLink(Base):
     to the same bank yields brand-new remote uids for the same real accounts,
     so the mapping has to survive being re-pointed.
     """
+
     __tablename__ = "bank_account_links"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -436,6 +473,7 @@ class TransactionRule(Base):
     wins on a field both set. Disabled rules never run on their own but can
     still be picked when applying rules to a selection by hand.
     """
+
     __tablename__ = "transaction_rules"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -460,6 +498,7 @@ class SavedFilter(Base):
     replayed as is, never interpreted by the backend. One list for the whole
     household, like the rules, so a filter saved on the PC shows on the phone.
     """
+
     __tablename__ = "saved_filters"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -484,6 +523,7 @@ class EmailAlert(Base):
     moves on a successful send, so a failed one is retried by the next
     scheduler call.
     """
+
     __tablename__ = "email_alerts"
 
     user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)

@@ -6,7 +6,14 @@ from sqlalchemy.orm import Session
 import history
 from models import AccountUser, Transaction, TransactionSplit, TransactionTag
 from schemas import (
-    BOOL_FIELDS, DATE_FIELDS, LIST_OPERATORS, MONTH_FIELDS, TAG_FIELDS, TEXT_FIELDS, USER_FIELDS, FilterCondition,
+    BOOL_FIELDS,
+    DATE_FIELDS,
+    LIST_OPERATORS,
+    MONTH_FIELDS,
+    TAG_FIELDS,
+    TEXT_FIELDS,
+    USER_FIELDS,
+    FilterCondition,
 )
 
 FIELD_COLUMN_MAP = {
@@ -39,7 +46,7 @@ def _coerce_date(value) -> date:
     try:
         return date.fromisoformat(str(value))
     except ValueError:
-        raise ValueError(f'invalid date value: {value!r}')
+        raise ValueError(f"invalid date value: {value!r}")
 
 
 def _coerce_number(value) -> float:
@@ -48,7 +55,7 @@ def _coerce_number(value) -> float:
     try:
         return float(value)
     except (TypeError, ValueError):
-        raise ValueError(f'invalid number value: {value!r}')
+        raise ValueError(f"invalid number value: {value!r}")
 
 
 def coerce_bool(value) -> bool:
@@ -58,7 +65,7 @@ def coerce_bool(value) -> bool:
         return True
     if str(value).strip().lower() in ("false", "0", "no"):
         return False
-    raise ValueError(f'invalid yes/no value: {value!r}')
+    raise ValueError(f"invalid yes/no value: {value!r}")
 
 
 def like_pattern(value: str) -> str:
@@ -83,7 +90,7 @@ def _text_expr(column, condition: FilterCondition):
         return lowered.like(f"{like_pattern(value)}%", escape="\\")
     if condition.operator == "ends_with":
         return lowered.like(f"%{like_pattern(value)}", escape="\\")
-    raise ValueError(f'unsupported text operator: {condition.operator}')
+    raise ValueError(f"unsupported text operator: {condition.operator}")
 
 
 def _numeric_expr(column, condition: FilterCondition):
@@ -103,7 +110,7 @@ def _numeric_expr(column, condition: FilterCondition):
         return column < value
     if condition.operator == "lte":
         return column <= value
-    raise ValueError(f'unsupported numeric operator: {condition.operator}')
+    raise ValueError(f"unsupported numeric operator: {condition.operator}")
 
 
 def _list_expr(column, condition: FilterCondition):
@@ -130,18 +137,18 @@ def _date_expr(column, condition: FilterCondition):
         return column < value
     if condition.operator == "after":
         return column > value
-    raise ValueError(f'unsupported date operator: {condition.operator}')
+    raise ValueError(f"unsupported date operator: {condition.operator}")
 
 
 def month_index(month: str) -> int:
-    """"YYYY-MM" as a count of months (year * 12 + month - 1), the scale
+    """ "YYYY-MM" as a count of months (year * 12 + month - 1), the scale
     accounting_month.compute_accounting_month() shifts on."""
     try:
         year, mon = (int(part) for part in str(month).split("-")[:2])
     except ValueError:
-        raise ValueError(f'invalid month value: {month!r}')
+        raise ValueError(f"invalid month value: {month!r}")
     if not 1 <= mon <= 12:
-        raise ValueError(f'invalid month value: {month!r}')
+        raise ValueError(f"invalid month value: {month!r}")
     return year * 12 + mon - 1
 
 
@@ -149,7 +156,8 @@ def month_index(month: str) -> int:
 # run: the date's year and month plus the row's own offset.
 ACCOUNTING_MONTH_INDEX = (
     cast(extract("year", Transaction.date), Integer) * 12
-    + cast(extract("month", Transaction.date), Integer) - 1
+    + cast(extract("month", Transaction.date), Integer)
+    - 1
     + Transaction.accounting_month_offset
 )
 
@@ -166,7 +174,7 @@ def _month_expr(column, condition: FilterCondition):
         return column < value
     if condition.operator == "after":
         return column > value
-    raise ValueError(f'unsupported month operator: {condition.operator}')
+    raise ValueError(f"unsupported month operator: {condition.operator}")
 
 
 def _split_column(column, user_id: int):
@@ -174,7 +182,9 @@ def _split_column(column, user_id: int):
     leaves them out (as the Transactions screen shows it)."""
     return func.coalesce(
         select(column)
-        .where(TransactionSplit.transaction_id == Transaction.id, TransactionSplit.user_id == user_id)
+        .where(
+            TransactionSplit.transaction_id == Transaction.id, TransactionSplit.user_id == user_id
+        )
         .correlate(Transaction)
         .scalar_subquery(),
         0,
@@ -204,7 +214,9 @@ def _user_column(field: str, user_id: int):
 
 def _tag_expr(tag_id: int | None, has: bool):
     """Carries the tag (or, with no tag named, carries any tag), or not."""
-    carrying = select(TransactionTag.transaction_id).where(TransactionTag.transaction_id == Transaction.id)
+    carrying = select(TransactionTag.transaction_id).where(
+        TransactionTag.transaction_id == Transaction.id
+    )
     if tag_id is not None:
         carrying = carrying.where(TransactionTag.tag_id == tag_id)
     exists = carrying.correlate(Transaction).exists()
@@ -218,7 +230,11 @@ def build_condition_expr(condition: FilterCondition):
             # category: the rows with no tag at all / with at least one.
             return _tag_expr(None, condition.operator == "ne")
         return _tag_expr(int(_coerce_number(condition.value)), condition.operator == "eq")
-    if condition.field == "category_id" and condition.value is None and condition.operator in ("eq", "ne"):
+    if (
+        condition.field == "category_id"
+        and condition.value is None
+        and condition.operator in ("eq", "ne")
+    ):
         # "Category is / is not" with no category: the uncategorized rows.
         column = Transaction.category_id
         return column.is_(None) if condition.operator == "eq" else column.isnot(None)
@@ -275,10 +291,12 @@ def apply_transaction_filters(query, req, db: Session):
         query = query.filter(visible_transaction_filter(db, req.user_id))
     if req.search:
         like = f"%{like_pattern(req.search.lower())}%"
-        query = query.filter(or_(
-            func.lower(Transaction.payee).like(like, escape="\\"),
-            func.lower(Transaction.memo).like(like, escape="\\"),
-        ))
+        query = query.filter(
+            or_(
+                func.lower(Transaction.payee).like(like, escape="\\"),
+                func.lower(Transaction.memo).like(like, escape="\\"),
+            )
+        )
     if req.date_from is not None:
         query = query.filter(Transaction.date >= req.date_from)
     if req.date_to is not None:
@@ -291,7 +309,11 @@ def apply_transaction_filters(query, req, db: Session):
         query = query.filter(Transaction.account_id.in_(req.account_ids))
     if req.category_ids:
         in_categories = Transaction.category_id.in_(req.category_ids)
-        query = query.filter(or_(in_categories, Transaction.category_id.is_(None)) if req.uncategorized else in_categories)
+        query = query.filter(
+            or_(in_categories, Transaction.category_id.is_(None))
+            if req.uncategorized
+            else in_categories
+        )
     elif req.uncategorized:
         query = query.filter(Transaction.category_id.is_(None))
     if req.tag_id is not None:

@@ -37,6 +37,11 @@ jobs:
       - run: pip install -r requirements.txt
       - run: pip install pip-audit
       - run: pip-audit -r requirements.txt
+      # MYF-34: lint, formatting and types (ruff.toml, mypy.ini).
+      - run: pip install -r requirements-dev.txt
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: mypy .
       # MYF-19: production's schema comes from Alembic alone (no create_all or
       # sync_schema at startup there), so the migrations must build exactly
       # what models.py describes: `alembic check` fails on any difference.

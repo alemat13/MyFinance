@@ -16,7 +16,6 @@ from rules import (
     validate_transaction_weights_present,
     validate_weights,
 )
-from uploads import read_upload
 from schemas import (
     ImportCommitRequest,
     ImportCommitResponse,
@@ -24,6 +23,7 @@ from schemas import (
     ImportPreviewRequest,
     ImportPreviewRow,
 )
+from uploads import read_upload
 
 router = APIRouter(prefix="/api/import")
 _IMPORT_FLUSH_BATCH_SIZE = 500
@@ -65,10 +65,17 @@ def import_preview(
 ):
     contents = read_upload(file, MAX_IMPORT_UPLOAD_BYTES)
     data = ImportPreviewRequest(
-        account_id=account_id, encoding=encoding, delimiter=delimiter,
-        date_format=date_format, decimal_separator=decimal_separator,
-        date_col=date_col, payee_col=payee_col, amount_col=amount_col,
-        memo_col=memo_col, category_col=category_col, account_col=account_col,
+        account_id=account_id,
+        encoding=encoding,
+        delimiter=delimiter,
+        date_format=date_format,
+        decimal_separator=decimal_separator,
+        date_col=date_col,
+        payee_col=payee_col,
+        amount_col=amount_col,
+        memo_col=memo_col,
+        category_col=category_col,
+        account_col=account_col,
     )
     try:
         return preview_import(db, contents, data)
@@ -78,14 +85,21 @@ def import_preview(
 
 @router.post("/commit", response_model=ImportCommitResponse)
 @audit.batched
-def import_commit(data: ImportCommitRequest, actor_user_id: int | None = Query(None), db: Session = Depends(get_db)):
+def import_commit(
+    data: ImportCommitRequest,
+    actor_user_id: int | None = Query(None),
+    db: Session = Depends(get_db),
+):
     if len(data.rows) > MAX_IMPORT_ROWS:
         raise RuleViolation(
             f"This import has {len(data.rows)} rows, which is more than the "
             f"{MAX_IMPORT_ROWS}-row import limit. Split it into smaller batches and import them separately."
         )
 
-    tags_by_id = {t.id: t for t in tag_service.load_tags(db, [i for row in data.rows for i in row.tag_ids or []])}
+    tags_by_id = {
+        t.id: t
+        for t in tag_service.load_tags(db, [i for row in data.rows for i in row.tag_ids or []])
+    }
     for row in data.rows:
         if row.split_weights is not None:
             validate_transaction_weights_present(row.split_weights)
@@ -103,8 +117,14 @@ def import_commit(data: ImportCommitRequest, actor_user_id: int | None = Query(N
             if row_tags:
                 tag_service.set_tags(transaction, row_tags)
                 changes["tags"] = tag_service.created_change(row_tags)
-            record_transaction_history(db, transaction, "created", actor_user_id, source="csv_import",
-                                        changes=changes or None)
+            record_transaction_history(
+                db,
+                transaction,
+                "created",
+                actor_user_id,
+                source="csv_import",
+                changes=changes or None,
+            )
             transaction_ids.append(transaction.id)
         pending_batch.clear()
 
@@ -115,18 +135,25 @@ def import_commit(data: ImportCommitRequest, actor_user_id: int | None = Query(N
         else:
             weights_key = (row.category_id, row.account_id)
             if weights_key not in weights_cache:
-                weights_cache[weights_key] = split_engine.resolve_default_weights(db, row.category_id, row.account_id)
+                weights_cache[weights_key] = split_engine.resolve_default_weights(
+                    db, row.category_id, row.account_id
+                )
             source, weights = weights_cache[weights_key]
             validate_resolved_weights_present(weights)
             source = source or "custom"
         transaction = Transaction(
-            date=row.date, payee=row.payee, memo=row.memo, amount=row.amount,
-            account_id=row.account_id, category_id=row.category_id,
+            date=row.date,
+            payee=row.payee,
+            memo=row.memo,
+            amount=row.amount,
+            account_id=row.account_id,
+            category_id=row.category_id,
             accounting_month_offset=row.accounting_month_offset,
             reconciled=row.reconciled,
             # The file's own label, even when an automatic rule renamed the
             # payee in the preview.
-            raw_source=RAW_SOURCE, raw_label=row.raw_label or row.payee,
+            raw_source=RAW_SOURCE,
+            raw_label=row.raw_label or row.payee,
         )
         db.add(transaction)
         row_tags = [tags_by_id[i] for i in sorted(set(row.tag_ids or []))]

@@ -1,9 +1,6 @@
 """CSV/QIF import: detect, preview, commit."""
-import re
-from datetime import date, datetime
-from typing import List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from datetime import date
 
 from .base import Schema
 from .transactions import TransactionCreate
@@ -64,7 +61,7 @@ class ImportPreviewRow(Schema):
     # What the enabled automatic rules would do to this row (see
     # transaction_rules.py), or None when no rule matches. The screen applies
     # it by default and can switch it off, so the file's own values stay here.
-    rules: "RuleOutcomeOut | None" = None
+    rules: "RuleOutcomeOut | None" = None  # noqa: F821 - resolved by model_rebuild()
 
 
 class ImportCommitRow(TransactionCreate):
@@ -72,6 +69,7 @@ class ImportCommitRow(TransactionCreate):
     sent back separately because an automatic rule may have renamed `payee`
     in the preview; absent, the payee is taken as the file's label.
     `reconciled` is there because a rule may mark a row reconciled."""
+
     raw_label: str | None = None
     reconciled: bool = False
 

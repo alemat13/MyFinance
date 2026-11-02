@@ -10,7 +10,8 @@ def test_sync_schema_adds_missing_column_to_existing_table():
     instead of every query touching it crashing with "no such column"."""
     engine = create_engine("sqlite://")
     with engine.begin() as conn:
-        conn.execute(text("""
+        conn.execute(
+            text("""
             CREATE TABLE transactions (
                 id INTEGER PRIMARY KEY,
                 date DATE NOT NULL,
@@ -21,7 +22,8 @@ def test_sync_schema_adds_missing_column_to_existing_table():
                 category_id INTEGER,
                 created_at DATETIME
             )
-        """))
+        """)
+        )
 
     inspector = inspect(engine)
     columns_before = {c["name"] for c in inspector.get_columns("transactions")}
@@ -34,9 +36,11 @@ def test_sync_schema_adds_missing_column_to_existing_table():
     assert "accounting_month_offset" in columns_after
 
     with engine.begin() as conn:
-        conn.execute(text(
-            "INSERT INTO transactions (date, payee, amount) VALUES ('2026-01-01', 'Test', 10.0)"
-        ))
+        conn.execute(
+            text(
+                "INSERT INTO transactions (date, payee, amount) VALUES ('2026-01-01', 'Test', 10.0)"
+            )
+        )
         offset = conn.execute(text("SELECT accounting_month_offset FROM transactions")).scalar()
     assert offset == 0
 

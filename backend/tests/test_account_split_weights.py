@@ -48,21 +48,34 @@ def test_account_split_weights_404_for_missing_account(client, sample_user):
 
 def test_account_split_weights_isolated_per_account(client, db, sample_account, sample_user):
     from models import Account
+
     other_account = Account(name="Other", type="Checking")
     db.add(other_account)
     db.commit()
 
-    client.put(f"/api/accounts/{sample_account.id}/split-weights", json=[{"user_id": sample_user.id, "weight": 55}])
+    client.put(
+        f"/api/accounts/{sample_account.id}/split-weights",
+        json=[{"user_id": sample_user.id, "weight": 55}],
+    )
 
     response = client.get(f"/api/accounts/{other_account.id}/split-weights")
     assert response.json()[0]["weight"] == 0
 
 
 def test_delete_account_cascades_split_weights(client, db, sample_account, sample_user):
-    client.put(f"/api/accounts/{sample_account.id}/split-weights", json=[{"user_id": sample_user.id, "weight": 55}])
+    client.put(
+        f"/api/accounts/{sample_account.id}/split-weights",
+        json=[{"user_id": sample_user.id, "weight": 55}],
+    )
 
     response = client.delete(f"/api/accounts/{sample_account.id}")
     assert response.status_code == 204
 
     from models import AccountSplitWeight
-    assert db.query(AccountSplitWeight).filter(AccountSplitWeight.account_id == sample_account.id).all() == []
+
+    assert (
+        db.query(AccountSplitWeight)
+        .filter(AccountSplitWeight.account_id == sample_account.id)
+        .all()
+        == []
+    )

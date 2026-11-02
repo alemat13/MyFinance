@@ -34,31 +34,30 @@ def compute_transaction_totals(db: Session) -> list[list]:
     A list of pairs rather than a dict because the payload round-trips
     through JSON, which would turn integer keys into strings.
     """
-    rows = (
-        db.execute(
-            select(Transaction.account_id, func.sum(Transaction.amount))
-            .group_by(Transaction.account_id)
-        ).all()
-    )
+    rows = db.execute(
+        select(Transaction.account_id, func.sum(Transaction.amount)).group_by(
+            Transaction.account_id
+        )
+    ).all()
     return [[account_id, float(total or 0.0)] for account_id, total in rows]
 
 
 def get_transaction_totals(db: Session) -> dict[int, float]:
     """Cached {account_id: transaction total} for every account."""
     rows = cache_service.get_or_compute(
-        db, NAMESPACE, {}, lambda: compute_transaction_totals(db),
+        db,
+        NAMESPACE,
+        {},
+        lambda: compute_transaction_totals(db),
     )
     return {int(account_id): float(total) for account_id, total in rows}
 
 
 def compute_last_transaction_dates(db: Session) -> list[list]:
     """[[account_id, "YYYY-MM-DD"], ...]: each account's latest transaction date."""
-    rows = (
-        db.execute(
-            select(Transaction.account_id, func.max(Transaction.date))
-            .group_by(Transaction.account_id)
-        ).all()
-    )
+    rows = db.execute(
+        select(Transaction.account_id, func.max(Transaction.date)).group_by(Transaction.account_id)
+    ).all()
     return [[account_id, last.isoformat()] for account_id, last in rows if last is not None]
 
 
@@ -70,7 +69,9 @@ def get_last_transaction_dates(db: Session) -> dict[int, date]:
     invalidations already in place cover it.
     """
     rows = cache_service.get_or_compute(
-        db, NAMESPACE, {"kind": "last_transaction_date"},
+        db,
+        NAMESPACE,
+        {"kind": "last_transaction_date"},
         lambda: compute_last_transaction_dates(db),
     )
     return {int(account_id): date.fromisoformat(last) for account_id, last in rows}
@@ -78,11 +79,8 @@ def get_last_transaction_dates(db: Session) -> dict[int, date]:
 
 def transaction_total(db: Session, account_id: int) -> float:
     """Uncached transaction total for one account."""
-    total = (
-        db.scalar(
-            select(func.sum(Transaction.amount))
-            .where(Transaction.account_id == account_id)
-        )
+    total = db.scalar(
+        select(func.sum(Transaction.amount)).where(Transaction.account_id == account_id)
     )
     return float(total or 0.0)
 

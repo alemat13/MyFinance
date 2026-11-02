@@ -1,17 +1,17 @@
 """OneDrive automatic backup, email alerts and bank sync."""
-import re
-from datetime import date, datetime
-from typing import List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from datetime import datetime
+from typing import Literal
 
-from .base import Schema, _DateType
+from pydantic import ConfigDict
+
 from .backup import DatabaseExport
-
+from .base import Schema, _DateType
 
 # ── OneDrive automatic backup connection ──────────────────────────
 # A single global connection (see models.OneDriveBackupSettings); token
 # columns are never exposed here.
+
 
 class OneDriveSettingsOut(Schema):
     connected: bool
@@ -43,6 +43,7 @@ class OneDriveBackupRunResult(Schema):
 
 # ── Email alerts on new transactions ──────────────────────────────
 # One row per user (see models.EmailAlert / email_alerts.py).
+
 
 class EmailAlertOut(Schema):
     user_id: int
@@ -91,6 +92,7 @@ class EmailAlertExport(Schema):
 # See enable_banking.py. Nothing here exposes a session id or any part of
 # the signing key — the frontend only ever needs the consent URL.
 
+
 class BankInstitutionOut(Schema):
     name: str
     country: str
@@ -132,7 +134,7 @@ class BankConnectionOut(Schema):
     access_valid_until: datetime | None = None
     created_at: datetime | None = None
     last_error: str | None = None
-    accounts: List[BankAccountLinkOut] = []
+    accounts: list[BankAccountLinkOut] = []
 
 
 class BankAccountLinkUpdate(Schema):

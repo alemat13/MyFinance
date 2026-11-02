@@ -1,9 +1,9 @@
 """Transactions: read/write models, links, bulk edit/delete, divide."""
-import re
-from datetime import date, datetime
-from typing import List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from datetime import date
+from typing import Literal, Optional
+
+from pydantic import ConfigDict, Field, field_validator
 
 from .base import Schema, _DateType
 from .entities import SplitWeightCreate, TagRef, TransactionSplitOut
@@ -15,61 +15,65 @@ class TransactionOut(Schema):
     id: int
     date: _DateType
     payee: str
-    memo: Optional[str] = None
+    memo: str | None = None
     amount: float
     account_id: int
     account_name: str
     currency: str
-    category_id: Optional[int] = None
-    category_name: Optional[str] = None
-    category_color: Optional[str] = None
-    category_icon: Optional[str] = None
+    category_id: int | None = None
+    category_name: str | None = None
+    category_color: str | None = None
+    category_icon: str | None = None
     accounting_month_offset: int
     accounting_month: str
     reconciled: bool
-    divide_group_id: Optional[int] = None
+    divide_group_id: int | None = None
     # The group of linked transactions it belongs to (models.TransactionLink).
-    link_id: Optional[int] = None
+    link_id: int | None = None
     # Set on a checkpoint only: the account's value at the end of `date`;
     # `amount` is then derived from it (see checkpoints.py).
-    checkpoint_value: Optional[float] = None
+    checkpoint_value: float | None = None
     # On a checkpoint: the previous checkpoint's date on its account, where
     # the period its gain or loss covers starts (null: since the account's
     # start, or not a checkpoint).
-    checkpoint_since: Optional[date] = None
+    checkpoint_since: date | None = None
     # Read-only throughout: present here and absent from TransactionCreate /
     # TransactionUpdate, so the API can show what the source said without
     # ever letting a client rewrite it. See models.Transaction.
-    raw_source: Optional[str] = None
-    raw_label: Optional[str] = None
-    raw_counterparty: Optional[str] = None
-    raw_transaction_code: Optional[str] = None
-    raw_merchant_category_code: Optional[str] = None
-    raw_merchant_location: Optional[str] = None
-    raw_initiated_date: Optional[date] = None
-    raw_booking_date: Optional[date] = None
+    raw_source: str | None = None
+    raw_label: str | None = None
+    raw_counterparty: str | None = None
+    raw_transaction_code: str | None = None
+    raw_merchant_category_code: str | None = None
+    raw_merchant_location: str | None = None
+    raw_initiated_date: date | None = None
+    raw_booking_date: date | None = None
     splits: list[TransactionSplitOut] = []
     tags: list[TagRef] = []
 
 
 # ── Linked transactions (models.TransactionLink) ─────────────────────
 
+
 class TransactionLinkCreate(Schema):
     """Links these transactions together. Any of them already in a group
     brings that group along: the groups are merged into one, so ticking a
     new row with one already linked adds it to that group."""
+
     transaction_ids: list[int] = Field(..., min_length=2)
-    name: Optional[str] = Field(None, max_length=100)
+    name: str | None = Field(None, max_length=100)
 
 
 class TransactionLinkUpdate(Schema):
     """Rename; a blank name clears it."""
-    name: Optional[str] = Field(None, max_length=100)
+
+    name: str | None = Field(None, max_length=100)
 
 
 class TransactionLinkUnlink(Schema):
     """Takes these transactions out of the group; a group left with fewer
     than two is dissolved."""
+
     transaction_ids: list[int] = Field(..., min_length=1)
 
 
@@ -80,7 +84,7 @@ class TransactionLinkTotal(Schema):
 
 class TransactionLinkOut(Schema):
     id: int
-    name: Optional[str] = None
+    name: str | None = None
     transactions: list[TransactionOut]
     # The members' amounts summed per currency: what the group nets to.
     totals: list[TransactionLinkTotal]
@@ -91,23 +95,24 @@ class PayeeSuggestionOut(Schema):
     category it was filed under then, and that most recent transaction's date,
     amount, memo and original bank label, so two similar entries can be told
     apart and a match found outside the payee shows where it was found."""
+
     payee: str
-    category_id: Optional[int] = None
-    category_name: Optional[str] = None
+    category_id: int | None = None
+    category_name: str | None = None
     date: _DateType
     amount: float
     currency: str
-    memo: Optional[str] = None
-    raw_label: Optional[str] = None
+    memo: str | None = None
+    raw_label: str | None = None
 
 
 class TransactionCreate(Schema):
     date: _DateType
     payee: str
-    memo: Optional[str] = None
+    memo: str | None = None
     amount: float
     account_id: int
-    category_id: Optional[int] = None
+    category_id: int | None = None
     accounting_month_offset: int = Field(0, ge=-3, le=3)
     split_weights: list[SplitWeightCreate] | None = None
     split_source: Literal["global", "account", "category", "custom"] | None = None
@@ -115,25 +120,25 @@ class TransactionCreate(Schema):
     tag_ids: list[int] | None = None
     # Makes this a checkpoint: what the account is worth at the end of
     # `date`. `amount` is then ignored and derived (see checkpoints.py).
-    checkpoint_value: Optional[float] = None
+    checkpoint_value: float | None = None
 
 
 class TransactionUpdate(Schema):
-    date: Optional[_DateType] = None
-    payee: Optional[str] = None
-    memo: Optional[str] = None
-    amount: Optional[float] = None
-    account_id: Optional[int] = None
-    category_id: Optional[int] = None
-    accounting_month_offset: Optional[int] = Field(None, ge=-3, le=3)
-    reconciled: Optional[bool] = None
+    date: _DateType | None = None
+    payee: str | None = None
+    memo: str | None = None
+    amount: float | None = None
+    account_id: int | None = None
+    category_id: int | None = None
+    accounting_month_offset: int | None = Field(None, ge=-3, le=3)
+    reconciled: bool | None = None
     split_weights: list[SplitWeightCreate] | None = None
     split_source: Literal["global", "account", "category", "custom"] | None = None
     # Replaces the whole set of tags; omitted leaves them, [] removes them all.
     tag_ids: list[int] | None = None
     # A checkpoint's new value. Refused on an ordinary transaction; a
     # checkpoint's own `amount` is derived and can't be set directly.
-    checkpoint_value: Optional[float] = None
+    checkpoint_value: float | None = None
 
 
 class TransactionRawFieldsUpdate(Schema):
@@ -142,18 +147,23 @@ class TransactionRawFieldsUpdate(Schema):
     TransactionUpdate: an omitted key is left untouched, an explicit null (or
     a blank string) clears it. Lengths mirror the columns, so Postgres never
     sees a value it would truncate or refuse."""
-    raw_source: Optional[Literal["enable_banking", "csv_import", "linxo_export"]] = None
-    raw_label: Optional[str] = None
-    raw_counterparty: Optional[str] = Field(None, max_length=200)
-    raw_transaction_code: Optional[str] = Field(None, max_length=60)
-    raw_merchant_category_code: Optional[str] = Field(None, max_length=10)
-    raw_merchant_location: Optional[str] = Field(None, max_length=120)
-    raw_initiated_date: Optional[_DateType] = None
-    raw_booking_date: Optional[_DateType] = None
+
+    raw_source: Literal["enable_banking", "csv_import", "linxo_export"] | None = None
+    raw_label: str | None = None
+    raw_counterparty: str | None = Field(None, max_length=200)
+    raw_transaction_code: str | None = Field(None, max_length=60)
+    raw_merchant_category_code: str | None = Field(None, max_length=10)
+    raw_merchant_location: str | None = Field(None, max_length=120)
+    raw_initiated_date: _DateType | None = None
+    raw_booking_date: _DateType | None = None
 
     @field_validator(
-        "raw_label", "raw_counterparty", "raw_transaction_code",
-        "raw_merchant_category_code", "raw_merchant_location", mode="before",
+        "raw_label",
+        "raw_counterparty",
+        "raw_transaction_code",
+        "raw_merchant_category_code",
+        "raw_merchant_location",
+        mode="before",
     )
     @classmethod
     def _blank_is_null(cls, value):
@@ -179,16 +189,17 @@ class BulkTransactionUpdate(Schema):
     replaces every match in each row's payee with payee_replacement, where
     $1, $2... name capture groups and $& the whole match, as in JavaScript;
     the result is stripped, and a row the pattern doesn't match is left alone."""
-    category_id: Optional[int] = None
-    payee: Optional[str] = None
+
+    category_id: int | None = None
+    payee: str | None = None
     payee_mode: Literal["replace", "prepend", "append", "regex"] = "replace"
     payee_replacement: str = ""
     payee_ignore_case: bool = False
     # Admin mode only on screen: moves every selected transaction to this
     # account, keeping each one's own split as it is.
-    account_id: Optional[int] = None
-    accounting_month_offset: Optional[int] = Field(None, ge=-3, le=3)
-    reconciled: Optional[bool] = None
+    account_id: int | None = None
+    accounting_month_offset: int | None = Field(None, ge=-3, le=3)
+    reconciled: bool | None = None
     split_weights: list[SplitWeightCreate] | None = None
     split_source: Literal["global", "account", "category", "custom"] | None = None
     # Tags added to / removed from every selected transaction, each row
@@ -204,9 +215,10 @@ class BulkUpdateTransactionsRequest(Schema):
     sent with a filter, is how many rows the user was shown: if the filter now
     matches a different number (a bank sync landed in between), the request is
     refused with 409 rather than editing rows nobody saw counted."""
+
     transaction_ids: list[int] = []
-    filter: Optional["TransactionSearchRequest"] = None
-    expected_count: Optional[int] = None
+    filter: Optional["TransactionSearchRequest"] = None  # noqa: F821 - resolved by model_rebuild()
+    expected_count: int | None = None
     update: BulkTransactionUpdate
 
 
@@ -218,9 +230,10 @@ class BulkUpdateTransactionsResponse(Schema):
 class BulkDeleteTransactionsRequest(Schema):
     """Same selection contract as BulkUpdateTransactionsRequest: exactly one of
     transaction_ids or filter (+ expected_count, 409 if the match moved)."""
+
     transaction_ids: list[int] = []
-    filter: Optional["TransactionSearchRequest"] = None
-    expected_count: Optional[int] = None
+    filter: Optional["TransactionSearchRequest"] = None  # noqa: F821 - resolved by model_rebuild()
+    expected_count: int | None = None
 
 
 class BulkDeleteTransactionsResponse(Schema):
@@ -234,11 +247,12 @@ class TransactionDividePart(Schema):
     TransactionSplit/split_weights, which divides a transaction's amount
     among users). No account_id: every part stays on the original
     transaction's account."""
+
     date: _DateType
     payee: str
-    memo: Optional[str] = None
+    memo: str | None = None
     amount: float
-    category_id: Optional[int] = None
+    category_id: int | None = None
     accounting_month_offset: int = Field(0, ge=-3, le=3)
     split_weights: list[SplitWeightCreate] | None = None
     split_source: Literal["global", "account", "category", "custom"] | None = None

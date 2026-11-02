@@ -83,7 +83,9 @@ def test_delete_user_with_account_split_weight_succeeds(client, sample_account, 
     assert response.json() == []
 
 
-def test_delete_sole_split_participant_with_no_fallback_rejected(client, sample_account, sample_category, sample_user):
+def test_delete_sole_split_participant_with_no_fallback_rejected(
+    client, sample_account, sample_category, sample_user
+):
     """Splits are mandatory: deleting the only person on a transaction's
     split is refused when there's no other user to fall back to, rather
     than silently leaving the transaction with zero splits."""
@@ -110,7 +112,9 @@ def test_delete_sole_split_participant_with_no_fallback_rejected(client, sample_
     assert len(response.json()["splits"]) == 1
 
 
-def test_delete_sole_split_participant_heals_via_fallback(client, sample_account, sample_category, sample_user, sample_user2):
+def test_delete_sole_split_participant_heals_via_fallback(
+    client, sample_account, sample_category, sample_user, sample_user2
+):
     """When another user has a usable global weight, deleting the sole
     split participant re-resolves the transaction's split via the cascade
     instead of leaving it empty."""
@@ -140,5 +144,11 @@ def test_delete_sole_split_participant_heals_via_fallback(client, sample_account
     response = client.get(f"/api/transactions/{transaction_id}")
     data = response.json()
     assert data["splits"] == [
-        {"user_id": sample_user2.id, "user_name": sample_user2.name, "weight": 1, "share_amount": 100.0, "source": "global"},
+        {
+            "user_id": sample_user2.id,
+            "user_name": sample_user2.name,
+            "weight": 1,
+            "share_amount": 100.0,
+            "source": "global",
+        },
     ]

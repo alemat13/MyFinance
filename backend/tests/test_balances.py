@@ -1,6 +1,4 @@
-from datetime import date
-
-from models import Account, AccountUser, Transaction, User, GlobalSplitWeight
+from models import Account, AccountUser, User
 
 
 def test_balances_empty(client):
@@ -18,10 +16,12 @@ def test_balances_reflect_split_vs_ownership(client, db):
     joint = Account(name="Joint Checking", type="Checking", balance_offset=0.0)
     db.add(joint)
     db.flush()
-    db.add_all([
-        AccountUser(account_id=joint.id, user_id=alex.id, ownership_percentage=100.0),
-        AccountUser(account_id=joint.id, user_id=olivia.id, ownership_percentage=0.0),
-    ])
+    db.add_all(
+        [
+            AccountUser(account_id=joint.id, user_id=alex.id, ownership_percentage=100.0),
+            AccountUser(account_id=joint.id, user_id=olivia.id, ownership_percentage=0.0),
+        ]
+    )
     db.commit()
 
     # Alex pays the full $100 (100% ownership of the paying account), but the
@@ -62,12 +62,14 @@ def test_balances_kept_separate_per_currency(client, db):
     usd_account = Account(name="USD Account", type="Checking", balance_offset=0.0, currency="USD")
     db.add_all([eur_account, usd_account])
     db.flush()
-    db.add_all([
-        AccountUser(account_id=eur_account.id, user_id=alex.id, ownership_percentage=100.0),
-        AccountUser(account_id=eur_account.id, user_id=olivia.id, ownership_percentage=0.0),
-        AccountUser(account_id=usd_account.id, user_id=alex.id, ownership_percentage=100.0),
-        AccountUser(account_id=usd_account.id, user_id=olivia.id, ownership_percentage=0.0),
-    ])
+    db.add_all(
+        [
+            AccountUser(account_id=eur_account.id, user_id=alex.id, ownership_percentage=100.0),
+            AccountUser(account_id=eur_account.id, user_id=olivia.id, ownership_percentage=0.0),
+            AccountUser(account_id=usd_account.id, user_id=alex.id, ownership_percentage=100.0),
+            AccountUser(account_id=usd_account.id, user_id=olivia.id, ownership_percentage=0.0),
+        ]
+    )
     db.commit()
 
     category = _make_category(db)
@@ -106,10 +108,12 @@ def test_balances_cache_invalidated_by_transaction_update(client, db):
     joint = Account(name="Joint Checking", type="Checking", balance_offset=0.0)
     db.add(joint)
     db.flush()
-    db.add_all([
-        AccountUser(account_id=joint.id, user_id=alex.id, ownership_percentage=100.0),
-        AccountUser(account_id=joint.id, user_id=olivia.id, ownership_percentage=0.0),
-    ])
+    db.add_all(
+        [
+            AccountUser(account_id=joint.id, user_id=alex.id, ownership_percentage=100.0),
+            AccountUser(account_id=joint.id, user_id=olivia.id, ownership_percentage=0.0),
+        ]
+    )
     db.commit()
 
     create_response = client.post(
@@ -137,10 +141,12 @@ def test_balances_cache_invalidated_by_transaction_update(client, db):
     # GET would still return the stale 50/50 numbers above.
     update_response = client.put(
         f"/api/transactions/{transaction_id}",
-        json={"split_weights": [
-            {"user_id": alex.id, "weight": 3},
-            {"user_id": olivia.id, "weight": 1},
-        ]},
+        json={
+            "split_weights": [
+                {"user_id": alex.id, "weight": 3},
+                {"user_id": olivia.id, "weight": 1},
+            ]
+        },
     )
     assert update_response.status_code == 200
 
@@ -152,6 +158,7 @@ def test_balances_cache_invalidated_by_transaction_update(client, db):
 
 def _make_category(db):
     from models import Category
+
     category = Category(name="Balances Test Category", type="Expense")
     db.add(category)
     db.commit()

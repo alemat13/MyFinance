@@ -1,8 +1,14 @@
-from models import AccountSplitWeight, AccountUser, CategorySplit, GlobalSplitWeight, TransactionSplit
+from models import (
+    AccountSplitWeight,
+    AccountUser,
+    CategorySplit,
+    GlobalSplitWeight,
+    TransactionSplit,
+)
 from split_engine import apply_split, prorate, resolve_default_weights
 
-
 # ── prorate() ──────────────────────────────────────────────────────
+
 
 def test_prorate_empty_weights_returns_empty():
     assert prorate(100.0, {}) == []
@@ -53,6 +59,7 @@ def test_prorate_negative_amount_near_cent_boundary():
 
 # ── resolve_default_weights() ─────────────────────────────────────
 
+
 def test_resolve_default_weights_nothing_configured(db, sample_category):
     source, weights = resolve_default_weights(db, sample_category.id, None)
     assert source is None
@@ -61,10 +68,12 @@ def test_resolve_default_weights_nothing_configured(db, sample_category):
 
 def test_resolve_default_weights_global_only(db, sample_category, sample_user):
     other_user_id = sample_user.id + 1000
-    db.add_all([
-        GlobalSplitWeight(user_id=sample_user.id, weight=60),
-        GlobalSplitWeight(user_id=other_user_id, weight=40),
-    ])
+    db.add_all(
+        [
+            GlobalSplitWeight(user_id=sample_user.id, weight=60),
+            GlobalSplitWeight(user_id=other_user_id, weight=40),
+        ]
+    )
     db.commit()
 
     source, weights = resolve_default_weights(db, sample_category.id, None)
@@ -72,14 +81,18 @@ def test_resolve_default_weights_global_only(db, sample_category, sample_user):
     assert weights == {sample_user.id: 60, other_user_id: 40}
 
 
-def test_resolve_default_weights_account_takes_precedence_over_global(db, sample_account, sample_category, sample_user):
+def test_resolve_default_weights_account_takes_precedence_over_global(
+    db, sample_account, sample_category, sample_user
+):
     other_user_id = sample_user.id + 1000
-    db.add_all([
-        GlobalSplitWeight(user_id=sample_user.id, weight=90),
-        GlobalSplitWeight(user_id=other_user_id, weight=10),
-        AccountSplitWeight(account_id=sample_account.id, user_id=sample_user.id, weight=70),
-        AccountSplitWeight(account_id=sample_account.id, user_id=other_user_id, weight=30),
-    ])
+    db.add_all(
+        [
+            GlobalSplitWeight(user_id=sample_user.id, weight=90),
+            GlobalSplitWeight(user_id=other_user_id, weight=10),
+            AccountSplitWeight(account_id=sample_account.id, user_id=sample_user.id, weight=70),
+            AccountSplitWeight(account_id=sample_account.id, user_id=other_user_id, weight=30),
+        ]
+    )
     db.commit()
 
     source, weights = resolve_default_weights(db, sample_category.id, sample_account.id)
@@ -87,15 +100,19 @@ def test_resolve_default_weights_account_takes_precedence_over_global(db, sample
     assert weights == {sample_user.id: 70, other_user_id: 30}
 
 
-def test_resolve_default_weights_account_takes_precedence_over_category_and_global(db, sample_account, sample_category, sample_user):
+def test_resolve_default_weights_account_takes_precedence_over_category_and_global(
+    db, sample_account, sample_category, sample_user
+):
     other_user_id = sample_user.id + 1000
-    db.add_all([
-        GlobalSplitWeight(user_id=sample_user.id, weight=90),
-        AccountSplitWeight(account_id=sample_account.id, user_id=sample_user.id, weight=70),
-        AccountSplitWeight(account_id=sample_account.id, user_id=other_user_id, weight=30),
-        CategorySplit(category_id=sample_category.id, user_id=sample_user.id, weight=50),
-        CategorySplit(category_id=sample_category.id, user_id=other_user_id, weight=50),
-    ])
+    db.add_all(
+        [
+            GlobalSplitWeight(user_id=sample_user.id, weight=90),
+            AccountSplitWeight(account_id=sample_account.id, user_id=sample_user.id, weight=70),
+            AccountSplitWeight(account_id=sample_account.id, user_id=other_user_id, weight=30),
+            CategorySplit(category_id=sample_category.id, user_id=sample_user.id, weight=50),
+            CategorySplit(category_id=sample_category.id, user_id=other_user_id, weight=50),
+        ]
+    )
     db.commit()
 
     source, weights = resolve_default_weights(db, sample_category.id, sample_account.id)
@@ -103,13 +120,17 @@ def test_resolve_default_weights_account_takes_precedence_over_category_and_glob
     assert weights == {sample_user.id: 70, other_user_id: 30}
 
 
-def test_resolve_default_weights_category_takes_precedence_over_global(db, sample_account, sample_category, sample_user):
+def test_resolve_default_weights_category_takes_precedence_over_global(
+    db, sample_account, sample_category, sample_user
+):
     other_user_id = sample_user.id + 1000
-    db.add_all([
-        GlobalSplitWeight(user_id=sample_user.id, weight=90),
-        CategorySplit(category_id=sample_category.id, user_id=sample_user.id, weight=50),
-        CategorySplit(category_id=sample_category.id, user_id=other_user_id, weight=50),
-    ])
+    db.add_all(
+        [
+            GlobalSplitWeight(user_id=sample_user.id, weight=90),
+            CategorySplit(category_id=sample_category.id, user_id=sample_user.id, weight=50),
+            CategorySplit(category_id=sample_category.id, user_id=other_user_id, weight=50),
+        ]
+    )
     db.commit()
 
     source, weights = resolve_default_weights(db, sample_category.id, sample_account.id)
@@ -117,16 +138,20 @@ def test_resolve_default_weights_category_takes_precedence_over_global(db, sampl
     assert weights == {sample_user.id: 50, other_user_id: 50}
 
 
-def test_resolve_default_weights_all_zero_account_tier_falls_through_to_category(db, sample_account, sample_category, sample_user):
+def test_resolve_default_weights_all_zero_account_tier_falls_through_to_category(
+    db, sample_account, sample_category, sample_user
+):
     """A tier with only zero weights doesn't "win" just by being non-empty
     (matching how the global tier already filters weight > 0)."""
     other_user_id = sample_user.id + 1000
-    db.add_all([
-        AccountSplitWeight(account_id=sample_account.id, user_id=sample_user.id, weight=0),
-        AccountSplitWeight(account_id=sample_account.id, user_id=other_user_id, weight=0),
-        CategorySplit(category_id=sample_category.id, user_id=sample_user.id, weight=60),
-        CategorySplit(category_id=sample_category.id, user_id=other_user_id, weight=40),
-    ])
+    db.add_all(
+        [
+            AccountSplitWeight(account_id=sample_account.id, user_id=sample_user.id, weight=0),
+            AccountSplitWeight(account_id=sample_account.id, user_id=other_user_id, weight=0),
+            CategorySplit(category_id=sample_category.id, user_id=sample_user.id, weight=60),
+            CategorySplit(category_id=sample_category.id, user_id=other_user_id, weight=40),
+        ]
+    )
     db.commit()
 
     source, weights = resolve_default_weights(db, sample_category.id, sample_account.id)
@@ -134,14 +159,18 @@ def test_resolve_default_weights_all_zero_account_tier_falls_through_to_category
     assert weights == {sample_user.id: 60, other_user_id: 40}
 
 
-def test_resolve_default_weights_all_zero_category_tier_falls_through_to_global(db, sample_account, sample_category, sample_user):
+def test_resolve_default_weights_all_zero_category_tier_falls_through_to_global(
+    db, sample_account, sample_category, sample_user
+):
     other_user_id = sample_user.id + 1000
-    db.add_all([
-        CategorySplit(category_id=sample_category.id, user_id=sample_user.id, weight=0),
-        CategorySplit(category_id=sample_category.id, user_id=other_user_id, weight=0),
-        GlobalSplitWeight(user_id=sample_user.id, weight=90),
-        GlobalSplitWeight(user_id=other_user_id, weight=10),
-    ])
+    db.add_all(
+        [
+            CategorySplit(category_id=sample_category.id, user_id=sample_user.id, weight=0),
+            CategorySplit(category_id=sample_category.id, user_id=other_user_id, weight=0),
+            GlobalSplitWeight(user_id=sample_user.id, weight=90),
+            GlobalSplitWeight(user_id=other_user_id, weight=10),
+        ]
+    )
     db.commit()
 
     source, weights = resolve_default_weights(db, sample_category.id, sample_account.id)
@@ -149,13 +178,17 @@ def test_resolve_default_weights_all_zero_category_tier_falls_through_to_global(
     assert weights == {sample_user.id: 90, other_user_id: 10}
 
 
-def test_resolve_default_weights_all_zero_account_tier_falls_through_to_global(db, sample_account, sample_category, sample_user):
+def test_resolve_default_weights_all_zero_account_tier_falls_through_to_global(
+    db, sample_account, sample_category, sample_user
+):
     other_user_id = sample_user.id + 1000
-    db.add_all([
-        AccountSplitWeight(account_id=sample_account.id, user_id=sample_user.id, weight=0),
-        GlobalSplitWeight(user_id=sample_user.id, weight=90),
-        GlobalSplitWeight(user_id=other_user_id, weight=10),
-    ])
+    db.add_all(
+        [
+            AccountSplitWeight(account_id=sample_account.id, user_id=sample_user.id, weight=0),
+            GlobalSplitWeight(user_id=sample_user.id, weight=90),
+            GlobalSplitWeight(user_id=other_user_id, weight=10),
+        ]
+    )
     db.commit()
 
     source, weights = resolve_default_weights(db, sample_category.id, sample_account.id)
@@ -163,15 +196,21 @@ def test_resolve_default_weights_all_zero_account_tier_falls_through_to_global(d
     assert weights == {sample_user.id: 90, other_user_id: 10}
 
 
-def test_resolve_default_weights_single_owner_account_still_applies(db, sample_account, sample_category, sample_user):
+def test_resolve_default_weights_single_owner_account_still_applies(
+    db, sample_account, sample_category, sample_user
+):
     """The old single-owner skip no longer exists: resolve_default_weights
     never even looks at AccountUser/ownership."""
     other_user_id = sample_user.id + 1000
-    db.add_all([
-        AccountUser(account_id=sample_account.id, user_id=sample_user.id, ownership_percentage=100.0),
-        AccountSplitWeight(account_id=sample_account.id, user_id=sample_user.id, weight=50),
-        AccountSplitWeight(account_id=sample_account.id, user_id=other_user_id, weight=50),
-    ])
+    db.add_all(
+        [
+            AccountUser(
+                account_id=sample_account.id, user_id=sample_user.id, ownership_percentage=100.0
+            ),
+            AccountSplitWeight(account_id=sample_account.id, user_id=sample_user.id, weight=50),
+            AccountSplitWeight(account_id=sample_account.id, user_id=other_user_id, weight=50),
+        ]
+    )
     db.commit()
 
     source, weights = resolve_default_weights(db, sample_category.id, sample_account.id)
@@ -181,12 +220,17 @@ def test_resolve_default_weights_single_owner_account_still_applies(db, sample_a
 
 # ── apply_split() ──────────────────────────────────────────────────
 
+
 def test_apply_split_with_weights_persists_rows(db, sample_transaction, sample_user):
     other_user_id = sample_user.id + 1000
     apply_split(db, sample_transaction, {sample_user.id: 3, other_user_id: 1}, source="custom")
     db.commit()
 
-    rows = db.query(TransactionSplit).filter(TransactionSplit.transaction_id == sample_transaction.id).all()
+    rows = (
+        db.query(TransactionSplit)
+        .filter(TransactionSplit.transaction_id == sample_transaction.id)
+        .all()
+    )
     by_user = {r.user_id: r for r in rows}
     assert by_user[sample_user.id].weight == 3
     assert by_user[sample_user.id].share_amount == 375.0  # 500 * 3/4
@@ -197,16 +241,26 @@ def test_apply_split_with_weights_persists_rows(db, sample_transaction, sample_u
 def test_apply_split_falsy_weights_leaves_no_rows(db, sample_transaction):
     apply_split(db, sample_transaction, None)
     db.commit()
-    rows = db.query(TransactionSplit).filter(TransactionSplit.transaction_id == sample_transaction.id).all()
+    rows = (
+        db.query(TransactionSplit)
+        .filter(TransactionSplit.transaction_id == sample_transaction.id)
+        .all()
+    )
     assert rows == []
 
     apply_split(db, sample_transaction, {})
     db.commit()
-    rows = db.query(TransactionSplit).filter(TransactionSplit.transaction_id == sample_transaction.id).all()
+    rows = (
+        db.query(TransactionSplit)
+        .filter(TransactionSplit.transaction_id == sample_transaction.id)
+        .all()
+    )
     assert rows == []
 
 
-def test_apply_split_recomputes_share_amount_when_amount_changes(db, sample_transaction, sample_user):
+def test_apply_split_recomputes_share_amount_when_amount_changes(
+    db, sample_transaction, sample_user
+):
     """Regression test for the removed manual-freeze protection: changing
     the transaction's amount and calling apply_split again with the SAME
     weights must recompute share_amount with no exception."""
@@ -218,15 +272,26 @@ def test_apply_split_recomputes_share_amount_when_amount_changes(db, sample_tran
     apply_split(db, sample_transaction, {sample_user.id: 1}, source="custom")
     db.commit()
 
-    row = db.query(TransactionSplit).filter(TransactionSplit.transaction_id == sample_transaction.id).first()
+    row = (
+        db.query(TransactionSplit)
+        .filter(TransactionSplit.transaction_id == sample_transaction.id)
+        .first()
+    )
     assert row.share_amount == 1000.0
 
 
-def test_apply_split_arbitrary_custom_weights_not_matching_any_tier(db, sample_transaction, sample_user):
+def test_apply_split_arbitrary_custom_weights_not_matching_any_tier(
+    db, sample_transaction, sample_user
+):
     other_user_id = sample_user.id + 1000
     apply_split(db, sample_transaction, {sample_user.id: 7, other_user_id: 3}, source="custom")
     db.commit()
 
-    rows = {r.user_id: r for r in db.query(TransactionSplit).filter(TransactionSplit.transaction_id == sample_transaction.id).all()}
+    rows = {
+        r.user_id: r
+        for r in db.query(TransactionSplit)
+        .filter(TransactionSplit.transaction_id == sample_transaction.id)
+        .all()
+    }
     assert rows[sample_user.id].weight == 7
     assert rows[sample_user.id].source == "custom"

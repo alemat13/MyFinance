@@ -17,11 +17,13 @@ router = APIRouter(prefix="/api/accounts")
 def _sync_account_users(db: Session, account: Account, users: list[AccountUserCreate]):
     db.execute(delete(AccountUser).where(AccountUser.account_id == account.id))
     for u in users:
-        db.add(AccountUser(
-            account_id=account.id,
-            user_id=u.user_id,
-            ownership_percentage=u.ownership_percentage,
-        ))
+        db.add(
+            AccountUser(
+                account_id=account.id,
+                user_id=u.user_id,
+                ownership_percentage=u.ownership_percentage,
+            )
+        )
 
 
 @router.get("", response_model=list[AccountOut])
@@ -31,10 +33,14 @@ def get_accounts(user_id: int | None = Query(None), db: Session = Depends(get_db
         selectinload(Account.split_weight_associations).joinedload(AccountSplitWeight.user),
     )
     if user_id is not None:
-        query = query.join(AccountUser).where(
-            AccountUser.user_id == user_id,
-            AccountUser.ownership_percentage > 0,
-        ).distinct()
+        query = (
+            query.join(AccountUser)
+            .where(
+                AccountUser.user_id == user_id,
+                AccountUser.ownership_percentage > 0,
+            )
+            .distinct()
+        )
     accounts = db.scalars(query).all()
     totals = account_totals.get_transaction_totals(db)
     return [build_account_out(a, totals.get(a.id, 0.0)) for a in accounts]
@@ -47,16 +53,21 @@ def create_account(data: AccountCreate, db: Session = Depends(get_db)):
     # A brand-new account has no transactions yet, so the balance the user
     # entered is the offset outright.
     account = Account(
-        name=data.name, type=data.type, balance_offset=data.balance, currency=data.currency,
+        name=data.name,
+        type=data.type,
+        balance_offset=data.balance,
+        currency=data.currency,
     )
     db.add(account)
     db.flush()
     for u in data.users:
-        db.add(AccountUser(
-            account_id=account.id,
-            user_id=u.user_id,
-            ownership_percentage=u.ownership_percentage,
-        ))
+        db.add(
+            AccountUser(
+                account_id=account.id,
+                user_id=u.user_id,
+                ownership_percentage=u.ownership_percentage,
+            )
+        )
     db.commit()
     db.refresh(account)
     return build_account_out(account, 0.0)
@@ -76,15 +87,20 @@ def update_account(account_id: int, data: AccountUpdate, db: Session = Depends(g
         # Its checkpoints set this account's balance: an offset typed here
         # would be absorbed by the first of them. The form sends the balance
         # back unchanged with every edit, which is fine.
-        current = account_totals.account_balance(account, account_totals.transaction_total(db, account.id))
+        current = account_totals.account_balance(
+            account, account_totals.transaction_total(db, account.id)
+        )
         if abs(entered_balance - current) >= 0.005:
             raise HTTPException(
-                422, "This account's balance comes from its checkpoints; add a checkpoint instead",
+                422,
+                "This account's balance comes from its checkpoints; add a checkpoint instead",
             )
         entered_balance = None
     if entered_balance is not None:
         account.balance_offset = account_totals.offset_for_balance(
-            db, account.id, entered_balance,
+            db,
+            account.id,
+            entered_balance,
         )
     if data.users is not None:
         validate_ownership(data.users)

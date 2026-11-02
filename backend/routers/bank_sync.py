@@ -1,5 +1,5 @@
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import RedirectResponse
@@ -71,7 +71,11 @@ def list_institutions(country: str = Query("FR", min_length=2, max_length=2)):
         if not name or name in seen:
             continue
         seen.add(name)
-        institutions.append(BankInstitutionOut(name=name, country=aspsp.get("country", country.upper()), logo=aspsp.get("logo")))
+        institutions.append(
+            BankInstitutionOut(
+                name=name, country=aspsp.get("country", country.upper()), logo=aspsp.get("logo")
+            )
+        )
     return sorted(institutions, key=lambda i: i.name.lower())
 
 
@@ -87,7 +91,10 @@ def list_connections(db: Session = Depends(get_db)):
 def create_connection(data: BankConnectionCreate, db: Session = Depends(get_db)):
     try:
         connection, authorization_url = enable_banking.create_connection(
-            db, data.aspsp_name, data.aspsp_country.upper(), data.language,
+            db,
+            data.aspsp_name,
+            data.aspsp_country.upper(),
+            data.language,
         )
     except enable_banking.EnableBankingError as exc:
         raise HTTPException(502, str(exc))
@@ -106,7 +113,8 @@ def callback(
     frontend_url = os.environ.get("FRONTEND_BASE_URL", "http://localhost:5173")
     connection = (
         db.scalar(select(BankConnection).where(BankConnection.state == state).limit(1))
-        if state else None
+        if state
+        else None
     )
     if error or not code or connection is None:
         if connection is not None:
@@ -163,7 +171,7 @@ def update_link(link_id: int, data: BankAccountLinkUpdate, db: Session = Depends
         # Default to "from today": the ledger already holds years of history
         # from the CSV/migration path, and re-importing it would land as
         # duplicates the bank's own identifiers can't catch.
-        link.sync_from_date = datetime.now(timezone.utc).date()
+        link.sync_from_date = datetime.now(UTC).date()
     db.commit()
     db.refresh(link)
     return _build_link_out(link)
@@ -200,12 +208,14 @@ def resync_link_period(link_id: int, data: BankResyncRequest, db: Session = Depe
         raise HTTPException(422, "Link this bank account to a MyFinance account first")
     if data.date_from > data.date_to:
         raise HTTPException(422, "The start date must be on or before the end date")
-    if data.date_to > datetime.now(timezone.utc).date():
+    if data.date_to > datetime.now(UTC).date():
         raise HTTPException(422, "The end date cannot be in the future")
     try:
         created = enable_banking.resync_link_period(db, link, data.date_from, data.date_to)
     except Exception as exc:
-        return BankSyncRunResult(ran=True, synced_links=1, created_count=0, status="failed", error=str(exc)[:2000])
+        return BankSyncRunResult(
+            ran=True, synced_links=1, created_count=0, status="failed", error=str(exc)[:2000]
+        )
     return BankSyncRunResult(ran=True, synced_links=1, created_count=created, status="success")
 
 

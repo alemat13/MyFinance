@@ -12,7 +12,7 @@ import pytest
 import auto_categorize
 import categorizer
 import enable_banking
-from models import Category, CategorizerModel, Transaction, TransactionHistory
+from models import CategorizerModel, Category, Transaction, TransactionHistory
 
 # The bank-sync fixtures live with the bank-sync tests; pytest collects them
 # from here because they are imported into this module's namespace.
@@ -43,25 +43,43 @@ def active_model(db, sample_account, categories):
             ("CARTE 0%d/03 SUPERMARCHE DU COIN" % (i % 9 + 1), groceries, "SUPERMARCHE DU COIN"),
             ("CARTE 0%d/04 METRO TICKET BUREAU" % (i % 9 + 1), transport, "METRO TICKET BUREAU"),
         ):
-            row = Transaction(date=date(2026, 3, i % 28 + 1), payee=payee, amount=-10.0,
-                              account_id=sample_account.id, category_id=category.id,
-                              raw_label=label, raw_source="linxo_export")
+            row = Transaction(
+                date=date(2026, 3, i % 28 + 1),
+                payee=payee,
+                amount=-10.0,
+                account_id=sample_account.id,
+                category_id=category.id,
+                raw_label=label,
+                raw_source="linxo_export",
+            )
             db.add(row)
             rows.append(row)
     db.commit()
 
     model, params = categorizer.train(rows)
-    record = CategorizerModel(status="ready", is_active=True, trained_rows=len(rows),
-                              params=params, metrics={}, blob=categorizer.dumps(model))
+    record = CategorizerModel(
+        status="ready",
+        is_active=True,
+        trained_rows=len(rows),
+        params=params,
+        metrics={},
+        blob=categorizer.dumps(model),
+    )
     db.add(record)
     db.commit()
     return record
 
 
 def _uncategorised(db, account_id, label, payee=None):
-    row = Transaction(date=date(2026, 8, 1), payee=payee if payee is not None else label,
-                      amount=-12.0, account_id=account_id, category_id=None,
-                      raw_label=label, raw_source="enable_banking")
+    row = Transaction(
+        date=date(2026, 8, 1),
+        payee=payee if payee is not None else label,
+        amount=-12.0,
+        account_id=account_id,
+        category_id=None,
+        raw_label=label,
+        raw_source="enable_banking",
+    )
     db.add(row)
     db.commit()
     return row
@@ -69,7 +87,10 @@ def _uncategorised(db, account_id, label, payee=None):
 
 # ── file_rows ────────────────────────────────────────────────────
 
-def test_file_rows_categorises_and_leaves_the_row_for_review(db, sample_account, active_model, categories):
+
+def test_file_rows_categorises_and_leaves_the_row_for_review(
+    db, sample_account, active_model, categories
+):
     groceries, _ = categories
     row = _uncategorised(db, sample_account.id, "CARTE 02/08 SUPERMARCHE DU COIN", payee="whatever")
     row.reconciled = True
@@ -92,7 +113,9 @@ def test_file_rows_never_renames(db, sample_account, active_model):
     assert row.category_id is not None
 
 
-def test_file_rows_never_overrules_a_category_somebody_set(db, sample_account, active_model, categories):
+def test_file_rows_never_overrules_a_category_somebody_set(
+    db, sample_account, active_model, categories
+):
     _, transport = categories
     row = _uncategorised(db, sample_account.id, "CARTE 02/08 SUPERMARCHE DU COIN")
     row.category_id = transport.id
@@ -141,13 +164,24 @@ def test_file_rows_quietly_survives_a_broken_model(db, sample_account, active_mo
 
 # ── through a bank sync ──────────────────────────────────────────
 
-def test_a_sync_files_the_rows_it_imports(db, linked_connection, global_weights, active_model, categories):
+
+def test_a_sync_files_the_rows_it_imports(
+    db, linked_connection, global_weights, active_model, categories
+):
     groceries, _ = categories
-    rows = enable_banking.normalize_transactions([
-        _booked("12.00", "DBIT", "2026-08-02", remittance_information=["CARTE 02/08 SUPERMARCHE DU COIN"]),
-    ])
-    created = enable_banking.import_transactions(db, linked_connection, rows,
-                                                 date(2026, 8, 1), date(2026, 8, 31))
+    rows = enable_banking.normalize_transactions(
+        [
+            _booked(
+                "12.00",
+                "DBIT",
+                "2026-08-02",
+                remittance_information=["CARTE 02/08 SUPERMARCHE DU COIN"],
+            ),
+        ]
+    )
+    created = enable_banking.import_transactions(
+        db, linked_connection, rows, date(2026, 8, 1), date(2026, 8, 31)
+    )
 
     assert created == 1
     imported = db.query(Transaction).filter(Transaction.external_id.isnot(None)).one()
@@ -155,29 +189,63 @@ def test_a_sync_files_the_rows_it_imports(db, linked_connection, global_weights,
     assert imported.payee == "SUPERMARCHE DU COIN"
     assert imported.reconciled is False
     # Both steps are on the record: the sync created the row, the model filed it.
-    sources = {h.source for h in db.query(TransactionHistory)
-               .filter(TransactionHistory.transaction_id == imported.id).all()}
+    sources = {
+        h.source
+        for h in db.query(TransactionHistory)
+        .filter(TransactionHistory.transaction_id == imported.id)
+        .all()
+    }
     assert sources == {"bank_sync", "categorizer"}
 
 
-def test_a_sync_with_no_active_model_imports_uncategorised_as_before(db, linked_connection, global_weights):
-    rows = enable_banking.normalize_transactions([
-        _booked("12.00", "DBIT", "2026-08-02", remittance_information=["CARTE 02/08 SUPERMARCHE DU COIN"]),
-    ])
-    assert enable_banking.import_transactions(db, linked_connection, rows,
-                                              date(2026, 8, 1), date(2026, 8, 31)) == 1
-    assert db.query(Transaction).filter(Transaction.external_id.isnot(None)).one().category_id is None
+def test_a_sync_with_no_active_model_imports_uncategorised_as_before(
+    db, linked_connection, global_weights
+):
+    rows = enable_banking.normalize_transactions(
+        [
+            _booked(
+                "12.00",
+                "DBIT",
+                "2026-08-02",
+                remittance_information=["CARTE 02/08 SUPERMARCHE DU COIN"],
+            ),
+        ]
+    )
+    assert (
+        enable_banking.import_transactions(
+            db, linked_connection, rows, date(2026, 8, 1), date(2026, 8, 31)
+        )
+        == 1
+    )
+    assert (
+        db.query(Transaction).filter(Transaction.external_id.isnot(None)).one().category_id is None
+    )
 
 
-def test_a_sync_still_imports_when_the_model_cannot_be_loaded(db, linked_connection, global_weights, active_model):
+def test_a_sync_still_imports_when_the_model_cannot_be_loaded(
+    db, linked_connection, global_weights, active_model
+):
     active_model.blob = b"not a pickle"
     db.commit()
-    rows = enable_banking.normalize_transactions([
-        _booked("12.00", "DBIT", "2026-08-02", remittance_information=["CARTE 02/08 SUPERMARCHE DU COIN"]),
-    ])
-    assert enable_banking.import_transactions(db, linked_connection, rows,
-                                              date(2026, 8, 1), date(2026, 8, 31)) == 1
-    assert db.query(Transaction).filter(Transaction.external_id.isnot(None)).one().category_id is None
+    rows = enable_banking.normalize_transactions(
+        [
+            _booked(
+                "12.00",
+                "DBIT",
+                "2026-08-02",
+                remittance_information=["CARTE 02/08 SUPERMARCHE DU COIN"],
+            ),
+        ]
+    )
+    assert (
+        enable_banking.import_transactions(
+            db, linked_connection, rows, date(2026, 8, 1), date(2026, 8, 31)
+        )
+        == 1
+    )
+    assert (
+        db.query(Transaction).filter(Transaction.external_id.isnot(None)).one().category_id is None
+    )
 
 
 # ── in the import preview ────────────────────────────────────────
@@ -188,18 +256,27 @@ _CSV = """Date,Label,Amount
 """
 
 _PREVIEW_FORM = {
-    "encoding": "utf-8", "delimiter": ",", "date_format": "%Y-%m-%d",
-    "decimal_separator": ".", "date_col": "Date", "payee_col": "Label", "amount_col": "Amount",
+    "encoding": "utf-8",
+    "delimiter": ",",
+    "date_format": "%Y-%m-%d",
+    "decimal_separator": ".",
+    "date_col": "Date",
+    "payee_col": "Label",
+    "amount_col": "Amount",
 }
 
 
 def _preview(client, account_id):
-    return client.post("/api/import/preview",
-                       files={"file": ("rows.csv", _CSV.encode("utf-8"), "text/csv")},
-                       data={**_PREVIEW_FORM, "account_id": account_id}).json()
+    return client.post(
+        "/api/import/preview",
+        files={"file": ("rows.csv", _CSV.encode("utf-8"), "text/csv")},
+        data={**_PREVIEW_FORM, "account_id": account_id},
+    ).json()
 
 
-def test_the_preview_offers_the_models_category(client, db, sample_account, active_model, categories):
+def test_the_preview_offers_the_models_category(
+    client, db, sample_account, active_model, categories
+):
     groceries, transport = categories
     rows = _preview(client, sample_account.id)
 
@@ -217,7 +294,9 @@ def test_the_preview_says_nothing_without_an_active_model(client, sample_account
     assert [r["suggested_confidence"] for r in rows] == [None, None]
 
 
-def test_the_preview_still_works_when_the_model_cannot_be_loaded(client, db, sample_account, active_model):
+def test_the_preview_still_works_when_the_model_cannot_be_loaded(
+    client, db, sample_account, active_model
+):
     active_model.blob = b"not a pickle"
     db.commit()
     rows = _preview(client, sample_account.id)

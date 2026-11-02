@@ -1,18 +1,18 @@
 """Full database backup archive (export/import)."""
-import re
-from datetime import date, datetime
-from typing import List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from datetime import datetime
+from typing import Literal
+
+from pydantic import ConfigDict, field_validator
 
 from .base import Schema, _DateType
 from .entities import normalize_category_type
-
 
 # ── Full database backup (export/import) ─────────────────────────
 # Raw-column schemas: unlike the *Out schemas above, these mirror each
 # model's own columns exactly (ids and FK ids included, no joins), so a
 # round-trip preserves the database precisely.
+
 
 class UserExport(Schema):
     model_config = ConfigDict(from_attributes=True)
@@ -263,7 +263,7 @@ class DatabaseExport(Schema):
     # Each user's email alert settings, same overwrite-only contract (a
     # partial restore doesn't recreate users). `None` is an archive from
     # before email alerts.
-    email_alerts: list["EmailAlertExport"] | None = None
+    email_alerts: list["EmailAlertExport"] | None = None  # noqa: F821 - resolved by model_rebuild()
     # Tags and which transactions carry them. Restored by both modes (a
     # partial restore reuses a tag of the same name). `None` is an archive
     # from before tags.
@@ -272,8 +272,6 @@ class DatabaseExport(Schema):
     # Groups of linked transactions (transactions.link_id names one).
     # Restored by both modes. `None` is an archive from before links.
     transaction_links: list[TransactionLinkExport] | None = None
-
-
 
 
 class ImportSummary(Schema):

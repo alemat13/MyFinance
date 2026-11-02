@@ -31,13 +31,11 @@ def _get(db: Session, link_id: int) -> TransactionLink:
 
 
 def _out(db: Session, group: TransactionLink) -> TransactionLinkOut:
-    members = (
-        db.scalars(
-            select(Transaction)
-            .where(Transaction.link_id == group.id)
-            .order_by(Transaction.date, Transaction.id)
-        ).all()
-    )
+    members = db.scalars(
+        select(Transaction)
+        .where(Transaction.link_id == group.id)
+        .order_by(Transaction.date, Transaction.id)
+    ).all()
     items = [get_transaction_out(db, t.id) for t in members]
     totals: dict[str, float] = {}
     for item in items:
@@ -46,13 +44,19 @@ def _out(db: Session, group: TransactionLink) -> TransactionLinkOut:
         id=group.id,
         name=group.name,
         transactions=items,
-        totals=[TransactionLinkTotal(currency=c, amount=round(a, 2)) for c, a in sorted(totals.items())],
+        totals=[
+            TransactionLinkTotal(currency=c, amount=round(a, 2)) for c, a in sorted(totals.items())
+        ],
     )
 
 
 @router.post("", response_model=TransactionLinkOut, status_code=201)
 @audit.batched
-def create_link(data: TransactionLinkCreate, actor_user_id: int | None = Query(None), db: Session = Depends(get_db)):
+def create_link(
+    data: TransactionLinkCreate,
+    actor_user_id: int | None = Query(None),
+    db: Session = Depends(get_db),
+):
     ids = sorted(set(data.transaction_ids))
     if len(ids) < 2:
         raise RuleViolation("Pick at least two transactions to link.")
@@ -80,8 +84,12 @@ def rename_link(link_id: int, data: TransactionLinkUpdate, db: Session = Depends
 
 @router.post("/{link_id}/unlink", response_model=TransactionLinkOut | None)
 @audit.batched
-def unlink_transactions(link_id: int, data: TransactionLinkUnlink, actor_user_id: int | None = Query(None),
-                        db: Session = Depends(get_db)):
+def unlink_transactions(
+    link_id: int,
+    data: TransactionLinkUnlink,
+    actor_user_id: int | None = Query(None),
+    db: Session = Depends(get_db),
+):
     """The group as it is afterwards, or null when it was dissolved."""
     group = _get(db, link_id)
     still_there = transaction_links.unlink(db, group, set(data.transaction_ids), actor_user_id)
@@ -91,7 +99,9 @@ def unlink_transactions(link_id: int, data: TransactionLinkUnlink, actor_user_id
 
 @router.delete("/{link_id}", status_code=204)
 @audit.batched
-def delete_link(link_id: int, actor_user_id: int | None = Query(None), db: Session = Depends(get_db)):
+def delete_link(
+    link_id: int, actor_user_id: int | None = Query(None), db: Session = Depends(get_db)
+):
     """Dissolves the group; its transactions are left as they are."""
     transaction_links.unlink(db, _get(db, link_id), None, actor_user_id)
     db.commit()

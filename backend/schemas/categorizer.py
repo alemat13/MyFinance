@@ -1,15 +1,14 @@
 """Automatic categorisation (see categorizer.py)."""
-import re
-from datetime import date, datetime
-from typing import List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from datetime import datetime
+
+from pydantic import Field
 
 from .base import Schema, _DateType
 from .search import TransactionSearchRequest
 
-
 # ── Automatic categorisation (see categorizer.py) ────────────────
+
 
 class CategorizerTrainRequest(Schema):
     """Which transactions to learn from, and which to be scored on.
@@ -24,6 +23,7 @@ class CategorizerTrainRequest(Schema):
     is to decide whether to activate the model, that number has to mean
     something.
     """
+
     train: TransactionSearchRequest
     test: TransactionSearchRequest
     note: str | None = Field(None, max_length=200)
@@ -47,6 +47,7 @@ class CategorizerModelOut(Schema):
 class CategorizerSuggestRequest(Schema):
     """Either an explicit list of transactions (the bulk action on a
     selection) or a filter (everything matching, e.g. the uncategorised)."""
+
     transaction_ids: list[int] | None = None
     selection: TransactionSearchRequest | None = None
     limit: int = Field(500, ge=1, le=2000)
@@ -84,6 +85,7 @@ class CategorizerApplyRequest(Schema):
     """Applies one value per transaction, which is why this is not
     bulk-update: that endpoint sets the same category on every row it
     touches."""
+
     items: list[CategorizerApplyItem]
     # Off by default: a category somebody set by hand outranks a suggestion.
     overwrite_category: bool = False

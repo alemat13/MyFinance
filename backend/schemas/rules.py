@@ -1,23 +1,24 @@
 """Automatic rules and saved filters."""
-import re
-from datetime import date, datetime
-from typing import List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from datetime import datetime
+from typing import Literal
+
+from pydantic import Field, model_validator
 
 from .base import Schema, _DateType
 from .entities import SplitWeightCreate
-from .search import FilterCondition
 from .imports import ImportPreviewRow
-
+from .search import FilterCondition
 
 # ── Automatic rules (see transaction_rules.py) ───────────────────
+
 
 class RuleActions(Schema):
     """What a rule does to a matching transaction: a bulk edit's fields, plus
     renaming the payee. Moving to another account and deleting are left out
     on purpose — too much to happen unseen. An omitted (or None) key leaves
     that field alone; a rule cannot clear a category."""
+
     payee: str | None = Field(None, min_length=1, max_length=200)
     category_id: int | None = None
     accounting_month_offset: int | None = Field(None, ge=-3, le=3)
@@ -39,9 +40,20 @@ class RuleActions(Schema):
         return self
 
     def is_empty(self) -> bool:
-        return all(getattr(self, f) is None for f in
-                   ("payee", "category_id", "accounting_month_offset", "reconciled", "split_weights", "split_tier")) \
+        return (
+            all(
+                getattr(self, f) is None
+                for f in (
+                    "payee",
+                    "category_id",
+                    "accounting_month_offset",
+                    "reconciled",
+                    "split_weights",
+                    "split_tier",
+                )
+            )
             and not self.add_tag_ids
+        )
 
 
 class RuleBase(Schema):
@@ -71,14 +83,17 @@ class RuleOut(RuleBase):
 
 class RuleOrderRequest(Schema):
     """Every rule's id, in the order they should run."""
+
     rule_ids: list[int]
 
 
 # ── Saved filters (Transactions screen) ───────────────────────────
 
+
 class SavedFilterBase(Schema):
     """`filters` is the screen's own filter state, stored and returned as is
     (see models.SavedFilter)."""
+
     name: str = Field(..., min_length=1, max_length=100)
     mode: Literal["simple", "advanced"]
     filters: dict
@@ -90,6 +105,7 @@ class SavedFilterCreate(SavedFilterBase):
 
 class SavedFilterUpdate(Schema):
     """Rename, or replace what the filter holds; omitted fields stay."""
+
     name: str | None = Field(None, min_length=1, max_length=100)
     mode: Literal["simple", "advanced"] | None = None
     filters: dict | None = None
@@ -106,12 +122,14 @@ class SavedFilterOut(SavedFilterBase):
 
 class SavedFilterOrderRequest(Schema):
     """Every saved filter's id, in the order the buttons should show."""
+
     filter_ids: list[int]
 
 
 class RuleOutcomeOut(Schema):
     """What the rules change on one transaction. Only the fields a rule
     actually changes are set; `split_weights` set means a rule set the split."""
+
     rule_ids: list[int]
     rule_names: list[str]
     payee: str | None = None
@@ -132,6 +150,7 @@ ImportPreviewRow.model_rebuild()
 class RulePreviewRequest(Schema):
     """The ticked transactions, and which rules to run on them (by id, in
     their saved order). `rule_ids` omitted means every enabled rule."""
+
     transaction_ids: list[int]
     rule_ids: list[int] | None = None
 

@@ -1,15 +1,14 @@
 from datetime import date
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-from fastapi.testclient import TestClient
 
 from database import Base, get_db
 from main import CSRF_HEADER, app
 from models import Account, AccountUser, Category, Transaction, TransactionSplit, User
-
 
 engine = create_engine(
     "sqlite://",
@@ -92,7 +91,9 @@ def sample_user2(db):
 
 @pytest.fixture()
 def sample_account_with_user(db, sample_account, sample_user):
-    au = AccountUser(account_id=sample_account.id, user_id=sample_user.id, ownership_percentage=100.0)
+    au = AccountUser(
+        account_id=sample_account.id, user_id=sample_user.id, ownership_percentage=100.0
+    )
     db.add(au)
     db.commit()
     return sample_account
@@ -112,7 +113,15 @@ def sample_transaction(db, sample_account, sample_category, sample_user):
     )
     db.add(transaction)
     db.flush()
-    db.add(TransactionSplit(transaction_id=transaction.id, user_id=sample_user.id, weight=1, share_amount=500.0, source="custom"))
+    db.add(
+        TransactionSplit(
+            transaction_id=transaction.id,
+            user_id=sample_user.id,
+            weight=1,
+            share_amount=500.0,
+            source="custom",
+        )
+    )
     db.commit()
     db.refresh(transaction)
     return transaction

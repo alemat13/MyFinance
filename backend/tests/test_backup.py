@@ -3,13 +3,23 @@ import json
 import zipfile
 from datetime import date, datetime
 
+import backup
 from database import utcnow
 from models import (
-    Account, Category, Transaction, User, AccountUser,
-    CategorySplit, GlobalSplitWeight, AccountSplitWeight, TransactionSplit, TransactionHistory,
-    BankConnection, BankAccountLink, OneDriveBackupSettings,
+    Account,
+    AccountSplitWeight,
+    AccountUser,
+    BankAccountLink,
+    BankConnection,
+    Category,
+    CategorySplit,
+    GlobalSplitWeight,
+    OneDriveBackupSettings,
+    Transaction,
+    TransactionHistory,
+    TransactionSplit,
+    User,
 )
-import backup
 
 
 def _zip_payload(payload: dict) -> bytes:
@@ -52,24 +62,48 @@ def _minimal_payload(schema_version: int = 1, **overrides) -> dict:
 
 
 def _seed_full_graph(db, sample_account, sample_category, sample_user, sample_user2):
-    db.add(AccountUser(account_id=sample_account.id, user_id=sample_user.id, ownership_percentage=100.0))
+    db.add(
+        AccountUser(
+            account_id=sample_account.id, user_id=sample_user.id, ownership_percentage=100.0
+        )
+    )
     db.add(CategorySplit(category_id=sample_category.id, user_id=sample_user.id, weight=50))
     db.add(CategorySplit(category_id=sample_category.id, user_id=sample_user2.id, weight=50))
     db.add(GlobalSplitWeight(user_id=sample_user.id, weight=1))
     db.add(AccountSplitWeight(account_id=sample_account.id, user_id=sample_user.id, weight=1))
     transaction = Transaction(
-        date=date(2026, 1, 15), payee="Payee", amount=100.0,
-        account_id=sample_account.id, category_id=sample_category.id,
+        date=date(2026, 1, 15),
+        payee="Payee",
+        amount=100.0,
+        account_id=sample_account.id,
+        category_id=sample_category.id,
     )
     db.add(transaction)
     db.flush()
-    db.add(TransactionSplit(transaction_id=transaction.id, user_id=sample_user.id, weight=1, share_amount=100.0, source="custom"))
-    db.add(TransactionHistory(
-        transaction_id=transaction.id, action="created", source="manual",
-        changed_at=utcnow(), changed_by_user_id=sample_user.id,
-        date=transaction.date, payee=transaction.payee, memo=None,
-        amount=transaction.amount, account_id=transaction.account_id, category_id=transaction.category_id,
-    ))
+    db.add(
+        TransactionSplit(
+            transaction_id=transaction.id,
+            user_id=sample_user.id,
+            weight=1,
+            share_amount=100.0,
+            source="custom",
+        )
+    )
+    db.add(
+        TransactionHistory(
+            transaction_id=transaction.id,
+            action="created",
+            source="manual",
+            changed_at=utcnow(),
+            changed_by_user_id=sample_user.id,
+            date=transaction.date,
+            payee=transaction.payee,
+            memo=None,
+            amount=transaction.amount,
+            account_id=transaction.account_id,
+            category_id=transaction.category_id,
+        )
+    )
     db.commit()
     return transaction
 
@@ -104,7 +138,9 @@ def test_export_with_data(client, db, sample_account, sample_category, sample_us
     assert len(data["transaction_history"]) == 1
 
 
-def test_export_import_round_trip_preserves_reconciled(client, db, sample_account, sample_category, sample_user, sample_user2):
+def test_export_import_round_trip_preserves_reconciled(
+    client, db, sample_account, sample_category, sample_user, sample_user2
+):
     transaction = _seed_full_graph(db, sample_account, sample_category, sample_user, sample_user2)
     db.query(Transaction).filter(Transaction.id == transaction.id).update({"reconciled": True})
     db.commit()
@@ -120,7 +156,9 @@ def test_export_import_round_trip_preserves_reconciled(client, db, sample_accoun
     assert restored["reconciled"] is True
 
 
-def test_import_overwrite_replaces_data(client, db, sample_account, sample_category, sample_user, sample_user2):
+def test_import_overwrite_replaces_data(
+    client, db, sample_account, sample_category, sample_user, sample_user2
+):
     _seed_full_graph(db, sample_account, sample_category, sample_user, sample_user2)
     export_response = client.get("/api/backup/export")
     original_payload = _unzip_payload(export_response.content)
@@ -146,7 +184,9 @@ def test_import_overwrite_replaces_data(client, db, sample_account, sample_categ
     assert len(accounts[0]["users"]) == 1
     assert len(accounts[0]["split_weights"]) == 1
 
-    transactions = client.post("/api/transactions/search", json={"unpaginated": True}).json()["items"]
+    transactions = client.post("/api/transactions/search", json={"unpaginated": True}).json()[
+        "items"
+    ]
     assert len(transactions) == 1
     assert transactions[0]["id"] == original_payload["transactions"][0]["id"]
     assert len(transactions[0]["splits"]) == 1
@@ -155,10 +195,15 @@ def test_import_overwrite_replaces_data(client, db, sample_account, sample_categ
     assert len(history) == 1
 
 
-def test_import_overwrite_with_uncategorized_transaction_succeeds(client, db, sample_account, sample_user):
+def test_import_overwrite_with_uncategorized_transaction_succeeds(
+    client, db, sample_account, sample_user
+):
     transaction = Transaction(
-        date=date(2026, 1, 15), payee="Uncategorized Payee", amount=42.0,
-        account_id=sample_account.id, category_id=None,
+        date=date(2026, 1, 15),
+        payee="Uncategorized Payee",
+        amount=42.0,
+        account_id=sample_account.id,
+        category_id=None,
     )
     db.add(transaction)
     db.commit()
@@ -171,7 +216,9 @@ def test_import_overwrite_with_uncategorized_transaction_succeeds(client, db, sa
     response = _post_import(client, zip_bytes, mode="overwrite")
     assert response.status_code == 200
 
-    transactions = client.post("/api/transactions/search", json={"unpaginated": True}).json()["items"]
+    transactions = client.post("/api/transactions/search", json={"unpaginated": True}).json()[
+        "items"
+    ]
     assert len(transactions) == 1
     assert transactions[0]["category_id"] is None
 
@@ -203,7 +250,9 @@ def test_export_includes_category_parent_id(client, db, sample_category):
     assert by_name[sample_category.name]["parent_id"] is None
 
 
-def test_import_overwrite_invalidates_balances_cache(client, db, sample_account, sample_category, sample_user, sample_user2):
+def test_import_overwrite_invalidates_balances_cache(
+    client, db, sample_account, sample_category, sample_user, sample_user2
+):
     _seed_full_graph(db, sample_account, sample_category, sample_user, sample_user2)
 
     warm = client.get("/api/balances")
@@ -229,8 +278,22 @@ def test_import_overwrite_reorders_out_of_order_category_hierarchy(client):
     # payload order (parent_id is a self-referential FK, checked immediately).
     payload = _minimal_payload(
         categories=[
-            {"id": 2, "name": "Rent", "type": "Expense", "color": None, "icon": None, "parent_id": 1},
-            {"id": 1, "name": "Housing", "type": "Expense", "color": None, "icon": None, "parent_id": None},
+            {
+                "id": 2,
+                "name": "Rent",
+                "type": "Expense",
+                "color": None,
+                "icon": None,
+                "parent_id": 1,
+            },
+            {
+                "id": 1,
+                "name": "Housing",
+                "type": "Expense",
+                "color": None,
+                "icon": None,
+                "parent_id": None,
+            },
         ],
     )
     zip_bytes = _zip_payload(payload)
@@ -244,9 +307,16 @@ def test_import_overwrite_reorders_out_of_order_category_hierarchy(client):
 
 def test_import_overwrite_dangling_category_parent_returns_422(client):
     payload = _minimal_payload(
-        categories=[{
-            "id": 1, "name": "Rent", "type": "Expense", "color": None, "icon": None, "parent_id": 999999,
-        }],
+        categories=[
+            {
+                "id": 1,
+                "name": "Rent",
+                "type": "Expense",
+                "color": None,
+                "icon": None,
+                "parent_id": 999999,
+            }
+        ],
     )
     zip_bytes = _zip_payload(payload)
     response = _post_import(client, zip_bytes, mode="overwrite")
@@ -255,11 +325,18 @@ def test_import_overwrite_dangling_category_parent_returns_422(client):
 
 def test_import_overwrite_dangling_fk_returns_422_without_wiping_data(client, sample_account):
     payload = _minimal_payload(
-        transactions=[{
-            "id": 1, "date": "2026-01-01", "payee": "Bad", "memo": None, "amount": 1.0,
-            "account_id": 999999, "category_id": 999999,
-            "created_at": utcnow().isoformat(),
-        }],
+        transactions=[
+            {
+                "id": 1,
+                "date": "2026-01-01",
+                "payee": "Bad",
+                "memo": None,
+                "amount": 1.0,
+                "account_id": 999999,
+                "category_id": 999999,
+                "created_at": utcnow().isoformat(),
+            }
+        ],
     )
     zip_bytes = _zip_payload(payload)
 
@@ -277,7 +354,9 @@ def test_round_trip_preserves_the_raw_fields(client, db, sample_account, sample_
     else can redo — the Linxo export is a one-off file, not a feed."""
     db.add(GlobalSplitWeight(user_id=sample_user.id, weight=1))
     transaction = Transaction(
-        date=date(2026, 1, 15), payee="Courses", amount=-42.50,
+        date=date(2026, 1, 15),
+        payee="Courses",
+        amount=-42.50,
         account_id=sample_account.id,
         raw_source="linxo_export",
         raw_label="CB CARREFOURMARKET 14/01 PARIS 75 CB N° XXXX",
@@ -291,7 +370,9 @@ def test_round_trip_preserves_the_raw_fields(client, db, sample_account, sample_
     db.commit()
 
     exported = _unzip_payload(client.get("/api/backup/export").content)
-    assert exported["transactions"][0]["raw_label"] == "CB CARREFOURMARKET 14/01 PARIS 75 CB N° XXXX"
+    assert (
+        exported["transactions"][0]["raw_label"] == "CB CARREFOURMARKET 14/01 PARIS 75 CB N° XXXX"
+    )
 
     assert _post_import(client, _zip_payload(exported)).status_code == 200
     db.expire_all()
@@ -308,32 +389,56 @@ def test_round_trip_preserves_the_raw_fields(client, db, sample_account, sample_
 def test_archive_written_before_the_raw_fields_existed_still_imports(client, sample_account):
     """Older archives have no raw_* keys at all — they must still validate."""
     payload = _minimal_payload(
-        accounts=[{
-            "id": sample_account.id, "name": sample_account.name, "type": sample_account.type,
-            "balance": 0.0, "currency": "EUR", "archived": False,
-            "created_at": utcnow().isoformat(),
-        }],
-        transactions=[{
-            "id": 1, "date": "2026-01-15", "payee": "Ancienne archive", "memo": None,
-            "amount": -10.0, "account_id": sample_account.id, "category_id": None,
-            "created_at": utcnow().isoformat(),
-        }],
+        accounts=[
+            {
+                "id": sample_account.id,
+                "name": sample_account.name,
+                "type": sample_account.type,
+                "balance": 0.0,
+                "currency": "EUR",
+                "archived": False,
+                "created_at": utcnow().isoformat(),
+            }
+        ],
+        transactions=[
+            {
+                "id": 1,
+                "date": "2026-01-15",
+                "payee": "Ancienne archive",
+                "memo": None,
+                "amount": -10.0,
+                "account_id": sample_account.id,
+                "category_id": None,
+                "created_at": utcnow().isoformat(),
+            }
+        ],
     )
     assert _post_import(client, _zip_payload(payload)).status_code == 200
 
 
 def _seed_bank_connection(db, account):
     connection = BankConnection(
-        aspsp_name="CCF", aspsp_country="FR", state="nonce", session_id="sess-1",
-        status="linked", access_valid_until=datetime(2026, 12, 20),
+        aspsp_name="CCF",
+        aspsp_country="FR",
+        state="nonce",
+        session_id="sess-1",
+        status="linked",
+        access_valid_until=datetime(2026, 12, 20),
     )
     db.add(connection)
     db.flush()
-    db.add(BankAccountLink(
-        connection_id=connection.id, remote_account_uid="uid-1", iban="FR7600000000000000000000000",
-        remote_name="Compte joint", currency="EUR", account_id=account.id,
-        sync_from_date=date(2026, 9, 20), last_imported_count=12,
-    ))
+    db.add(
+        BankAccountLink(
+            connection_id=connection.id,
+            remote_account_uid="uid-1",
+            iban="FR7600000000000000000000000",
+            remote_name="Compte joint",
+            currency="EUR",
+            account_id=account.id,
+            sync_from_date=date(2026, 9, 20),
+            last_imported_count=12,
+        )
+    )
     db.add(BankAccountLink(connection_id=connection.id, remote_account_uid="uid-2"))
     db.commit()
     return connection
@@ -354,7 +459,11 @@ def test_round_trip_preserves_bank_connections_and_links(client, db, sample_acco
 
     db.expire_all()
     connection = db.query(BankConnection).one()
-    assert (connection.aspsp_name, connection.session_id, connection.status) == ("CCF", "sess-1", "linked")
+    assert (connection.aspsp_name, connection.session_id, connection.status) == (
+        "CCF",
+        "sess-1",
+        "linked",
+    )
     links = {l.remote_account_uid: l for l in db.query(BankAccountLink).all()}
     assert links["uid-1"].account_id == sample_account.id
     assert links["uid-1"].sync_from_date == date(2026, 9, 20)
@@ -383,10 +492,15 @@ def test_import_overwrite_dangling_bank_link_returns_422(client):
 
 def test_import_overwrite_keeps_the_onedrive_connection(client, db):
     """Never in an archive, and never wiped by a restore either."""
-    db.add(OneDriveBackupSettings(
-        id=1, connected=True, account_email="alex@example.com", folder_path="/MyFinance Backups",
-        refresh_token_encrypted="encrypted-token",
-    ))
+    db.add(
+        OneDriveBackupSettings(
+            id=1,
+            connected=True,
+            account_email="alex@example.com",
+            folder_path="/MyFinance Backups",
+            refresh_token_encrypted="encrypted-token",
+        )
+    )
     db.commit()
 
     exported = _unzip_payload(client.get("/api/backup/export").content)
@@ -403,38 +517,107 @@ def test_import_overwrite_keeps_the_onedrive_connection(client, db):
 
 # ── Partial restore (admin mode) ──────────────────────────────────────
 
+
 def _now() -> str:
     return utcnow().isoformat()
 
 
-def test_partial_restore_recreates_rows_under_new_ids(client, db, sample_account, sample_category, sample_user):
+def test_partial_restore_recreates_rows_under_new_ids(
+    client, db, sample_account, sample_category, sample_user
+):
     payload = _minimal_payload(
         users=[{"id": 900, "name": "Ignored", "email": None, "created_at": _now()}],
-        accounts=[{
-            "id": sample_account.id, "name": "Restored Account", "type": "Checking", "balance": 30.0,
-            "currency": "EUR", "created_at": _now(),
-        }],
-        categories=[
-            {"id": 70, "name": "Restored Child", "type": "Expense", "color": None, "icon": None, "parent_id": 71},
-            {"id": 71, "name": "Restored Parent", "type": "Expense", "color": None, "icon": None, "parent_id": None},
+        accounts=[
+            {
+                "id": sample_account.id,
+                "name": "Restored Account",
+                "type": "Checking",
+                "balance": 30.0,
+                "currency": "EUR",
+                "created_at": _now(),
+            }
         ],
-        account_users=[{"account_id": sample_account.id, "user_id": sample_user.id, "ownership_percentage": 100.0}],
-        account_split_weights=[{"account_id": sample_account.id, "user_id": sample_user.id, "weight": 3}],
+        categories=[
+            {
+                "id": 70,
+                "name": "Restored Child",
+                "type": "Expense",
+                "color": None,
+                "icon": None,
+                "parent_id": 71,
+            },
+            {
+                "id": 71,
+                "name": "Restored Parent",
+                "type": "Expense",
+                "color": None,
+                "icon": None,
+                "parent_id": None,
+            },
+        ],
+        account_users=[
+            {
+                "account_id": sample_account.id,
+                "user_id": sample_user.id,
+                "ownership_percentage": 100.0,
+            }
+        ],
+        account_split_weights=[
+            {"account_id": sample_account.id, "user_id": sample_user.id, "weight": 3}
+        ],
         category_splits=[{"category_id": 70, "user_id": sample_user.id, "weight": 2}],
         transactions=[
-            {"id": 1, "date": "2026-01-15", "payee": "Anchor", "amount": 20.0,
-             "account_id": sample_account.id, "category_id": 70, "divide_group_id": 1, "created_at": _now()},
-            {"id": 2, "date": "2026-01-16", "payee": "Part", "amount": 10.0,
-             "account_id": sample_account.id, "category_id": None, "divide_group_id": 1, "created_at": _now()},
+            {
+                "id": 1,
+                "date": "2026-01-15",
+                "payee": "Anchor",
+                "amount": 20.0,
+                "account_id": sample_account.id,
+                "category_id": 70,
+                "divide_group_id": 1,
+                "created_at": _now(),
+            },
+            {
+                "id": 2,
+                "date": "2026-01-16",
+                "payee": "Part",
+                "amount": 10.0,
+                "account_id": sample_account.id,
+                "category_id": None,
+                "divide_group_id": 1,
+                "created_at": _now(),
+            },
         ],
         transaction_splits=[
-            {"transaction_id": 1, "user_id": sample_user.id, "weight": 1, "share_amount": 20.0, "source": "custom"},
-            {"transaction_id": 2, "user_id": sample_user.id, "weight": 1, "share_amount": 10.0, "source": "custom"},
+            {
+                "transaction_id": 1,
+                "user_id": sample_user.id,
+                "weight": 1,
+                "share_amount": 20.0,
+                "source": "custom",
+            },
+            {
+                "transaction_id": 2,
+                "user_id": sample_user.id,
+                "weight": 1,
+                "share_amount": 10.0,
+                "source": "custom",
+            },
         ],
         transaction_history=[
-            {"id": 5, "transaction_id": 1, "action": "created", "source": "manual", "changed_at": _now(),
-             "changed_by_user_id": 900, "date": "2026-01-15", "payee": "Anchor", "amount": 20.0,
-             "account_id": sample_account.id, "category_id": 70},
+            {
+                "id": 5,
+                "transaction_id": 1,
+                "action": "created",
+                "source": "manual",
+                "changed_at": _now(),
+                "changed_by_user_id": 900,
+                "date": "2026-01-15",
+                "payee": "Anchor",
+                "amount": 20.0,
+                "account_id": sample_account.id,
+                "category_id": 70,
+            },
             {"id": 6, "transaction_id": 99, "action": "deleted", "changed_at": _now()},
         ],
     )
@@ -465,7 +648,10 @@ def test_partial_restore_recreates_rows_under_new_ids(client, db, sample_account
     assert part.divide_group_id == anchor.id
     assert [s.user_id for s in anchor.splits] == [sample_user.id]
 
-    assert db.query(AccountUser).filter_by(account_id=restored_account.id).one().user_id == sample_user.id
+    assert (
+        db.query(AccountUser).filter_by(account_id=restored_account.id).one().user_id
+        == sample_user.id
+    )
     assert db.query(AccountSplitWeight).filter_by(account_id=restored_account.id).one().weight == 3
     assert db.query(CategorySplit).filter_by(category_id=child.id).one().weight == 2
 
@@ -475,12 +661,30 @@ def test_partial_restore_recreates_rows_under_new_ids(client, db, sample_account
     assert history.changed_by_user_id is None  # user 900 isn't in this database
 
 
-def test_partial_restore_falls_back_to_existing_rows(client, db, sample_account, sample_category, sample_user):
+def test_partial_restore_falls_back_to_existing_rows(
+    client, db, sample_account, sample_category, sample_user
+):
     payload = _minimal_payload(
-        transactions=[{"id": 1, "date": "2026-02-01", "payee": "Onto existing", "amount": -5.0,
-                       "account_id": sample_account.id, "category_id": sample_category.id, "created_at": _now()}],
-        transaction_splits=[{"transaction_id": 1, "user_id": sample_user.id, "weight": 1,
-                             "share_amount": -5.0, "source": "custom"}],
+        transactions=[
+            {
+                "id": 1,
+                "date": "2026-02-01",
+                "payee": "Onto existing",
+                "amount": -5.0,
+                "account_id": sample_account.id,
+                "category_id": sample_category.id,
+                "created_at": _now(),
+            }
+        ],
+        transaction_splits=[
+            {
+                "transaction_id": 1,
+                "user_id": sample_user.id,
+                "weight": 1,
+                "share_amount": -5.0,
+                "source": "custom",
+            }
+        ],
     )
     response = _post_import(client, _zip_payload(payload), mode="partial")
     assert response.status_code == 200, response.text
@@ -489,12 +693,31 @@ def test_partial_restore_falls_back_to_existing_rows(client, db, sample_account,
     assert restored.category_id == sample_category.id
 
 
-def test_partial_restore_with_unknown_account_restores_nothing(client, db, sample_account, sample_user):
+def test_partial_restore_with_unknown_account_restores_nothing(
+    client, db, sample_account, sample_user
+):
     payload = _minimal_payload(
-        accounts=[{"id": 800, "name": "Would be created", "type": "Checking", "balance": 0.0,
-                   "currency": "EUR", "created_at": _now()}],
-        transactions=[{"id": 1, "date": "2026-02-01", "payee": "Orphan", "amount": -5.0,
-                       "account_id": 12345, "category_id": None, "created_at": _now()}],
+        accounts=[
+            {
+                "id": 800,
+                "name": "Would be created",
+                "type": "Checking",
+                "balance": 0.0,
+                "currency": "EUR",
+                "created_at": _now(),
+            }
+        ],
+        transactions=[
+            {
+                "id": 1,
+                "date": "2026-02-01",
+                "payee": "Orphan",
+                "amount": -5.0,
+                "account_id": 12345,
+                "category_id": None,
+                "created_at": _now(),
+            }
+        ],
     )
     response = _post_import(client, _zip_payload(payload), mode="partial")
     assert response.status_code == 422
@@ -505,10 +728,26 @@ def test_partial_restore_with_unknown_account_restores_nothing(client, db, sampl
 
 def test_partial_restore_with_unknown_split_user_restores_nothing(client, db, sample_account):
     payload = _minimal_payload(
-        transactions=[{"id": 1, "date": "2026-02-01", "payee": "Unknown user", "amount": -5.0,
-                       "account_id": sample_account.id, "category_id": None, "created_at": _now()}],
-        transaction_splits=[{"transaction_id": 1, "user_id": 4242, "weight": 1,
-                             "share_amount": -5.0, "source": "custom"}],
+        transactions=[
+            {
+                "id": 1,
+                "date": "2026-02-01",
+                "payee": "Unknown user",
+                "amount": -5.0,
+                "account_id": sample_account.id,
+                "category_id": None,
+                "created_at": _now(),
+            }
+        ],
+        transaction_splits=[
+            {
+                "transaction_id": 1,
+                "user_id": 4242,
+                "weight": 1,
+                "share_amount": -5.0,
+                "source": "custom",
+            }
+        ],
     )
     response = _post_import(client, _zip_payload(payload), mode="partial")
     assert response.status_code == 422
@@ -516,13 +755,29 @@ def test_partial_restore_with_unknown_split_user_restores_nothing(client, db, sa
 
 
 def test_partial_restore_refuses_a_bank_id_already_on_the_account(client, db, sample_account):
-    db.add(Transaction(date=date(2026, 2, 1), payee="Synced", amount=-5.0,
-                       account_id=sample_account.id, external_id="bank-1"))
+    db.add(
+        Transaction(
+            date=date(2026, 2, 1),
+            payee="Synced",
+            amount=-5.0,
+            account_id=sample_account.id,
+            external_id="bank-1",
+        )
+    )
     db.commit()
     payload = _minimal_payload(
-        transactions=[{"id": 1, "date": "2026-02-01", "payee": "Same bank row", "amount": -5.0,
-                       "account_id": sample_account.id, "category_id": None, "external_id": "bank-1",
-                       "created_at": _now()}],
+        transactions=[
+            {
+                "id": 1,
+                "date": "2026-02-01",
+                "payee": "Same bank row",
+                "amount": -5.0,
+                "account_id": sample_account.id,
+                "category_id": None,
+                "external_id": "bank-1",
+                "created_at": _now(),
+            }
+        ],
     )
     response = _post_import(client, _zip_payload(payload), mode="partial")
     assert response.status_code == 422
@@ -530,40 +785,83 @@ def test_partial_restore_refuses_a_bank_id_already_on_the_account(client, db, sa
 
 
 def test_partial_restore_invalidates_balances_cache(client, db, sample_account, sample_user):
-    db.add(AccountUser(account_id=sample_account.id, user_id=sample_user.id, ownership_percentage=100.0))
+    db.add(
+        AccountUser(
+            account_id=sample_account.id, user_id=sample_user.id, ownership_percentage=100.0
+        )
+    )
     db.commit()
     assert client.get("/api/balances").status_code == 200
 
     payload = _minimal_payload(
-        transactions=[{"id": 1, "date": "2026-02-01", "payee": "Shared", "amount": 50.0,
-                       "account_id": sample_account.id, "category_id": None, "created_at": _now()}],
-        transaction_splits=[{"transaction_id": 1, "user_id": sample_user.id, "weight": 1,
-                             "share_amount": 20.0, "source": "custom"}],
+        transactions=[
+            {
+                "id": 1,
+                "date": "2026-02-01",
+                "payee": "Shared",
+                "amount": 50.0,
+                "account_id": sample_account.id,
+                "category_id": None,
+                "created_at": _now(),
+            }
+        ],
+        transaction_splits=[
+            {
+                "transaction_id": 1,
+                "user_id": sample_user.id,
+                "weight": 1,
+                "share_amount": 20.0,
+                "source": "custom",
+            }
+        ],
     )
     assert _post_import(client, _zip_payload(payload), mode="partial").status_code == 200
     balances = {b["user_id"]: b["net_position"] for b in client.get("/api/balances").json()}
     assert balances[sample_user.id] == -30.0  # share 20 - paid 50
 
 
-def test_partial_restore_reuses_a_category_of_the_same_name(client, db, sample_account, sample_category, sample_user):
+def test_partial_restore_reuses_a_category_of_the_same_name(
+    client, db, sample_account, sample_category, sample_user
+):
     db.add(CategorySplit(category_id=sample_category.id, user_id=sample_user.id, weight=1))
     db.commit()
     payload = _minimal_payload(
-        categories=[{"id": 300, "name": sample_category.name, "type": sample_category.type,
-                     "color": None, "icon": None, "parent_id": None}],
+        categories=[
+            {
+                "id": 300,
+                "name": sample_category.name,
+                "type": sample_category.type,
+                "color": None,
+                "icon": None,
+                "parent_id": None,
+            }
+        ],
         category_splits=[{"category_id": 300, "user_id": sample_user.id, "weight": 9}],
-        transactions=[{"id": 1, "date": "2026-02-01", "payee": "Same name", "amount": -5.0,
-                       "account_id": sample_account.id, "category_id": 300, "created_at": _now()}],
+        transactions=[
+            {
+                "id": 1,
+                "date": "2026-02-01",
+                "payee": "Same name",
+                "amount": -5.0,
+                "account_id": sample_account.id,
+                "category_id": 300,
+                "created_at": _now(),
+            }
+        ],
     )
     response = _post_import(client, _zip_payload(payload), mode="partial")
     assert response.status_code == 200, response.text
     assert response.json()["categories"] == 0
     assert db.query(Category).filter_by(name=sample_category.name).count() == 1
-    assert db.query(Transaction).filter_by(payee="Same name").one().category_id == sample_category.id
+    assert (
+        db.query(Transaction).filter_by(payee="Same name").one().category_id == sample_category.id
+    )
     assert db.query(CategorySplit).filter_by(category_id=sample_category.id).one().weight == 1
 
 
-def test_partial_restore_of_a_full_export_appends_a_second_copy(client, db, sample_account, sample_category, sample_user, sample_user2):
+def test_partial_restore_of_a_full_export_appends_a_second_copy(
+    client, db, sample_account, sample_category, sample_user, sample_user2
+):
     _seed_full_graph(db, sample_account, sample_category, sample_user, sample_user2)
     export = client.get("/api/backup/export").content
 
@@ -575,7 +873,12 @@ def test_partial_restore_of_a_full_export_appends_a_second_copy(client, db, samp
 
 
 def test_import_overwrite_failing_mid_restore_keeps_the_existing_data(
-    client, db, sample_account, sample_category, sample_user, sample_user2,
+    client,
+    db,
+    sample_account,
+    sample_category,
+    sample_user,
+    sample_user2,
 ):
     """An archive that passes the reference checks but fails on insert (here
     a duplicate user id) must roll the whole restore back, wipe included —
@@ -599,6 +902,7 @@ def test_import_overwrite_failing_mid_restore_keeps_the_existing_data(
 
 def test_import_oversized_upload_returns_413(client, monkeypatch):
     import routers.backup as backup_router
+
     monkeypatch.setattr(backup_router, "MAX_BACKUP_UPLOAD_BYTES", 10)
     response = client.post(
         "/api/backup/import",
