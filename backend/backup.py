@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from typing import Literal
 
 from pydantic import ValidationError
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session, sessionmaker
 
 import account_totals
@@ -68,7 +68,7 @@ def _export_accounts(db: Session) -> list[AccountExport]:
             created_at=a.created_at,
             archived=a.archived,
         )
-        for a in db.query(Account).all()
+        for a in db.scalars(select(Account)).all()
     ]
 
 
@@ -76,24 +76,24 @@ def build_export(db: Session) -> DatabaseExport:
     return DatabaseExport(
         schema_version=SCHEMA_VERSION,
         exported_at=datetime.now(timezone.utc),
-        users=[UserExport.model_validate(u) for u in db.query(User).all()],
+        users=[UserExport.model_validate(u) for u in db.scalars(select(User)).all()],
         accounts=_export_accounts(db),
-        categories=[CategoryExport.model_validate(c) for c in db.query(Category).all()],
-        account_users=[AccountUserExport.model_validate(au) for au in db.query(AccountUser).all()],
-        category_splits=[CategorySplitExport.model_validate(cs) for cs in db.query(CategorySplit).all()],
-        global_split_weights=[GlobalSplitWeightExport.model_validate(w) for w in db.query(GlobalSplitWeight).all()],
-        account_split_weights=[AccountSplitWeightExport.model_validate(w) for w in db.query(AccountSplitWeight).all()],
-        transactions=[TransactionExport.model_validate(t) for t in db.query(Transaction).all()],
-        transaction_splits=[TransactionSplitExport.model_validate(s) for s in db.query(TransactionSplit).all()],
-        transaction_history=[TransactionHistoryExport.model_validate(h) for h in db.query(TransactionHistory).all()],
-        bank_connections=[BankConnectionExport.model_validate(c) for c in db.query(BankConnection).all()],
-        bank_account_links=[BankAccountLinkExport.model_validate(l) for l in db.query(BankAccountLink).all()],
-        transaction_rules=[TransactionRuleExport.model_validate(r) for r in db.query(TransactionRule).all()],
-        saved_filters=[SavedFilterExport.model_validate(f) for f in db.query(SavedFilter).all()],
-        email_alerts=[EmailAlertExport.model_validate(a) for a in db.query(EmailAlert).all()],
-        tags=[TagExport.model_validate(t) for t in db.query(Tag).all()],
-        transaction_tags=[TransactionTagExport.model_validate(tt) for tt in db.query(TransactionTag).all()],
-        transaction_links=[TransactionLinkExport.model_validate(l) for l in db.query(TransactionLink).all()],
+        categories=[CategoryExport.model_validate(c) for c in db.scalars(select(Category)).all()],
+        account_users=[AccountUserExport.model_validate(au) for au in db.scalars(select(AccountUser)).all()],
+        category_splits=[CategorySplitExport.model_validate(cs) for cs in db.scalars(select(CategorySplit)).all()],
+        global_split_weights=[GlobalSplitWeightExport.model_validate(w) for w in db.scalars(select(GlobalSplitWeight)).all()],
+        account_split_weights=[AccountSplitWeightExport.model_validate(w) for w in db.scalars(select(AccountSplitWeight)).all()],
+        transactions=[TransactionExport.model_validate(t) for t in db.scalars(select(Transaction)).all()],
+        transaction_splits=[TransactionSplitExport.model_validate(s) for s in db.scalars(select(TransactionSplit)).all()],
+        transaction_history=[TransactionHistoryExport.model_validate(h) for h in db.scalars(select(TransactionHistory)).all()],
+        bank_connections=[BankConnectionExport.model_validate(c) for c in db.scalars(select(BankConnection)).all()],
+        bank_account_links=[BankAccountLinkExport.model_validate(l) for l in db.scalars(select(BankAccountLink)).all()],
+        transaction_rules=[TransactionRuleExport.model_validate(r) for r in db.scalars(select(TransactionRule)).all()],
+        saved_filters=[SavedFilterExport.model_validate(f) for f in db.scalars(select(SavedFilter)).all()],
+        email_alerts=[EmailAlertExport.model_validate(a) for a in db.scalars(select(EmailAlert)).all()],
+        tags=[TagExport.model_validate(t) for t in db.scalars(select(Tag)).all()],
+        transaction_tags=[TransactionTagExport.model_validate(tt) for tt in db.scalars(select(TransactionTag)).all()],
+        transaction_links=[TransactionLinkExport.model_validate(l) for l in db.scalars(select(TransactionLink)).all()],
     )
 
 
@@ -338,10 +338,10 @@ def import_partial(db: Session, data: DatabaseExport) -> ImportSummary:
     category of that name, whose own split weights are left as they are.
     Without that, restoring any real export (which carries every category)
     would always fail."""
-    existing_account_ids = {row[0] for row in db.query(Account.id).all()}
-    existing_category_ids = {row[0] for row in db.query(Category.id).all()}
-    existing_user_ids = {row[0] for row in db.query(User.id).all()}
-    existing_category_by_name = {name: cid for cid, name in db.query(Category.id, Category.name).all()}
+    existing_account_ids = set(db.scalars(select(Account.id)).all())
+    existing_category_ids = set(db.scalars(select(Category.id)).all())
+    existing_user_ids = set(db.scalars(select(User.id)).all())
+    existing_category_by_name = {name: cid for cid, name in db.execute(select(Category.id, Category.name)).all()}
     reused_categories = {c.id: existing_category_by_name[c.name] for c in data.categories if c.name in existing_category_by_name}
     archive_account_ids = {a.id for a in data.accounts}
     archive_category_ids = {c.id for c in data.categories}
@@ -403,9 +403,10 @@ def import_partial(db: Session, data: DatabaseExport) -> ImportSummary:
         clash_accounts = {account_id for account_id, _ in restored_external}
         existing_external = {
             (account_id, external_id) for account_id, external_id in
-            db.query(Transaction.account_id, Transaction.external_id)
-            .filter(Transaction.account_id.in_(clash_accounts), Transaction.external_id.isnot(None))
-            .all()
+            db.execute(
+                select(Transaction.account_id, Transaction.external_id)
+                .where(Transaction.account_id.in_(clash_accounts), Transaction.external_id.isnot(None))
+            ).all()
         }
         clashes = sorted(restored_external & existing_external)
         if clashes:
@@ -499,7 +500,7 @@ def import_partial(db: Session, data: DatabaseExport) -> ImportSummary:
             TransactionSplit(**s.model_dump(exclude={"transaction_id"}), transaction_id=transaction_map[s.transaction_id])
             for s in data.transaction_splits
         )
-        existing_tags = {t.name.lower(): t for t in db.query(Tag).all()}
+        existing_tags = {t.name.lower(): t for t in db.scalars(select(Tag)).all()}
         tag_map: dict[int, int] = {}
         created_tags = 0
         for t in data.tags or []:

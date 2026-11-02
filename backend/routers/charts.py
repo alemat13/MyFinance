@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 import charts as charts_module
@@ -42,7 +43,7 @@ def get_charts(
     db: Session = Depends(get_db),
 ):
     if parent_category_id is not None:
-        parent = db.query(Category).filter(Category.id == parent_category_id).first()
+        parent = db.scalar(select(Category).where(Category.id == parent_category_id).limit(1))
         if parent is None or parent.parent_id is not None or parent.type != "Expense":
             raise HTTPException(400, "parent_category_id must be a top-level Expense category")
 

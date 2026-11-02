@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 import cache_service
@@ -13,7 +13,7 @@ router = APIRouter(prefix="/api/users")
 
 @router.get("", response_model=list[UserOut])
 def get_users(db: Session = Depends(get_db)):
-    return db.query(User).all()
+    return db.scalars(select(User)).all()
 
 
 @router.post("", response_model=UserOut, status_code=201)
@@ -32,7 +32,7 @@ def create_user(data: UserCreate, db: Session = Depends(get_db)):
 
 @router.put("/{user_id}", response_model=UserOut)
 def update_user(user_id: int, data: UserUpdate, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.id == user_id).first()
+    user = db.scalar(select(User).where(User.id == user_id).limit(1))
     if not user:
         raise HTTPException(404, "User not found")
     for field, value in data.model_dump(exclude_unset=True).items():
@@ -44,7 +44,7 @@ def update_user(user_id: int, data: UserUpdate, db: Session = Depends(get_db)):
 
 @router.delete("/{user_id}", status_code=204)
 def delete_user(user_id: int, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.id == user_id).first()
+    user = db.scalar(select(User).where(User.id == user_id).limit(1))
     if not user:
         raise HTTPException(404, "User not found")
     if user.account_associations:
@@ -54,20 +54,21 @@ def delete_user(user_id: int, db: Session = Depends(get_db)):
     # participant: just deleting their TransactionSplit row would leave the
     # transaction with zero splits, violating the mandatory-split invariant.
     user_split_transaction_ids = [
-        tx_id for (tx_id,) in db.query(TransactionSplit.transaction_id)
-        .filter(TransactionSplit.user_id == user_id).all()
+        tx_id for (tx_id,) in db.execute(
+            select(TransactionSplit.transaction_id).where(TransactionSplit.user_id == user_id)
+        ).all()
     ]
     solely_split_transaction_ids = []
     if user_split_transaction_ids:
-        counts = db.query(TransactionSplit.transaction_id, func.count(TransactionSplit.user_id)).filter(
+        counts = db.execute(select(TransactionSplit.transaction_id, func.count(TransactionSplit.user_id)).where(
             TransactionSplit.transaction_id.in_(user_split_transaction_ids)
-        ).group_by(TransactionSplit.transaction_id).all()
+        ).group_by(TransactionSplit.transaction_id)).all()
         solely_split_transaction_ids = [tx_id for tx_id, count in counts if count == 1]
 
-    db.query(CategorySplit).filter(CategorySplit.user_id == user_id).delete()
-    db.query(GlobalSplitWeight).filter(GlobalSplitWeight.user_id == user_id).delete()
-    db.query(AccountSplitWeight).filter(AccountSplitWeight.user_id == user_id).delete()
-    db.query(TransactionSplit).filter(TransactionSplit.user_id == user_id).delete()
+    db.execute(delete(CategorySplit).where(CategorySplit.user_id == user_id))
+    db.execute(delete(GlobalSplitWeight).where(GlobalSplitWeight.user_id == user_id))
+    db.execute(delete(AccountSplitWeight).where(AccountSplitWeight.user_id == user_id))
+    db.execute(delete(TransactionSplit).where(TransactionSplit.user_id == user_id))
 
     if solely_split_transaction_ids:
         # Re-resolve those transactions' splits via the account > category >
@@ -76,7 +77,7 @@ def delete_user(user_id: int, db: Session = Depends(get_db)):
         # (no other user has a usable weight anywhere), refuse the deletion
         # instead — nothing has been committed yet, so the deletes above are
         # rolled back along with it.
-        transactions = db.query(Transaction).filter(Transaction.id.in_(solely_split_transaction_ids)).all()
+        transactions = db.scalars(select(Transaction).where(Transaction.id.in_(solely_split_transaction_ids))).all()
         for transaction in transactions:
             source, weights = split_engine.resolve_default_weights(db, transaction.category_id, transaction.account_id)
             if not weights:
@@ -90,6 +91,6 @@ def delete_user(user_id: int, db: Session = Depends(get_db)):
     # Re-resolving another user's transactions above can change
     # share_amount rows even when this user themself had no split anywhere.
     cache_service.invalidate(db, "balances", "charts")
-    db.query(EmailAlert).filter(EmailAlert.user_id == user_id).delete()
+    db.execute(delete(EmailAlert).where(EmailAlert.user_id == user_id))
     db.delete(user)
     db.commit()

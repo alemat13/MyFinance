@@ -1,6 +1,6 @@
 from dataclasses import asdict, dataclass
 
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 import cache_service
@@ -79,7 +79,7 @@ def _query_rows(db: Session, user_id: int, currency: str | None, start_month: st
     bucket in this module already works.
     """
     query = (
-        db.query(
+        select(
             TransactionSplit.share_amount,
             Transaction.date,
             Transaction.accounting_month_offset,
@@ -94,13 +94,13 @@ def _query_rows(db: Session, user_id: int, currency: str | None, start_month: st
         .join(Transaction, Transaction.id == TransactionSplit.transaction_id)
         .outerjoin(Category, Category.id == Transaction.category_id)
         .join(Account, Account.id == Transaction.account_id)
-        .filter(TransactionSplit.user_id == user_id)
-        .filter(or_(Category.type.is_(None), Category.type.in_(("Income", "Expense"))))
+        .where(TransactionSplit.user_id == user_id)
+        .where(or_(Category.type.is_(None), Category.type.in_(("Income", "Expense"))))
     )
     if currency is not None:
-        query = query.filter(Account.currency == currency)
+        query = query.where(Account.currency == currency)
 
-    for share_amount, t_date, offset, cat_id, cat_name, cat_type, cat_color, cat_icon, cat_parent_id, cur in query.all():
+    for share_amount, t_date, offset, cat_id, cat_name, cat_type, cat_color, cat_icon, cat_parent_id, cur in db.execute(query).all():
         month = compute_accounting_month(t_date, offset)
         if start_month is not None and month < start_month:
             continue
@@ -174,7 +174,7 @@ def compute_chart_data(
     modeled on) doesn't have, since MyFinance allows both a parent and its
     children to be directly assigned to a transaction.
     """
-    category_by_id = {c.id: c for c in db.query(Category).all()}
+    category_by_id = {c.id: c for c in db.scalars(select(Category)).all()}
 
     category_agg: dict[tuple[int | None, str], dict] = {}
     month_agg: dict[tuple[str, str], dict] = {}
@@ -315,13 +315,12 @@ def account_value_series(db: Session, account_id: int) -> list[AccountValuePoint
     if account is None:
         return []
     is_checkpoint = Transaction.checkpoint_value.isnot(None)
-    rows = (
-        db.query(Transaction.date, is_checkpoint, func.sum(Transaction.amount))
-        .filter(Transaction.account_id == account_id)
+    rows = db.execute(
+        select(Transaction.date, is_checkpoint, func.sum(Transaction.amount))
+        .where(Transaction.account_id == account_id)
         .group_by(Transaction.date, is_checkpoint)
         .order_by(Transaction.date)
-        .all()
-    )
+    ).all()
     value = contributions = round(account.balance_offset or 0.0, 2)
     points: list[AccountValuePoint] = []
     for day, checkpoint, amount in rows:

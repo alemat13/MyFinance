@@ -1,7 +1,7 @@
 import re
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 import cache_service
@@ -77,7 +77,7 @@ def _expand_replacement(match: re.Match, replacement: str) -> str:
 @router.post("/search", response_model=TransactionSearchResponse)
 def search_transactions(req: TransactionSearchRequest, db: Session = Depends(get_db)):
     query = (
-        db.query(Transaction, Account.name, Account.currency, Category.name, Category.color, Category.icon)
+        select(Transaction, Account.name, Account.currency, Category.name, Category.color, Category.icon)
         .join(Account, Transaction.account_id == Account.id)
         .outerjoin(Category, Transaction.category_id == Category.id)
         .options(selectinload(Transaction.splits).joinedload(TransactionSplit.user), selectinload(Transaction.tags))
@@ -87,7 +87,7 @@ def search_transactions(req: TransactionSearchRequest, db: Session = Depends(get
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
-    total = query.count()
+    total = db.scalar(select(func.count()).select_from(query.subquery()))
 
     sort_columns = {
         "date": Transaction.date,
@@ -104,7 +104,7 @@ def search_transactions(req: TransactionSearchRequest, db: Session = Depends(get
         sort_cols = (sort_col.desc(), Transaction.id.desc())
 
     if req.unpaginated:
-        results = query.order_by(*sort_cols).all()
+        results = db.execute(query.order_by(*sort_cols)).all()
         items = [
             build_transaction_out_from_row(t, account_name, currency, category_name, category_color, category_icon)
             for t, account_name, currency, category_name, category_color, category_icon in results
@@ -116,12 +116,11 @@ def search_transactions(req: TransactionSearchRequest, db: Session = Depends(get
     page = max(req.page, 1)
     page_size = min(max(req.page_size, 1), 200)
 
-    results = (
+    results = db.execute(
         query.order_by(*sort_cols)
         .offset((page - 1) * page_size)
         .limit(page_size)
-        .all()
-    )
+    ).all()
     items = [
         build_transaction_out_from_row(t, account_name, currency, category_name, category_color, category_icon)
         for t, account_name, currency, category_name, category_color, category_icon in results
@@ -158,18 +157,18 @@ def payee_suggestions(
         return []
     escaped = needle.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     query = (
-        db.query(Transaction.payee, Transaction.category_id, Category.name, Transaction.date,
-                 Transaction.amount, Account.currency, Transaction.memo, Transaction.raw_label)
+        select(Transaction.payee, Transaction.category_id, Category.name, Transaction.date,
+               Transaction.amount, Account.currency, Transaction.memo, Transaction.raw_label)
         .join(Account, Transaction.account_id == Account.id)
         .outerjoin(Category, Transaction.category_id == Category.id)
-        .filter(or_(*(
+        .where(or_(*(
             func.lower(column).like(f"%{escaped}%", escape="\\")
             for column in (Transaction.payee, Transaction.memo, Transaction.raw_label)
         )))
     )
     if exclude_id is not None:
-        query = query.filter(Transaction.id != exclude_id)
-    rows = query.order_by(Transaction.date.desc(), Transaction.id.desc()).limit(PAYEE_SUGGESTION_SCAN).all()
+        query = query.where(Transaction.id != exclude_id)
+    rows = db.execute(query.order_by(Transaction.date.desc(), Transaction.id.desc()).limit(PAYEE_SUGGESTION_SCAN)).all()
     seen: set[tuple[str, int | None]] = set()
     suggestions: list[PayeeSuggestionOut] = []
     for payee, category_id, category_name, txn_date, amount, currency, memo, raw_label in rows:
@@ -188,7 +187,7 @@ def payee_suggestions(
 
 @router.post("", response_model=TransactionOut, status_code=201)
 def create_transaction(data: TransactionCreate, actor_user_id: int | None = Query(None), db: Session = Depends(get_db)):
-    account = db.query(Account).filter(Account.id == data.account_id).first()
+    account = db.scalar(select(Account).where(Account.id == data.account_id).limit(1))
     if account is None:
         raise HTTPException(404, "Account not found")
     validate_account_not_archived(account)
@@ -246,12 +245,12 @@ def _resolve_bulk_target_ids(db: Session, transaction_ids: list[int], filter_req
     if filter_req is not None:
         try:
             id_query = apply_transaction_filters(
-                db.query(Transaction.id).join(Account, Transaction.account_id == Account.id),
+                select(Transaction.id).join(Account, Transaction.account_id == Account.id),
                 filter_req, db,
             )
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
-        target_ids = sorted(row[0] for row in id_query.all())
+        target_ids = sorted(db.scalars(id_query).all())
         if not target_ids:
             raise HTTPException(422, "No transaction matches this filter")
         if expected_count is not None and expected_count != len(target_ids):
@@ -262,9 +261,7 @@ def _resolve_bulk_target_ids(db: Session, transaction_ids: list[int], filter_req
             )
         return target_ids
     target_ids = sorted(set(transaction_ids))
-    found_ids = {
-        row[0] for row in db.query(Transaction.id).filter(Transaction.id.in_(target_ids)).all()
-    }
+    found_ids = set(db.scalars(select(Transaction.id).where(Transaction.id.in_(target_ids))).all())
     missing_ids = sorted(set(target_ids) - found_ids)
     if missing_ids:
         raise HTTPException(404, f"Transaction(s) not found: {missing_ids}")
@@ -280,11 +277,10 @@ def _validate_bulk_move(db: Session, target_ids: list[int], account_id: int) -> 
     moved_external_ids: dict[str, int] = {}
     for start in range(0, len(target_ids), BULK_UPDATE_CHUNK_SIZE):
         chunk_ids = target_ids[start:start + BULK_UPDATE_CHUNK_SIZE]
-        rows = (
-            db.query(Transaction.id, Transaction.external_id)
-            .filter(Transaction.id.in_(chunk_ids), Transaction.external_id.isnot(None))
-            .all()
-        )
+        rows = db.execute(
+            select(Transaction.id, Transaction.external_id)
+            .where(Transaction.id.in_(chunk_ids), Transaction.external_id.isnot(None))
+        ).all()
         for tx_id, external_id in rows:
             if external_id in moved_external_ids:
                 raise HTTPException(
@@ -298,9 +294,10 @@ def _validate_bulk_move(db: Session, target_ids: list[int], account_id: int) -> 
     target_set = set(target_ids)
     clashes = sorted(
         tx_id for tx_id, external_id in
-        db.query(Transaction.id, Transaction.external_id)
-        .filter(Transaction.account_id == account_id, Transaction.external_id.isnot(None))
-        .all()
+        db.execute(
+            select(Transaction.id, Transaction.external_id)
+            .where(Transaction.account_id == account_id, Transaction.external_id.isnot(None))
+        ).all()
         if external_id in moved_external_ids and tx_id not in target_set
     )
     if clashes:
@@ -355,7 +352,9 @@ def bulk_update_transactions(data: BulkUpdateTransactionsRequest, actor_user_id:
             except re.error as exc:
                 raise HTTPException(422, f"Invalid regular expression: {exc}")
             regex_payees = {}
-            rows = db.query(Transaction.id, Transaction.payee).filter(Transaction.id.in_(target_ids)).all() if target_ids else []
+            rows = db.execute(
+                select(Transaction.id, Transaction.payee).where(Transaction.id.in_(target_ids))
+            ).all() if target_ids else []
             for row_id, old_payee in rows:
                 new_payee = regex.sub(lambda m: _expand_replacement(m, payee_replacement), old_payee).strip()
                 if new_payee == old_payee:
@@ -371,8 +370,8 @@ def bulk_update_transactions(data: BulkUpdateTransactionsRequest, actor_user_id:
             # it can't be one value set on every row like the other fields.
             payee_affix = non_split_fields.pop("payee")
             longest = (
-                db.query(func.max(func.length(Transaction.payee)))
-                .filter(Transaction.id.in_(target_ids)).scalar() or 0
+                db.scalar(select(func.max(func.length(Transaction.payee)))
+                          .where(Transaction.id.in_(target_ids))) or 0
             ) if target_ids else 0
             if longest + len(payee_affix) > PAYEE_MAX_LENGTH:
                 raise HTTPException(
@@ -394,13 +393,12 @@ def bulk_update_transactions(data: BulkUpdateTransactionsRequest, actor_user_id:
     updated_ids = []
     for start in range(0, len(target_ids), BULK_UPDATE_CHUNK_SIZE):
         chunk_ids = target_ids[start:start + BULK_UPDATE_CHUNK_SIZE]
-        transactions = (
-            db.query(Transaction)
-            .filter(Transaction.id.in_(chunk_ids))
+        transactions = db.scalars(
+            select(Transaction)
+            .where(Transaction.id.in_(chunk_ids))
             .options(selectinload(Transaction.splits), selectinload(Transaction.tags))
             .order_by(Transaction.id)
-            .all()
-        )
+        ).all()
         touched_accounts = set()
         for transaction in transactions:
             touched_accounts.add(transaction.account_id)
@@ -460,7 +458,7 @@ def bulk_delete_transactions(data: BulkDeleteTransactionsRequest, actor_user_id:
         chunk_ids = target_ids[start:start + BULK_UPDATE_CHUNK_SIZE]
         link_ids = set()
         account_ids = set()
-        for transaction in db.query(Transaction).filter(Transaction.id.in_(chunk_ids)).order_by(Transaction.id).all():
+        for transaction in db.scalars(select(Transaction).where(Transaction.id.in_(chunk_ids)).order_by(Transaction.id)).all():
             record_transaction_history(db, transaction, "deleted", actor_user_id, source="bulk")
             link_ids.add(transaction.link_id)
             account_ids.add(transaction.account_id)
@@ -476,10 +474,10 @@ def bulk_delete_transactions(data: BulkDeleteTransactionsRequest, actor_user_id:
 
 @router.get("/{transaction_id}", response_model=TransactionOut)
 def get_transaction(transaction_id: int, user_id: int | None = Query(None), db: Session = Depends(get_db)):
-    query = db.query(Transaction).filter(Transaction.id == transaction_id)
+    query = select(Transaction).where(Transaction.id == transaction_id)
     if user_id is not None:
-        query = query.filter(visible_transaction_filter(db, user_id))
-    transaction = query.first()
+        query = query.where(visible_transaction_filter(db, user_id))
+    transaction = db.scalar(query.limit(1))
     if not transaction:
         raise HTTPException(404, "Transaction not found")
     return get_transaction_out(db, transaction_id)
@@ -487,7 +485,7 @@ def get_transaction(transaction_id: int, user_id: int | None = Query(None), db: 
 
 @router.put("/{transaction_id}", response_model=TransactionOut)
 def update_transaction(transaction_id: int, data: TransactionUpdate, actor_user_id: int | None = Query(None), db: Session = Depends(get_db)):
-    transaction = db.query(Transaction).filter(Transaction.id == transaction_id).first()
+    transaction = db.scalar(select(Transaction).where(Transaction.id == transaction_id).limit(1))
     if not transaction:
         raise HTTPException(404, "Transaction not found")
     existing_splits = {s.user_id: (s.weight, s.source) for s in transaction.splits}
@@ -600,7 +598,7 @@ def update_transaction_raw_fields(transaction_id: int, data: TransactionRawField
     # from PUT /{id} so the raw fields stay out of TransactionUpdate: nothing
     # else may rewrite them. They feed no balance, chart or split, so no cache
     # namespace is invalidated; external_id (the sync's dedup key) is untouched.
-    transaction = db.query(Transaction).filter(Transaction.id == transaction_id).first()
+    transaction = db.scalar(select(Transaction).where(Transaction.id == transaction_id).limit(1))
     if not transaction:
         raise HTTPException(404, "Transaction not found")
     changes = {}
@@ -617,7 +615,7 @@ def update_transaction_raw_fields(transaction_id: int, data: TransactionRawField
 
 @router.delete("/{transaction_id}", status_code=204)
 def delete_transaction(transaction_id: int, actor_user_id: int | None = Query(None), db: Session = Depends(get_db)):
-    transaction = db.query(Transaction).filter(Transaction.id == transaction_id).first()
+    transaction = db.scalar(select(Transaction).where(Transaction.id == transaction_id).limit(1))
     if not transaction:
         raise HTTPException(404, "Transaction not found")
     record_transaction_history(db, transaction, "deleted", actor_user_id)
@@ -639,7 +637,7 @@ def divide_transaction(transaction_id: int, data: TransactionDivideRequest, acto
     # transaction's amount among users. The original row is reused as part 1
     # (keeps its id and history trail); parts 2..N are new rows on the same
     # account, all tagged with the anchor's id as divide_group_id.
-    transaction = db.query(Transaction).filter(Transaction.id == transaction_id).first()
+    transaction = db.scalar(select(Transaction).where(Transaction.id == transaction_id).limit(1))
     if not transaction:
         raise HTTPException(404, "Transaction not found")
     validate_not_divide_sibling(transaction)
@@ -717,16 +715,17 @@ def divide_transaction(transaction_id: int, data: TransactionDivideRequest, acto
 
 @router.get("/{transaction_id}/divide-siblings", response_model=list[TransactionOut])
 def get_divide_siblings(transaction_id: int, db: Session = Depends(get_db)):
-    transaction = db.query(Transaction).filter(Transaction.id == transaction_id).first()
+    transaction = db.scalar(select(Transaction).where(Transaction.id == transaction_id).limit(1))
     if not transaction:
         raise HTTPException(404, "Transaction not found")
     if transaction.divide_group_id is None:
         return []
     siblings = (
-        db.query(Transaction)
-        .filter(Transaction.divide_group_id == transaction.divide_group_id, Transaction.id != transaction_id)
-        .order_by(Transaction.date.asc())
-        .all()
+        db.scalars(
+            select(Transaction)
+            .where(Transaction.divide_group_id == transaction.divide_group_id, Transaction.id != transaction_id)
+            .order_by(Transaction.date.asc())
+        ).all()
     )
     return [get_transaction_out(db, t.id) for t in siblings]
 
@@ -734,12 +733,13 @@ def get_divide_siblings(transaction_id: int, db: Session = Depends(get_db)):
 @router.get("/{transaction_id}/history", response_model=list[TransactionHistoryOut])
 def get_transaction_history(transaction_id: int, db: Session = Depends(get_db)):
     rows = (
-        db.query(TransactionHistory)
-        .filter(TransactionHistory.transaction_id == transaction_id)
-        .order_by(TransactionHistory.changed_at.asc())
-        .all()
+        db.scalars(
+            select(TransactionHistory)
+            .where(TransactionHistory.transaction_id == transaction_id)
+            .order_by(TransactionHistory.changed_at.asc())
+        ).all()
     )
-    users_by_id = {u.id: u.name for u in db.query(User).all()}
+    users_by_id = {u.id: u.name for u in db.scalars(select(User)).all()}
     return [
         TransactionHistoryOut(
             id=r.id, transaction_id=r.transaction_id, action=r.action, source=r.source,

@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from sqlalchemy import func
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from models import AccountSplitWeight, AccountUser, CategorySplit, GlobalSplitWeight, Transaction, TransactionSplit
@@ -57,20 +57,20 @@ def resolve_default_weights(
     split, which is always driven by its own stored weights.
     """
     if account_id is not None:
-        acct_weights = db.query(AccountSplitWeight).filter(
+        acct_weights = db.scalars(select(AccountSplitWeight).where(
             AccountSplitWeight.account_id == account_id, AccountSplitWeight.weight > 0,
-        ).all()
+        )).all()
         if acct_weights:
             return "account", {w.user_id: w.weight for w in acct_weights}
 
     if category_id is not None:
-        cat_splits = db.query(CategorySplit).filter(
+        cat_splits = db.scalars(select(CategorySplit).where(
             CategorySplit.category_id == category_id, CategorySplit.weight > 0,
-        ).all()
+        )).all()
         if cat_splits:
             return "category", {c.user_id: c.weight for c in cat_splits}
 
-    global_weights = db.query(GlobalSplitWeight).filter(GlobalSplitWeight.weight > 0).all()
+    global_weights = db.scalars(select(GlobalSplitWeight).where(GlobalSplitWeight.weight > 0)).all()
     if global_weights:
         return "global", {g.user_id: g.weight for g in global_weights}
 
@@ -92,7 +92,7 @@ def apply_split(
     transaction's *current* amount — there is no freeze/protection against
     recomputation.
     """
-    db.query(TransactionSplit).filter(TransactionSplit.transaction_id == transaction.id).delete()
+    db.execute(delete(TransactionSplit).where(TransactionSplit.transaction_id == transaction.id))
     if not weights:
         return
 
@@ -136,14 +136,14 @@ def compute_balances(db: Session, user_id: int | None = None) -> list[tuple[int,
     net: dict[tuple[int, str], float] = {}
 
     received_query = (
-        db.query(TransactionSplit.user_id, Account.currency, func.sum(TransactionSplit.share_amount))
+        select(TransactionSplit.user_id, Account.currency, func.sum(TransactionSplit.share_amount))
         .join(Transaction, Transaction.id == TransactionSplit.transaction_id)
         .join(Account, Account.id == Transaction.account_id)
         .group_by(TransactionSplit.user_id, Account.currency)
     )
     if user_id is not None:
-        received_query = received_query.filter(TransactionSplit.user_id == user_id)
-    for uid, currency, total in received_query.all():
+        received_query = received_query.where(TransactionSplit.user_id == user_id)
+    for uid, currency, total in db.execute(received_query).all():
         key = (uid, currency)
         net[key] = net.get(key, 0.0) + float(total or 0.0)
 
@@ -152,12 +152,12 @@ def compute_balances(db: Session, user_id: int | None = None) -> list[tuple[int,
     # must not skew anyone's balance. This must consider every split
     # transaction in the household, not just user_id's own splits above.
     has_split = (
-        db.query(TransactionSplit.transaction_id)
-        .filter(TransactionSplit.transaction_id == Transaction.id)
+        select(TransactionSplit.transaction_id)
+        .where(TransactionSplit.transaction_id == Transaction.id)
         .exists()
     )
     paid_query = (
-        db.query(
+        select(
             AccountUser.user_id,
             Account.currency,
             func.sum(Transaction.amount * AccountUser.ownership_percentage / 100.0),
@@ -165,19 +165,19 @@ def compute_balances(db: Session, user_id: int | None = None) -> list[tuple[int,
         .select_from(Transaction)
         .join(Account, Account.id == Transaction.account_id)
         .join(AccountUser, AccountUser.account_id == Transaction.account_id)
-        .filter(has_split)
+        .where(has_split)
         .group_by(AccountUser.user_id, Account.currency)
     )
     if user_id is not None:
-        paid_query = paid_query.filter(AccountUser.user_id == user_id)
-    for uid, currency, total in paid_query.all():
+        paid_query = paid_query.where(AccountUser.user_id == user_id)
+    for uid, currency, total in db.execute(paid_query).all():
         key = (uid, currency)
         net[key] = net.get(key, 0.0) - float(total or 0.0)
 
-    users_query = db.query(User)
+    users_query = select(User)
     if user_id is not None:
-        users_query = users_query.filter(User.id == user_id)
-    users = {u.id: u.name for u in users_query.all()}
+        users_query = users_query.where(User.id == user_id)
+    users = {u.id: u.name for u in db.scalars(users_query).all()}
     return [
         (uid, users.get(uid, "Unknown"), currency, round(net_position, 2))
         for (uid, currency), net_position in net.items()

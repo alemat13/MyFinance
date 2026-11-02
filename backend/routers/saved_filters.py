@@ -1,7 +1,7 @@
 """Endpoints for the Transactions screen's saved filters (models.SavedFilter)."""
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -13,7 +13,7 @@ router = APIRouter(prefix="/api/saved-filters")
 
 
 def _get(db: Session, filter_id: int) -> SavedFilter:
-    saved = db.query(SavedFilter).filter(SavedFilter.id == filter_id).first()
+    saved = db.scalar(select(SavedFilter).where(SavedFilter.id == filter_id).limit(1))
     if saved is None:
         raise HTTPException(404, "Saved filter not found")
     return saved
@@ -28,12 +28,12 @@ def _clean_name(name: str) -> str:
 
 @router.get("", response_model=list[SavedFilterOut])
 def list_saved_filters(db: Session = Depends(get_db)):
-    return db.query(SavedFilter).order_by(SavedFilter.position, SavedFilter.id).all()
+    return db.scalars(select(SavedFilter).order_by(SavedFilter.position, SavedFilter.id)).all()
 
 
 @router.post("", response_model=SavedFilterOut, status_code=201)
 def create_saved_filter(data: SavedFilterCreate, db: Session = Depends(get_db)):
-    last = db.query(func.max(SavedFilter.position)).scalar()
+    last = db.scalar(select(func.max(SavedFilter.position)))
     saved = SavedFilter(
         name=_clean_name(data.name),
         mode=data.mode,
@@ -49,7 +49,7 @@ def create_saved_filter(data: SavedFilterCreate, db: Session = Depends(get_db)):
 # Registered before /{filter_id} so "order" is never read as an id.
 @router.put("/order", response_model=list[SavedFilterOut])
 def reorder_saved_filters(data: SavedFilterOrderRequest, db: Session = Depends(get_db)):
-    saved = {f.id: f for f in db.query(SavedFilter).all()}
+    saved = {f.id: f for f in db.scalars(select(SavedFilter)).all()}
     if sorted(data.filter_ids) != sorted(saved):
         raise RuleViolation("The new order must list every saved filter exactly once.")
     for position, filter_id in enumerate(data.filter_ids):

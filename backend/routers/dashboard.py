@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 import account_totals
@@ -15,28 +16,28 @@ router = APIRouter(prefix="/api/dashboard")
 
 @router.get("", response_model=DashboardResponse)
 def get_dashboard(user_id: int | None = Query(None), db: Session = Depends(get_db)):
-    accounts_query = db.query(Account).filter(Account.archived.is_(False)).options(
+    accounts_query = select(Account).where(Account.archived.is_(False)).options(
         selectinload(Account.user_associations).joinedload(AccountUser.user),
         selectinload(Account.split_weight_associations).joinedload(AccountSplitWeight.user),
     )
     if user_id is not None:
-        accounts_query = accounts_query.join(AccountUser).filter(
+        accounts_query = accounts_query.join(AccountUser).where(
             AccountUser.user_id == user_id,
             AccountUser.ownership_percentage > 0,
         ).distinct()
-    accounts = accounts_query.all()
+    accounts = db.scalars(accounts_query).all()
     totals = account_totals.get_transaction_totals(db)
     last_dates = account_totals.get_last_transaction_dates(db)
 
     tx_query = (
-        db.query(Transaction, Account.name, Account.currency, Category.name, Category.color, Category.icon)
+        select(Transaction, Account.name, Account.currency, Category.name, Category.color, Category.icon)
         .join(Account, Transaction.account_id == Account.id)
         .outerjoin(Category, Transaction.category_id == Category.id)
         .options(selectinload(Transaction.splits).joinedload(TransactionSplit.user))
     )
     if user_id is not None:
-        tx_query = tx_query.filter(visible_transaction_filter(db, user_id))
-    recent_results = tx_query.order_by(Transaction.date.desc()).limit(10).all()
+        tx_query = tx_query.where(visible_transaction_filter(db, user_id))
+    recent_results = db.execute(tx_query.order_by(Transaction.date.desc()).limit(10)).all()
 
     recent_transactions = [
         build_transaction_out_from_row(t, account_name, currency, category_name, category_color, category_icon)

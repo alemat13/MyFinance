@@ -3,6 +3,7 @@ transaction, a bulk action shown as one entry (see history.py)."""
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 import history
@@ -14,7 +15,7 @@ router = APIRouter(prefix="/api/history")
 
 
 def _user_names(db: Session) -> dict[int, str]:
-    return {u.id: u.name for u in db.query(User).all()}
+    return {u.id: u.name for u in db.scalars(select(User)).all()}
 
 
 def _row_out(r: TransactionHistory, names: dict[int, str]) -> TransactionHistoryOut:
@@ -73,9 +74,9 @@ def list_entry_rows(
 ):
     """The rows behind one entry, newest first: what each transaction looked
     like and what changed on it, deleted ones included."""
-    query = db.query(TransactionHistory).filter(
+    query = select(TransactionHistory).where(
         history.group_filter(first_id, last_id, action, source, changed_by_user_id, batch_id))
-    total = query.count()
-    rows = query.order_by(TransactionHistory.id.desc()).offset(offset).limit(limit).all()
+    total = db.scalar(select(func.count()).select_from(query.subquery()))
+    rows = db.scalars(query.order_by(TransactionHistory.id.desc()).offset(offset).limit(limit)).all()
     names = _user_names(db)
     return HistoryRowsOut(items=[_row_out(r, names) for r in rows], total=total)

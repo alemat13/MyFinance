@@ -135,6 +135,20 @@ def test_train_stores_a_model_with_metrics_and_leaves_it_inactive(client, db, hi
     assert stored.blob is not None
 
 
+def test_a_failed_training_is_recorded_on_its_model(client, db, history, monkeypatch):
+    def boom(rows):
+        raise RuntimeError("fit exploded")
+
+    monkeypatch.setattr(categorizer, "train", boom)
+    response = client.post("/api/categorizer/train", json=_train_body())
+    assert response.status_code == 500
+    db.expire_all()
+    stored = db.query(CategorizerModel).one()
+    assert stored.status == "failed"
+    assert stored.error == "RuntimeError: fit exploded"
+    assert stored.blob is None
+
+
 def test_train_rejects_overlapping_selections(client, history):
     response = client.post("/api/categorizer/train", json={
         "train": {"date_to": TRAIN_UNTIL.isoformat()},
