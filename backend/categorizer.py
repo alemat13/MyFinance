@@ -34,7 +34,8 @@ it, so a Cloud Run cold start should not pay for it.
 import gzip
 import pickle
 import re
-from typing import Any, Iterable
+from collections.abc import Iterable
+from typing import Any
 
 # Below this many labelled rows a trained model is noise; the endpoint 422s.
 MIN_TRAINING_ROWS = 50
@@ -109,11 +110,13 @@ class _Model:
     def _matrix(self, rows: list):
         from scipy.sparse import hstack
 
-        return hstack([
-            self.char_vec.transform([label_text(t) for t in rows]),
-            self.word_vec.transform([_word_row(t) for t in rows]),
-            self.cat_enc.transform([_categorical_row(t) for t in rows]),
-        ]).tocsr()
+        return hstack(
+            [
+                self.char_vec.transform([label_text(t) for t in rows]),
+                self.word_vec.transform([_word_row(t) for t in rows]),
+                self.cat_enc.transform([_categorical_row(t) for t in rows]),
+            ]
+        ).tocsr()
 
     def predict(self, rows: list) -> list[tuple[int, float]]:
         """(category_id, confidence) per row, in the order given."""
@@ -149,11 +152,13 @@ def train(rows: list) -> tuple["_Model", dict[str, Any]]:
 
     from scipy.sparse import hstack
 
-    x = hstack([
-        char_vec.fit_transform([label_text(t) for t in rows]),
-        word_vec.fit_transform([_word_row(t) for t in rows]),
-        cat_enc.fit_transform([_categorical_row(t) for t in rows]),
-    ]).tocsr()
+    x = hstack(
+        [
+            char_vec.fit_transform([label_text(t) for t in rows]),
+            word_vec.fit_transform([_word_row(t) for t in rows]),
+            cat_enc.fit_transform([_categorical_row(t) for t in rows]),
+        ]
+    ).tocsr()
     y = [t.category_id for t in rows]
 
     # Probabilities are the whole point of the confidence threshold, so a
@@ -171,8 +176,7 @@ def train(rows: list) -> tuple["_Model", dict[str, Any]]:
     # keeps the in-request design honest as the ledger grows. 30 epochs is a
     # measured optimum, not a guess: 15 scored 71.8% and 50 scored 72.6%,
     # both worse. `random_state` makes a fit reproducible.
-    classifier = SGDClassifier(loss="log_loss", alpha=1e-5, max_iter=30,
-                               tol=None, random_state=0)
+    classifier = SGDClassifier(loss="log_loss", alpha=1e-5, max_iter=30, tol=None, random_state=0)
     classifier.fit(x, y)
 
     model = _Model(char_vec, word_vec, cat_enc, classifier, list(classifier.classes_))
@@ -203,7 +207,9 @@ def _parent_of(categories: dict[int, Any], category_id: int) -> int:
     return category.parent_id or category.id
 
 
-def evaluate(model: "_Model", rows: list, train_rows: list, categories: dict[int, Any]) -> dict[str, Any]:
+def evaluate(
+    model: "_Model", rows: list, train_rows: list, categories: dict[int, Any]
+) -> dict[str, Any]:
     """Score the model on held-out rows, next to the naive baseline.
 
     The baseline is there to answer "is the model worth its cost" rather than
@@ -219,7 +225,8 @@ def evaluate(model: "_Model", rows: list, train_rows: list, categories: dict[int
 
     exact = sum(1 for (c, _), y in zip(predictions, truth) if c == y)
     parent = sum(
-        1 for (c, _), y in zip(predictions, truth)
+        1
+        for (c, _), y in zip(predictions, truth)
         if _parent_of(categories, c) == _parent_of(categories, y)
     )
     top3 = sum(1 for cands, y in zip(tops, truth) if y in [c for c, _ in cands])
@@ -229,14 +236,17 @@ def evaluate(model: "_Model", rows: list, train_rows: list, categories: dict[int
         covered = [(c, y) for (c, conf), y in zip(predictions, truth) if conf >= threshold]
         if not covered:
             continue
-        thresholds.append({
-            "threshold": threshold,
-            "coverage": len(covered) / len(rows),
-            "accuracy": sum(1 for c, y in covered if c == y) / len(covered),
-            "parent_accuracy": sum(
-                1 for c, y in covered if _parent_of(categories, c) == _parent_of(categories, y)
-            ) / len(covered),
-        })
+        thresholds.append(
+            {
+                "threshold": threshold,
+                "coverage": len(covered) / len(rows),
+                "accuracy": sum(1 for c, y in covered if c == y) / len(covered),
+                "parent_accuracy": sum(
+                    1 for c, y in covered if _parent_of(categories, c) == _parent_of(categories, y)
+                )
+                / len(covered),
+            }
+        )
 
     return {
         "tested_rows": len(rows),
@@ -256,13 +266,14 @@ def _baseline(train_rows: list, rows: list, categories: dict[int, Any]) -> dict[
     for t in train_rows:
         seen[merchant_key(label_text(t))][t.category_id] += 1
     majority = {k: c.most_common(1)[0][0] for k, c in seen.items()}
-    fallback = Counter(t.category_id for t in train_rows).most_common(1)[0][0] if train_rows else None
+    fallback = (
+        Counter(t.category_id for t in train_rows).most_common(1)[0][0] if train_rows else None
+    )
 
     covered = [t for t in rows if merchant_key(label_text(t)) in majority]
     hits = sum(1 for t in covered if majority[merchant_key(label_text(t))] == t.category_id)
     overall = sum(
-        1 for t in rows
-        if majority.get(merchant_key(label_text(t)), fallback) == t.category_id
+        1 for t in rows if majority.get(merchant_key(label_text(t)), fallback) == t.category_id
     )
     return {
         "coverage": len(covered) / len(rows),

@@ -4,15 +4,21 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
+import audit
 import cache_service
 import checkpoints
 import split_engine
 import tags as tag_service
 import transaction_links
-import audit
-from audit import TRACKED_FIELDS, _jsonify, diff_splits, record_transaction_history, splits_created_changes
+from audit import (
+    TRACKED_FIELDS,
+    _jsonify,
+    diff_splits,
+    record_transaction_history,
+    splits_created_changes,
+)
 from database import get_db
-from filtering import apply_transaction_filters, build_where_clause, visible_transaction_filter
+from filtering import apply_transaction_filters, visible_transaction_filter
 from models import Account, Category, Transaction, TransactionHistory, TransactionSplit, User
 from rules import (
     validate_account_not_archived,
@@ -55,6 +61,7 @@ def _expand_replacement(match: re.Match, replacement: str) -> str:
     $& the whole match, $$ a literal $; anything else, backslashes included,
     is literal. Like JavaScript, a two-digit $nn naming no group falls back
     to $n followed by the digit."""
+
     def token(t: re.Match) -> str:
         value = t.group(1)
         if value == "$":
@@ -77,10 +84,20 @@ def _expand_replacement(match: re.Match, replacement: str) -> str:
 @router.post("/search", response_model=TransactionSearchResponse)
 def search_transactions(req: TransactionSearchRequest, db: Session = Depends(get_db)):
     query = (
-        select(Transaction, Account.name, Account.currency, Category.name, Category.color, Category.icon)
+        select(
+            Transaction,
+            Account.name,
+            Account.currency,
+            Category.name,
+            Category.color,
+            Category.icon,
+        )
         .join(Account, Transaction.account_id == Account.id)
         .outerjoin(Category, Transaction.category_id == Category.id)
-        .options(selectinload(Transaction.splits).joinedload(TransactionSplit.user), selectinload(Transaction.tags))
+        .options(
+            selectinload(Transaction.splits).joinedload(TransactionSplit.user),
+            selectinload(Transaction.tags),
+        )
     )
     try:
         query = apply_transaction_filters(query, req, db)
@@ -106,28 +123,38 @@ def search_transactions(req: TransactionSearchRequest, db: Session = Depends(get
     if req.unpaginated:
         results = db.execute(query.order_by(*sort_cols)).all()
         items = [
-            build_transaction_out_from_row(t, account_name, currency, category_name, category_color, category_icon)
+            build_transaction_out_from_row(
+                t, account_name, currency, category_name, category_color, category_icon
+            )
             for t, account_name, currency, category_name, category_color, category_icon in results
         ]
         return TransactionSearchResponse(
-            items=items, total=total, page=1, page_size=len(items), total_pages=1,
+            items=items,
+            total=total,
+            page=1,
+            page_size=len(items),
+            total_pages=1,
         )
 
     page = max(req.page, 1)
     page_size = min(max(req.page_size, 1), 200)
 
     results = db.execute(
-        query.order_by(*sort_cols)
-        .offset((page - 1) * page_size)
-        .limit(page_size)
+        query.order_by(*sort_cols).offset((page - 1) * page_size).limit(page_size)
     ).all()
     items = [
-        build_transaction_out_from_row(t, account_name, currency, category_name, category_color, category_icon)
+        build_transaction_out_from_row(
+            t, account_name, currency, category_name, category_color, category_icon
+        )
         for t, account_name, currency, category_name, category_color, category_icon in results
     ]
     total_pages = max(1, (total + page_size - 1) // page_size)
     return TransactionSearchResponse(
-        items=items, total=total, page=page, page_size=page_size, total_pages=total_pages,
+        items=items,
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages,
     )
 
 
@@ -157,18 +184,32 @@ def payee_suggestions(
         return []
     escaped = needle.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     query = (
-        select(Transaction.payee, Transaction.category_id, Category.name, Transaction.date,
-               Transaction.amount, Account.currency, Transaction.memo, Transaction.raw_label)
+        select(
+            Transaction.payee,
+            Transaction.category_id,
+            Category.name,
+            Transaction.date,
+            Transaction.amount,
+            Account.currency,
+            Transaction.memo,
+            Transaction.raw_label,
+        )
         .join(Account, Transaction.account_id == Account.id)
         .outerjoin(Category, Transaction.category_id == Category.id)
-        .where(or_(*(
-            func.lower(column).like(f"%{escaped}%", escape="\\")
-            for column in (Transaction.payee, Transaction.memo, Transaction.raw_label)
-        )))
+        .where(
+            or_(
+                *(
+                    func.lower(column).like(f"%{escaped}%", escape="\\")
+                    for column in (Transaction.payee, Transaction.memo, Transaction.raw_label)
+                )
+            )
+        )
     )
     if exclude_id is not None:
         query = query.where(Transaction.id != exclude_id)
-    rows = db.execute(query.order_by(Transaction.date.desc(), Transaction.id.desc()).limit(PAYEE_SUGGESTION_SCAN)).all()
+    rows = db.execute(
+        query.order_by(Transaction.date.desc(), Transaction.id.desc()).limit(PAYEE_SUGGESTION_SCAN)
+    ).all()
     seen: set[tuple[str, int | None]] = set()
     suggestions: list[PayeeSuggestionOut] = []
     for payee, category_id, category_name, txn_date, amount, currency, memo, raw_label in rows:
@@ -176,17 +217,27 @@ def payee_suggestions(
         if key in seen:
             continue
         seen.add(key)
-        suggestions.append(PayeeSuggestionOut(
-            payee=payee, category_id=category_id, category_name=category_name,
-            date=txn_date, amount=amount, currency=currency, memo=memo, raw_label=raw_label,
-        ))
+        suggestions.append(
+            PayeeSuggestionOut(
+                payee=payee,
+                category_id=category_id,
+                category_name=category_name,
+                date=txn_date,
+                amount=amount,
+                currency=currency,
+                memo=memo,
+                raw_label=raw_label,
+            )
+        )
         if len(suggestions) >= limit:
             break
     return suggestions
 
 
 @router.post("", response_model=TransactionOut, status_code=201)
-def create_transaction(data: TransactionCreate, actor_user_id: int | None = Query(None), db: Session = Depends(get_db)):
+def create_transaction(
+    data: TransactionCreate, actor_user_id: int | None = Query(None), db: Session = Depends(get_db)
+):
     account = db.scalar(select(Account).where(Account.id == data.account_id).limit(1))
     if account is None:
         raise HTTPException(404, "Account not found")
@@ -197,7 +248,9 @@ def create_transaction(data: TransactionCreate, actor_user_id: int | None = Quer
         # cascade, same as CSV import already does. Splits are mandatory, and
         # the global tier is a guaranteed non-empty floor, so this only comes
         # up empty if literally no user exists yet.
-        source, weights = split_engine.resolve_default_weights(db, data.category_id, data.account_id)
+        source, weights = split_engine.resolve_default_weights(
+            db, data.category_id, data.account_id
+        )
         validate_resolved_weights_present(weights)
         split_source = data.split_source or source or "global"
     else:
@@ -209,10 +262,13 @@ def create_transaction(data: TransactionCreate, actor_user_id: int | None = Quer
 
     is_checkpoint = data.checkpoint_value is not None
     transaction = Transaction(
-        date=data.date, payee=data.payee, memo=data.memo,
+        date=data.date,
+        payee=data.payee,
+        memo=data.memo,
         # A checkpoint's amount is derived from its value just below.
         amount=0.0 if is_checkpoint else data.amount,
-        account_id=data.account_id, category_id=data.category_id,
+        account_id=data.account_id,
+        category_id=data.category_id,
         accounting_month_offset=data.accounting_month_offset,
         checkpoint_value=round(data.checkpoint_value, 2) if is_checkpoint else None,
     )
@@ -226,14 +282,17 @@ def create_transaction(data: TransactionCreate, actor_user_id: int | None = Quer
     if new_tags:
         tag_service.set_tags(transaction, new_tags)
         changes["tags"] = tag_service.created_change(new_tags)
-    record_transaction_history(db, transaction, "created", actor_user_id, source="manual",
-                                changes=changes or None)
+    record_transaction_history(
+        db, transaction, "created", actor_user_id, source="manual", changes=changes or None
+    )
     cache_service.invalidate(db, "balances", "charts", "account_totals", "category_usage")
     db.commit()
     return get_transaction_out(db, transaction.id)
 
 
-def _resolve_bulk_target_ids(db: Session, transaction_ids: list[int], filter_req, expected_count: int | None) -> list[int]:
+def _resolve_bulk_target_ids(
+    db: Session, transaction_ids: list[int], filter_req, expected_count: int | None
+) -> list[int]:
     """The ids a bulk request acts on: either the ticked ids (404 if any is
     missing) or every row the filter matches (409 if that is no longer
     expected_count). Validated before anything is mutated, so a selection that
@@ -246,7 +305,8 @@ def _resolve_bulk_target_ids(db: Session, transaction_ids: list[int], filter_req
         try:
             id_query = apply_transaction_filters(
                 select(Transaction.id).join(Account, Transaction.account_id == Account.id),
-                filter_req, db,
+                filter_req,
+                db,
             )
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
@@ -276,10 +336,11 @@ def _validate_bulk_move(db: Session, target_ids: list[int], account_id: int) -> 
         raise HTTPException(422, f"Account {account_id} does not exist")
     moved_external_ids: dict[str, int] = {}
     for start in range(0, len(target_ids), BULK_UPDATE_CHUNK_SIZE):
-        chunk_ids = target_ids[start:start + BULK_UPDATE_CHUNK_SIZE]
+        chunk_ids = target_ids[start : start + BULK_UPDATE_CHUNK_SIZE]
         rows = db.execute(
-            select(Transaction.id, Transaction.external_id)
-            .where(Transaction.id.in_(chunk_ids), Transaction.external_id.isnot(None))
+            select(Transaction.id, Transaction.external_id).where(
+                Transaction.id.in_(chunk_ids), Transaction.external_id.isnot(None)
+            )
         ).all()
         for tx_id, external_id in rows:
             if external_id in moved_external_ids:
@@ -293,10 +354,11 @@ def _validate_bulk_move(db: Session, target_ids: list[int], account_id: int) -> 
         return
     target_set = set(target_ids)
     clashes = sorted(
-        tx_id for tx_id, external_id in
-        db.execute(
-            select(Transaction.id, Transaction.external_id)
-            .where(Transaction.account_id == account_id, Transaction.external_id.isnot(None))
+        tx_id
+        for tx_id, external_id in db.execute(
+            select(Transaction.id, Transaction.external_id).where(
+                Transaction.account_id == account_id, Transaction.external_id.isnot(None)
+            )
         ).all()
         if external_id in moved_external_ids and tx_id not in target_set
     )
@@ -309,7 +371,11 @@ def _validate_bulk_move(db: Session, target_ids: list[int], account_id: int) -> 
 
 @router.put("/bulk-update", response_model=BulkUpdateTransactionsResponse)
 @audit.batched
-def bulk_update_transactions(data: BulkUpdateTransactionsRequest, actor_user_id: int | None = Query(None), db: Session = Depends(get_db)):
+def bulk_update_transactions(
+    data: BulkUpdateTransactionsRequest,
+    actor_user_id: int | None = Query(None),
+    db: Session = Depends(get_db),
+):
     # Registered before the /{transaction_id} routes below: Starlette matches
     # routes in registration order, and {transaction_id} (typed int) would
     # otherwise greedily match the literal "bulk-update" segment and 422 on
@@ -321,16 +387,25 @@ def bulk_update_transactions(data: BulkUpdateTransactionsRequest, actor_user_id:
     payee_ignore_case = update_data.pop("payee_ignore_case", False)
     add_tag_ids = update_data.pop("add_tag_ids", None) or []
     remove_tag_ids = update_data.pop("remove_tag_ids", None) or []
-    non_split_fields = {k: v for k, v in update_data.items() if k not in ("split_weights", "split_source")}
+    non_split_fields = {
+        k: v for k, v in update_data.items() if k not in ("split_weights", "split_source")
+    }
 
-    if not non_split_fields and not split_weights_provided and not add_tag_ids and not remove_tag_ids:
+    if (
+        not non_split_fields
+        and not split_weights_provided
+        and not add_tag_ids
+        and not remove_tag_ids
+    ):
         raise HTTPException(422, "At least one field must be set to apply")
 
     if set(add_tag_ids) & set(remove_tag_ids):
         raise HTTPException(422, "A tag cannot be both added and removed")
     add_tags = tag_service.load_tags(db, add_tag_ids)
     remove_tags = tag_service.load_tags(db, remove_tag_ids)
-    target_ids = _resolve_bulk_target_ids(db, data.transaction_ids, data.filter, data.expected_count)
+    target_ids = _resolve_bulk_target_ids(
+        db, data.transaction_ids, data.filter, data.expected_count
+    )
     if "account_id" in non_split_fields:
         if non_split_fields["account_id"] is None:
             raise HTTPException(422, "account_id cannot be cleared")
@@ -352,30 +427,50 @@ def bulk_update_transactions(data: BulkUpdateTransactionsRequest, actor_user_id:
             except re.error as exc:
                 raise HTTPException(422, f"Invalid regular expression: {exc}")
             regex_payees = {}
-            rows = db.execute(
-                select(Transaction.id, Transaction.payee).where(Transaction.id.in_(target_ids))
-            ).all() if target_ids else []
+            rows = (
+                db.execute(
+                    select(Transaction.id, Transaction.payee).where(Transaction.id.in_(target_ids))
+                ).all()
+                if target_ids
+                else []
+            )
             for row_id, old_payee in rows:
-                new_payee = regex.sub(lambda m: _expand_replacement(m, payee_replacement), old_payee).strip()
+                new_payee = regex.sub(
+                    lambda m: _expand_replacement(m, payee_replacement), old_payee
+                ).strip()
                 if new_payee == old_payee:
                     continue
                 if not new_payee:
-                    raise HTTPException(422, f"The regex would leave an empty payee (\"{old_payee}\")")
+                    raise HTTPException(
+                        422, f'The regex would leave an empty payee ("{old_payee}")'
+                    )
                 if len(new_payee) > PAYEE_MAX_LENGTH:
                     raise HTTPException(
-                        422, f"payee would exceed {PAYEE_MAX_LENGTH} characters on at least one transaction")
+                        422,
+                        f"payee would exceed {PAYEE_MAX_LENGTH} characters on at least one transaction",
+                    )
                 regex_payees[row_id] = new_payee
         else:
             # Prepend/append: each row keeps its own payee around the text, so
             # it can't be one value set on every row like the other fields.
             payee_affix = non_split_fields.pop("payee")
             longest = (
-                db.scalar(select(func.max(func.length(Transaction.payee)))
-                          .where(Transaction.id.in_(target_ids))) or 0
-            ) if target_ids else 0
+                (
+                    db.scalar(
+                        select(func.max(func.length(Transaction.payee))).where(
+                            Transaction.id.in_(target_ids)
+                        )
+                    )
+                    or 0
+                )
+                if target_ids
+                else 0
+            )
             if longest + len(payee_affix) > PAYEE_MAX_LENGTH:
                 raise HTTPException(
-                    422, f"payee would exceed {PAYEE_MAX_LENGTH} characters on at least one transaction")
+                    422,
+                    f"payee would exceed {PAYEE_MAX_LENGTH} characters on at least one transaction",
+                )
 
     weights = None
     if split_weights_provided:
@@ -392,7 +487,7 @@ def bulk_update_transactions(data: BulkUpdateTransactionsRequest, actor_user_id:
     # waiting to happen.
     updated_ids = []
     for start in range(0, len(target_ids), BULK_UPDATE_CHUNK_SIZE):
-        chunk_ids = target_ids[start:start + BULK_UPDATE_CHUNK_SIZE]
+        chunk_ids = target_ids[start : start + BULK_UPDATE_CHUNK_SIZE]
         transactions = db.scalars(
             select(Transaction)
             .where(Transaction.id.in_(chunk_ids))
@@ -402,19 +497,25 @@ def bulk_update_transactions(data: BulkUpdateTransactionsRequest, actor_user_id:
         touched_accounts = set()
         for transaction in transactions:
             touched_accounts.add(transaction.account_id)
-            old_values = {f: getattr(transaction, f) for f in non_split_fields if f in TRACKED_FIELDS}
+            old_values = {
+                f: getattr(transaction, f) for f in non_split_fields if f in TRACKED_FIELDS
+            }
             if payee_affix is not None or regex_payees is not None:
                 old_values["payee"] = transaction.payee
             for field, value in non_split_fields.items():
                 setattr(transaction, field, value)
             if payee_affix is not None:
-                transaction.payee = (payee_affix + transaction.payee if payee_mode == "prepend"
-                                     else transaction.payee + payee_affix)
+                transaction.payee = (
+                    payee_affix + transaction.payee
+                    if payee_mode == "prepend"
+                    else transaction.payee + payee_affix
+                )
             if regex_payees is not None and transaction.id in regex_payees:
                 transaction.payee = regex_payees[transaction.id]
             changes = {
                 f: {"old": _jsonify(old), "new": _jsonify(getattr(transaction, f))}
-                for f, old in old_values.items() if old != getattr(transaction, f)
+                for f, old in old_values.items()
+                if old != getattr(transaction, f)
             }
 
             if split_weights_provided:
@@ -431,34 +532,48 @@ def bulk_update_transactions(data: BulkUpdateTransactionsRequest, actor_user_id:
                     changes["tags"] = tags_change
 
             if changes:
-                record_transaction_history(db, transaction, "updated", actor_user_id, source="bulk", changes=changes)
+                record_transaction_history(
+                    db, transaction, "updated", actor_user_id, source="bulk", changes=changes
+                )
             updated_ids.append(transaction.id)
 
         if "account_id" in non_split_fields:
             # A move changes both accounts' running balances.
-            checkpoints.recompute(db, touched_accounts | {non_split_fields["account_id"]}, actor_user_id)
+            checkpoints.recompute(
+                db, touched_accounts | {non_split_fields["account_id"]}, actor_user_id
+            )
         cache_service.invalidate(db, "balances", "charts", "account_totals", "category_usage")
         db.commit()
-    return BulkUpdateTransactionsResponse(updated_count=len(updated_ids), transaction_ids=updated_ids)
+    return BulkUpdateTransactionsResponse(
+        updated_count=len(updated_ids), transaction_ids=updated_ids
+    )
 
 
 @router.delete("/bulk-delete", response_model=BulkDeleteTransactionsResponse)
 @audit.batched
-def bulk_delete_transactions(data: BulkDeleteTransactionsRequest, actor_user_id: int | None = Query(None), db: Session = Depends(get_db)):
+def bulk_delete_transactions(
+    data: BulkDeleteTransactionsRequest,
+    actor_user_id: int | None = Query(None),
+    db: Session = Depends(get_db),
+):
     # Registered before the /{transaction_id} DELETE route below, for the same
     # route-registration-order reason documented on bulk_update_transactions
     # above: {transaction_id} would otherwise greedily match "bulk-delete" and
     # 422 on int conversion before this route is ever tried.
-    target_ids = _resolve_bulk_target_ids(db, data.transaction_ids, data.filter, data.expected_count)
+    target_ids = _resolve_bulk_target_ids(
+        db, data.transaction_ids, data.filter, data.expected_count
+    )
 
     # Chunked for the same reason as bulk-update: a filter can select the
     # whole ledger.
     deleted_ids = []
     for start in range(0, len(target_ids), BULK_UPDATE_CHUNK_SIZE):
-        chunk_ids = target_ids[start:start + BULK_UPDATE_CHUNK_SIZE]
+        chunk_ids = target_ids[start : start + BULK_UPDATE_CHUNK_SIZE]
         link_ids = set()
         account_ids = set()
-        for transaction in db.scalars(select(Transaction).where(Transaction.id.in_(chunk_ids)).order_by(Transaction.id)).all():
+        for transaction in db.scalars(
+            select(Transaction).where(Transaction.id.in_(chunk_ids)).order_by(Transaction.id)
+        ).all():
             record_transaction_history(db, transaction, "deleted", actor_user_id, source="bulk")
             link_ids.add(transaction.link_id)
             account_ids.add(transaction.account_id)
@@ -469,11 +584,15 @@ def bulk_delete_transactions(data: BulkDeleteTransactionsRequest, actor_user_id:
         checkpoints.recompute(db, account_ids, actor_user_id)
         cache_service.invalidate(db, "balances", "charts", "account_totals", "category_usage")
         db.commit()
-    return BulkDeleteTransactionsResponse(deleted_count=len(deleted_ids), transaction_ids=deleted_ids)
+    return BulkDeleteTransactionsResponse(
+        deleted_count=len(deleted_ids), transaction_ids=deleted_ids
+    )
 
 
 @router.get("/{transaction_id}", response_model=TransactionOut)
-def get_transaction(transaction_id: int, user_id: int | None = Query(None), db: Session = Depends(get_db)):
+def get_transaction(
+    transaction_id: int, user_id: int | None = Query(None), db: Session = Depends(get_db)
+):
     query = select(Transaction).where(Transaction.id == transaction_id)
     if user_id is not None:
         query = query.where(visible_transaction_filter(db, user_id))
@@ -484,7 +603,12 @@ def get_transaction(transaction_id: int, user_id: int | None = Query(None), db: 
 
 
 @router.put("/{transaction_id}", response_model=TransactionOut)
-def update_transaction(transaction_id: int, data: TransactionUpdate, actor_user_id: int | None = Query(None), db: Session = Depends(get_db)):
+def update_transaction(
+    transaction_id: int,
+    data: TransactionUpdate,
+    actor_user_id: int | None = Query(None),
+    db: Session = Depends(get_db),
+):
     transaction = db.scalar(select(Transaction).where(Transaction.id == transaction_id).limit(1))
     if not transaction:
         raise HTTPException(404, "Transaction not found")
@@ -495,17 +619,26 @@ def update_transaction(transaction_id: int, data: TransactionUpdate, actor_user_
     update_data.pop("split_weights", None)
     update_data.pop("split_source", None)
     tags_provided = "tag_ids" in update_data
-    new_tags = tag_service.load_tags(db, update_data.pop("tag_ids", None)) if tags_provided else None
+    new_tags = (
+        tag_service.load_tags(db, update_data.pop("tag_ids", None)) if tags_provided else None
+    )
     if transaction.checkpoint_value is not None:
         # A checkpoint's amount is derived from its value: an unchanged amount
         # sent back by the form is fine, a different one is refused.
         if "amount" in update_data:
-            if update_data["amount"] is not None and abs(update_data["amount"] - transaction.amount) >= 0.005:
-                raise HTTPException(422, "A checkpoint's amount is derived from its value; change the value instead")
+            if (
+                update_data["amount"] is not None
+                and abs(update_data["amount"] - transaction.amount) >= 0.005
+            ):
+                raise HTTPException(
+                    422, "A checkpoint's amount is derived from its value; change the value instead"
+                )
             update_data.pop("amount")
         if "checkpoint_value" in update_data:
             if update_data["checkpoint_value"] is None:
-                raise HTTPException(422, "A checkpoint's value cannot be cleared; delete the checkpoint instead")
+                raise HTTPException(
+                    422, "A checkpoint's value cannot be cleared; delete the checkpoint instead"
+                )
             update_data["checkpoint_value"] = round(update_data["checkpoint_value"], 2)
     elif update_data.get("checkpoint_value") is not None:
         raise HTTPException(422, "Only a checkpoint has a value; create a checkpoint instead")
@@ -519,7 +652,8 @@ def update_transaction(transaction_id: int, data: TransactionUpdate, actor_user_
         setattr(transaction, field, value)
     changes = {
         f: {"old": _jsonify(old), "new": _jsonify(getattr(transaction, f))}
-        for f, old in old_values.items() if old != getattr(transaction, f)
+        for f, old in old_values.items()
+        if old != getattr(transaction, f)
     }
 
     if split_weights_provided:
@@ -538,7 +672,9 @@ def update_transaction(transaction_id: int, data: TransactionUpdate, actor_user_
         # predating mandatory splits) — heal it via the same category >
         # account > global cascade used on create, rather than silently
         # leaving it unsplit forever.
-        resolved_source, weights = split_engine.resolve_default_weights(db, transaction.category_id, transaction.account_id)
+        resolved_source, weights = split_engine.resolve_default_weights(
+            db, transaction.category_id, transaction.account_id
+        )
         validate_resolved_weights_present(weights)
         source = resolved_source or "global"
 
@@ -552,8 +688,9 @@ def update_transaction(transaction_id: int, data: TransactionUpdate, actor_user_
         # Later checkpoints of the account (both accounts on a move) re-derive
         # their amounts; this row's own new amount, when it is a checkpoint,
         # goes on its own history row below.
-        checkpoints.recompute(db, {old_account_id, transaction.account_id}, actor_user_id,
-                              quiet_ids={transaction.id})
+        checkpoints.recompute(
+            db, {old_account_id, transaction.account_id}, actor_user_id, quiet_ids={transaction.id}
+        )
         if "amount" not in changes and transaction.amount != old_amount:
             changes["amount"] = {"old": old_amount, "new": transaction.amount}
     if new_tags is not None:
@@ -593,7 +730,12 @@ def _stale_namespaces(changes: dict) -> list[str]:
 
 
 @router.put("/{transaction_id}/raw", response_model=TransactionOut)
-def update_transaction_raw_fields(transaction_id: int, data: TransactionRawFieldsUpdate, actor_user_id: int | None = Query(None), db: Session = Depends(get_db)):
+def update_transaction_raw_fields(
+    transaction_id: int,
+    data: TransactionRawFieldsUpdate,
+    actor_user_id: int | None = Query(None),
+    db: Session = Depends(get_db),
+):
     # Admin mode's edit of the "As reported by the bank" section. Kept apart
     # from PUT /{id} so the raw fields stay out of TransactionUpdate: nothing
     # else may rewrite them. They feed no balance, chart or split, so no cache
@@ -608,13 +750,17 @@ def update_transaction_raw_fields(transaction_id: int, data: TransactionRawField
             setattr(transaction, field, value)
             changes[field] = {"old": _jsonify(old), "new": _jsonify(value)}
     if changes:
-        record_transaction_history(db, transaction, "updated", actor_user_id, source="admin", changes=changes)
+        record_transaction_history(
+            db, transaction, "updated", actor_user_id, source="admin", changes=changes
+        )
         db.commit()
     return get_transaction_out(db, transaction.id)
 
 
 @router.delete("/{transaction_id}", status_code=204)
-def delete_transaction(transaction_id: int, actor_user_id: int | None = Query(None), db: Session = Depends(get_db)):
+def delete_transaction(
+    transaction_id: int, actor_user_id: int | None = Query(None), db: Session = Depends(get_db)
+):
     transaction = db.scalar(select(Transaction).where(Transaction.id == transaction_id).limit(1))
     if not transaction:
         raise HTTPException(404, "Transaction not found")
@@ -631,7 +777,12 @@ def delete_transaction(transaction_id: int, actor_user_id: int | None = Query(No
 
 @router.post("/{transaction_id}/divide", response_model=TransactionDivideResponse)
 @audit.batched
-def divide_transaction(transaction_id: int, data: TransactionDivideRequest, actor_user_id: int | None = Query(None), db: Session = Depends(get_db)):
+def divide_transaction(
+    transaction_id: int,
+    data: TransactionDivideRequest,
+    actor_user_id: int | None = Query(None),
+    db: Session = Depends(get_db),
+):
     # Divides one transaction's amount into several new transactions (by
     # category/date) — unrelated to split_weights, which divides a
     # transaction's amount among users. The original row is reused as part 1
@@ -652,7 +803,9 @@ def divide_transaction(transaction_id: int, data: TransactionDivideRequest, acto
     resolved = []
     for part in data.parts:
         if part.split_weights is None:
-            source, weights = split_engine.resolve_default_weights(db, part.category_id, transaction.account_id)
+            source, weights = split_engine.resolve_default_weights(
+                db, part.category_id, transaction.account_id
+            )
             validate_resolved_weights_present(weights)
             split_source = part.split_source or source or "global"
         else:
@@ -676,7 +829,8 @@ def divide_transaction(transaction_id: int, data: TransactionDivideRequest, acto
     transaction.divide_group_id = transaction.id
     changes = {
         f: {"old": _jsonify(old), "new": _jsonify(getattr(transaction, f))}
-        for f, old in old_values.items() if old != getattr(transaction, f)
+        for f, old in old_values.items()
+        if old != getattr(transaction, f)
     }
     new_splits = {uid: (w, first_source) for uid, w in first_weights.items()}
     splits_diff = diff_splits(existing_splits, new_splits)
@@ -684,13 +838,19 @@ def divide_transaction(transaction_id: int, data: TransactionDivideRequest, acto
         changes["splits"] = splits_diff
     split_engine.apply_split(db, transaction, first_weights, first_source)
     if changes:
-        record_transaction_history(db, transaction, "updated", actor_user_id, source="divide", changes=changes)
+        record_transaction_history(
+            db, transaction, "updated", actor_user_id, source="divide", changes=changes
+        )
 
     created = [transaction]
     for part, (weights, split_source) in zip(data.parts[1:], resolved[1:]):
         new_transaction = Transaction(
-            date=part.date, payee=part.payee, memo=part.memo, amount=part.amount,
-            account_id=transaction.account_id, category_id=part.category_id,
+            date=part.date,
+            payee=part.payee,
+            memo=part.memo,
+            amount=part.amount,
+            account_id=transaction.account_id,
+            category_id=part.category_id,
             accounting_month_offset=part.accounting_month_offset,
             divide_group_id=transaction.id,
         )
@@ -702,8 +862,14 @@ def divide_transaction(transaction_id: int, data: TransactionDivideRequest, acto
         if transaction.tags:
             tag_service.set_tags(new_transaction, list(transaction.tags))
             part_changes["tags"] = tag_service.created_change(list(transaction.tags))
-        record_transaction_history(db, new_transaction, "created", actor_user_id, source="divide",
-                                    changes=part_changes or None)
+        record_transaction_history(
+            db,
+            new_transaction,
+            "created",
+            actor_user_id,
+            source="divide",
+            changes=part_changes or None,
+        )
         created.append(new_transaction)
 
     # The parts may carry other dates than the original.
@@ -720,33 +886,41 @@ def get_divide_siblings(transaction_id: int, db: Session = Depends(get_db)):
         raise HTTPException(404, "Transaction not found")
     if transaction.divide_group_id is None:
         return []
-    siblings = (
-        db.scalars(
-            select(Transaction)
-            .where(Transaction.divide_group_id == transaction.divide_group_id, Transaction.id != transaction_id)
-            .order_by(Transaction.date.asc())
-        ).all()
-    )
+    siblings = db.scalars(
+        select(Transaction)
+        .where(
+            Transaction.divide_group_id == transaction.divide_group_id,
+            Transaction.id != transaction_id,
+        )
+        .order_by(Transaction.date.asc())
+    ).all()
     return [get_transaction_out(db, t.id) for t in siblings]
 
 
 @router.get("/{transaction_id}/history", response_model=list[TransactionHistoryOut])
 def get_transaction_history(transaction_id: int, db: Session = Depends(get_db)):
-    rows = (
-        db.scalars(
-            select(TransactionHistory)
-            .where(TransactionHistory.transaction_id == transaction_id)
-            .order_by(TransactionHistory.changed_at.asc())
-        ).all()
-    )
+    rows = db.scalars(
+        select(TransactionHistory)
+        .where(TransactionHistory.transaction_id == transaction_id)
+        .order_by(TransactionHistory.changed_at.asc())
+    ).all()
     users_by_id = {u.id: u.name for u in db.scalars(select(User)).all()}
     return [
         TransactionHistoryOut(
-            id=r.id, transaction_id=r.transaction_id, action=r.action, source=r.source,
-            changed_at=r.changed_at, changed_by_user_id=r.changed_by_user_id,
+            id=r.id,
+            transaction_id=r.transaction_id,
+            action=r.action,
+            source=r.source,
+            changed_at=r.changed_at,
+            changed_by_user_id=r.changed_by_user_id,
             changed_by_user_name=users_by_id.get(r.changed_by_user_id),
-            date=r.date, payee=r.payee, memo=r.memo, amount=r.amount,
-            account_id=r.account_id, category_id=r.category_id, changes=r.changes,
+            date=r.date,
+            payee=r.payee,
+            memo=r.memo,
+            amount=r.amount,
+            account_id=r.account_id,
+            category_id=r.category_id,
+            changes=r.changes,
         )
         for r in rows
     ]

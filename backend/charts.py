@@ -4,8 +4,8 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 import cache_service
-from models import Account, Category, Transaction, TransactionSplit
 from accounting_month import compute_accounting_month
+from models import Account, Category, Transaction, TransactionSplit
 
 
 @dataclass
@@ -23,7 +23,9 @@ class MonthAmounts:
     month: str  # "YYYY-MM"
     income: float  # sum of share_amount for Income categories (>= 0 in normal use)
     expense: float  # sum of share_amount for Expense categories (<= 0, i.e. still signed)
-    uncategorized: float  # sum of share_amount for transactions with no category (signed, own bucket)
+    uncategorized: (
+        float  # sum of share_amount for transactions with no category (signed, own bucket)
+    )
     currency: str
 
 
@@ -66,7 +68,9 @@ class ChartsData:
     parent_category: ParentCategoryInfo | None
 
 
-def _query_rows(db: Session, user_id: int, currency: str | None, start_month: str | None, end_month: str | None):
+def _query_rows(
+    db: Session, user_id: int, currency: str | None, start_month: str | None, end_month: str | None
+):
     """Yields the user's TransactionSplit rows joined with their transaction/
     category/account, each already resolved to its accounting month and
     filtered to [start_month, end_month] (inclusive, either bound optional).
@@ -100,13 +104,34 @@ def _query_rows(db: Session, user_id: int, currency: str | None, start_month: st
     if currency is not None:
         query = query.where(Account.currency == currency)
 
-    for share_amount, t_date, offset, cat_id, cat_name, cat_type, cat_color, cat_icon, cat_parent_id, cur in db.execute(query).all():
+    for (
+        share_amount,
+        t_date,
+        offset,
+        cat_id,
+        cat_name,
+        cat_type,
+        cat_color,
+        cat_icon,
+        cat_parent_id,
+        cur,
+    ) in db.execute(query).all():
         month = compute_accounting_month(t_date, offset)
         if start_month is not None and month < start_month:
             continue
         if end_month is not None and month > end_month:
             continue
-        yield share_amount, month, cat_id, cat_name, cat_type, cat_color, cat_icon, cat_parent_id, cur
+        yield (
+            share_amount,
+            month,
+            cat_id,
+            cat_name,
+            cat_type,
+            cat_color,
+            cat_icon,
+            cat_parent_id,
+            cur,
+        )
 
 
 def _build_chart_categories(
@@ -180,16 +205,33 @@ def compute_chart_data(
     month_agg: dict[tuple[str, str], dict] = {}
     month_cat_agg: dict[tuple[str, int | None, str], float] = {}
 
-    for share_amount, month, cat_id, cat_name, cat_type, cat_color, cat_icon, cat_parent_id, cur in _query_rows(
-        db, user_id, currency, start_month, end_month,
+    for (
+        share_amount,
+        month,
+        cat_id,
+        cat_name,
+        cat_type,
+        cat_color,
+        _cat_icon,
+        cat_parent_id,
+        cur,
+    ) in _query_rows(
+        db,
+        user_id,
+        currency,
+        start_month,
+        end_month,
     ):
         ckey = (cat_id, cur)
-        centry = category_agg.setdefault(ckey, {
-            "name": cat_name if cat_id is not None else "Uncategorized",
-            "type": cat_type if cat_type is not None else "Uncategorized",
-            "color": cat_color,
-            "amount": 0.0,
-        })
+        centry = category_agg.setdefault(
+            ckey,
+            {
+                "name": cat_name if cat_id is not None else "Uncategorized",
+                "type": cat_type if cat_type is not None else "Uncategorized",
+                "color": cat_color,
+                "amount": 0.0,
+            },
+        )
         centry["amount"] += share_amount
 
         mkey = (month, cur)
@@ -210,7 +252,9 @@ def compute_chart_data(
                 seg_id = cat_id if (cat_id is None or cat_parent_id is None) else cat_parent_id
                 include = True
             else:
-                include = cat_id is not None and (cat_id == parent_category_id or cat_parent_id == parent_category_id)
+                include = cat_id is not None and (
+                    cat_id == parent_category_id or cat_parent_id == parent_category_id
+                )
                 seg_id = cat_id
             if include:
                 key = (month, seg_id, cur)
@@ -218,20 +262,29 @@ def compute_chart_data(
 
     by_category = [
         CategoryAmount(
-            category_id=cid, category_name=v["name"], category_type=v["type"], color=v["color"],
-            amount=round(v["amount"], 2), currency=cur,
+            category_id=cid,
+            category_name=v["name"],
+            category_type=v["type"],
+            color=v["color"],
+            amount=round(v["amount"], 2),
+            currency=cur,
         )
         for (cid, cur), v in category_agg.items()
     ]
     by_month = [
         MonthAmounts(
-            month=m, income=round(v["income"], 2), expense=round(v["expense"], 2),
-            uncategorized=round(v["uncategorized"], 2), currency=cur,
+            month=m,
+            income=round(v["income"], 2),
+            expense=round(v["expense"], 2),
+            uncategorized=round(v["uncategorized"], 2),
+            currency=cur,
         )
         for (m, cur), v in month_agg.items()
     ]
     net_by_month = [
-        NetMonth(month=m, net=round(v["income"] + v["expense"] + v["uncategorized"], 2), currency=cur)
+        NetMonth(
+            month=m, net=round(v["income"] + v["expense"] + v["uncategorized"], 2), currency=cur
+        )
         for (m, cur), v in month_agg.items()
     ]
     by_month_category = [
@@ -242,7 +295,8 @@ def compute_chart_data(
     seg_ids_present = {seg for (_, seg, _) in month_cat_agg}
     chart_categories = _build_chart_categories(seg_ids_present, category_by_id, month_cat_agg)
     parent_category = (
-        None if parent_category_id is None
+        None
+        if parent_category_id is None
         else ParentCategoryInfo(id=parent_category_id, name=category_by_id[parent_category_id].name)
     )
 
@@ -273,14 +327,21 @@ def compute_chart_data_cached(
     Invalidated wherever transaction/split/account/category data that could
     change these sums is mutated - see cache_service.invalidate call sites.
     """
+
     def _compute() -> dict:
-        return asdict(compute_chart_data(db, user_id, currency, start_month, end_month, parent_category_id))
+        return asdict(
+            compute_chart_data(db, user_id, currency, start_month, end_month, parent_category_id)
+        )
 
     payload = cache_service.get_or_compute(
-        db, "charts",
+        db,
+        "charts",
         {
-            "user_id": user_id, "currency": currency, "start_month": start_month,
-            "end_month": end_month, "parent_category_id": parent_category_id,
+            "user_id": user_id,
+            "currency": currency,
+            "start_month": start_month,
+            "end_month": end_month,
+            "parent_category_id": parent_category_id,
         },
         _compute,
     )
@@ -290,7 +351,9 @@ def compute_chart_data_cached(
         net_by_month=[NetMonth(**n) for n in payload["net_by_month"]],
         by_month_category=[MonthCategoryAmount(**m) for m in payload["by_month_category"]],
         chart_categories=[ChartCategory(**c) for c in payload["chart_categories"]],
-        parent_category=ParentCategoryInfo(**payload["parent_category"]) if payload["parent_category"] else None,
+        parent_category=ParentCategoryInfo(**payload["parent_category"])
+        if payload["parent_category"]
+        else None,
     )
 
 

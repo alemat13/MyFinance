@@ -20,23 +20,37 @@ def label(link: TransactionLink | None) -> str | None:
     return link.name or f"#{link.id}"
 
 
-def _set(db: Session, transaction: Transaction, link: TransactionLink | None,
-         old_label: str | None, actor_user_id: int | None) -> None:
+def _set(
+    db: Session,
+    transaction: Transaction,
+    link: TransactionLink | None,
+    old_label: str | None,
+    actor_user_id: int | None,
+) -> None:
     transaction.link_id = None if link is None else link.id
     new_label = label(link)
     if old_label != new_label:
-        record_transaction_history(db, transaction, "updated", actor_user_id, source="link",
-                                   changes={"link": {"old": old_label, "new": new_label}})
+        record_transaction_history(
+            db,
+            transaction,
+            "updated",
+            actor_user_id,
+            source="link",
+            changes={"link": {"old": old_label, "new": new_label}},
+        )
 
 
-def link(db: Session, transactions: list[Transaction], name: str | None,
-         actor_user_id: int | None) -> TransactionLink:
+def link(
+    db: Session, transactions: list[Transaction], name: str | None, actor_user_id: int | None
+) -> TransactionLink:
     """Puts these transactions in one group. Groups some of them already
     belong to are merged into the oldest, whose members come along."""
     groups = {
-        g.id: g for g in db.scalars(
-            select(TransactionLink)
-            .where(TransactionLink.id.in_({t.link_id for t in transactions if t.link_id is not None}))
+        g.id: g
+        for g in db.scalars(
+            select(TransactionLink).where(
+                TransactionLink.id.in_({t.link_id for t in transactions if t.link_id is not None})
+            )
         ).all()
     }
     # Each member's label before the change, for its history row.
@@ -55,7 +69,9 @@ def link(db: Session, transactions: list[Transaction], name: str | None,
 
     members = {t.id: t for t in transactions}
     if others:
-        for t in db.scalars(select(Transaction).where(Transaction.link_id.in_([g.id for g in others]))).all():
+        for t in db.scalars(
+            select(Transaction).where(Transaction.link_id.in_([g.id for g in others]))
+        ).all():
             members.setdefault(t.id, t)
     if groups:
         for t in db.scalars(select(Transaction).where(Transaction.link_id == target.id)).all():
@@ -68,12 +84,15 @@ def link(db: Session, transactions: list[Transaction], name: str | None,
     return target
 
 
-def unlink(db: Session, group: TransactionLink, transaction_ids: set[int] | None,
-           actor_user_id: int | None) -> bool:
+def unlink(
+    db: Session, group: TransactionLink, transaction_ids: set[int] | None, actor_user_id: int | None
+) -> bool:
     """Takes these transactions (None: all of them) out of the group; one
     left with fewer than two members is dissolved. Returns whether the group
     still exists."""
-    members = db.scalars(select(Transaction).where(Transaction.link_id == group.id).order_by(Transaction.id)).all()
+    members = db.scalars(
+        select(Transaction).where(Transaction.link_id == group.id).order_by(Transaction.id)
+    ).all()
     leaving = [t for t in members if transaction_ids is None or t.id in transaction_ids]
     staying = [t for t in members if t not in leaving]
     if len(staying) < 2:
@@ -96,5 +115,10 @@ def prune(db: Session, link_ids, actor_user_id: int | None = None) -> None:
         group = db.get(TransactionLink, link_id)
         if group is None:
             continue
-        if db.scalar(select(func.count()).select_from(Transaction).where(Transaction.link_id == link_id)) < 2:
+        if (
+            db.scalar(
+                select(func.count()).select_from(Transaction).where(Transaction.link_id == link_id)
+            )
+            < 2
+        ):
             unlink(db, group, None, actor_user_id)

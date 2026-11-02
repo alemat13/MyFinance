@@ -15,8 +15,13 @@ def sample_category2(db):
 
 
 def _make_transaction(db, account, category, **overrides):
-    defaults = dict(date=date(2026, 1, 15), payee="Payee", amount=100.0,
-                     account_id=account.id, category_id=category.id)
+    defaults = dict(
+        date=date(2026, 1, 15),
+        payee="Payee",
+        amount=100.0,
+        account_id=account.id,
+        category_id=category.id,
+    )
     defaults.update(overrides)
     transaction = Transaction(**defaults)
     db.add(transaction)
@@ -51,13 +56,17 @@ def test_bulk_delete_transactions_deletes_splits_too(client, db, sample_transact
     assert response.status_code == 200
 
     assert client.get(f"/api/transactions/{sample_transaction.id}").status_code == 404
-    remaining_splits = db.query(TransactionSplit).filter(
-        TransactionSplit.transaction_id == sample_transaction.id
-    ).all()
+    remaining_splits = (
+        db.query(TransactionSplit)
+        .filter(TransactionSplit.transaction_id == sample_transaction.id)
+        .all()
+    )
     assert remaining_splits == []
 
 
-def test_bulk_delete_missing_transaction_id_404_and_no_mutation(client, db, sample_account, sample_category):
+def test_bulk_delete_missing_transaction_id_404_and_no_mutation(
+    client, db, sample_account, sample_category
+):
     t1 = _make_transaction(db, sample_account, sample_category)
 
     response = _bulk_delete(client, [t1.id, 999999])
@@ -71,7 +80,9 @@ def test_bulk_delete_empty_transaction_ids_422(client):
     assert response.status_code == 422
 
 
-def test_bulk_delete_writes_one_history_row_per_deleted_transaction(client, db, sample_account, sample_category):
+def test_bulk_delete_writes_one_history_row_per_deleted_transaction(
+    client, db, sample_account, sample_category
+):
     t1 = _make_transaction(db, sample_account, sample_category)
     t2 = _make_transaction(db, sample_account, sample_category)
 
@@ -83,7 +94,9 @@ def test_bulk_delete_writes_one_history_row_per_deleted_transaction(client, db, 
         assert history[0]["action"] == "deleted"
 
 
-def test_bulk_delete_actor_user_id_recorded_in_history(client, db, sample_account, sample_category, sample_user):
+def test_bulk_delete_actor_user_id_recorded_in_history(
+    client, db, sample_account, sample_category, sample_user
+):
     t1 = _make_transaction(db, sample_account, sample_category)
 
     _bulk_delete(client, [t1.id], actor_user_id=sample_user.id)
@@ -92,7 +105,9 @@ def test_bulk_delete_actor_user_id_recorded_in_history(client, db, sample_accoun
     assert history[0]["changed_by_user_id"] == sample_user.id
 
 
-def test_bulk_delete_route_not_shadowed_by_transaction_id_route(client, db, sample_account, sample_category):
+def test_bulk_delete_route_not_shadowed_by_transaction_id_route(
+    client, db, sample_account, sample_category
+):
     # Sanity check for the route-registration-order hazard: "bulk-delete"
     # must not be swallowed by the /{transaction_id} DELETE route and 422
     # on failed int conversion before this route is ever tried.
@@ -102,15 +117,27 @@ def test_bulk_delete_route_not_shadowed_by_transaction_id_route(client, db, samp
     assert response.status_code == 200
 
 
-def test_bulk_delete_does_not_protect_divide_group_transactions(client, sample_transaction, sample_category, sample_user):
+def test_bulk_delete_does_not_protect_divide_group_transactions(
+    client, sample_transaction, sample_category, sample_user
+):
     divide_response = client.post(
         f"/api/transactions/{sample_transaction.id}/divide",
         json={
             "parts": [
-                {"date": "2026-01-15", "payee": "Part A", "amount": 300.0, "category_id": sample_category.id,
-                 "split_weights": [{"user_id": sample_user.id, "weight": 1}]},
-                {"date": "2026-01-15", "payee": "Part B", "amount": 200.0, "category_id": sample_category.id,
-                 "split_weights": [{"user_id": sample_user.id, "weight": 1}]},
+                {
+                    "date": "2026-01-15",
+                    "payee": "Part A",
+                    "amount": 300.0,
+                    "category_id": sample_category.id,
+                    "split_weights": [{"user_id": sample_user.id, "weight": 1}],
+                },
+                {
+                    "date": "2026-01-15",
+                    "payee": "Part B",
+                    "amount": 200.0,
+                    "category_id": sample_category.id,
+                    "split_weights": [{"user_id": sample_user.id, "weight": 1}],
+                },
             ]
         },
     )
@@ -125,13 +152,16 @@ def test_bulk_delete_does_not_protect_divide_group_transactions(client, sample_t
     assert response.json()["deleted_count"] == 2
 
 
-def test_bulk_delete_by_filter_deletes_every_matching_row_across_pages(client, db, sample_account, sample_category):
+def test_bulk_delete_by_filter_deletes_every_matching_row_across_pages(
+    client, db, sample_account, sample_category
+):
     keep = _make_transaction(db, sample_account, sample_category, payee="Keep me")
     for _ in range(3):
         _make_transaction(db, sample_account, sample_category, payee="Doublon import")
 
     response = client.request(
-        "DELETE", "/api/transactions/bulk-delete",
+        "DELETE",
+        "/api/transactions/bulk-delete",
         json={"filter": {"search": "doublon", "page": 1, "page_size": 1}, "expected_count": 3},
     )
     assert response.status_code == 200
@@ -139,12 +169,15 @@ def test_bulk_delete_by_filter_deletes_every_matching_row_across_pages(client, d
     assert [t.id for t in db.query(Transaction).all()] == [keep.id]
 
 
-def test_bulk_delete_by_filter_refuses_when_match_count_changed(client, db, sample_account, sample_category):
+def test_bulk_delete_by_filter_refuses_when_match_count_changed(
+    client, db, sample_account, sample_category
+):
     _make_transaction(db, sample_account, sample_category, payee="Doublon import")
     _make_transaction(db, sample_account, sample_category, payee="Doublon import")
 
     response = client.request(
-        "DELETE", "/api/transactions/bulk-delete",
+        "DELETE",
+        "/api/transactions/bulk-delete",
         json={"filter": {"search": "doublon"}, "expected_count": 1},
     )
     assert response.status_code == 409

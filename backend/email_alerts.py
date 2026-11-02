@@ -21,6 +21,7 @@ month (the 18h sync). A sync started by hand calls `run_quietly(db,
 manual=True)`, which also sends the daily alert of whoever has something new
 since their last one, whatever the time.
 """
+
 import base64
 import html
 import json
@@ -32,7 +33,7 @@ import ssl
 import struct
 import zlib
 from dataclasses import dataclass, field
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import UTC, date, datetime, time, timedelta
 from email.message import EmailMessage
 from email.utils import formataddr, make_msgid
 from pathlib import Path
@@ -58,7 +59,11 @@ LOCAL_TZ = ZoneInfo("Europe/Paris")
 DAILY_AT = time(5, 30)
 PERIOD_END_AT = time(17, 30)
 # Period a first alert covers, when that frequency has never been sent.
-FIRST_WINDOW = {"daily": timedelta(days=1), "weekly": timedelta(days=7), "monthly": timedelta(days=31)}
+FIRST_WINDOW = {
+    "daily": timedelta(days=1),
+    "weekly": timedelta(days=7),
+    "monthly": timedelta(days=31),
+}
 # An email lists at most this many rows (the most recent first) and counts
 # the rest: an overwrite restore or a big import can make thousands of rows
 # "new" at once, and nobody reads a 30 000-line email.
@@ -72,7 +77,7 @@ class AlertConfigError(RuntimeError):
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 def smtp_configured() -> bool:
@@ -88,11 +93,14 @@ def get_or_create(db: Session, user: User) -> EmailAlert:
     if alert is None:
         # Not added to the session: reading the settings of a user who never
         # opened the screen must not write anything.
-        alert = EmailAlert(user_id=user.id, email=user.email, daily=False, weekly=False, monthly=False)
+        alert = EmailAlert(
+            user_id=user.id, email=user.email, daily=False, weekly=False, monthly=False
+        )
     return alert
 
 
 # ── Scheduling ────────────────────────────────────────────────────────
+
 
 def _last_day_of_month(day: date) -> date:
     following = (day.replace(day=28) + timedelta(days=4)).replace(day=1)
@@ -102,7 +110,7 @@ def _last_day_of_month(day: date) -> date:
 def last_boundary(frequency: str, now: datetime) -> datetime:
     """The latest moment at or before `now` (naive UTC) at which
     `frequency` fell due, as naive UTC."""
-    local_now = now.replace(tzinfo=timezone.utc).astimezone(LOCAL_TZ)
+    local_now = now.replace(tzinfo=UTC).astimezone(LOCAL_TZ)
     today = local_now.date()
 
     def at(day: date, hour: time) -> datetime:
@@ -120,8 +128,10 @@ def last_boundary(frequency: str, now: datetime) -> datetime:
     else:
         boundary = at(_last_day_of_month(today), PERIOD_END_AT)
         if boundary > local_now:
-            boundary = at(_last_day_of_month(today.replace(day=1) - timedelta(days=1)), PERIOD_END_AT)
-    return boundary.astimezone(timezone.utc).replace(tzinfo=None)
+            boundary = at(
+                _last_day_of_month(today.replace(day=1) - timedelta(days=1)), PERIOD_END_AT
+            )
+    return boundary.astimezone(UTC).replace(tzinfo=None)
 
 
 def is_due(frequency: str, last_sent_at: datetime | None, now: datetime) -> bool:
@@ -138,7 +148,8 @@ def due_frequencies(alert: EmailAlert, now: datetime, manual: bool = False) -> l
     if not alert.email:
         return []
     return [
-        f for f in FREQUENCIES
+        f
+        for f in FREQUENCIES
         if getattr(alert, f)
         and ((manual and f == "daily") or is_due(f, getattr(alert, f"last_{f}_sent_at"), now))
     ]
@@ -146,13 +157,20 @@ def due_frequencies(alert: EmailAlert, now: datetime, manual: bool = False) -> l
 
 # ── Content ───────────────────────────────────────────────────────────
 
-def new_transactions(db: Session, user_id: int, start: datetime, end: datetime) -> list[Transaction]:
+
+def new_transactions(
+    db: Session, user_id: int, start: datetime, end: datetime
+) -> list[Transaction]:
     owned = select(AccountUser.account_id).where(
         AccountUser.user_id == user_id, AccountUser.ownership_percentage > 0
     )
     return db.scalars(
         select(Transaction)
-        .options(joinedload(Transaction.account), joinedload(Transaction.category), selectinload(Transaction.splits))
+        .options(
+            joinedload(Transaction.account),
+            joinedload(Transaction.category),
+            selectinload(Transaction.splits),
+        )
         .where(
             Transaction.account_id.in_(owned),
             Transaction.created_at > start,
@@ -198,14 +216,22 @@ def icon_png(icon: str | None, color: str) -> bytes:
     PNG (written by hand with zlib: no imaging library in the image)."""
     masks = _icon_masks()
     size = masks["size"]
-    alpha = zlib.decompress(base64.b64decode(masks["icons"].get(icon or "") or masks["icons"][masks["default"]]))
+    alpha = zlib.decompress(
+        base64.b64decode(masks["icons"].get(icon or "") or masks["icons"][masks["default"]])
+    )
     r, g, b = _rgb(color)
     raw = b"".join(
-        b"\x00" + b"".join(bytes((r, g, b, a)) for a in alpha[y * size:(y + 1) * size]) for y in range(size)
+        b"\x00" + b"".join(bytes((r, g, b, a)) for a in alpha[y * size : (y + 1) * size])
+        for y in range(size)
     )
 
     def chunk(kind: bytes, data: bytes) -> bytes:
-        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
+        return (
+            struct.pack(">I", len(data))
+            + kind
+            + data
+            + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
+        )
 
     return (
         b"\x89PNG\r\n\x1a\n"
@@ -218,14 +244,20 @@ def icon_png(icon: str | None, color: str) -> bytes:
 def _tint(color: str) -> str:
     """`color` at 15% over white: the background of the app's category
     badge (`${color}26`), flattened since email clients ignore #rrggbbaa."""
-    return "#" + "".join(f"{round(c * 0x26 / 255 + 255 * (1 - 0x26 / 255)):02x}" for c in _rgb(color))
+    return "#" + "".join(
+        f"{round(c * 0x26 / 255 + 255 * (1 - 0x26 / 255)):02x}" for c in _rgb(color)
+    )
 
 
 def _category_style(t: Transaction) -> tuple[str, str | None, str]:
     """(name, icon, colour) as the app's CategoryBadge shows them."""
     if t.category is None:
         return "Uncategorized", None, UNCATEGORIZED_COLOR
-    color = t.category.color if t.category.color and _HEX.match(t.category.color) else DEFAULT_CATEGORY_COLOR
+    color = (
+        t.category.color
+        if t.category.color and _HEX.match(t.category.color)
+        else DEFAULT_CATEGORY_COLOR
+    )
     return t.category.name, t.category.icon, color
 
 
@@ -240,7 +272,12 @@ def _by_account(rows: list[Transaction]) -> list[tuple[int | None, str, str, lis
     for t in rows:
         groups.setdefault(t.account_id, []).append(t)
     out = [
-        (aid, g[0].account.name if g[0].account else "", g[0].account.currency if g[0].account else "EUR", g)
+        (
+            aid,
+            g[0].account.name if g[0].account else "",
+            g[0].account.currency if g[0].account else "EUR",
+            g,
+        )
         for aid, g in groups.items()
     ]
     return sorted(out, key=lambda item: item[1].lower())
@@ -251,14 +288,19 @@ def account_balances(db: Session, rows: list[Transaction]) -> dict[int, float]:
     (offset + all its transactions, not only the new ones)."""
     totals = account_totals.get_transaction_totals(db)
     accounts = {t.account_id: t.account for t in rows if t.account is not None}
-    return {aid: account_totals.account_balance(a, totals.get(aid, 0.0)) for aid, a in accounts.items()}
+    return {
+        aid: account_totals.account_balance(a, totals.get(aid, 0.0)) for aid, a in accounts.items()
+    }
 
 
 @dataclass
 class AlertFigures:
     """The balances an email shows beside what it lists."""
+
     accounts: dict[int, float] = field(default_factory=dict)  # account id -> balance
-    transactions: dict[int, float] = field(default_factory=dict)  # transaction id -> the user's balance
+    transactions: dict[int, float] = field(
+        default_factory=dict
+    )  # transaction id -> the user's balance
     overall: list[tuple[str, float]] = field(default_factory=list)  # (currency, net position)
 
 
@@ -266,10 +308,14 @@ def transaction_balances(db: Session, user_id: int, rows: list[Transaction]) -> 
     """The user's balance on each row, as the Transactions screen shows it
     (utils/transactions.ts's balanceFor()): their share minus the part of the
     amount their ownership of the account pays."""
-    ownership = dict(db.execute(
-        select(AccountUser.account_id, AccountUser.ownership_percentage)
-        .where(AccountUser.user_id == user_id, AccountUser.account_id.in_({t.account_id for t in rows}))
-    ).all())
+    ownership = dict(
+        db.execute(
+            select(AccountUser.account_id, AccountUser.ownership_percentage).where(
+                AccountUser.user_id == user_id,
+                AccountUser.account_id.in_({t.account_id for t in rows}),
+            )
+        ).all()
+    )
     return {
         t.id: round(
             sum(s.share_amount for s in t.splits if s.user_id == user_id)
@@ -284,7 +330,10 @@ def overall_balances(db: Session, user_id: int) -> list[tuple[str, float]]:
     """The user's net position per currency, the Dashboard's figure (same
     cache entry)."""
     rows = cache_service.get_or_compute(
-        db, "balances", {"user_id": user_id}, lambda: split_engine.compute_balances(db, user_id=user_id),
+        db,
+        "balances",
+        {"user_id": user_id},
+        lambda: split_engine.compute_balances(db, user_id=user_id),
     )
     return sorted((currency, net) for uid, _, currency, net in rows if uid == user_id)
 
@@ -303,7 +352,10 @@ def _balance(amount: float, currency: str) -> str:
 
 
 def build_message(
-    user: User, alert: EmailAlert, frequency: str, rows: list[Transaction],
+    user: User,
+    alert: EmailAlert,
+    frequency: str,
+    rows: list[Transaction],
     figures: AlertFigures | None = None,
 ) -> EmailMessage:
     """`figures` adds the balances: each account's under its heading, the
@@ -336,7 +388,9 @@ def build_message(
     text = [f"Hello {user.name},", ""]
     text += [f"Your balance: {_money(net, cur)}" for cur, net in figures.overall]
     text += [f"{count} new {noun} reached MyFinance on your accounts."]
-    text += [f"In {_money(i, cur)} · Out {_money(o, cur)}" for cur, (i, o) in sorted(totals.items())]
+    text += [
+        f"In {_money(i, cur)} · Out {_money(o, cur)}" for cur, (i, o) in sorted(totals.items())
+    ]
     for account_id, name, currency, group in groups:
         text += ["", f"== {name} =="]
         if account_id in balances:
@@ -379,19 +433,22 @@ def build_message(
         name_style = "color:#94a3b8;font-style:italic;" if t.category is None else "color:#334155;"
         memo = (
             f'<tr><td colspan="2" style="padding-top:6px;font-size:12px;color:#64748b;">{esc(t.memo)}</td></tr>'
-            if t.memo else ""
+            if t.memo
+            else ""
         )
         mine = (
             f'<div style="font-size:11px;color:#94a3b8;padding-top:2px;white-space:nowrap;">Balance '
             f'<span style="color:{_amount_color(figures.transactions[t.id])};">'
-            f'{esc(_money(figures.transactions[t.id], currency))}</span></div>'
-            if t.id in figures.transactions else ""
+            f"{esc(_money(figures.transactions[t.id], currency))}</span></div>"
+            if t.id in figures.transactions
+            else ""
         )
         # Opens the row's detail panel, the same deep link as the WhatsApp share.
         payee = (
             f'<a href="{esc(app_url.rstrip("/"))}/?view=transactions&amp;transaction={t.id}" '
             f'style="color:#0f172a;text-decoration:none;">{esc(t.payee)}</a>'
-            if app_url else esc(t.payee)
+            if app_url
+            else esc(t.payee)
         )
         return f"""<tr><td style="padding:0 0 8px 0;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;border-collapse:separate;">
@@ -399,7 +456,7 @@ def build_message(
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
 <tr><td valign="top" style="font-size:15px;font-weight:600;color:#0f172a;word-break:break-word;">{payee}</td>
 <td align="right" valign="top" style="font-size:15px;padding-left:8px;">{money_span(t.amount, currency)}</td></tr>
-<tr><td style="font-size:12px;color:#64748b;padding-top:2px;">{t.date.strftime('%d/%m/%Y')}</td>
+<tr><td style="font-size:12px;color:#64748b;padding-top:2px;">{t.date.strftime("%d/%m/%Y")}</td>
 <td align="right" valign="top" style="padding-left:8px;">{mine}</td></tr>
 <tr><td colspan="2" style="padding-top:8px;">
 <table role="presentation" cellpadding="0" cellspacing="0"><tr>
@@ -416,7 +473,8 @@ def build_message(
             f'<tr><td colspan="2" style="font-size:12px;color:#64748b;padding-top:2px;">Balance '
             f'<span style="color:{"#0f172a" if balances[account_id] >= 0 else DEBIT_COLOR};font-weight:600;'
             f'white-space:nowrap;">{esc(_balance(balances[account_id], currency))}</span></td></tr>'
-            if account_id in balances else ""
+            if account_id in balances
+            else ""
         )
         return f"""<tr><td style="padding:16px 4px 8px 4px;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
@@ -436,13 +494,16 @@ def build_message(
         for cur, net in figures.overall
     )
     more = (
-        f'<tr><td style="padding:4px;font-size:13px;color:#64748b;">… and {hidden} more.</td></tr>' if hidden else ""
+        f'<tr><td style="padding:4px;font-size:13px;color:#64748b;">… and {hidden} more.</td></tr>'
+        if hidden
+        else ""
     )
     button = (
         f'<tr><td align="center" style="padding:16px 0 4px 0;"><a href="{esc(app_url)}" '
         f'style="display:inline-block;background:#4f46e5;color:#ffffff;text-decoration:none;font-weight:600;'
         f'font-size:14px;padding:10px 20px;border-radius:8px;">Open MyFinance</a></td></tr>'
-        if app_url else ""
+        if app_url
+        else ""
     )
     html_body = f"""<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"></head>
@@ -466,16 +527,21 @@ def build_message(
     message.add_alternative(html_body, subtype="html")
     html_part = message.get_payload()[1]
     for (icon, color), cid in images.items():
-        html_part.add_related(icon_png(icon, color), "image", "png", cid=f"<{cid}>", filename=f"{icon or 'none'}.png")
+        html_part.add_related(
+            icon_png(icon, color), "image", "png", cid=f"<{cid}>", filename=f"{icon or 'none'}.png"
+        )
     return message
 
 
 # ── Sending ───────────────────────────────────────────────────────────
 
+
 def send_message(message: EmailMessage) -> None:
     host = os.environ.get("SMTP_HOST")
     if not host:
-        raise AlertConfigError("Email sending is not configured on the server (SMTP_HOST is not set)")
+        raise AlertConfigError(
+            "Email sending is not configured on the server (SMTP_HOST is not set)"
+        )
     port = int(os.environ.get("SMTP_PORT", "587"))
     username = os.environ.get("SMTP_USERNAME")
     password = os.environ.get("SMTP_PASSWORD")
@@ -509,7 +575,9 @@ def send_alert(db: Session, user: User, alert: EmailAlert, frequency: str, now: 
     return sent
 
 
-def run_due_alerts(db: Session, now: datetime | None = None, manual: bool = False) -> tuple[int, int]:
+def run_due_alerts(
+    db: Session, now: datetime | None = None, manual: bool = False
+) -> tuple[int, int]:
     """Sends every alert that's due. Returns (emails sent, alerts failed).
     Each user commits on their own, so one bad address can't stop the
     others; a failure leaves that window where it was, for the next call."""

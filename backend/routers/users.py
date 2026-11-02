@@ -5,7 +5,15 @@ from sqlalchemy.orm import Session
 import cache_service
 import split_engine
 from database import get_db
-from models import AccountSplitWeight, CategorySplit, EmailAlert, GlobalSplitWeight, Transaction, TransactionSplit, User
+from models import (
+    AccountSplitWeight,
+    CategorySplit,
+    EmailAlert,
+    GlobalSplitWeight,
+    Transaction,
+    TransactionSplit,
+    User,
+)
 from schemas import UserCreate, UserOut, UserUpdate
 
 router = APIRouter(prefix="/api/users")
@@ -54,15 +62,18 @@ def delete_user(user_id: int, db: Session = Depends(get_db)):
     # participant: just deleting their TransactionSplit row would leave the
     # transaction with zero splits, violating the mandatory-split invariant.
     user_split_transaction_ids = [
-        tx_id for (tx_id,) in db.execute(
+        tx_id
+        for (tx_id,) in db.execute(
             select(TransactionSplit.transaction_id).where(TransactionSplit.user_id == user_id)
         ).all()
     ]
     solely_split_transaction_ids = []
     if user_split_transaction_ids:
-        counts = db.execute(select(TransactionSplit.transaction_id, func.count(TransactionSplit.user_id)).where(
-            TransactionSplit.transaction_id.in_(user_split_transaction_ids)
-        ).group_by(TransactionSplit.transaction_id)).all()
+        counts = db.execute(
+            select(TransactionSplit.transaction_id, func.count(TransactionSplit.user_id))
+            .where(TransactionSplit.transaction_id.in_(user_split_transaction_ids))
+            .group_by(TransactionSplit.transaction_id)
+        ).all()
         solely_split_transaction_ids = [tx_id for tx_id, count in counts if count == 1]
 
     db.execute(delete(CategorySplit).where(CategorySplit.user_id == user_id))
@@ -77,9 +88,13 @@ def delete_user(user_id: int, db: Session = Depends(get_db)):
         # (no other user has a usable weight anywhere), refuse the deletion
         # instead — nothing has been committed yet, so the deletes above are
         # rolled back along with it.
-        transactions = db.scalars(select(Transaction).where(Transaction.id.in_(solely_split_transaction_ids))).all()
+        transactions = db.scalars(
+            select(Transaction).where(Transaction.id.in_(solely_split_transaction_ids))
+        ).all()
         for transaction in transactions:
-            source, weights = split_engine.resolve_default_weights(db, transaction.category_id, transaction.account_id)
+            source, weights = split_engine.resolve_default_weights(
+                db, transaction.category_id, transaction.account_id
+            )
             if not weights:
                 raise HTTPException(
                     409,

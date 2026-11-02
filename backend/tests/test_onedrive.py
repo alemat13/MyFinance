@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -23,7 +23,12 @@ def test_get_settings_defaults(client):
     data = response.json()
     assert data["connected"] is False
     assert "frequency" not in data
-    assert (data["keep_daily"], data["keep_weekly"], data["keep_monthly"], data["keep_yearly"]) == (8, 5, 13, 10)
+    assert (data["keep_daily"], data["keep_weekly"], data["keep_monthly"], data["keep_yearly"]) == (
+        8,
+        5,
+        13,
+        10,
+    )
     assert data["account_email"] is None
 
 
@@ -33,13 +38,23 @@ RETENTION = {"keep_daily": 8, "keep_weekly": 5, "keep_monthly": 13, "keep_yearly
 def test_put_settings_updates_folder_and_retention(client):
     response = client.put(
         "/api/onedrive/settings",
-        json={"folder_path": "/MyFinance Backups",
-              "keep_daily": 7, "keep_weekly": 4, "keep_monthly": 12, "keep_yearly": 0},
+        json={
+            "folder_path": "/MyFinance Backups",
+            "keep_daily": 7,
+            "keep_weekly": 4,
+            "keep_monthly": 12,
+            "keep_yearly": 0,
+        },
     )
     assert response.status_code == 200
     data = response.json()
     assert data["folder_path"] == "/MyFinance Backups"
-    assert (data["keep_daily"], data["keep_weekly"], data["keep_monthly"], data["keep_yearly"]) == (7, 4, 12, 0)
+    assert (data["keep_daily"], data["keep_weekly"], data["keep_monthly"], data["keep_yearly"]) == (
+        7,
+        4,
+        12,
+        0,
+    )
 
 
 def test_put_settings_empty_folder_rejected(client):
@@ -50,11 +65,14 @@ def test_put_settings_empty_folder_rejected(client):
     assert response.status_code == 422
 
 
-@pytest.mark.parametrize("override", [
-    {"keep_daily": -1},
-    {"keep_yearly": 366},
-    {"keep_daily": 0, "keep_weekly": 0, "keep_monthly": 0, "keep_yearly": 0},
-])
+@pytest.mark.parametrize(
+    "override",
+    [
+        {"keep_daily": -1},
+        {"keep_yearly": 366},
+        {"keep_daily": 0, "keep_weekly": 0, "keep_monthly": 0, "keep_yearly": 0},
+    ],
+)
 def test_put_settings_retention_out_of_range_rejected(client, override):
     response = client.put(
         "/api/onedrive/settings",
@@ -104,7 +122,7 @@ def test_run_due_not_due_returns_ran_false(client, db):
     settings = onedrive.get_or_create_settings(db)
     settings.connected = True
     settings.folder_path = "/Backups"
-    settings.last_backup_at = datetime.now(timezone.utc)
+    settings.last_backup_at = datetime.now(UTC)
     db.commit()
 
     response = client.post(
@@ -121,7 +139,7 @@ def test_run_due_runs_when_due(client, db, monkeypatch):
     settings.folder_path = "/Backups"
     settings.access_token_encrypted = "enc-access"
     settings.refresh_token_encrypted = "enc-refresh"
-    settings.token_expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
+    settings.token_expires_at = datetime.now(UTC) + timedelta(hours=1)
     db.commit()
 
     monkeypatch.setattr(onedrive, "get_valid_access_token", lambda db, settings: "token")
@@ -149,7 +167,7 @@ def test_run_backup_records_failure_instead_of_raising(db, monkeypatch):
     settings.folder_path = "/Backups"
     settings.access_token_encrypted = "enc-access"
     settings.refresh_token_encrypted = "enc-refresh"
-    settings.token_expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
+    settings.token_expires_at = datetime.now(UTC) + timedelta(hours=1)
     db.commit()
 
     def _boom(db, settings):
@@ -168,7 +186,7 @@ def test_run_backup_fails_cleanly_with_no_folder_configured(db, monkeypatch):
     settings.connected = True
     settings.access_token_encrypted = "enc-access"
     settings.refresh_token_encrypted = "enc-refresh"
-    settings.token_expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
+    settings.token_expires_at = datetime.now(UTC) + timedelta(hours=1)
     db.commit()
 
     onedrive.run_backup(db, settings)
@@ -177,9 +195,11 @@ def test_run_backup_fails_cleanly_with_no_folder_configured(db, monkeypatch):
     assert "folder" in settings.last_backup_error.lower()
 
 
-@pytest.mark.parametrize("hours,due", [(0, False), (19, False), (20, True), (24, True), (24 * 7, True)])
+@pytest.mark.parametrize(
+    "hours,due", [(0, False), (19, False), (20, True), (24, True), (24 * 7, True)]
+)
 def test_is_backup_due_once_a_day(hours, due):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     settings = OneDriveBackupSettings(connected=True, last_backup_at=now - timedelta(hours=hours))
     assert onedrive.is_backup_due(settings, now=now) is due
 
@@ -216,7 +236,9 @@ def test_select_backups_keeps_newest_per_bucket():
     # One backup a day at 02:00 for two years, plus a second one on the last day.
     start = datetime(2024, 10, 12, 2, 0)
     stamps = [start + timedelta(days=i) for i in range(731)] + [_ts("2026-10-12 09:30")]
-    kept = onedrive.select_backups_to_keep(stamps, keep_daily=8, keep_weekly=5, keep_monthly=13, keep_yearly=10)
+    kept = onedrive.select_backups_to_keep(
+        stamps, keep_daily=8, keep_weekly=5, keep_monthly=13, keep_yearly=10
+    )
 
     newest = _ts("2026-10-12 09:30")
     assert newest in kept
@@ -225,10 +247,19 @@ def test_select_backups_keeps_newest_per_bucket():
     for day in range(5, 12):
         assert datetime(2026, 10, day, 2, 0) in kept
     # Weekly: the Sunday closing each previous ISO week.
-    for sunday in (datetime(2026, 10, 11, 2), datetime(2026, 10, 4, 2), datetime(2026, 9, 27, 2), datetime(2026, 9, 20, 2)):
+    for sunday in (
+        datetime(2026, 10, 11, 2),
+        datetime(2026, 10, 4, 2),
+        datetime(2026, 9, 27, 2),
+        datetime(2026, 9, 20, 2),
+    ):
         assert sunday in kept
     # Monthly: last day of each of the 12 previous months.
-    for month_end in (datetime(2026, 9, 30, 2), datetime(2026, 1, 31, 2), datetime(2025, 10, 31, 2)):
+    for month_end in (
+        datetime(2026, 9, 30, 2),
+        datetime(2026, 1, 31, 2),
+        datetime(2025, 10, 31, 2),
+    ):
         assert month_end in kept
     assert datetime(2025, 9, 30, 2) not in kept  # 14th month back
     # Yearly: last backup of 2025 and of 2024.
@@ -242,13 +273,17 @@ def test_select_backups_keeps_newest_per_bucket():
 def test_select_backups_counts_buckets_that_hold_a_backup():
     # Weekly backups: "8 daily" means the 8 most recent days that had one.
     stamps = [datetime(2026, 1, 4, 2) + timedelta(weeks=i) for i in range(20)]
-    kept = onedrive.select_backups_to_keep(stamps, keep_daily=8, keep_weekly=0, keep_monthly=0, keep_yearly=0)
+    kept = onedrive.select_backups_to_keep(
+        stamps, keep_daily=8, keep_weekly=0, keep_monthly=0, keep_yearly=0
+    )
     assert kept == set(sorted(stamps)[-8:])
 
 
 def test_select_backups_always_keeps_newest():
     stamps = [_ts("2026-10-10 02:00"), _ts("2026-10-11 02:00")]
-    kept = onedrive.select_backups_to_keep(stamps, keep_daily=0, keep_weekly=0, keep_monthly=0, keep_yearly=1)
+    kept = onedrive.select_backups_to_keep(
+        stamps, keep_daily=0, keep_weekly=0, keep_monthly=0, keep_yearly=1
+    )
     assert kept == {_ts("2026-10-11 02:00")}
 
 
@@ -267,7 +302,11 @@ def test_apply_retention_only_deletes_app_backups(monkeypatch):
         {"id": "dir", "name": "myfinance-backup-20200101-000000.zip", "folder": {}},
     ]
     monkeypatch.setattr(onedrive.httpx, "get", lambda *a, **k: _FakeResponse(200, {"value": items}))
-    monkeypatch.setattr(onedrive.httpx, "delete", lambda url, **k: deleted.append(url.rsplit("/", 1)[-1]) or _FakeResponse(204))
+    monkeypatch.setattr(
+        onedrive.httpx,
+        "delete",
+        lambda url, **k: deleted.append(url.rsplit("/", 1)[-1]) or _FakeResponse(204),
+    )
 
     onedrive.apply_retention("token", _settings())
 
@@ -277,12 +316,25 @@ def test_apply_retention_only_deletes_app_backups(monkeypatch):
 def test_apply_retention_follows_paging(monkeypatch):
     deleted = []
     pages = {
-        "first": {"value": [{"id": "a", "name": _name(datetime(2026, 1, 1, 2))}], "@odata.nextLink": "https://graph/next"},
-        "https://graph/next": {"value": [{"id": "b", "name": _name(datetime(2026, 1, 2, 2))},
-                                         {"id": "c", "name": _name(datetime(2026, 1, 3, 2))}]},
+        "first": {
+            "value": [{"id": "a", "name": _name(datetime(2026, 1, 1, 2))}],
+            "@odata.nextLink": "https://graph/next",
+        },
+        "https://graph/next": {
+            "value": [
+                {"id": "b", "name": _name(datetime(2026, 1, 2, 2))},
+                {"id": "c", "name": _name(datetime(2026, 1, 3, 2))},
+            ]
+        },
     }
-    monkeypatch.setattr(onedrive.httpx, "get", lambda url, **k: _FakeResponse(200, pages.get(url, pages["first"])))
-    monkeypatch.setattr(onedrive.httpx, "delete", lambda url, **k: deleted.append(url.rsplit("/", 1)[-1]) or _FakeResponse(204))
+    monkeypatch.setattr(
+        onedrive.httpx, "get", lambda url, **k: _FakeResponse(200, pages.get(url, pages["first"]))
+    )
+    monkeypatch.setattr(
+        onedrive.httpx,
+        "delete",
+        lambda url, **k: deleted.append(url.rsplit("/", 1)[-1]) or _FakeResponse(204),
+    )
 
     onedrive.apply_retention("token", _settings())
 
@@ -291,12 +343,22 @@ def test_apply_retention_follows_paging(monkeypatch):
 
 def test_apply_retention_deletes_nothing_when_listing_fails(monkeypatch):
     deleted = []
-    calls = iter([
-        _FakeResponse(200, {"value": [{"id": "a", "name": _name(datetime(2026, 1, 1, 2))}], "@odata.nextLink": "https://graph/next"}),
-        _FakeResponse(503, text="unavailable"),
-    ])
+    calls = iter(
+        [
+            _FakeResponse(
+                200,
+                {
+                    "value": [{"id": "a", "name": _name(datetime(2026, 1, 1, 2))}],
+                    "@odata.nextLink": "https://graph/next",
+                },
+            ),
+            _FakeResponse(503, text="unavailable"),
+        ]
+    )
     monkeypatch.setattr(onedrive.httpx, "get", lambda *a, **k: next(calls))
-    monkeypatch.setattr(onedrive.httpx, "delete", lambda url, **k: deleted.append(url) or _FakeResponse(204))
+    monkeypatch.setattr(
+        onedrive.httpx, "delete", lambda url, **k: deleted.append(url) or _FakeResponse(204)
+    )
 
     with pytest.raises(onedrive.OneDriveError):
         onedrive.apply_retention("token", _settings(keep_daily=0, keep_yearly=1))
@@ -350,7 +412,9 @@ def test_auth_callback_success(client, monkeypatch):
 
     state = _start(client)
     expected_verifier = client.cookies.get("onedrive_oauth").strip('"').partition(".")[2]
-    response = client.get(f"/api/onedrive/auth/callback?code=abc123&state={state}", follow_redirects=False)
+    response = client.get(
+        f"/api/onedrive/auth/callback?code=abc123&state={state}", follow_redirects=False
+    )
     assert response.status_code in (302, 307)
     assert "onedrive=connected" in response.headers["location"]
 
@@ -374,7 +438,9 @@ def test_auth_callback_token_exchange_failure_redirects_with_error(client, monke
     monkeypatch.setattr(onedrive, "exchange_code_for_tokens", _boom)
 
     state = _start(client)
-    response = client.get(f"/api/onedrive/auth/callback?code=bad&state={state}", follow_redirects=False)
+    response = client.get(
+        f"/api/onedrive/auth/callback?code=bad&state={state}", follow_redirects=False
+    )
     assert response.status_code in (302, 307)
     assert "onedrive=error" in response.headers["location"]
 
@@ -390,7 +456,9 @@ def test_auth_callback_without_started_flow_is_refused(client, monkeypatch):
     """A crafted link carrying someone else's code, opened by a browser that
     never started a connection, must not connect anything."""
     _never_exchange(monkeypatch)
-    response = client.get("/api/onedrive/auth/callback?code=attacker&state=whatever", follow_redirects=False)
+    response = client.get(
+        "/api/onedrive/auth/callback?code=attacker&state=whatever", follow_redirects=False
+    )
     assert response.status_code in (302, 307)
     assert "onedrive=error" in response.headers["location"]
     assert client.get("/api/onedrive/settings").json()["connected"] is False
@@ -399,7 +467,9 @@ def test_auth_callback_without_started_flow_is_refused(client, monkeypatch):
 def test_auth_callback_with_mismatched_state_is_refused(client, monkeypatch):
     _never_exchange(monkeypatch)
     _start(client)
-    response = client.get("/api/onedrive/auth/callback?code=attacker&state=forged", follow_redirects=False)
+    response = client.get(
+        "/api/onedrive/auth/callback?code=attacker&state=forged", follow_redirects=False
+    )
     assert "onedrive=error" in response.headers["location"]
     assert client.get("/api/onedrive/settings").json()["connected"] is False
 

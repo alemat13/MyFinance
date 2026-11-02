@@ -117,9 +117,7 @@ def test_delete_category_404(client):
 
 
 def test_delete_category_with_transactions_409(client, sample_transaction):
-    response = client.delete(
-        f"/api/categories/{sample_transaction.category_id}"
-    )
+    response = client.delete(f"/api/categories/{sample_transaction.category_id}")
     assert response.status_code == 409
 
 
@@ -141,6 +139,7 @@ def test_create_category_with_splits(client, sample_user):
 
 def test_create_category_splits_not_summing_to_100_is_accepted(client, db, sample_user):
     from models import User
+
     other_user = User(name="Other User")
     db.add(other_user)
     db.commit()
@@ -263,14 +262,18 @@ def test_update_category_self_parent_422(client, sample_category):
 def test_update_category_cannot_demote_parent_with_children_422(client):
     parent = client.post("/api/categories", json={"name": "Housing", "type": "Expense"}).json()
     other = client.post("/api/categories", json={"name": "Other", "type": "Expense"}).json()
-    client.post("/api/categories", json={"name": "Rent", "type": "Expense", "parent_id": parent["id"]})
+    client.post(
+        "/api/categories", json={"name": "Rent", "type": "Expense", "parent_id": parent["id"]}
+    )
     response = client.put(f"/api/categories/{parent['id']}", json={"parent_id": other["id"]})
     assert response.status_code == 422
 
 
 def test_update_category_type_change_with_children_422(client):
     parent = client.post("/api/categories", json={"name": "Housing", "type": "Expense"}).json()
-    client.post("/api/categories", json={"name": "Rent", "type": "Expense", "parent_id": parent["id"]})
+    client.post(
+        "/api/categories", json={"name": "Rent", "type": "Expense", "parent_id": parent["id"]}
+    )
     response = client.put(f"/api/categories/{parent['id']}", json={"type": "Income"})
     assert response.status_code == 422
 
@@ -299,7 +302,9 @@ def test_update_category_can_reparent_to_another_top_level_category(client):
 
 def test_delete_category_with_subcategories_409(client):
     parent = client.post("/api/categories", json={"name": "Housing", "type": "Expense"}).json()
-    client.post("/api/categories", json={"name": "Rent", "type": "Expense", "parent_id": parent["id"]})
+    client.post(
+        "/api/categories", json={"name": "Rent", "type": "Expense", "parent_id": parent["id"]}
+    )
     response = client.delete(f"/api/categories/{parent['id']}")
     assert response.status_code == 409
 
@@ -334,12 +339,14 @@ def test_update_category_free_text_type_422(client, sample_category):
 
 def test_backup_category_export_maps_unknown_type_to_transfer_other():
     from schemas import CategoryExport
+
     assert CategoryExport(id=1, name="Old", type="Transfer").type == "Transfer, other"
     assert CategoryExport(id=2, name="Pay", type="Income").type == "Income"
 
 
 def test_categories_listed_most_used_first(client, db, sample_account, sample_user):
     from datetime import date
+
     from models import Category, Transaction
 
     food = Category(name="Food", type="Expense")
@@ -355,8 +362,15 @@ def test_categories_listed_most_used_first(client, db, sample_account, sample_us
     # Home has 3 on its own; Food has 1 + 1 (Bakery) + 2 (Market) = 4.
     for cat, n in [(home, 3), (food, 1), (bakery, 1), (market, 2)]:
         for _ in range(n):
-            db.add(Transaction(date=date(2026, 1, 1), payee="x", amount=-1.0,
-                               account_id=sample_account.id, category_id=cat.id))
+            db.add(
+                Transaction(
+                    date=date(2026, 1, 1),
+                    payee="x",
+                    amount=-1.0,
+                    account_id=sample_account.id,
+                    category_id=cat.id,
+                )
+            )
     db.commit()
 
     names = [c["name"] for c in client.get("/api/categories").json()]
@@ -364,11 +378,17 @@ def test_categories_listed_most_used_first(client, db, sample_account, sample_us
 
     # Cached: recategorising through the API invalidates it.
     for _ in range(2):
-        tx = client.post("/api/transactions", json={
-            "date": "2026-01-02", "payee": "y", "amount": -1.0,
-            "account_id": sample_account.id, "category_id": rent.id,
-            "split_weights": [{"user_id": sample_user.id, "weight": 1}],
-        })
+        tx = client.post(
+            "/api/transactions",
+            json={
+                "date": "2026-01-02",
+                "payee": "y",
+                "amount": -1.0,
+                "account_id": sample_account.id,
+                "category_id": rent.id,
+                "split_weights": [{"user_id": sample_user.id, "weight": 1}],
+            },
+        )
         assert tx.status_code == 201, tx.text
     names = [c["name"] for c in client.get("/api/categories").json()]
     assert names[:3] == ["Home", "Rent", "Food"]

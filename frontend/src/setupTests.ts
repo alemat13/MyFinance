@@ -1,4 +1,4 @@
-import '@testing-library/jest-dom'
+import '@testing-library/jest-dom/vitest'
 
 // jsdom doesn't implement matchMedia. Components that pick a render path based
 // on viewport width (see hooks/useMediaQuery) need it defined, and defaulting

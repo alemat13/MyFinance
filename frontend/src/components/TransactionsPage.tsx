@@ -91,7 +91,7 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
   const [matchMode, setMatchMode] = useState<'all' | 'any'>(() => (getParam('match') === 'any' ? 'any' : 'all'))
   const [page, setPage] = useState(() => loadInitialInt('page', 1))
   const [pageSize, setPageSize] = useState(loadInitialPageSize)
-  const [sortBy, setSortBy] = useState<'date' | 'amount' | 'payee' | 'created_at'>(loadInitialSortBy)
+  const [sortBy] = useState<'date' | 'amount' | 'payee' | 'created_at'>(loadInitialSortBy)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>(loadInitialSortDir)
   const [total, setTotal] = useState(0)
   const [totalPages, setTotalPages] = useState(1)

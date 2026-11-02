@@ -86,7 +86,6 @@ def test_invalidate_all_clears_every_namespace(db):
     assert db.query(AggregateCache).count() == 0
 
 
-
 def test_get_or_compute_survives_concurrent_miss(db):
     """Another request storing the same key between our lookup and our write
     (two parallel GET /api/accounts) must not turn this read into a 409."""
@@ -101,7 +100,9 @@ def test_get_or_compute_survives_concurrent_miss(db):
             return
         fired.append(1)
         other = TestingSessionLocal()
-        other.add(AggregateCache(cache_key="account_totals", namespace="account_totals", payload="[1]"))
+        other.add(
+            AggregateCache(cache_key="account_totals", namespace="account_totals", payload="[1]")
+        )
         other.commit()
         other.close()
 

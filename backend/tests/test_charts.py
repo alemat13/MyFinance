@@ -1,7 +1,7 @@
 from datetime import date
 
-from models import Account, Category, Transaction, TransactionSplit
 import charts
+from models import Account, Category, Transaction, TransactionSplit
 
 
 def test_charts_requires_user_id(client):
@@ -22,17 +22,28 @@ def test_charts_empty_for_user_with_no_splits(client, sample_user):
     assert data["parent_category"] is None
 
 
-def test_charts_only_counts_current_user_share(client, sample_account, sample_category, sample_user, sample_user2, db):
+def test_charts_only_counts_current_user_share(
+    client, sample_account, sample_category, sample_user, sample_user2, db
+):
     t = Transaction(
-        date=date(2026, 2, 1), payee="Split Salary", amount=100.0,
-        account_id=sample_account.id, category_id=sample_category.id,
+        date=date(2026, 2, 1),
+        payee="Split Salary",
+        amount=100.0,
+        account_id=sample_account.id,
+        category_id=sample_category.id,
     )
     db.add(t)
     db.flush()
-    db.add_all([
-        TransactionSplit(transaction_id=t.id, user_id=sample_user.id, share_amount=60.0, source="manual"),
-        TransactionSplit(transaction_id=t.id, user_id=sample_user2.id, share_amount=40.0, source="manual"),
-    ])
+    db.add_all(
+        [
+            TransactionSplit(
+                transaction_id=t.id, user_id=sample_user.id, share_amount=60.0, source="manual"
+            ),
+            TransactionSplit(
+                transaction_id=t.id, user_id=sample_user2.id, share_amount=40.0, source="manual"
+            ),
+        ]
+    )
     db.commit()
 
     response = client.get(f"/api/charts?user_id={sample_user.id}")
@@ -47,12 +58,19 @@ def test_charts_excludes_transfer_category(client, sample_account, sample_user, 
     db.add(transfer_cat)
     db.commit()
     t = Transaction(
-        date=date(2026, 2, 1), payee="Move money", amount=100.0,
-        account_id=sample_account.id, category_id=transfer_cat.id,
+        date=date(2026, 2, 1),
+        payee="Move money",
+        amount=100.0,
+        account_id=sample_account.id,
+        category_id=transfer_cat.id,
     )
     db.add(t)
     db.flush()
-    db.add(TransactionSplit(transaction_id=t.id, user_id=sample_user.id, share_amount=100.0, source="manual"))
+    db.add(
+        TransactionSplit(
+            transaction_id=t.id, user_id=sample_user.id, share_amount=100.0, source="manual"
+        )
+    )
     db.commit()
 
     response = client.get(f"/api/charts?user_id={sample_user.id}")
@@ -63,15 +81,24 @@ def test_charts_excludes_transfer_category(client, sample_account, sample_user, 
     assert data["net_by_month"] == []
 
 
-def test_charts_respects_accounting_month_offset(client, sample_account, sample_category, sample_user, db):
+def test_charts_respects_accounting_month_offset(
+    client, sample_account, sample_category, sample_user, db
+):
     t = Transaction(
-        date=date(2026, 1, 25), payee="Offset tx", amount=100.0,
-        account_id=sample_account.id, category_id=sample_category.id,
+        date=date(2026, 1, 25),
+        payee="Offset tx",
+        amount=100.0,
+        account_id=sample_account.id,
+        category_id=sample_category.id,
         accounting_month_offset=1,
     )
     db.add(t)
     db.flush()
-    db.add(TransactionSplit(transaction_id=t.id, user_id=sample_user.id, share_amount=100.0, source="manual"))
+    db.add(
+        TransactionSplit(
+            transaction_id=t.id, user_id=sample_user.id, share_amount=100.0, source="manual"
+        )
+    )
     db.commit()
 
     response = client.get(f"/api/charts?user_id={sample_user.id}")
@@ -88,19 +115,37 @@ def test_charts_income_vs_expense_by_month(client, sample_account, sample_user, 
     db.commit()
 
     t_income = Transaction(
-        date=date(2026, 3, 5), payee="Salary", amount=1000.0,
-        account_id=sample_account.id, category_id=income_cat.id,
+        date=date(2026, 3, 5),
+        payee="Salary",
+        amount=1000.0,
+        account_id=sample_account.id,
+        category_id=income_cat.id,
     )
     t_expense = Transaction(
-        date=date(2026, 3, 10), payee="Rent", amount=-300.0,
-        account_id=sample_account.id, category_id=expense_cat.id,
+        date=date(2026, 3, 10),
+        payee="Rent",
+        amount=-300.0,
+        account_id=sample_account.id,
+        category_id=expense_cat.id,
     )
     db.add_all([t_income, t_expense])
     db.flush()
-    db.add_all([
-        TransactionSplit(transaction_id=t_income.id, user_id=sample_user.id, share_amount=1000.0, source="manual"),
-        TransactionSplit(transaction_id=t_expense.id, user_id=sample_user.id, share_amount=-300.0, source="manual"),
-    ])
+    db.add_all(
+        [
+            TransactionSplit(
+                transaction_id=t_income.id,
+                user_id=sample_user.id,
+                share_amount=1000.0,
+                source="manual",
+            ),
+            TransactionSplit(
+                transaction_id=t_expense.id,
+                user_id=sample_user.id,
+                share_amount=-300.0,
+                source="manual",
+            ),
+        ]
+    )
     db.commit()
 
     response = client.get(f"/api/charts?user_id={sample_user.id}")
@@ -121,12 +166,19 @@ def test_charts_category_amount_is_signed(client, sample_account, sample_user, d
     db.add(expense_cat)
     db.commit()
     t = Transaction(
-        date=date(2026, 3, 10), payee="Rent", amount=-300.0,
-        account_id=sample_account.id, category_id=expense_cat.id,
+        date=date(2026, 3, 10),
+        payee="Rent",
+        amount=-300.0,
+        account_id=sample_account.id,
+        category_id=expense_cat.id,
     )
     db.add(t)
     db.flush()
-    db.add(TransactionSplit(transaction_id=t.id, user_id=sample_user.id, share_amount=-300.0, source="manual"))
+    db.add(
+        TransactionSplit(
+            transaction_id=t.id, user_id=sample_user.id, share_amount=-300.0, source="manual"
+        )
+    )
     db.commit()
 
     response = client.get(f"/api/charts?user_id={sample_user.id}")
@@ -143,19 +195,31 @@ def test_charts_currency_grouping(client, sample_category, sample_user, db):
     db.commit()
 
     t_eur = Transaction(
-        date=date(2026, 4, 1), payee="EUR tx", amount=100.0,
-        account_id=eur_account.id, category_id=sample_category.id,
+        date=date(2026, 4, 1),
+        payee="EUR tx",
+        amount=100.0,
+        account_id=eur_account.id,
+        category_id=sample_category.id,
     )
     t_usd = Transaction(
-        date=date(2026, 4, 1), payee="USD tx", amount=50.0,
-        account_id=usd_account.id, category_id=sample_category.id,
+        date=date(2026, 4, 1),
+        payee="USD tx",
+        amount=50.0,
+        account_id=usd_account.id,
+        category_id=sample_category.id,
     )
     db.add_all([t_eur, t_usd])
     db.flush()
-    db.add_all([
-        TransactionSplit(transaction_id=t_eur.id, user_id=sample_user.id, share_amount=100.0, source="manual"),
-        TransactionSplit(transaction_id=t_usd.id, user_id=sample_user.id, share_amount=50.0, source="manual"),
-    ])
+    db.add_all(
+        [
+            TransactionSplit(
+                transaction_id=t_eur.id, user_id=sample_user.id, share_amount=100.0, source="manual"
+            ),
+            TransactionSplit(
+                transaction_id=t_usd.id, user_id=sample_user.id, share_amount=50.0, source="manual"
+            ),
+        ]
+    )
     db.commit()
 
     response = client.get(f"/api/charts?user_id={sample_user.id}")
@@ -169,10 +233,15 @@ def test_charts_currency_grouping(client, sample_category, sample_user, db):
     assert all(item["currency"] == "EUR" for item in data_eur["by_category"])
 
 
-def test_charts_unsplit_transaction_not_counted(client, sample_account, sample_category, sample_user, db):
+def test_charts_unsplit_transaction_not_counted(
+    client, sample_account, sample_category, sample_user, db
+):
     t = Transaction(
-        date=date(2026, 2, 1), payee="No split", amount=100.0,
-        account_id=sample_account.id, category_id=sample_category.id,
+        date=date(2026, 2, 1),
+        payee="No split",
+        amount=100.0,
+        account_id=sample_account.id,
+        category_id=sample_category.id,
     )
     db.add(t)
     db.commit()
@@ -182,14 +251,23 @@ def test_charts_unsplit_transaction_not_counted(client, sample_account, sample_c
     assert data["by_category"] == []
 
 
-def test_charts_ignores_other_users_splits_entirely(client, sample_account, sample_category, sample_user, sample_user2, db):
+def test_charts_ignores_other_users_splits_entirely(
+    client, sample_account, sample_category, sample_user, sample_user2, db
+):
     t = Transaction(
-        date=date(2026, 2, 1), payee="Only user2", amount=100.0,
-        account_id=sample_account.id, category_id=sample_category.id,
+        date=date(2026, 2, 1),
+        payee="Only user2",
+        amount=100.0,
+        account_id=sample_account.id,
+        category_id=sample_category.id,
     )
     db.add(t)
     db.flush()
-    db.add(TransactionSplit(transaction_id=t.id, user_id=sample_user2.id, share_amount=100.0, source="manual"))
+    db.add(
+        TransactionSplit(
+            transaction_id=t.id, user_id=sample_user2.id, share_amount=100.0, source="manual"
+        )
+    )
     db.commit()
 
     response = client.get(f"/api/charts?user_id={sample_user.id}")
@@ -200,12 +278,19 @@ def test_charts_ignores_other_users_splits_entirely(client, sample_account, samp
 
 def test_charts_uncategorized_transaction_bucketed(client, sample_account, sample_user, db):
     t = Transaction(
-        date=date(2026, 3, 10), payee="Mystery expense", amount=-42.0,
-        account_id=sample_account.id, category_id=None,
+        date=date(2026, 3, 10),
+        payee="Mystery expense",
+        amount=-42.0,
+        account_id=sample_account.id,
+        category_id=None,
     )
     db.add(t)
     db.flush()
-    db.add(TransactionSplit(transaction_id=t.id, user_id=sample_user.id, share_amount=-42.0, source="manual"))
+    db.add(
+        TransactionSplit(
+            transaction_id=t.id, user_id=sample_user.id, share_amount=-42.0, source="manual"
+        )
+    )
     db.commit()
 
     response = client.get(f"/api/charts?user_id={sample_user.id}")
@@ -226,25 +311,39 @@ def test_charts_uncategorized_transaction_bucketed(client, sample_account, sampl
     assert by_month[0]["uncategorized"] == -42.0
 
 
-def test_charts_uncategorized_transactions_not_mixed_into_income_or_expense_by_sign(client, sample_account, sample_user, db):
+def test_charts_uncategorized_transactions_not_mixed_into_income_or_expense_by_sign(
+    client, sample_account, sample_user, db
+):
     """Regression test: uncategorized transactions used to be classified as
     income/expense by the sign of share_amount alone. A positive and a
     negative uncategorized transaction in the same month must not land in
     Income/Expense at all - they belong in their own bucket."""
     t_pos = Transaction(
-        date=date(2026, 3, 5), payee="Mystery credit", amount=80.0,
-        account_id=sample_account.id, category_id=None,
+        date=date(2026, 3, 5),
+        payee="Mystery credit",
+        amount=80.0,
+        account_id=sample_account.id,
+        category_id=None,
     )
     t_neg = Transaction(
-        date=date(2026, 3, 10), payee="Mystery debit", amount=-30.0,
-        account_id=sample_account.id, category_id=None,
+        date=date(2026, 3, 10),
+        payee="Mystery debit",
+        amount=-30.0,
+        account_id=sample_account.id,
+        category_id=None,
     )
     db.add_all([t_pos, t_neg])
     db.flush()
-    db.add_all([
-        TransactionSplit(transaction_id=t_pos.id, user_id=sample_user.id, share_amount=80.0, source="manual"),
-        TransactionSplit(transaction_id=t_neg.id, user_id=sample_user.id, share_amount=-30.0, source="manual"),
-    ])
+    db.add_all(
+        [
+            TransactionSplit(
+                transaction_id=t_pos.id, user_id=sample_user.id, share_amount=80.0, source="manual"
+            ),
+            TransactionSplit(
+                transaction_id=t_neg.id, user_id=sample_user.id, share_amount=-30.0, source="manual"
+            ),
+        ]
+    )
     db.commit()
 
     response = client.get(f"/api/charts?user_id={sample_user.id}")
@@ -259,7 +358,9 @@ def test_charts_uncategorized_transactions_not_mixed_into_income_or_expense_by_s
     assert net_by_month[0]["net"] == 50.0
 
 
-def test_charts_cache_invalidated_by_new_transaction(client, sample_account, sample_category, sample_user):
+def test_charts_cache_invalidated_by_new_transaction(
+    client, sample_account, sample_category, sample_user
+):
     warm = client.get(f"/api/charts?user_id={sample_user.id}")
     assert warm.json()["by_category"] == []
 
@@ -282,7 +383,9 @@ def test_charts_cache_invalidated_by_new_transaction(client, sample_account, sam
     assert by_category[0]["amount"] == -80.0
 
 
-def test_charts_cache_invalidated_by_deleted_transaction(client, sample_account, sample_category, sample_user):
+def test_charts_cache_invalidated_by_deleted_transaction(
+    client, sample_account, sample_category, sample_user
+):
     create_response = client.post(
         "/api/transactions",
         json={
@@ -313,19 +416,37 @@ def test_compute_chart_data_signed_vs_magnitude(db, sample_account, sample_user)
     db.commit()
 
     t_income = Transaction(
-        date=date(2026, 5, 1), payee="Freelance", amount=500.0,
-        account_id=sample_account.id, category_id=income_cat.id,
+        date=date(2026, 5, 1),
+        payee="Freelance",
+        amount=500.0,
+        account_id=sample_account.id,
+        category_id=income_cat.id,
     )
     t_expense = Transaction(
-        date=date(2026, 5, 2), payee="Groceries", amount=-120.0,
-        account_id=sample_account.id, category_id=expense_cat.id,
+        date=date(2026, 5, 2),
+        payee="Groceries",
+        amount=-120.0,
+        account_id=sample_account.id,
+        category_id=expense_cat.id,
     )
     db.add_all([t_income, t_expense])
     db.flush()
-    db.add_all([
-        TransactionSplit(transaction_id=t_income.id, user_id=sample_user.id, share_amount=500.0, source="manual"),
-        TransactionSplit(transaction_id=t_expense.id, user_id=sample_user.id, share_amount=-120.0, source="manual"),
-    ])
+    db.add_all(
+        [
+            TransactionSplit(
+                transaction_id=t_income.id,
+                user_id=sample_user.id,
+                share_amount=500.0,
+                source="manual",
+            ),
+            TransactionSplit(
+                transaction_id=t_expense.id,
+                user_id=sample_user.id,
+                share_amount=-120.0,
+                source="manual",
+            ),
+        ]
+    )
     db.commit()
 
     result = charts.compute_chart_data(db, sample_user.id)
@@ -354,17 +475,24 @@ def _make_parent_child(db, parent_name="Housing", child_name="Rent"):
 
 def _add_split(db, account, category_id, amount, user, day=1, month=3, year=2026):
     t = Transaction(
-        date=date(year, month, day), payee="Test", amount=amount,
-        account_id=account.id, category_id=category_id,
+        date=date(year, month, day),
+        payee="Test",
+        amount=amount,
+        account_id=account.id,
+        category_id=category_id,
     )
     db.add(t)
     db.flush()
-    db.add(TransactionSplit(transaction_id=t.id, user_id=user.id, share_amount=amount, source="manual"))
+    db.add(
+        TransactionSplit(transaction_id=t.id, user_id=user.id, share_amount=amount, source="manual")
+    )
     db.commit()
     return t
 
 
-def test_charts_by_month_category_rolls_up_subcategory_to_parent(client, sample_account, sample_user, db):
+def test_charts_by_month_category_rolls_up_subcategory_to_parent(
+    client, sample_account, sample_user, db
+):
     parent, child = _make_parent_child(db)
     _add_split(db, sample_account, child.id, -100.0, sample_user)
 
@@ -379,7 +507,9 @@ def test_charts_by_month_category_rolls_up_subcategory_to_parent(client, sample_
     ]
 
 
-def test_charts_by_month_category_no_rollup_for_top_level_category(client, sample_account, sample_user, db):
+def test_charts_by_month_category_no_rollup_for_top_level_category(
+    client, sample_account, sample_user, db
+):
     top_level = Category(name="Groceries Cat", type="Expense")
     db.add(top_level)
     db.commit()
@@ -433,7 +563,9 @@ def test_charts_by_month_category_excludes_transfer(client, sample_account, samp
     assert data["by_month_category"] == []
 
 
-def test_charts_drilldown_includes_children_and_excludes_siblings(client, sample_account, sample_user, db):
+def test_charts_drilldown_includes_children_and_excludes_siblings(
+    client, sample_account, sample_user, db
+):
     parent, child_a = _make_parent_child(db, "Housing 2", "Rent 2")
     child_b = Category(name="Home Insurance 2", type="Expense", parent_id=parent.id)
     db.add(child_b)
@@ -455,7 +587,9 @@ def test_charts_drilldown_includes_children_and_excludes_siblings(client, sample
     assert None not in by_cat_id
 
 
-def test_charts_drilldown_includes_direct_to_parent_transactions(client, sample_account, sample_user, db):
+def test_charts_drilldown_includes_direct_to_parent_transactions(
+    client, sample_account, sample_user, db
+):
     """The one behavior the Linxo reference this chart is modeled on doesn't
     have: MyFinance allows a transaction to be categorized directly on a
     parent that also has subcategories, so a drilldown must show that as its
@@ -488,11 +622,15 @@ def test_charts_parent_category_id_rejects_income_category(client, sample_user, 
     income_cat = Category(name="Salary Cat 3", type="Income")
     db.add(income_cat)
     db.commit()
-    response = client.get(f"/api/charts?user_id={sample_user.id}&parent_category_id={income_cat.id}")
+    response = client.get(
+        f"/api/charts?user_id={sample_user.id}&parent_category_id={income_cat.id}"
+    )
     assert response.status_code == 400
 
 
-def test_charts_date_range_start_month_boundary(client, sample_account, sample_category, sample_user, db):
+def test_charts_date_range_start_month_boundary(
+    client, sample_account, sample_category, sample_user, db
+):
     expense_cat = Category(name="Boundary Cat", type="Expense")
     db.add(expense_cat)
     db.commit()
@@ -518,7 +656,9 @@ def test_charts_date_range_end_month_boundary(client, sample_account, sample_use
     assert data["by_month_category"][0]["amount"] == -10.0
 
 
-def test_charts_date_range_filters_by_shifted_accounting_month(client, sample_account, sample_user, db):
+def test_charts_date_range_filters_by_shifted_accounting_month(
+    client, sample_account, sample_user, db
+):
     """A transaction's raw date can fall outside the requested range while its
     accounting_month_offset shifts it in, or vice versa - filtering must use
     the computed accounting month, not Transaction.date."""
@@ -526,21 +666,33 @@ def test_charts_date_range_filters_by_shifted_accounting_month(client, sample_ac
     db.add(expense_cat)
     db.commit()
     t = Transaction(
-        date=date(2026, 2, 25), payee="Shifted", amount=-15.0,
-        account_id=sample_account.id, category_id=expense_cat.id, accounting_month_offset=1,
+        date=date(2026, 2, 25),
+        payee="Shifted",
+        amount=-15.0,
+        account_id=sample_account.id,
+        category_id=expense_cat.id,
+        accounting_month_offset=1,
     )
     db.add(t)
     db.flush()
-    db.add(TransactionSplit(transaction_id=t.id, user_id=sample_user.id, share_amount=-15.0, source="manual"))
+    db.add(
+        TransactionSplit(
+            transaction_id=t.id, user_id=sample_user.id, share_amount=-15.0, source="manual"
+        )
+    )
     db.commit()
 
     # Raw date (Feb) is outside this range, but the shifted accounting month
     # (March) is inside it - must be included.
-    included = client.get(f"/api/charts?user_id={sample_user.id}&start_month=2026-03&end_month=2026-03")
+    included = client.get(
+        f"/api/charts?user_id={sample_user.id}&start_month=2026-03&end_month=2026-03"
+    )
     assert [item["amount"] for item in included.json()["by_month_category"]] == [-15.0]
 
     # The raw date itself (Feb) must NOT be used for filtering.
-    excluded = client.get(f"/api/charts?user_id={sample_user.id}&start_month=2026-02&end_month=2026-02")
+    excluded = client.get(
+        f"/api/charts?user_id={sample_user.id}&start_month=2026-02&end_month=2026-02"
+    )
     assert excluded.json()["by_month_category"] == []
 
 
@@ -573,7 +725,9 @@ def test_charts_by_month_category_zero_net_omitted(client, sample_account, sampl
     assert response.json()["by_month_category"] == []
 
 
-def test_charts_chart_categories_ordered_by_spend_uncategorized_last(client, sample_account, sample_user, db):
+def test_charts_chart_categories_ordered_by_spend_uncategorized_last(
+    client, sample_account, sample_user, db
+):
     small = Category(name="Small Cat", type="Expense")
     big = Category(name="Big Cat", type="Expense")
     db.add_all([small, big])
@@ -587,7 +741,9 @@ def test_charts_chart_categories_ordered_by_spend_uncategorized_last(client, sam
     assert ids == [big.id, small.id, None]
 
 
-def test_charts_cache_invalidated_by_new_transaction_by_month_category(client, sample_account, sample_user, db):
+def test_charts_cache_invalidated_by_new_transaction_by_month_category(
+    client, sample_account, sample_user, db
+):
     expense_cat = Category(name="Cache Cat", type="Expense")
     db.add(expense_cat)
     db.commit()
@@ -616,19 +772,42 @@ def test_charts_cache_invalidated_by_new_transaction_by_month_category(client, s
 
 def test_account_value_separates_contributions_from_checkpoint_gains(client, sample_account, db):
     sample_account.balance_offset = 100.0
-    db.add_all([
-        Transaction(date=date(2026, 1, 5), payee="Deposit", amount=1000.0, account_id=sample_account.id),
-        # Value 1150 at the end of Jan 31: amount = gain since the start.
-        Transaction(date=date(2026, 1, 31), payee="Value", amount=50.0, checkpoint_value=1150.0,
-                    account_id=sample_account.id),
-        Transaction(date=date(2026, 2, 10), payee="Deposit", amount=200.0, account_id=sample_account.id),
-        Transaction(date=date(2026, 2, 28), payee="Withdrawal", amount=-30.0, account_id=sample_account.id),
-        Transaction(date=date(2026, 2, 28), payee="Value", amount=-20.0, checkpoint_value=1300.0,
-                    account_id=sample_account.id),
-    ])
+    db.add_all(
+        [
+            Transaction(
+                date=date(2026, 1, 5), payee="Deposit", amount=1000.0, account_id=sample_account.id
+            ),
+            # Value 1150 at the end of Jan 31: amount = gain since the start.
+            Transaction(
+                date=date(2026, 1, 31),
+                payee="Value",
+                amount=50.0,
+                checkpoint_value=1150.0,
+                account_id=sample_account.id,
+            ),
+            Transaction(
+                date=date(2026, 2, 10), payee="Deposit", amount=200.0, account_id=sample_account.id
+            ),
+            Transaction(
+                date=date(2026, 2, 28),
+                payee="Withdrawal",
+                amount=-30.0,
+                account_id=sample_account.id,
+            ),
+            Transaction(
+                date=date(2026, 2, 28),
+                payee="Value",
+                amount=-20.0,
+                checkpoint_value=1300.0,
+                account_id=sample_account.id,
+            ),
+        ]
+    )
     db.commit()
 
-    response = client.get(f"/api/charts/account-value?account_ids={sample_account.id}&account_ids=9999")
+    response = client.get(
+        f"/api/charts/account-value?account_ids={sample_account.id}&account_ids=9999"
+    )
     assert response.status_code == 200
     data = response.json()
     assert len(data) == 1

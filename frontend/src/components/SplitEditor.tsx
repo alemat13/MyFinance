@@ -1,7 +1,7 @@
 import { Plus, X } from 'lucide-react'
 import { User } from '../api/client'
 import { useToast } from '../context/ToastContext'
-import { IconButton, Input, Select, NumberInput } from './ui'
+import { IconButton, Select, NumberInput } from './ui'
 import { formatMoney } from '../utils/currency'
 
 export interface SplitRow {

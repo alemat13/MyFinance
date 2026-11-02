@@ -1,5 +1,5 @@
 import { test, expect, vi, beforeEach } from 'vitest'
-import { screen, fireEvent, waitFor, within } from '@testing-library/react'
+import { screen, fireEvent, waitFor } from '@testing-library/react'
 import { pickAccount, renderWithProviders } from '../../test-utils'
 import BulkEditModal from '../BulkEditModal'
 

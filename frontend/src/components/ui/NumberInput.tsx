@@ -15,7 +15,7 @@ type Props = Omit<InputHTMLAttributes<HTMLInputElement>, 'type' | 'value' | 'onC
  *  the decimal separator (a French keypad types one, a French keyboard the
  *  other). Spaces are ignored so "1 250,50" reads as 1250.5. */
 export function parseNumber(text: string): number | null {
-  const n = parseFloat(text.replace(/[\s  ]/g, '').replace(',', '.'))
+  const n = parseFloat(text.replace(/[\s\u00a0\u202f]/g, '').replace(',', '.'))
   return Number.isNaN(n) ? null : n
 }
 
@@ -55,7 +55,7 @@ export function NumberInput({ value, onValueChange, integer = false, signed = fa
       autoComplete="off"
       value={text}
       onChange={e => {
-        const next = e.target.value.replace(/[\s  ]/g, '')
+        const next = e.target.value.replace(/[\s\u00a0\u202f]/g, '')
         if (!pattern.test(next)) return
         setText(next)
         onValueChange(parseNumber(next))

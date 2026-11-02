@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { GlobalSplitWeight, fetchSplitWeights, updateSplitWeights } from '../api/client'
 import { useToast } from '../context/ToastContext'
-import { Button, Input, Card, StatusMessage, BackButton, NumberInput } from './ui'
+import { Button, Card, StatusMessage, BackButton, NumberInput } from './ui'
 
 interface Props {
   onBack: () => void

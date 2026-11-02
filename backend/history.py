@@ -18,9 +18,10 @@ An entry names its rows by the id range they span plus what they share
 (`group_filter()`), so its detail and the Transactions screen's "open these
 transactions" read exactly the rows the entry counted, with nothing stored.
 """
+
 import json
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
@@ -36,7 +37,18 @@ _MAX_TAG_NAMES = 20
 
 # The "Origin" filter: what the history screen calls each value of `source`.
 # 'manual' also covers NULL, the hand edit made in the transaction form.
-SOURCES = ("manual", "bulk", "rule", "categorizer", "csv_import", "bank_sync", "divide", "admin", "link", "checkpoint")
+SOURCES = (
+    "manual",
+    "bulk",
+    "rule",
+    "categorizer",
+    "csv_import",
+    "bank_sync",
+    "divide",
+    "admin",
+    "link",
+    "checkpoint",
+)
 
 
 def _tags_delta(change: dict) -> tuple[list[str], list[str]]:
@@ -88,7 +100,13 @@ class Entry:
 def _signature(row: TransactionHistory) -> tuple:
     if row.batch_id:
         return ("batch", row.batch_id, row.action, row.source)
-    return ("legacy", row.action, row.source, row.changed_by_user_id, _change_signature(row.changes))
+    return (
+        "legacy",
+        row.action,
+        row.source,
+        row.changed_by_user_id,
+        _change_signature(row.changes),
+    )
 
 
 def _fits(entry: Entry, row: TransactionHistory, signature: tuple) -> bool:
@@ -105,8 +123,14 @@ def _source_filter(source: str):
     return TransactionHistory.source == source
 
 
-def scan(db: Session, *, before_id: int | None, limit: int,
-         action: str | None = None, source: str | None = None) -> tuple[list[Entry], int | None]:
+def scan(
+    db: Session,
+    *,
+    before_id: int | None,
+    limit: int,
+    action: str | None = None,
+    source: str | None = None,
+) -> tuple[list[Entry], int | None]:
     """The next `limit` entries older than `before_id`, plus the cursor to pass
     for the page after (None once the history is exhausted). Reads rows in
     chunks until the last entry is known to be complete, so one entry can span
@@ -124,7 +148,9 @@ def scan(db: Session, *, before_id: int | None, limit: int,
         chunk_query = query
         if cursor is not None:
             chunk_query = chunk_query.where(TransactionHistory.id < cursor)
-        rows = db.scalars(chunk_query.order_by(TransactionHistory.id.desc()).limit(SCAN_CHUNK)).all()
+        rows = db.scalars(
+            chunk_query.order_by(TransactionHistory.id.desc()).limit(SCAN_CHUNK)
+        ).all()
         for row in rows:
             signature = _signature(row)
             if current is not None and _fits(current, row, signature):
@@ -165,11 +191,19 @@ def summary(entry: Entry) -> dict | None:
     return out or None
 
 
-def group_filter(first_id: int, last_id: int, action: str, source: str | None,
-                 changed_by_user_id: int | None, batch_id: str | None):
+def group_filter(
+    first_id: int,
+    last_id: int,
+    action: str,
+    source: str | None,
+    changed_by_user_id: int | None,
+    batch_id: str | None,
+):
     """The SQL condition selecting exactly the history rows of one entry."""
+
     def equals(column, value):
         return column.is_(None) if value is None else column == value
+
     return and_(
         TransactionHistory.id >= min(first_id, last_id),
         TransactionHistory.id <= max(first_id, last_id),
@@ -183,5 +217,8 @@ def group_filter(first_id: int, last_id: int, action: str, source: str | None,
 def group_transaction_ids(ref):
     """A subquery of the transaction ids an entry touched, for the
     Transactions screen's filter."""
-    return select(TransactionHistory.transaction_id).where(group_filter(
-        ref.first_id, ref.last_id, ref.action, ref.source, ref.changed_by_user_id, ref.batch_id))
+    return select(TransactionHistory.transaction_id).where(
+        group_filter(
+            ref.first_id, ref.last_id, ref.action, ref.source, ref.changed_by_user_id, ref.batch_id
+        )
+    )

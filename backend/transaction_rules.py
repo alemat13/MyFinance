@@ -54,7 +54,16 @@ from models import (
     TransactionSplit,
     User,
 )
-from schemas import BOOL_FIELDS, DATE_FIELDS, MONTH_FIELDS, TAG_FIELDS, TEXT_FIELDS, FilterCondition, RuleActions, RuleOutcomeOut
+from schemas import (
+    BOOL_FIELDS,
+    DATE_FIELDS,
+    MONTH_FIELDS,
+    TAG_FIELDS,
+    TEXT_FIELDS,
+    FilterCondition,
+    RuleActions,
+    RuleOutcomeOut,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -63,10 +72,21 @@ HISTORY_SOURCE = "rule"
 
 # The row attributes a condition can read or an action can write.
 _STATE_FIELDS = (
-    "payee", "memo", "raw_label", "amount", "date", "account_id", "category_id",
-    "accounting_month_offset", "reconciled",
-    "raw_counterparty", "raw_transaction_code", "raw_merchant_category_code", "raw_merchant_location",
-    "raw_initiated_date", "raw_booking_date",
+    "payee",
+    "memo",
+    "raw_label",
+    "amount",
+    "date",
+    "account_id",
+    "category_id",
+    "accounting_month_offset",
+    "reconciled",
+    "raw_counterparty",
+    "raw_transaction_code",
+    "raw_merchant_category_code",
+    "raw_merchant_location",
+    "raw_initiated_date",
+    "raw_booking_date",
 )
 
 
@@ -74,6 +94,7 @@ _STATE_FIELDS = (
 class Outcome:
     """What the rules would do to one row: the fields that end up different,
     the split a rule set (if any), and which rules matched."""
+
     fields: dict = field(default_factory=dict)
     split_weights: dict[int, int] | None = None
     split_source: str | None = None
@@ -129,7 +150,9 @@ def _matches(condition: FilterCondition, state: dict) -> bool:
         if condition.operator == "between":
             low, high = sorted((value, month_index(condition.value2)))
             return low <= current <= high
-        return {"on": current == value, "before": current < value, "after": current > value}[condition.operator]
+        return {"on": current == value, "before": current < value, "after": current > value}[
+            condition.operator
+        ]
     if condition.field == "amount_abs":
         current = None if state.get("amount") is None else abs(float(state["amount"]))
     if condition.operator in ("in", "not_in"):
@@ -137,9 +160,15 @@ def _matches(condition: FilterCondition, state: dict) -> bool:
         # "not in" never matches a row with no value.
         ids = {int(v) for v in condition.value if v is not None}
         if condition.operator == "in":
-            return (current is None and None in condition.value) or (current is not None and int(current) in ids)
+            return (current is None and None in condition.value) or (
+                current is not None and int(current) in ids
+            )
         return current is not None and int(current) not in ids
-    if condition.field == "category_id" and condition.value is None and condition.operator in ("eq", "ne"):
+    if (
+        condition.field == "category_id"
+        and condition.value is None
+        and condition.operator in ("eq", "ne")
+    ):
         # Mirrors filtering.build_condition_expr(): no category named means
         # "is uncategorized" / "has a category".
         return (current is None) == (condition.operator == "eq")
@@ -153,11 +182,13 @@ def _matches(condition: FilterCondition, state: dict) -> bool:
         if op in ("equals", "not_equals"):
             return (text == value) == (op == "equals")
         pattern = _wildcard_regex(value)
-        return bool({
-            "contains": re.search(pattern, text, re.DOTALL),
-            "starts_with": re.match(pattern, text, re.DOTALL),
-            "ends_with": re.search(f"(?:{pattern})\\Z", text, re.DOTALL),
-        }[op])
+        return bool(
+            {
+                "contains": re.search(pattern, text, re.DOTALL),
+                "starts_with": re.match(pattern, text, re.DOTALL),
+                "ends_with": re.search(f"(?:{pattern})\\Z", text, re.DOTALL),
+            }[op]
+        )
     if condition.field in DATE_FIELDS:
         current = _coerce_date(current)
         value = _coerce_date(condition.value)
@@ -170,9 +201,12 @@ def _matches(condition: FilterCondition, state: dict) -> bool:
         low, high = sorted((value, float(condition.value2)))
         return low <= current <= high
     return {
-        "eq": current == value, "ne": current != value,
-        "gt": current > value, "gte": current >= value,
-        "lt": current < value, "lte": current <= value,
+        "eq": current == value,
+        "ne": current != value,
+        "gt": current > value,
+        "gte": current >= value,
+        "lt": current < value,
+        "lte": current <= value,
     }[op]
 
 
@@ -190,6 +224,7 @@ def rule_matches(rule: TransactionRule, state: dict) -> bool:
 class Tiers:
     """The three split-weight tiers as they stand now, read once per batch so
     a rule naming a tier follows whatever the tier says today."""
+
     global_weights: dict[int, int] = field(default_factory=dict)
     by_account: dict[int, dict[int, int]] = field(default_factory=dict)
     by_category: dict[int, dict[int, int]] = field(default_factory=dict)
@@ -205,7 +240,9 @@ class Tiers:
             tiers.by_category.setdefault(w.category_id, {})[w.user_id] = w.weight
         return tiers
 
-    def resolve(self, tier: str, account_id: int | None, category_id: int | None) -> tuple[str, dict[int, int]]:
+    def resolve(
+        self, tier: str, account_id: int | None, category_id: int | None
+    ) -> tuple[str, dict[int, int]]:
         """(source, weights) for a tier on a row; empty weights when that tier
         is not configured for it. "default" mirrors
         split_engine.resolve_default_weights()."""
@@ -224,9 +261,15 @@ class Tiers:
         return "global", self.global_weights
 
 
-def evaluate(rules: list[TransactionRule], row, *, known_categories: set[int],
-             known_users: set[int], tiers: Tiers | None = None,
-             known_tags: set[int] | None = None) -> Outcome:
+def evaluate(
+    rules: list[TransactionRule],
+    row,
+    *,
+    known_categories: set[int],
+    known_users: set[int],
+    tiers: Tiers | None = None,
+    known_tags: set[int] | None = None,
+) -> Outcome:
     """Run the rules over one row (a Transaction or anything carrying the same
     attributes) without touching it.
 
@@ -255,7 +298,9 @@ def evaluate(rules: list[TransactionRule], row, *, known_categories: set[int],
         if actions.reconciled is not None:
             state["reconciled"] = actions.reconciled
         if actions.split_weights:
-            weights = {w.user_id: w.weight for w in actions.split_weights if w.user_id in known_users}
+            weights = {
+                w.user_id: w.weight for w in actions.split_weights if w.user_id in known_users
+            }
             if weights and sum(weights.values()) > 0:
                 outcome.split_weights = weights
                 outcome.split_source = actions.split_source or "custom"
@@ -277,7 +322,8 @@ def evaluate(rules: list[TransactionRule], row, *, known_categories: set[int],
             outcome.split_weights, outcome.split_source = dict(weights), source
 
     outcome.fields = {
-        f: state[f] for f in ("payee", "category_id", "accounting_month_offset", "reconciled")
+        f: state[f]
+        for f in ("payee", "category_id", "accounting_month_offset", "reconciled")
         if state[f] != original[f]
     }
     return outcome
@@ -288,17 +334,26 @@ def evaluate_many(db: Session, rules: list[TransactionRule], rows: list) -> list
     known_users = set(db.scalars(select(User.id)).all())
     known_tags = set(db.scalars(select(Tag.id)).all())
     tiers = Tiers.load(db)
-    return [evaluate(rules, row, known_categories=known_categories, known_users=known_users, tiers=tiers,
-                     known_tags=known_tags)
-            for row in rows]
+    return [
+        evaluate(
+            rules,
+            row,
+            known_categories=known_categories,
+            known_users=known_users,
+            tiers=tiers,
+            known_tags=known_tags,
+        )
+        for row in rows
+    ]
 
 
 def tag_names(db: Session) -> dict[int, str]:
     return {t.id: t.name for t in db.scalars(select(Tag)).all()}
 
 
-def outcome_out(outcome: Outcome, category_names: dict[int, str],
-                tag_names: dict[int, str] | None = None) -> RuleOutcomeOut | None:
+def outcome_out(
+    outcome: Outcome, category_names: dict[int, str], tag_names: dict[int, str] | None = None
+) -> RuleOutcomeOut | None:
     """An outcome as the API reports it, or None when it changes nothing."""
     if not outcome.changes_anything:
         return None
@@ -313,7 +368,8 @@ def outcome_out(outcome: Outcome, category_names: dict[int, str],
         reconciled=outcome.fields.get("reconciled"),
         split_weights=(
             [{"user_id": uid, "weight": w} for uid, w in sorted(outcome.split_weights.items())]
-            if outcome.split_weights is not None else None
+            if outcome.split_weights is not None
+            else None
         ),
         split_source=outcome.split_source,
         add_tag_ids=list(outcome.add_tag_ids) or None,
@@ -321,8 +377,14 @@ def outcome_out(outcome: Outcome, category_names: dict[int, str],
     )
 
 
-def write(db: Session, transaction: Transaction, outcome: Outcome, actor_user_id: int | None,
-          *, fresh: bool = False) -> bool:
+def write(
+    db: Session,
+    transaction: Transaction,
+    outcome: Outcome,
+    actor_user_id: int | None,
+    *,
+    fresh: bool = False,
+) -> bool:
     """Apply one outcome to a transaction and record a history row. Returns
     whether anything changed. `reconciled` changes only if a rule set it.
 
@@ -341,13 +403,15 @@ def write(db: Session, transaction: Transaction, outcome: Outcome, actor_user_id
         setattr(transaction, name, value)
     changes = {
         f: {"old": _jsonify(old), "new": _jsonify(getattr(transaction, f))}
-        for f, old in before.items() if old != getattr(transaction, f)
+        for f, old in before.items()
+        if old != getattr(transaction, f)
     }
 
     weights, source = outcome.split_weights, outcome.split_source
     if weights is None and fresh and "category_id" in outcome.fields:
         resolved_source, resolved = split_engine.resolve_default_weights(
-            db, transaction.category_id, transaction.account_id)
+            db, transaction.category_id, transaction.account_id
+        )
         if resolved:
             weights, source = resolved, resolved_source or "custom"
     if weights is not None:
@@ -356,8 +420,10 @@ def write(db: Session, transaction: Transaction, outcome: Outcome, actor_user_id
         # flushed first, since that split may not even be in the table yet.
         db.flush()
         existing = {
-            s.user_id: (s.weight, s.source) for s in
-            db.scalars(select(TransactionSplit).where(TransactionSplit.transaction_id == transaction.id)).all()
+            s.user_id: (s.weight, s.source)
+            for s in db.scalars(
+                select(TransactionSplit).where(TransactionSplit.transaction_id == transaction.id)
+            ).all()
         }
         splits_diff = diff_splits(existing, {uid: (w, source) for uid, w in weights.items()})
         if splits_diff:
@@ -366,19 +432,27 @@ def write(db: Session, transaction: Transaction, outcome: Outcome, actor_user_id
 
     if outcome.add_tag_ids:
         tags_change = tag_service.add_remove_tags(
-            transaction, tag_service.load_tags(db, outcome.add_tag_ids), [])
+            transaction, tag_service.load_tags(db, outcome.add_tag_ids), []
+        )
         if tags_change:
             changes["tags"] = tags_change
 
     if not changes:
         return False
-    record_transaction_history(db, transaction, "updated", actor_user_id,
-                               source=HISTORY_SOURCE, changes=changes)
+    record_transaction_history(
+        db, transaction, "updated", actor_user_id, source=HISTORY_SOURCE, changes=changes
+    )
     return True
 
 
-def apply_to(db: Session, transactions: list[Transaction], rules: list[TransactionRule], *,
-             actor_user_id: int | None = None, fresh: bool = False) -> list[int]:
+def apply_to(
+    db: Session,
+    transactions: list[Transaction],
+    rules: list[TransactionRule],
+    *,
+    actor_user_id: int | None = None,
+    fresh: bool = False,
+) -> list[int]:
     """Run the rules over the given transactions and write what they change.
     Returns the ids changed. Does not commit; invalidates the aggregate cache
     when something changed, so it lands with the caller's commit."""
@@ -407,7 +481,7 @@ def apply_quietly(db: Session, transactions: list[Transaction], *, fresh: bool =
         if not rules or not transactions:
             return 0
         outcomes = evaluate_many(db, rules, transactions)
-    except Exception:  # noqa: BLE001 - logged, and the import itself still stands
+    except Exception:
         logger.exception("Automatic rules failed; rows were imported without them")
         return 0
     changed = 0

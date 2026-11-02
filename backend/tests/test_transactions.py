@@ -71,12 +71,19 @@ def test_get_single_transaction_filtered_by_user_no_match(client, sample_transac
     assert response.status_code == 404
 
 
-def test_get_single_transaction_filtered_by_user_visible(client, sample_account_with_user, sample_user, sample_category, db):
+def test_get_single_transaction_filtered_by_user_visible(
+    client, sample_account_with_user, sample_user, sample_category, db
+):
     from datetime import date
+
     from models import Transaction
+
     t = Transaction(
-        date=date(2026, 1, 15), payee="User Specific", amount=100.0,
-        account_id=sample_account_with_user.id, category_id=sample_category.id,
+        date=date(2026, 1, 15),
+        payee="User Specific",
+        amount=100.0,
+        account_id=sample_account_with_user.id,
+        category_id=sample_category.id,
     )
     db.add(t)
     db.commit()
@@ -88,6 +95,7 @@ def test_get_single_transaction_filtered_by_user_visible(client, sample_account_
 
 def test_transaction_currency_reflects_account(client, db, sample_category, sample_user):
     from models import Account
+
     account = Account(name="USD Checking", type="Checking", balance_offset=0.0, currency="USD")
     db.add(account)
     db.commit()
@@ -133,6 +141,7 @@ def test_create_transaction_on_archived_account_422(client, sample_account, samp
 
 def test_update_transaction_on_archived_account_still_succeeds(client, sample_transaction, db):
     from models import Account
+
     db.query(Account).filter(Account.id == sample_transaction.account_id).update({"archived": True})
     db.commit()
 
@@ -161,7 +170,9 @@ def test_delete_transaction_404(client):
     assert response.status_code == 404
 
 
-def test_create_transaction_defaults_accounting_month_offset_to_zero(client, sample_account, sample_category, sample_user):
+def test_create_transaction_defaults_accounting_month_offset_to_zero(
+    client, sample_account, sample_category, sample_user
+):
     response = client.post(
         "/api/transactions",
         json={
@@ -179,7 +190,9 @@ def test_create_transaction_defaults_accounting_month_offset_to_zero(client, sam
     assert data["accounting_month"] == "2026-03"
 
 
-def test_create_transaction_with_explicit_accounting_month_offset(client, sample_account, sample_category, sample_user):
+def test_create_transaction_with_explicit_accounting_month_offset(
+    client, sample_account, sample_category, sample_user
+):
     response = client.post(
         "/api/transactions",
         json={
@@ -198,7 +211,9 @@ def test_create_transaction_with_explicit_accounting_month_offset(client, sample
     assert data["accounting_month"] == "2026-04"
 
 
-def test_create_transaction_accounting_month_offset_year_rollover(client, sample_account, sample_category, sample_user):
+def test_create_transaction_accounting_month_offset_year_rollover(
+    client, sample_account, sample_category, sample_user
+):
     response = client.post(
         "/api/transactions",
         json={
@@ -231,7 +246,9 @@ def test_create_transaction_accounting_month_offset_year_rollover(client, sample
     assert response.json()["accounting_month"] == "2025-12"
 
 
-def test_create_transaction_accounting_month_offset_out_of_range_422(client, sample_account, sample_category):
+def test_create_transaction_accounting_month_offset_out_of_range_422(
+    client, sample_account, sample_category
+):
     for offset in (-4, 4):
         response = client.post(
             "/api/transactions",
@@ -279,7 +296,9 @@ def test_update_transaction_accounting_month_offset_recorded_in_history(client, 
     assert updated[0]["changes"]["accounting_month_offset"] == {"old": 0, "new": 1}
 
 
-def test_create_transaction_defaults_reconciled_to_false(client, sample_account, sample_category, sample_user):
+def test_create_transaction_defaults_reconciled_to_false(
+    client, sample_account, sample_category, sample_user
+):
     response = client.post(
         "/api/transactions",
         json={
@@ -324,9 +343,13 @@ def test_update_transaction_reconciled_recorded_in_history(client, sample_transa
     assert updated[0]["changes"]["reconciled"] == {"old": False, "new": True}
 
 
-def test_get_transactions_filtered_by_user(client, sample_account_with_user, sample_user, sample_category, db):
+def test_get_transactions_filtered_by_user(
+    client, sample_account_with_user, sample_user, sample_category, db
+):
     from datetime import date
+
     from models import Transaction
+
     t = Transaction(
         date=date(2026, 1, 15),
         payee="User Specific",
@@ -337,7 +360,9 @@ def test_get_transactions_filtered_by_user(client, sample_account_with_user, sam
     db.add(t)
     db.commit()
 
-    response = client.post("/api/transactions/search", json={"user_id": sample_user.id, "unpaginated": True})
+    response = client.post(
+        "/api/transactions/search", json={"user_id": sample_user.id, "unpaginated": True}
+    )
     assert response.status_code == 200
     data = response.json()["items"]
     assert len(data) == 1
@@ -345,27 +370,46 @@ def test_get_transactions_filtered_by_user(client, sample_account_with_user, sam
 
 
 def test_get_transactions_filtered_by_user_no_match(client, sample_user):
-    response = client.post("/api/transactions/search", json={"user_id": sample_user.id, "unpaginated": True})
+    response = client.post(
+        "/api/transactions/search", json={"user_id": sample_user.id, "unpaginated": True}
+    )
     assert response.status_code == 200
     assert response.json()["items"] == []
 
 
-def test_get_transactions_visible_via_split_without_ownership(client, sample_account, sample_category, sample_user, sample_user2, db):
+def test_get_transactions_visible_via_split_without_ownership(
+    client, sample_account, sample_category, sample_user, sample_user2, db
+):
     from datetime import date
+
     from models import AccountUser, Transaction, TransactionSplit
+
     # sample_account is solely owned by sample_user; sample_user2 owns nothing on it,
     # but has a split share, so it must still show up for them.
-    db.add(AccountUser(account_id=sample_account.id, user_id=sample_user.id, ownership_percentage=100.0))
+    db.add(
+        AccountUser(
+            account_id=sample_account.id, user_id=sample_user.id, ownership_percentage=100.0
+        )
+    )
     t = Transaction(
-        date=date(2026, 1, 15), payee="Shared Bill", amount=100.0,
-        account_id=sample_account.id, category_id=sample_category.id,
+        date=date(2026, 1, 15),
+        payee="Shared Bill",
+        amount=100.0,
+        account_id=sample_account.id,
+        category_id=sample_category.id,
     )
     db.add(t)
     db.flush()
-    db.add(TransactionSplit(transaction_id=t.id, user_id=sample_user2.id, share_amount=40.0, source="manual"))
+    db.add(
+        TransactionSplit(
+            transaction_id=t.id, user_id=sample_user2.id, share_amount=40.0, source="manual"
+        )
+    )
     db.commit()
 
-    response = client.post("/api/transactions/search", json={"user_id": sample_user2.id, "unpaginated": True})
+    response = client.post(
+        "/api/transactions/search", json={"user_id": sample_user2.id, "unpaginated": True}
+    )
     assert response.status_code == 200
     data = response.json()["items"]
     assert len(data) == 1
@@ -389,11 +433,14 @@ def test_create_transaction_no_users_configured_rejected(client, sample_account,
     assert response.status_code == 422
 
 
-def test_create_transaction_omitted_split_weights_auto_resolves_from_tier_config(client, sample_account, sample_category, sample_user, db):
+def test_create_transaction_omitted_split_weights_auto_resolves_from_tier_config(
+    client, sample_account, sample_category, sample_user, db
+):
     """Omitting split_weights falls back through the account > category >
     global cascade (same as CSV import already does) rather than leaving the
     transaction unsplit."""
     from models import GlobalSplitWeight
+
     db.add(GlobalSplitWeight(user_id=sample_user.id, weight=100))
     db.commit()
 
@@ -410,11 +457,19 @@ def test_create_transaction_omitted_split_weights_auto_resolves_from_tier_config
     assert response.status_code == 201
     data = response.json()
     assert data["splits"] == [
-        {"user_id": sample_user.id, "user_name": sample_user.name, "weight": 100, "share_amount": 100.0, "source": "global"},
+        {
+            "user_id": sample_user.id,
+            "user_name": sample_user.name,
+            "weight": 100,
+            "share_amount": 100.0,
+            "source": "global",
+        },
     ]
 
 
-def test_create_transaction_with_explicit_split_weights_prorates(client, sample_account, sample_category, sample_user, sample_user2):
+def test_create_transaction_with_explicit_split_weights_prorates(
+    client, sample_account, sample_category, sample_user, sample_user2
+):
     response = client.post(
         "/api/transactions",
         json={
@@ -437,7 +492,9 @@ def test_create_transaction_with_explicit_split_weights_prorates(client, sample_
     assert splits[sample_user2.id]["share_amount"] == 25.0
 
 
-def test_create_transaction_with_split_source_tag(client, sample_account, sample_category, sample_user):
+def test_create_transaction_with_split_source_tag(
+    client, sample_account, sample_category, sample_user
+):
     response = client.post(
         "/api/transactions",
         json={
@@ -454,7 +511,9 @@ def test_create_transaction_with_split_source_tag(client, sample_account, sample
     assert response.json()["splits"][0]["source"] == "global"
 
 
-def test_create_transaction_negative_weight_rejected(client, sample_account, sample_category, sample_user):
+def test_create_transaction_negative_weight_rejected(
+    client, sample_account, sample_category, sample_user
+):
     response = client.post(
         "/api/transactions",
         json={
@@ -469,7 +528,9 @@ def test_create_transaction_negative_weight_rejected(client, sample_account, sam
     assert response.status_code == 422
 
 
-def test_create_transaction_duplicate_user_weight_rejected(client, sample_account, sample_category, sample_user):
+def test_create_transaction_duplicate_user_weight_rejected(
+    client, sample_account, sample_category, sample_user
+):
     response = client.post(
         "/api/transactions",
         json={
@@ -487,7 +548,9 @@ def test_create_transaction_duplicate_user_weight_rejected(client, sample_accoun
     assert response.status_code == 422
 
 
-def test_create_transaction_single_owner_account_explicit_weights_succeeds(client, sample_account_with_user, sample_category, sample_user):
+def test_create_transaction_single_owner_account_explicit_weights_succeeds(
+    client, sample_account_with_user, sample_category, sample_user
+):
     """No ownership-based gating exists any more: an explicit weight set
     applies on a single-owner account exactly as given."""
     response = client.post(
@@ -507,7 +570,9 @@ def test_create_transaction_single_owner_account_explicit_weights_succeeds(clien
     assert splits[0]["share_amount"] == 100.0
 
 
-def test_update_transaction_omitted_split_weights_keeps_existing_but_recomputes_share_amount(client, sample_account, sample_category, sample_user):
+def test_update_transaction_omitted_split_weights_keeps_existing_but_recomputes_share_amount(
+    client, sample_account, sample_category, sample_user
+):
     """Regression test for the removed manual-freeze 422: an amount change
     with split_weights omitted from the PUT body must succeed and recompute
     share_amount against the transaction's existing stored weight."""
@@ -532,7 +597,9 @@ def test_update_transaction_omitted_split_weights_keeps_existing_but_recomputes_
     assert splits[0]["share_amount"] == 200.0
 
 
-def test_update_transaction_explicit_split_weights_replaces_existing(client, sample_account, sample_category, sample_user):
+def test_update_transaction_explicit_split_weights_replaces_existing(
+    client, sample_account, sample_category, sample_user
+):
     create_response = client.post(
         "/api/transactions",
         json={
@@ -556,7 +623,9 @@ def test_update_transaction_explicit_split_weights_replaces_existing(client, sam
     assert splits[0]["share_amount"] == 100.0
 
 
-def test_update_transaction_explicit_empty_split_weights_rejected(client, sample_account, sample_category, sample_user):
+def test_update_transaction_explicit_empty_split_weights_rejected(
+    client, sample_account, sample_category, sample_user
+):
     """Splits are mandatory: an explicit empty list can no longer be used to
     clear a transaction's split. Omit the field instead to leave it as-is."""
     create_response = client.post(
@@ -579,7 +648,9 @@ def test_update_transaction_explicit_empty_split_weights_rejected(client, sample
     assert response.status_code == 422
 
 
-def test_update_transaction_heals_pre_existing_empty_split_via_cascade(client, db, sample_account, sample_category, sample_user):
+def test_update_transaction_heals_pre_existing_empty_split_via_cascade(
+    client, db, sample_account, sample_category, sample_user
+):
     """A transaction that somehow has zero split rows (a data artefact
     predating mandatory splits) gets healed via the account > category >
     global cascade on the next edit that omits split_weights, rather than
@@ -609,20 +680,32 @@ def test_update_transaction_heals_pre_existing_empty_split_via_cascade(client, d
     data = response.json()
     assert data["payee"] == "Renamed"
     assert data["splits"] == [
-        {"user_id": sample_user.id, "user_name": sample_user.name, "weight": 1, "share_amount": 100.0, "source": "global"},
+        {
+            "user_id": sample_user.id,
+            "user_name": sample_user.name,
+            "weight": 1,
+            "share_amount": 100.0,
+            "source": "global",
+        },
     ]
 
 
-def test_update_transaction_with_empty_split_and_no_fallback_rejected(client, db, sample_account, sample_category):
+def test_update_transaction_with_empty_split_and_no_fallback_rejected(
+    client, db, sample_account, sample_category
+):
     """If a transaction's split is empty and there's genuinely no fallback
     to resolve (no users at all), a normal edit 422s rather than silently
     leaving it unsplit."""
     from datetime import date as date_type
+
     from models import Transaction
 
     transaction = Transaction(
-        date=date_type(2026, 1, 15), payee="Test", amount=100.0,
-        account_id=sample_account.id, category_id=sample_category.id,
+        date=date_type(2026, 1, 15),
+        payee="Test",
+        amount=100.0,
+        account_id=sample_account.id,
+        category_id=sample_category.id,
     )
     db.add(transaction)
     db.commit()
@@ -634,11 +717,19 @@ def test_update_transaction_with_empty_split_and_no_fallback_rejected(client, db
 
 # ── Transaction search ────────────────────────────────────────────
 
+
 def _make_transaction(db, account, category, **overrides):
     from datetime import date
+
     from models import Transaction
-    defaults = dict(date=date(2026, 1, 15), payee="Payee", amount=100.0,
-                     account_id=account.id, category_id=category.id)
+
+    defaults = dict(
+        date=date(2026, 1, 15),
+        payee="Payee",
+        amount=100.0,
+        account_id=account.id,
+        category_id=category.id,
+    )
     defaults.update(overrides)
     t = Transaction(**defaults)
     db.add(t)
@@ -670,13 +761,18 @@ def test_search_simple_memo_contains(client, db, sample_account, sample_category
 
 def test_search_simple_date_range(client, db, sample_account, sample_category):
     from datetime import date
+
     _make_transaction(db, sample_account, sample_category, date=date(2026, 1, 1))
     _make_transaction(db, sample_account, sample_category, date=date(2026, 6, 1))
     _make_transaction(db, sample_account, sample_category, date=date(2026, 12, 1))
 
-    response = client.post("/api/transactions/search", json={
-        "date_from": "2026-02-01", "date_to": "2026-07-01",
-    })
+    response = client.post(
+        "/api/transactions/search",
+        json={
+            "date_from": "2026-02-01",
+            "date_to": "2026-07-01",
+        },
+    )
     data = response.json()
     assert data["total"] == 1
     assert data["items"][0]["date"] == "2026-06-01"
@@ -684,6 +780,7 @@ def test_search_simple_date_range(client, db, sample_account, sample_category):
 
 def test_search_simple_account_and_category(client, db, sample_account, sample_category):
     from models import Account, Category
+
     other_account = Account(name="Other", type="Checking")
     other_category = Category(name="Other Cat", type="Expense")
     db.add_all([other_account, other_category])
@@ -704,7 +801,9 @@ def test_search_simple_amount_range(client, db, sample_account, sample_category)
     _make_transaction(db, sample_account, sample_category, amount=50.0)
     _make_transaction(db, sample_account, sample_category, amount=100.0)
 
-    response = client.post("/api/transactions/search", json={"amount_min": 20.0, "amount_max": 80.0})
+    response = client.post(
+        "/api/transactions/search", json={"amount_min": 20.0, "amount_max": 80.0}
+    )
     data = response.json()
     assert data["total"] == 1
     assert data["items"][0]["amount"] == 50.0
@@ -732,7 +831,9 @@ def test_search_simple_filters_combine_with_and(client, db, sample_account, samp
     _make_transaction(db, sample_account, sample_category, payee="Amazon", amount=10.0)
     _make_transaction(db, sample_account, sample_category, payee="Amazon", amount=100.0)
 
-    response = client.post("/api/transactions/search", json={"search": "amazon", "amount_min": 50.0})
+    response = client.post(
+        "/api/transactions/search", json={"search": "amazon", "amount_min": 50.0}
+    )
     assert response.json()["total"] == 1
 
 
@@ -751,9 +852,12 @@ def test_search_advanced_text_operators(client, db, sample_account, sample_categ
         ("ends_with", "amazon", False),
     ]
     for operator, value, should_match in cases:
-        response = client.post("/api/transactions/search", json={
-            "conditions": [{"field": "payee", "operator": operator, "value": value}],
-        })
+        response = client.post(
+            "/api/transactions/search",
+            json={
+                "conditions": [{"field": "payee", "operator": operator, "value": value}],
+            },
+        )
         assert response.status_code == 200
         total = response.json()["total"]
         assert (total == 1) == should_match, f"{operator} {value!r} expected match={should_match}"
@@ -779,13 +883,19 @@ def test_search_wildcards_star_and_question_mark(client, db, sample_account, sam
         _make_transaction(db, sample_account, sample_category, payee=payee)
 
     for operator, value, expected in WILDCARD_CASES:
-        response = client.post("/api/transactions/search", json={
-            "conditions": [{"field": "payee", "operator": operator, "value": value}], "unpaginated": True,
-        })
+        response = client.post(
+            "/api/transactions/search",
+            json={
+                "conditions": [{"field": "payee", "operator": operator, "value": value}],
+                "unpaginated": True,
+            },
+        )
         assert {t["payee"] for t in response.json()["items"]} == expected, f"{operator} {value!r}"
 
     # The simple filter's search box reads the same syntax.
-    response = client.post("/api/transactions/search", json={"search": "ama*me", "unpaginated": True})
+    response = client.post(
+        "/api/transactions/search", json={"search": "ama*me", "unpaginated": True}
+    )
     assert [t["payee"] for t in response.json()["items"]] == ["Amazon Prime"]
     response = client.post("/api/transactions/search", json={"search": "0%", "unpaginated": True})
     assert [t["payee"] for t in response.json()["items"]] == ["100% bio"]
@@ -818,6 +928,7 @@ def test_search_advanced_numeric_operators(client, db, sample_account, sample_ca
 
 def test_search_advanced_date_operators(client, db, sample_account, sample_category):
     from datetime import date
+
     _make_transaction(db, sample_account, sample_category, date=date(2026, 6, 15))
 
     cases = [
@@ -849,10 +960,18 @@ def test_search_advanced_reconciled(client, db, sample_account, sample_category)
     _make_transaction(db, sample_account, sample_category, payee="Checked", reconciled=True)
     _make_transaction(db, sample_account, sample_category, payee="Unchecked", reconciled=False)
 
-    for value, expected in ((True, "Checked"), (False, "Unchecked"), ("true", "Checked"), ("false", "Unchecked")):
-        response = client.post("/api/transactions/search", json={
-            "conditions": [{"field": "reconciled", "operator": "eq", "value": value}],
-        })
+    for value, expected in (
+        (True, "Checked"),
+        (False, "Unchecked"),
+        ("true", "Checked"),
+        ("false", "Unchecked"),
+    ):
+        response = client.post(
+            "/api/transactions/search",
+            json={
+                "conditions": [{"field": "reconciled", "operator": "eq", "value": value}],
+            },
+        )
         assert [t["payee"] for t in response.json()["items"]] == [expected], value
 
 
@@ -866,6 +985,7 @@ def test_search_advanced_accounting_month_offset(client, db, sample_account, sam
 
 def test_search_advanced_raw_fields(client, db, sample_account, sample_category):
     from datetime import date
+
     t = _make_transaction(db, sample_account, sample_category)
     t.raw_counterparty = "SNCF Voyageurs"
     t.raw_transaction_code = "PMNT-CCRD-POSD"
@@ -876,18 +996,42 @@ def test_search_advanced_raw_fields(client, db, sample_account, sample_category)
     _make_transaction(db, sample_account, sample_category)
     db.commit()
 
-    assert _count(client, {"field": "raw_counterparty", "operator": "contains", "value": "sncf"}) == 1
-    assert _count(client, {"field": "raw_transaction_code", "operator": "starts_with", "value": "PMNT"}) == 1
-    assert _count(client, {"field": "raw_merchant_category_code", "operator": "equals", "value": "4112"}) == 1
-    assert _count(client, {"field": "raw_merchant_location", "operator": "equals", "value": "paris"}) == 1
-    assert _count(client, {"field": "raw_initiated_date", "operator": "on", "value": "2026-06-14"}) == 1
-    assert _count(client, {"field": "raw_booking_date", "operator": "after", "value": "2026-06-15"}) == 1
+    assert (
+        _count(client, {"field": "raw_counterparty", "operator": "contains", "value": "sncf"}) == 1
+    )
+    assert (
+        _count(
+            client, {"field": "raw_transaction_code", "operator": "starts_with", "value": "PMNT"}
+        )
+        == 1
+    )
+    assert (
+        _count(
+            client, {"field": "raw_merchant_category_code", "operator": "equals", "value": "4112"}
+        )
+        == 1
+    )
+    assert (
+        _count(client, {"field": "raw_merchant_location", "operator": "equals", "value": "paris"})
+        == 1
+    )
+    assert (
+        _count(client, {"field": "raw_initiated_date", "operator": "on", "value": "2026-06-14"})
+        == 1
+    )
+    assert (
+        _count(client, {"field": "raw_booking_date", "operator": "after", "value": "2026-06-15"})
+        == 1
+    )
     # SQL's NULL: the row with no bank data matches neither side.
-    assert _count(client, {"field": "raw_counterparty", "operator": "not_equals", "value": "x"}) == 1
+    assert (
+        _count(client, {"field": "raw_counterparty", "operator": "not_equals", "value": "x"}) == 1
+    )
 
 
 def test_search_advanced_created_at_by_day(client, db, sample_account, sample_category):
     from datetime import datetime
+
     t = _make_transaction(db, sample_account, sample_category)
     t.created_at = datetime(2026, 10, 18, 21, 30)
     db.commit()
@@ -895,24 +1039,53 @@ def test_search_advanced_created_at_by_day(client, db, sample_account, sample_ca
     assert _count(client, {"field": "created_at", "operator": "on", "value": "2026-10-18"}) == 1
     assert _count(client, {"field": "created_at", "operator": "before", "value": "2026-10-18"}) == 0
     assert _count(client, {"field": "created_at", "operator": "after", "value": "2026-10-17"}) == 1
-    assert _count(client, {"field": "created_at", "operator": "between",
-                           "value": "2026-10-01", "value2": "2026-10-31"}) == 1
+    assert (
+        _count(
+            client,
+            {
+                "field": "created_at",
+                "operator": "between",
+                "value": "2026-10-01",
+                "value2": "2026-10-31",
+            },
+        )
+        == 1
+    )
 
 
 def test_search_advanced_accounting_month(client, db, sample_account, sample_category):
     from datetime import date
+
     # Counts toward 2026-01 / 2025-12 (shifted back) / 2026-03 (shifted across a year end too).
     _make_transaction(db, sample_account, sample_category, date=date(2026, 1, 15))
-    _make_transaction(db, sample_account, sample_category, date=date(2026, 1, 2), accounting_month_offset=-1)
-    _make_transaction(db, sample_account, sample_category, date=date(2025, 12, 20), accounting_month_offset=3)
+    _make_transaction(
+        db, sample_account, sample_category, date=date(2026, 1, 2), accounting_month_offset=-1
+    )
+    _make_transaction(
+        db, sample_account, sample_category, date=date(2025, 12, 20), accounting_month_offset=3
+    )
 
     assert _count(client, {"field": "accounting_month", "operator": "on", "value": "2026-01"}) == 1
     assert _count(client, {"field": "accounting_month", "operator": "on", "value": "2025-12"}) == 1
     assert _count(client, {"field": "accounting_month", "operator": "on", "value": "2026-03"}) == 1
-    assert _count(client, {"field": "accounting_month", "operator": "before", "value": "2026-01"}) == 1
-    assert _count(client, {"field": "accounting_month", "operator": "after", "value": "2025-12"}) == 2
-    assert _count(client, {"field": "accounting_month", "operator": "between",
-                           "value": "2026-02", "value2": "2025-12"}) == 2
+    assert (
+        _count(client, {"field": "accounting_month", "operator": "before", "value": "2026-01"}) == 1
+    )
+    assert (
+        _count(client, {"field": "accounting_month", "operator": "after", "value": "2025-12"}) == 2
+    )
+    assert (
+        _count(
+            client,
+            {
+                "field": "accounting_month",
+                "operator": "between",
+                "value": "2026-02",
+                "value2": "2025-12",
+            },
+        )
+        == 2
+    )
 
 
 def test_search_advanced_accounting_month_bad_value_is_422(client):
@@ -928,8 +1101,8 @@ def test_search_between_missing_second_bound_is_422_not_500(client):
 
 
 def test_search_match_mode_all_vs_any(client, db, sample_account, sample_category):
-    t1 = _make_transaction(db, sample_account, sample_category, payee="Alpha", amount=10.0)
-    t2 = _make_transaction(db, sample_account, sample_category, payee="Beta", amount=999.0)
+    _make_transaction(db, sample_account, sample_category, payee="Alpha", amount=10.0)
+    _make_transaction(db, sample_account, sample_category, payee="Beta", amount=999.0)
     _make_transaction(db, sample_account, sample_category, payee="Gamma", amount=500.0)
 
     conditions = [
@@ -937,24 +1110,36 @@ def test_search_match_mode_all_vs_any(client, db, sample_account, sample_categor
         {"field": "amount", "operator": "eq", "value": 999.0},
     ]
 
-    response = client.post("/api/transactions/search", json={"conditions": conditions, "match_mode": "all"})
+    response = client.post(
+        "/api/transactions/search", json={"conditions": conditions, "match_mode": "all"}
+    )
     assert response.json()["total"] == 0
 
-    response = client.post("/api/transactions/search", json={"conditions": conditions, "match_mode": "any"})
+    response = client.post(
+        "/api/transactions/search", json={"conditions": conditions, "match_mode": "any"}
+    )
     data = response.json()
     assert data["total"] == 2
     payees = {item["payee"] for item in data["items"]}
     assert payees == {"Alpha", "Beta"}
 
 
-def test_search_advanced_per_user_split_fields(client, sample_account_with_user, sample_category, sample_user, sample_user2):
+def test_search_advanced_per_user_split_fields(
+    client, sample_account_with_user, sample_category, sample_user, sample_user2
+):
     # sample_user owns the account outright; the split is 3:1 between the two.
     def make(payee, weights):
-        response = client.post("/api/transactions", json={
-            "account_id": sample_account_with_user.id, "category_id": sample_category.id,
-            "date": "2026-01-15", "payee": payee, "amount": -100.0,
-            "split_weights": [{"user_id": uid, "weight": w} for uid, w in weights],
-        })
+        response = client.post(
+            "/api/transactions",
+            json={
+                "account_id": sample_account_with_user.id,
+                "category_id": sample_category.id,
+                "date": "2026-01-15",
+                "payee": payee,
+                "amount": -100.0,
+                "split_weights": [{"user_id": uid, "weight": w} for uid, w in weights],
+            },
+        )
         assert response.status_code == 201
 
     make("Shared", [(sample_user.id, 3), (sample_user2.id, 1)])
@@ -988,6 +1173,7 @@ def test_search_advanced_per_user_split_fields(client, sample_account_with_user,
 
 def test_search_advanced_account_and_category_in(client, db, sample_account, sample_category):
     from models import Account, Category
+
     other_account = Account(name="Other", type="Checking", currency="EUR")
     other_category = Category(name="Other cat", type="Expense")
     db.add_all([other_account, other_category])
@@ -997,8 +1183,10 @@ def test_search_advanced_account_and_category_in(client, db, sample_account, sam
     _make_transaction(db, other_account, sample_category, payee="B1", category_id=None)
 
     def payees(field, operator, value):
-        response = client.post("/api/transactions/search",
-                               json={"conditions": [{"field": field, "operator": operator, "value": value}]})
+        response = client.post(
+            "/api/transactions/search",
+            json={"conditions": [{"field": field, "operator": operator, "value": value}]},
+        )
         assert response.status_code == 200, response.json()
         return {item["payee"] for item in response.json()["items"]}
 
@@ -1016,6 +1204,7 @@ def test_search_advanced_account_and_category_in(client, db, sample_account, sam
 
 def test_search_simple_account_and_category_lists(client, db, sample_account, sample_category):
     from models import Account, Category
+
     other_account = Account(name="Other", type="Checking", currency="EUR")
     third_account = Account(name="Third", type="Checking", currency="EUR")
     other_category = Category(name="Other cat", type="Expense")
@@ -1035,7 +1224,9 @@ def test_search_simple_account_and_category_lists(client, db, sample_account, sa
     # Uncategorized ticked with categories: either.
     assert payees(category_ids=[other_category.id], uncategorized=True) == {"B2", "C0"}
     assert payees(uncategorized=True) == {"C0"}
-    assert payees(account_ids=[third_account.id, sample_account.id], category_ids=[sample_category.id]) == {"A1"}
+    assert payees(
+        account_ids=[third_account.id, sample_account.id], category_ids=[sample_category.id]
+    ) == {"A1"}
 
 
 def test_search_in_operator_needs_a_list_422(client):
@@ -1068,32 +1259,44 @@ def test_search_advanced_amount_abs(client, db, sample_account, sample_category)
 
 
 def test_search_per_user_field_without_user_422(client):
-    response = client.post("/api/transactions/search", json={
-        "conditions": [{"field": "split_share", "operator": "gt", "value": 0}],
-    })
+    response = client.post(
+        "/api/transactions/search",
+        json={
+            "conditions": [{"field": "split_share", "operator": "gt", "value": 0}],
+        },
+    )
     assert response.status_code == 422
 
 
 def test_search_invalid_operator_for_field_422(client):
-    response = client.post("/api/transactions/search", json={
-        "conditions": [{"field": "payee", "operator": "gt", "value": "x"}],
-    })
+    response = client.post(
+        "/api/transactions/search",
+        json={
+            "conditions": [{"field": "payee", "operator": "gt", "value": "x"}],
+        },
+    )
     assert response.status_code == 422
 
 
 def test_search_malformed_amount_value_422(client, db, sample_account, sample_category):
     _make_transaction(db, sample_account, sample_category)
-    response = client.post("/api/transactions/search", json={
-        "conditions": [{"field": "amount", "operator": "eq", "value": "not-a-number"}],
-    })
+    response = client.post(
+        "/api/transactions/search",
+        json={
+            "conditions": [{"field": "amount", "operator": "eq", "value": "not-a-number"}],
+        },
+    )
     assert response.status_code == 422
 
 
 def test_search_malformed_date_value_422(client, db, sample_account, sample_category):
     _make_transaction(db, sample_account, sample_category)
-    response = client.post("/api/transactions/search", json={
-        "conditions": [{"field": "date", "operator": "on", "value": "not-a-date"}],
-    })
+    response = client.post(
+        "/api/transactions/search",
+        json={
+            "conditions": [{"field": "date", "operator": "on", "value": "not-a-date"}],
+        },
+    )
     assert response.status_code == 422
 
 
@@ -1101,13 +1304,19 @@ def test_search_pagination(client, db, sample_account, sample_category):
     for i in range(5):
         _make_transaction(db, sample_account, sample_category, payee=f"Payee {i}", amount=float(i))
 
-    response = client.post("/api/transactions/search", json={"page": 1, "page_size": 2, "sort_by": "amount", "sort_dir": "asc"})
+    response = client.post(
+        "/api/transactions/search",
+        json={"page": 1, "page_size": 2, "sort_by": "amount", "sort_dir": "asc"},
+    )
     data = response.json()
     assert data["total"] == 5
     assert data["total_pages"] == 3
     assert [item["amount"] for item in data["items"]] == [0.0, 1.0]
 
-    response = client.post("/api/transactions/search", json={"page": 2, "page_size": 2, "sort_by": "amount", "sort_dir": "asc"})
+    response = client.post(
+        "/api/transactions/search",
+        json={"page": 2, "page_size": 2, "sort_by": "amount", "sort_dir": "asc"},
+    )
     data = response.json()
     assert [item["amount"] for item in data["items"]] == [2.0, 3.0]
 
@@ -1127,9 +1336,16 @@ def test_search_unpaginated_returns_all_matching_rows(client, db, sample_account
     for i in range(5):
         _make_transaction(db, sample_account, sample_category, payee=f"Payee {i}", amount=float(i))
 
-    response = client.post("/api/transactions/search", json={
-        "page": 2, "page_size": 2, "unpaginated": True, "sort_by": "amount", "sort_dir": "asc",
-    })
+    response = client.post(
+        "/api/transactions/search",
+        json={
+            "page": 2,
+            "page_size": 2,
+            "unpaginated": True,
+            "sort_by": "amount",
+            "sort_dir": "asc",
+        },
+    )
     data = response.json()
     assert data["total"] == 5
     assert data["page"] == 1
@@ -1138,10 +1354,14 @@ def test_search_unpaginated_returns_all_matching_rows(client, db, sample_account
     assert [item["amount"] for item in data["items"]] == [0.0, 1.0, 2.0, 3.0, 4.0]
 
 
-def test_search_unpaginated_still_applies_filters(client, sample_account_with_user, sample_user, sample_category, db):
+def test_search_unpaginated_still_applies_filters(
+    client, sample_account_with_user, sample_user, sample_category, db
+):
     _make_transaction(db, sample_account_with_user, sample_category, payee="User Specific")
 
-    response = client.post("/api/transactions/search", json={"user_id": sample_user.id, "unpaginated": True})
+    response = client.post(
+        "/api/transactions/search", json={"user_id": sample_user.id, "unpaginated": True}
+    )
     data = response.json()
     assert data["total"] == 1
     assert len(data["items"]) == 1
@@ -1152,26 +1372,37 @@ def test_search_sort_by_amount_asc(client, db, sample_account, sample_category):
     _make_transaction(db, sample_account, sample_category, payee="High", amount=100.0)
     _make_transaction(db, sample_account, sample_category, payee="Low", amount=1.0)
 
-    response = client.post("/api/transactions/search", json={"sort_by": "amount", "sort_dir": "asc"})
+    response = client.post(
+        "/api/transactions/search", json={"sort_by": "amount", "sort_dir": "asc"}
+    )
     data = response.json()
     assert [item["payee"] for item in data["items"]] == ["Low", "High"]
 
 
 def test_search_date_order_flips_and_breaks_ties_by_id(client, db, sample_account, sample_category):
     from datetime import date
+
     old = _make_transaction(db, sample_account, sample_category, payee="Old", date=date(2026, 1, 1))
-    same_a = _make_transaction(db, sample_account, sample_category, payee="Same A", date=date(2026, 6, 1))
-    same_b = _make_transaction(db, sample_account, sample_category, payee="Same B", date=date(2026, 6, 1))
+    same_a = _make_transaction(
+        db, sample_account, sample_category, payee="Same A", date=date(2026, 6, 1)
+    )
+    same_b = _make_transaction(
+        db, sample_account, sample_category, payee="Same B", date=date(2026, 6, 1)
+    )
 
     def ids(sort_dir, page):
-        response = client.post("/api/transactions/search", json={"sort_dir": sort_dir, "page": page, "page_size": 2})
+        response = client.post(
+            "/api/transactions/search", json={"sort_dir": sort_dir, "page": page, "page_size": 2}
+        )
         return [t["id"] for t in response.json()["items"]]
 
     assert ids("desc", 1) + ids("desc", 2) == [same_b.id, same_a.id, old.id]
     assert ids("asc", 1) + ids("asc", 2) == [old.id, same_a.id, same_b.id]
 
 
-def test_search_filtered_by_user(client, sample_account_with_user, sample_user, sample_category, db):
+def test_search_filtered_by_user(
+    client, sample_account_with_user, sample_user, sample_category, db
+):
     _make_transaction(db, sample_account_with_user, sample_category, payee="User Specific")
 
     response = client.post("/api/transactions/search", json={"user_id": sample_user.id})
@@ -1201,7 +1432,9 @@ def test_search_advanced_category_is_none(client, db, sample_account, sample_cat
 
     def payees(operator):
         body = {"conditions": [{"field": "category_id", "operator": operator, "value": None}]}
-        return [t["payee"] for t in client.post("/api/transactions/search", json=body).json()["items"]]
+        return [
+            t["payee"] for t in client.post("/api/transactions/search", json=body).json()["items"]
+        ]
 
     assert payees("eq") == ["Loose"]
     assert payees("ne") == ["Filed"]

@@ -9,12 +9,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 
-from database import engine, Base, sync_schema
-from rules import RuleViolation
+from database import Base, engine, sync_schema
 from routers import (
     accounts,
-    balances,
     backup,
+    balances,
     bank_sync,
     categories,
     categorizer,
@@ -32,13 +31,19 @@ from routers import (
     transactions,
     users,
 )
+from rules import RuleViolation
 
 logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    if "pytest" not in sys.modules:
+    # Only a local SQLite database is shaped at startup (MYF-19). Production
+    # (Postgres) is shaped by Alembic alone, run by the deploy job before the
+    # new revision starts, so its schema always matches the migration history;
+    # CI's `alembic check` fails while models.py has a change no migration
+    # carries.
+    if "pytest" not in sys.modules and engine.dialect.name == "sqlite":
         Base.metadata.create_all(bind=engine)
         sync_schema(engine)
     yield
@@ -65,10 +70,12 @@ allow_origins = os.environ.get("CORS_ALLOWED_ORIGINS", "http://localhost:5173").
 # Cloud Scheduler endpoints are exempt: they are not called by a browser and
 # carry their own shared-secret header instead.
 CSRF_HEADER = "X-MyFinance-Client"
-CSRF_EXEMPT_PATHS = frozenset({
-    "/api/bank-sync/run-due",
-    "/api/onedrive/backup/run-due",
-})
+CSRF_EXEMPT_PATHS = frozenset(
+    {
+        "/api/bank-sync/run-due",
+        "/api/onedrive/backup/run-due",
+    }
+)
 _SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
 
@@ -118,7 +125,7 @@ def _handle_validation_error(request, exc):
         field = ".".join(str(p) for p in field_loc) if field_loc else "value"
         msg = err.get("msg", "Invalid value")
         if msg.startswith("Value error, "):
-            msg = msg[len("Value error, "):]
+            msg = msg[len("Value error, ") :]
         parts.append(f"{field}: {msg}")
     detail = "; ".join(parts) if parts else "Invalid request"
     return JSONResponse(status_code=422, content={"detail": detail})

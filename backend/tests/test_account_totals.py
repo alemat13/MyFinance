@@ -51,7 +51,9 @@ def test_deleting_a_transaction_moves_the_balance_back(client, sample_account, s
     assert client.get("/api/accounts").json()[0]["balance"] == 1000.0
 
 
-def test_editing_the_balance_restates_it_without_losing_transactions(client, sample_account, sample_user):
+def test_editing_the_balance_restates_it_without_losing_transactions(
+    client, sample_account, sample_user
+):
     _add_transaction(client, sample_account.id, sample_user.id, 250.0)
 
     response = client.put(f"/api/accounts/{sample_account.id}", json={"balance": 900.0})
@@ -73,7 +75,10 @@ def test_editing_another_field_leaves_the_balance_alone(client, sample_account, 
 
 
 def test_moving_a_transaction_between_accounts_moves_both_balances(
-    client, sample_account, sample_account_2, sample_user,
+    client,
+    sample_account,
+    sample_account_2,
+    sample_user,
 ):
     created = _add_transaction(client, sample_account.id, sample_user.id, 250.0)
 
@@ -102,10 +107,14 @@ def test_dashboard_reports_the_same_derived_balance(client, sample_account_with_
 
 def test_account_totals_are_cached_and_invalidated(client, db, sample_account, sample_user):
     client.get("/api/accounts")
-    assert db.query(AggregateCache).filter(AggregateCache.namespace == "account_totals").count() == 1
+    assert (
+        db.query(AggregateCache).filter(AggregateCache.namespace == "account_totals").count() == 1
+    )
 
     _add_transaction(client, sample_account.id, sample_user.id, 250.0)
-    assert db.query(AggregateCache).filter(AggregateCache.namespace == "account_totals").count() == 0
+    assert (
+        db.query(AggregateCache).filter(AggregateCache.namespace == "account_totals").count() == 0
+    )
 
 
 def test_backup_roundtrip_preserves_the_displayed_balance(client, sample_account, sample_user):
@@ -126,7 +135,9 @@ def test_backup_roundtrip_preserves_the_displayed_balance(client, sample_account
     assert accounts[0]["balance"] == 1250.0
 
 
-def test_balance_offset_is_the_difference_from_the_transaction_total(client, db, sample_account, sample_user):
+def test_balance_offset_is_the_difference_from_the_transaction_total(
+    client, db, sample_account, sample_user
+):
     _add_transaction(client, sample_account.id, sample_user.id, 250.0)
     client.put(f"/api/accounts/{sample_account.id}", json={"balance": 900.0})
 

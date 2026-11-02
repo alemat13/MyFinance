@@ -57,7 +57,9 @@ def validate_transaction_weights_present(items: list) -> None:
     field entirely (falling back to the category/account/global cascade) is
     the only way to end up with no explicit weights of your own."""
     if not items:
-        raise RuleViolation("A transaction's split cannot be empty; omit split_weights to use the default tiers")
+        raise RuleViolation(
+            "A transaction's split cannot be empty; omit split_weights to use the default tiers"
+        )
 
 
 def validate_resolved_weights_present(weights: dict) -> None:
@@ -79,7 +81,9 @@ def validate_global_weights_present(items: list) -> None:
     it, so unlike those two (which may legitimately be left unconfigured),
     the global tier can never be saved empty or entirely zeroed out."""
     if not items or sum(item.weight for item in items) <= 0:
-        raise RuleViolation("Global split weights cannot be left empty or all zero — every transaction relies on this as its fallback")
+        raise RuleViolation(
+            "Global split weights cannot be left empty or all zero — every transaction relies on this as its fallback"
+        )
 
 
 def validate_divide_parts(parts: list, original_amount: float) -> None:
@@ -93,7 +97,9 @@ def validate_divide_parts(parts: list, original_amount: float) -> None:
         raise RuleViolation("Each part's amount must be non-zero")
     total = sum(part.amount for part in parts)
     if abs(total - original_amount) > 0.01:
-        raise RuleViolation(f"Part amounts must sum to the original transaction's amount ({original_amount}), got {total}")
+        raise RuleViolation(
+            f"Part amounts must sum to the original transaction's amount ({original_amount}), got {total}"
+        )
 
 
 def validate_not_divide_sibling(transaction) -> None:
@@ -102,7 +108,9 @@ def validate_not_divide_sibling(transaction) -> None:
     new parts in a different group than its existing siblings. Divide the
     group's anchor instead (divide_group_id == id, or unset)."""
     if transaction.divide_group_id is not None and transaction.divide_group_id != transaction.id:
-        raise RuleViolation("This transaction is already part of a divided transaction; edit or divide the original part instead")
+        raise RuleViolation(
+            "This transaction is already part of a divided transaction; edit or divide the original part instead"
+        )
 
 
 def validate_alert_email(email: str | None, any_frequency_on: bool) -> None:
@@ -113,7 +121,14 @@ def validate_alert_email(email: str | None, any_frequency_on: bool) -> None:
             raise RuleViolation("Enter the email address the alerts should go to")
         return
     local, at, domain = email.partition("@")
-    if not at or not local or "." not in domain or "@" in domain or any(c.isspace() for c in email) or len(email) > 200:
+    if (
+        not at
+        or not local
+        or "." not in domain
+        or "@" in domain
+        or any(c.isspace() for c in email)
+        or len(email) > 200
+    ):
         raise RuleViolation("This is not a valid email address")
 
 
@@ -141,15 +156,21 @@ def validate_bank_link_account(db: Session, link: BankAccountLink, account_id: i
         raise RuleViolation(f"Account {account_id} does not exist")
     if account.archived:
         raise RuleViolation(f"'{account.name}' is archived and can't receive synced transactions")
-    clash = db.scalar(select(BankAccountLink).where(
-        BankAccountLink.account_id == account_id,
-        BankAccountLink.id != link.id,
-    ).limit(1))
+    clash = db.scalar(
+        select(BankAccountLink)
+        .where(
+            BankAccountLink.account_id == account_id,
+            BankAccountLink.id != link.id,
+        )
+        .limit(1)
+    )
     if clash is not None:
         raise RuleViolation(f"'{account.name}' is already linked to another bank account")
 
 
-def validate_category_hierarchy(db: Session, category: Category | None, parent_id: int | None, type_: str) -> None:
+def validate_category_hierarchy(
+    db: Session, category: Category | None, parent_id: int | None, type_: str
+) -> None:
     """Enforces the 2-level category hierarchy: a category may have a parent,
     but that parent must itself be top-level, and a subcategory's type must
     match its parent's. `category` is the category being updated (None on

@@ -14,9 +14,13 @@ def test_dashboard_with_data(client, sample_transaction):
     assert len(data["recent_transactions"]) == 1
 
 
-def test_dashboard_filtered_by_user(client, sample_account_with_user, sample_user, sample_category, db):
+def test_dashboard_filtered_by_user(
+    client, sample_account_with_user, sample_user, sample_category, db
+):
     from datetime import date
+
     from models import Transaction
+
     t = Transaction(
         date=date(2026, 2, 1),
         payee="User Specific",
@@ -43,17 +47,32 @@ def test_dashboard_filtered_by_user_no_match(client, sample_user):
     assert data["recent_transactions"] == []
 
 
-def test_dashboard_visible_via_split_without_ownership(client, sample_account, sample_category, sample_user, sample_user2, db):
+def test_dashboard_visible_via_split_without_ownership(
+    client, sample_account, sample_category, sample_user, sample_user2, db
+):
     from datetime import date
+
     from models import AccountUser, Transaction, TransactionSplit
-    db.add(AccountUser(account_id=sample_account.id, user_id=sample_user.id, ownership_percentage=100.0))
+
+    db.add(
+        AccountUser(
+            account_id=sample_account.id, user_id=sample_user.id, ownership_percentage=100.0
+        )
+    )
     t = Transaction(
-        date=date(2026, 2, 1), payee="Shared Bill", amount=100.0,
-        account_id=sample_account.id, category_id=sample_category.id,
+        date=date(2026, 2, 1),
+        payee="Shared Bill",
+        amount=100.0,
+        account_id=sample_account.id,
+        category_id=sample_category.id,
     )
     db.add(t)
     db.flush()
-    db.add(TransactionSplit(transaction_id=t.id, user_id=sample_user2.id, share_amount=40.0, source="manual"))
+    db.add(
+        TransactionSplit(
+            transaction_id=t.id, user_id=sample_user2.id, share_amount=40.0, source="manual"
+        )
+    )
     db.commit()
 
     response = client.get(f"/api/dashboard?user_id={sample_user2.id}")
@@ -64,20 +83,37 @@ def test_dashboard_visible_via_split_without_ownership(client, sample_account, s
     assert data["recent_transactions"][0]["payee"] == "Shared Bill"
 
 
-def test_dashboard_balances_filtered_to_selected_user(client, sample_account, sample_category, sample_user, sample_user2, db):
+def test_dashboard_balances_filtered_to_selected_user(
+    client, sample_account, sample_category, sample_user, sample_user2, db
+):
     from datetime import date
+
     from models import AccountUser, Transaction, TransactionSplit
-    db.add(AccountUser(account_id=sample_account.id, user_id=sample_user.id, ownership_percentage=100.0))
+
+    db.add(
+        AccountUser(
+            account_id=sample_account.id, user_id=sample_user.id, ownership_percentage=100.0
+        )
+    )
     t = Transaction(
-        date=date(2026, 2, 1), payee="Split Bill", amount=100.0,
-        account_id=sample_account.id, category_id=sample_category.id,
+        date=date(2026, 2, 1),
+        payee="Split Bill",
+        amount=100.0,
+        account_id=sample_account.id,
+        category_id=sample_category.id,
     )
     db.add(t)
     db.flush()
-    db.add_all([
-        TransactionSplit(transaction_id=t.id, user_id=sample_user.id, share_amount=60.0, source="manual"),
-        TransactionSplit(transaction_id=t.id, user_id=sample_user2.id, share_amount=40.0, source="manual"),
-    ])
+    db.add_all(
+        [
+            TransactionSplit(
+                transaction_id=t.id, user_id=sample_user.id, share_amount=60.0, source="manual"
+            ),
+            TransactionSplit(
+                transaction_id=t.id, user_id=sample_user2.id, share_amount=40.0, source="manual"
+            ),
+        ]
+    )
     db.commit()
 
     response = client.get(f"/api/dashboard?user_id={sample_user2.id}")
@@ -90,11 +126,18 @@ def test_dashboard_balances_filtered_to_selected_user(client, sample_account, sa
     assert len(response_all.json()["balances"]) == 2
 
 
-def test_dashboard_balances_reflect_new_transaction_after_cache_warm(client, sample_account, sample_category, sample_user, db):
+def test_dashboard_balances_reflect_new_transaction_after_cache_warm(
+    client, sample_account, sample_category, sample_user, db
+):
     """Regression test for the balances cache: a GET that primes the cache
     with an empty/stale result must not keep serving it after a mutation."""
     from models import AccountUser
-    db.add(AccountUser(account_id=sample_account.id, user_id=sample_user.id, ownership_percentage=100.0))
+
+    db.add(
+        AccountUser(
+            account_id=sample_account.id, user_id=sample_user.id, ownership_percentage=100.0
+        )
+    )
     db.commit()
 
     warm = client.get("/api/dashboard")
@@ -120,6 +163,7 @@ def test_dashboard_balances_reflect_new_transaction_after_cache_warm(client, sam
 
 def test_dashboard_excludes_archived_accounts(client, sample_transaction, db):
     from models import Account
+
     db.query(Account).filter(Account.id == sample_transaction.account_id).update({"archived": True})
     db.commit()
 
@@ -131,13 +175,25 @@ def test_dashboard_excludes_archived_accounts(client, sample_transaction, db):
     assert len(data["recent_transactions"]) == 1
 
 
-def test_dashboard_reports_last_transaction_date_per_account(client, sample_account, sample_category, db):
+def test_dashboard_reports_last_transaction_date_per_account(
+    client, sample_account, sample_category, db
+):
     from datetime import date
+
     from models import Account, Transaction
+
     empty = Account(name="Empty", type="Savings", currency="EUR")
     db.add(empty)
     for d in (date(2026, 3, 1), date(2026, 9, 23), date(1970, 1, 1)):
-        db.add(Transaction(date=d, payee="P", amount=1.0, account_id=sample_account.id, category_id=sample_category.id))
+        db.add(
+            Transaction(
+                date=d,
+                payee="P",
+                amount=1.0,
+                account_id=sample_account.id,
+                category_id=sample_category.id,
+            )
+        )
     db.commit()
 
     accounts = {a["name"]: a for a in client.get("/api/dashboard").json()["accounts"]}
@@ -145,18 +201,38 @@ def test_dashboard_reports_last_transaction_date_per_account(client, sample_acco
     assert accounts["Empty"]["last_transaction_date"] is None
 
 
-def test_dashboard_last_transaction_date_follows_new_transaction_after_cache_warm(client, sample_account, sample_category, sample_user):
+def test_dashboard_last_transaction_date_follows_new_transaction_after_cache_warm(
+    client, sample_account, sample_category, sample_user
+):
     split = [{"user_id": sample_user.id, "weight": 1}]
-    response = client.post("/api/transactions", json={
-        "date": "2026-01-10", "payee": "Old", "amount": -5.0,
-        "account_id": sample_account.id, "category_id": sample_category.id, "split_weights": split,
-    })
+    response = client.post(
+        "/api/transactions",
+        json={
+            "date": "2026-01-10",
+            "payee": "Old",
+            "amount": -5.0,
+            "account_id": sample_account.id,
+            "category_id": sample_category.id,
+            "split_weights": split,
+        },
+    )
     assert response.status_code == 201, response.text
-    assert client.get("/api/dashboard").json()["accounts"][0]["last_transaction_date"] == "2026-01-10"
+    assert (
+        client.get("/api/dashboard").json()["accounts"][0]["last_transaction_date"] == "2026-01-10"
+    )
 
-    response = client.post("/api/transactions", json={
-        "date": "2026-02-20", "payee": "New", "amount": -5.0,
-        "account_id": sample_account.id, "category_id": sample_category.id, "split_weights": split,
-    })
+    response = client.post(
+        "/api/transactions",
+        json={
+            "date": "2026-02-20",
+            "payee": "New",
+            "amount": -5.0,
+            "account_id": sample_account.id,
+            "category_id": sample_category.id,
+            "split_weights": split,
+        },
+    )
     assert response.status_code == 201, response.text
-    assert client.get("/api/dashboard").json()["accounts"][0]["last_transaction_date"] == "2026-02-20"
+    assert (
+        client.get("/api/dashboard").json()["accounts"][0]["last_transaction_date"] == "2026-02-20"
+    )

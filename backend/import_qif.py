@@ -6,6 +6,7 @@ checks and commit all stay the CSV pipeline's. Only the cash-like account
 types (Bank, CCard, Cash, Oth A, Oth L) carry importable transactions; every
 other section (investments, category and class lists, account lists) is skipped.
 """
+
 import csv
 import io
 import re
@@ -115,7 +116,9 @@ def parse_qif(text: str) -> list[dict[str, str]]:
 
 def qif_to_csv_text(text: str) -> str:
     out = io.StringIO()
-    writer = csv.DictWriter(out, fieldnames=QIF_HEADERS, delimiter=QIF_DELIMITER, extrasaction="ignore")
+    writer = csv.DictWriter(
+        out, fieldnames=QIF_HEADERS, delimiter=QIF_DELIMITER, extrasaction="ignore"
+    )
     writer.writeheader()
     for row in parse_qif(text):
         writer.writerow({h: row.get(h, "") for h in QIF_HEADERS})
