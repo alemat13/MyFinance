@@ -1,7 +1,7 @@
-import { Fragment, useEffect, useRef, useState } from 'react'
-import { ArrowDown, ArrowUp, CheckCircle2, Circle, Flag, Link2 } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { ArrowDown, ArrowUp, Link2 } from 'lucide-react'
 import {
-  Transaction, TransactionSplit, GlobalSplitWeight,
+  Transaction, GlobalSplitWeight,
   Account, Category, User, Tag, TransactionSearchRequest, SavedFilter, HistoryGroupRef,
   fetchAccounts, fetchCategories, fetchUsers, fetchSplitWeights, fetchTags, searchTransactions, updateTransaction,
 } from '../api/client'
@@ -17,21 +17,25 @@ import TransactionConditions, { ConditionRow, SEARCH_ONLY_FIELDS, conditionsToFi
 import ExportMenu from './ExportMenu'
 import WhatsAppIcon from './WhatsAppIcon'
 import { whatsAppListShareUrl } from '../utils/whatsapp'
-import TagChips from './TagChips'
 import SavedFilters, { CurrentFilter } from './SavedFilters'
-import { Button, IconButton, Input, Select, Table, Thead, Tbody, Tr, Th, Td, StatusMessage, CategoryBadge, BackButton, ConfirmDialog, Card, NumberInput, parseNumber } from './ui'
+import { Button, Input, Select, StatusMessage, BackButton, NumberInput, parseNumber } from './ui'
 import { formatMoney } from '../utils/currency'
 import { getParam, patchQueryParams } from '../utils/urlState'
 import { UNCATEGORIZED_ID } from '../utils/categoryHierarchy'
 import { UNTAGGED_ID, joinTagNames } from '../utils/tags'
 import { isAdminMode } from '../utils/admin'
 import { RuleDraft, simpleFiltersToConditions } from '../utils/rules'
-import { myShareFor, balanceFor, formatDateGroupHeader, checkpointPeriodLabel } from '../utils/transactions'
+import { myShareFor, balanceFor } from '../utils/transactions'
 import { useToast } from '../context/ToastContext'
 import { useIsMobile } from '../hooks/useMediaQuery'
 import { buildCsv } from '../utils/csv'
 import { buildXlsxBlob } from '../utils/xlsx'
 import { downloadBlob } from '../utils/download'
+import {
+  FilterMode, SORT_DIR_STORAGE_KEY, loadInitialMode, loadInitialConditions, loadInitialHistoryGroup, loadInitialInt, loadInitialIds, savedIds, idsToSaved, loadInitialPageSize, loadInitialSortBy, loadInitialSortDir,
+} from './transactions/initialState'
+import TransactionCardList from './transactions/TransactionCardList'
+import TransactionTable from './transactions/TransactionTable'
 
 interface Props {
   onBack: () => void
@@ -44,111 +48,6 @@ interface Props {
   onCreateRule?: (draft: RuleDraft) => void
 }
 
-type FilterMode = 'simple' | 'advanced'
-
-const SORT_BY_VALUES = ['date', 'amount', 'payee', 'created_at'] as const
-const SORT_DIR_VALUES = ['asc', 'desc'] as const
-const PAGE_SIZE_VALUES = [25, 50, 100] as const
-// The date order picked with the Newest/Oldest first toggle, remembered across visits.
-const SORT_DIR_STORAGE_KEY = 'transactionsSortDir'
-
-function loadInitialMode(): FilterMode {
-  return getParam('mode') === 'advanced' ? 'advanced' : 'simple'
-}
-
-function loadInitialConditions(): ConditionRow[] {
-  const raw = getParam('conditions')
-  if (!raw) return []
-  try {
-    const parsed = JSON.parse(decodeURIComponent(raw))
-    if (!Array.isArray(parsed)) return []
-    return parsed.filter((c): c is ConditionRow =>
-      c && typeof c === 'object' && typeof c.field === 'string' && typeof c.operator === 'string')
-  } catch {
-    return []
-  }
-}
-
-// The History entry whose transactions the screen is limited to, if it was
-// opened from History's "Open in Transactions".
-function loadInitialHistoryGroup(): HistoryGroupRef | null {
-  const raw = getParam('history_group')
-  if (!raw) return null
-  try {
-    const parsed = JSON.parse(raw)
-    return typeof parsed?.first_id === 'number' && typeof parsed?.last_id === 'number' ? parsed : null
-  } catch {
-    return null
-  }
-}
-
-function loadInitialInt(name: string, fallback: number): number {
-  const parsed = parseInt(getParam(name) ?? '', 10)
-  return Number.isFinite(parsed) ? parsed : fallback
-}
-
-// An id list param ("3,5"), which an older single-id link still reads as.
-function loadInitialIds(name: string): number[] {
-  return (getParam(name) ?? '').split(',').map(v => parseInt(v, 10)).filter(n => Number.isFinite(n) && n !== 0)
-}
-
-/** A saved filter's account/category: one id (0 for none) or a list. */
-const savedIds = (v: number | number[] | undefined): number[] =>
-  Array.isArray(v) ? v : v ? [v] : []
-/** The other way round, so a filter of one id saves the way it always did. */
-const idsToSaved = (ids: number[]): number | number[] => ids.length === 0 ? 0 : ids.length === 1 ? ids[0] : ids
-
-function loadInitialPageSize(): number {
-  const parsed = parseInt(getParam('page_size') ?? '', 10)
-  return (PAGE_SIZE_VALUES as readonly number[]).includes(parsed) ? parsed : 50
-}
-
-function loadInitialSortBy(): typeof SORT_BY_VALUES[number] {
-  const val = getParam('sort_by')
-  return (SORT_BY_VALUES as readonly string[]).includes(val ?? '') ? (val as typeof SORT_BY_VALUES[number]) : 'date'
-}
-
-function loadInitialSortDir(): typeof SORT_DIR_VALUES[number] {
-  let val = getParam('sort_dir')
-  if (val === null) {
-    try { val = localStorage.getItem(SORT_DIR_STORAGE_KEY) } catch { val = null }
-  }
-  return (SORT_DIR_VALUES as readonly string[]).includes(val ?? '') ? (val as typeof SORT_DIR_VALUES[number]) : 'desc'
-}
-
-const splitsDisplay = (splits: TransactionSplit[], currency: string) => {
-  if (splits.length === 0) return <span className="text-slate-400">—</span>
-  return splits.map(s => `${s.user_name} ${formatMoney(s.share_amount, currency)}`).join(' / ')
-}
-
-// Marks a checkpoint: a row stating what its account is worth, whose amount
-// is worked out from that value.
-function CheckpointIcon({ since }: { since?: string | null }) {
-  return (
-    <span title={`Checkpoint: gain or loss ${checkpointPeriodLabel(since)}`} className="inline-flex align-[-2px] text-accent mx-1">
-      <Flag size={14} aria-label="Checkpoint" />
-    </span>
-  )
-}
-
-// The period a checkpoint's amount covers, on its own line under the payee.
-function CheckpointPeriod({ since, className = '' }: { since?: string | null; className?: string }) {
-  return (
-    <div className={`text-xs text-slate-500 dark:text-slate-400 ${className}`} data-testid="checkpoint-period">
-      Gain/loss {checkpointPeriodLabel(since)}
-    </div>
-  )
-}
-
-// Marks a transaction that belongs to a group of linked ones; the group itself
-// is shown in the detail panel.
-function LinkedIcon() {
-  return (
-    <span title="Linked to other transactions" className="inline-flex align-[-2px] text-accent mx-1">
-      <Link2 size={14} aria-label="Linked" />
-    </span>
-  )
-}
 
 export default function TransactionsPage({ onBack, selectedUserId, onOpenCategorizer, onOpenRules, onCreateRule }: Props) {
   const [transactions, setTransactions] = useState<Transaction[]>([])
@@ -523,8 +422,6 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
   }
 
   const groupByDate = sortBy === 'date'
-  const showMyColumns = selectedUserId != null
-  const columnCount = showMyColumns ? 8 : 6
 
   const sumByCurrency = (values: (t: Transaction) => number) => {
     const totals = new Map<string, number>()
@@ -658,185 +555,33 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
       )}
 
       {!loading && isMobile && (
-        <div className="space-y-2">
-          {transactions.length === 0 && (
-            <div className="text-center py-5 text-sm text-slate-400">No transactions match your filters</div>
-          )}
-          {transactions.map((t, idx) => {
-            const showDateHeader = groupByDate && (idx === 0 || transactions[idx - 1].date !== t.date)
-            const myShare = showMyColumns ? myShareFor(t, selectedUserId!) : null
-            const balance = showMyColumns ? balanceFor(t, selectedUserId!, allAccounts) : null
-            return (
-              <Fragment key={t.id}>
-                {showDateHeader && (
-                  <div className="pt-2 pb-0.5 text-xs font-semibold text-slate-500 dark:text-slate-400">
-                    {formatDateGroupHeader(t.date)}
-                  </div>
-                )}
-                <Card
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => openDetail(t.id)}
-                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDetail(t.id) } }}
-                  className={`p-3 cursor-pointer ${t.reconciled ? 'opacity-60' : ''}`}
-                >
-                  <div className="flex items-start gap-2">
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.has(t.id)}
-                      onChange={() => toggleSelected(t.id)}
-                      onClick={e => e.stopPropagation()}
-                      aria-label={`Select transaction ${t.payee}`}
-                      className="mt-1.5 shrink-0"
-                    />
-                    <IconButton
-                      aria-label={t.reconciled ? `Mark ${t.payee} as unreconciled` : `Mark ${t.payee} as reconciled`}
-                      onClick={e => { e.stopPropagation(); toggleReconciled(t) }}
-                      className="p-0.5 mt-0.5 shrink-0"
-                    >
-                      {t.reconciled
-                        ? <CheckCircle2 size={16} className="text-positive" />
-                        : <Circle size={16} className="text-slate-300 dark:text-slate-600" />}
-                    </IconButton>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex justify-between gap-2">
-                        <span className="font-medium text-slate-900 dark:text-slate-100 truncate">
-                          {t.link_id != null && <LinkedIcon />}{t.checkpoint_value != null && <CheckpointIcon since={t.checkpoint_since} />}
-                          {t.payee}
-                        </span>
-                        <span className={`shrink-0 font-semibold ${t.amount >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                          {formatMoney(t.amount, t.currency)}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between gap-2 mt-1">
-                        <CategoryBadge name={t.category_name} color={t.category_color} icon={t.category_icon} />
-                        <span className="text-xs text-slate-500 dark:text-slate-400 truncate">{t.account_name}</span>
-                      </div>
-                      {t.checkpoint_value != null && <CheckpointPeriod since={t.checkpoint_since} className="mt-1" />}
-                      {t.tags && t.tags.length > 0 && <div className="mt-1"><TagChips tags={t.tags} /></div>}
-                      {showMyColumns && (
-                        <div className="flex justify-between gap-2 text-xs text-slate-500 dark:text-slate-400 mt-1.5">
-                          <span>My share: <span className={myShare! >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}>{formatMoney(myShare!, t.currency)}</span></span>
-                          <span>Balance: <span className={balance! >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}>{formatMoney(balance!, t.currency)}</span></span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </Card>
-              </Fragment>
-            )
-          })}
-          {transactions.length > 0 && (
-            <div className="flex justify-between text-sm font-semibold pt-2 mt-1 border-t-2 border-slate-300 dark:border-slate-600">
-              <span>Total</span>
-              <span>{sumByCurrency(t => t.amount)}</span>
-            </div>
-          )}
-        </div>
+        <TransactionCardList
+          transactions={transactions}
+          groupByDate={groupByDate}
+          selectedUserId={selectedUserId}
+          allAccounts={allAccounts}
+          selectedIds={selectedIds}
+          onToggleSelected={toggleSelected}
+          onToggleReconciled={toggleReconciled}
+          onOpen={openDetail}
+          sumByCurrency={sumByCurrency}
+        />
       )}
 
       {!loading && !isMobile && (
-        <Table>
-          <Thead>
-            <Tr>
-              <Th className="w-8">
-                <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} aria-label="Select all on this page" />
-              </Th>
-              <Th>Payee</Th>
-              <Th>Category</Th>
-              <Th>Account</Th>
-              <Th className="text-right">Amount</Th>
-              {showMyColumns && <Th className="text-right">My share</Th>}
-              {showMyColumns && <Th className="text-right">Balance</Th>}
-              <Th>Split</Th>
-            </Tr>
-          </Thead>
-          <Tbody>
-            {transactions.length === 0 && (
-              <Tr><Td colSpan={columnCount} className="text-center py-5 text-slate-400">No transactions match your filters</Td></Tr>
-            )}
-            {transactions.map((t, idx) => {
-              const showDateHeader = groupByDate && (idx === 0 || transactions[idx - 1].date !== t.date)
-              return (
-              <Fragment key={t.id}>
-              {showDateHeader && (
-                <Tr className="hover:bg-transparent bg-slate-100 dark:bg-slate-800/70">
-                  <Td colSpan={columnCount} className="py-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400">
-                    {formatDateGroupHeader(t.date)}
-                  </Td>
-                </Tr>
-              )}
-              <Tr
-                onClick={() => openDetail(t.id)}
-                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDetail(t.id) } }}
-                role="button"
-                tabIndex={0}
-                className={`cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50 ${t.reconciled ? 'opacity-60' : ''}`}
-              >
-                <Td onClick={e => e.stopPropagation()}>
-                  <input
-                    type="checkbox"
-                    checked={selectedIds.has(t.id)}
-                    onChange={() => toggleSelected(t.id)}
-                    aria-label={`Select transaction ${t.payee}`}
-                  />
-                </Td>
-                <Td>
-                  <span className="inline-flex items-center gap-1.5">
-                    <IconButton
-                      aria-label={t.reconciled ? `Mark ${t.payee} as unreconciled` : `Mark ${t.payee} as reconciled`}
-                      onClick={e => { e.stopPropagation(); toggleReconciled(t) }}
-                      className="p-0.5"
-                    >
-                      {t.reconciled
-                        ? <CheckCircle2 size={16} className="text-positive" />
-                        : <Circle size={16} className="text-slate-300 dark:text-slate-600" />}
-                    </IconButton>
-                    {t.payee}
-                    {t.link_id != null && <LinkedIcon />}{t.checkpoint_value != null && <CheckpointIcon since={t.checkpoint_since} />}
-                  </span>
-                  {t.checkpoint_value != null && <CheckpointPeriod since={t.checkpoint_since} className="ml-7 mt-0.5" />}
-                  {t.tags && t.tags.length > 0 && <div className="ml-7 mt-0.5"><TagChips tags={t.tags} /></div>}
-                </Td>
-                <Td><CategoryBadge name={t.category_name} color={t.category_color} icon={t.category_icon} /></Td>
-                <Td>{t.account_name}</Td>
-                <Td className={`text-right ${t.amount >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                  {formatMoney(t.amount, t.currency)}
-                </Td>
-                {showMyColumns && (() => {
-                  const myShare = myShareFor(t, selectedUserId!)
-                  const balance = balanceFor(t, selectedUserId!, allAccounts)
-                  return (
-                    <>
-                      <Td className={`text-right ${myShare >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                        {formatMoney(myShare, t.currency)}
-                      </Td>
-                      <Td className={`text-right ${balance >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                        {formatMoney(balance, t.currency)}
-                      </Td>
-                    </>
-                  )
-                })()}
-                <Td className="text-xs">{splitsDisplay(t.splits, t.currency)}</Td>
-              </Tr>
-              </Fragment>
-              )
-            })}
-            {transactions.length > 0 && (
-              <Tr className="hover:bg-transparent font-semibold border-t-2 border-slate-300 dark:border-slate-600">
-                <Td colSpan={4}>Total</Td>
-                <Td className="text-right">{sumByCurrency(t => t.amount)}</Td>
-                {showMyColumns && (
-                  <>
-                    <Td className="text-right">{sumByCurrency(t => myShareFor(t, selectedUserId!))}</Td>
-                    <Td className="text-right">{sumByCurrency(t => balanceFor(t, selectedUserId!, allAccounts))}</Td>
-                  </>
-                )}
-                <Td />
-              </Tr>
-            )}
-          </Tbody>
-        </Table>
+        <TransactionTable
+          transactions={transactions}
+          groupByDate={groupByDate}
+          selectedUserId={selectedUserId}
+          allAccounts={allAccounts}
+          selectedIds={selectedIds}
+          onToggleSelected={toggleSelected}
+          onToggleReconciled={toggleReconciled}
+          onOpen={openDetail}
+          sumByCurrency={sumByCurrency}
+          allSelected={allSelected}
+          onToggleSelectAll={toggleSelectAll}
+        />
       )}
 
       {!loading && (
