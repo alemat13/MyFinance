@@ -6536,9 +6536,8 @@
           {
             "in": "query",
             "name": "mode",
-            "required": false,
+            "required": true,
             "schema": {
-              "default": "overwrite",
               "enum": [
                 "overwrite",
                 "partial"

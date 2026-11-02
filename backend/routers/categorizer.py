@@ -17,7 +17,7 @@ What a fit also needs is a lock, because it peaks around 360 MB in a 1 GiB
 instance serving up to ten concurrent requests — hence the `training` row.
 """
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -26,7 +26,7 @@ import audit
 import auto_categorize
 import cache_service
 import categorizer
-from database import get_db
+from database import get_db, utcnow
 from filtering import apply_transaction_filters
 from models import Category, CategorizerModel, Transaction
 from schemas import (
@@ -92,7 +92,7 @@ def train_model(req: CategorizerTrainRequest, db: Session = Depends(get_db)):
     in_flight = (
         db.query(CategorizerModel)
         .filter(CategorizerModel.status == "training",
-                CategorizerModel.created_at > datetime.utcnow() - STALE_TRAINING_AFTER)
+                CategorizerModel.created_at > utcnow() - STALE_TRAINING_AFTER)
         .first()
     )
     if in_flight is not None:

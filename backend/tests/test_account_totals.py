@@ -118,7 +118,7 @@ def test_backup_roundtrip_preserves_the_displayed_balance(client, sample_account
     response = client.post(
         "/api/backup/import",
         files={"file": ("backup.zip", archive.content, "application/zip")},
-        data={"mode": "overwrite"},
+        params={"mode": "overwrite"},
     )
     assert response.status_code == 200
 

@@ -3472,8 +3472,8 @@ export interface operations {
     };
     import_backup_api_backup_import_post: {
         parameters: {
-            query?: {
-                mode?: "overwrite" | "partial";
+            query: {
+                mode: "overwrite" | "partial";
             };
             header?: never;
             path?: never;

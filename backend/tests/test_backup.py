@@ -3,6 +3,7 @@ import json
 import zipfile
 from datetime import date, datetime
 
+from database import utcnow
 from models import (
     Account, Category, Transaction, User, AccountUser,
     CategorySplit, GlobalSplitWeight, AccountSplitWeight, TransactionSplit, TransactionHistory,
@@ -34,7 +35,7 @@ def _post_import(client, zip_bytes: bytes, mode: str = "overwrite"):
 def _minimal_payload(schema_version: int = 1, **overrides) -> dict:
     payload = {
         "schema_version": schema_version,
-        "exported_at": datetime.utcnow().isoformat(),
+        "exported_at": utcnow().isoformat(),
         "users": [],
         "accounts": [],
         "categories": [],
@@ -65,7 +66,7 @@ def _seed_full_graph(db, sample_account, sample_category, sample_user, sample_us
     db.add(TransactionSplit(transaction_id=transaction.id, user_id=sample_user.id, weight=1, share_amount=100.0, source="custom"))
     db.add(TransactionHistory(
         transaction_id=transaction.id, action="created", source="manual",
-        changed_at=datetime.utcnow(), changed_by_user_id=sample_user.id,
+        changed_at=utcnow(), changed_by_user_id=sample_user.id,
         date=transaction.date, payee=transaction.payee, memo=None,
         amount=transaction.amount, account_id=transaction.account_id, category_id=transaction.category_id,
     ))
@@ -257,7 +258,7 @@ def test_import_overwrite_dangling_fk_returns_422_without_wiping_data(client, sa
         transactions=[{
             "id": 1, "date": "2026-01-01", "payee": "Bad", "memo": None, "amount": 1.0,
             "account_id": 999999, "category_id": 999999,
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": utcnow().isoformat(),
         }],
     )
     zip_bytes = _zip_payload(payload)
@@ -310,12 +311,12 @@ def test_archive_written_before_the_raw_fields_existed_still_imports(client, sam
         accounts=[{
             "id": sample_account.id, "name": sample_account.name, "type": sample_account.type,
             "balance": 0.0, "currency": "EUR", "archived": False,
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": utcnow().isoformat(),
         }],
         transactions=[{
             "id": 1, "date": "2026-01-15", "payee": "Ancienne archive", "memo": None,
             "amount": -10.0, "account_id": sample_account.id, "category_id": None,
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": utcnow().isoformat(),
         }],
     )
     assert _post_import(client, _zip_payload(payload)).status_code == 200
@@ -403,7 +404,7 @@ def test_import_overwrite_keeps_the_onedrive_connection(client, db):
 # ── Partial restore (admin mode) ──────────────────────────────────────
 
 def _now() -> str:
-    return datetime.utcnow().isoformat()
+    return utcnow().isoformat()
 
 
 def test_partial_restore_recreates_rows_under_new_ids(client, db, sample_account, sample_category, sample_user):
@@ -601,6 +602,7 @@ def test_import_oversized_upload_returns_413(client, monkeypatch):
     monkeypatch.setattr(backup_router, "MAX_BACKUP_UPLOAD_BYTES", 10)
     response = client.post(
         "/api/backup/import",
+        params={"mode": "overwrite"},
         files={"file": ("backup.zip", b"x" * 11, "application/zip")},
     )
     assert response.status_code == 413
@@ -613,6 +615,7 @@ def test_import_refuses_an_archive_too_large_once_decompressed(client, monkeypat
         zf.writestr(backup.ZIP_ENTRY_NAME, " " * 1000)
     response = client.post(
         "/api/backup/import",
+        params={"mode": "overwrite"},
         files={"file": ("backup.zip", buf.getvalue(), "application/zip")},
     )
     assert response.status_code == 422
