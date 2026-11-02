@@ -3,6 +3,7 @@ link a selection, read a group with its net, rename it, take members out or
 dissolve it. The logic lives in transaction_links.py."""
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 import audit
@@ -31,10 +32,11 @@ def _get(db: Session, link_id: int) -> TransactionLink:
 
 def _out(db: Session, group: TransactionLink) -> TransactionLinkOut:
     members = (
-        db.query(Transaction)
-        .filter(Transaction.link_id == group.id)
-        .order_by(Transaction.date, Transaction.id)
-        .all()
+        db.scalars(
+            select(Transaction)
+            .where(Transaction.link_id == group.id)
+            .order_by(Transaction.date, Transaction.id)
+        ).all()
     )
     items = [get_transaction_out(db, t.id) for t in members]
     totals: dict[str, float] = {}
@@ -54,7 +56,7 @@ def create_link(data: TransactionLinkCreate, actor_user_id: int | None = Query(N
     ids = sorted(set(data.transaction_ids))
     if len(ids) < 2:
         raise RuleViolation("Pick at least two transactions to link.")
-    transactions = db.query(Transaction).filter(Transaction.id.in_(ids)).all()
+    transactions = db.scalars(select(Transaction).where(Transaction.id.in_(ids))).all()
     missing = sorted(set(ids) - {t.id for t in transactions})
     if missing:
         raise HTTPException(404, f"Transaction(s) not found: {missing}")

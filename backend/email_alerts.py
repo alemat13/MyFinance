@@ -38,6 +38,7 @@ from email.utils import formataddr, make_msgid
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 import account_totals
@@ -146,20 +147,19 @@ def due_frequencies(alert: EmailAlert, now: datetime, manual: bool = False) -> l
 # ── Content ───────────────────────────────────────────────────────────
 
 def new_transactions(db: Session, user_id: int, start: datetime, end: datetime) -> list[Transaction]:
-    owned = db.query(AccountUser.account_id).filter(
+    owned = select(AccountUser.account_id).where(
         AccountUser.user_id == user_id, AccountUser.ownership_percentage > 0
     )
-    return (
-        db.query(Transaction)
+    return db.scalars(
+        select(Transaction)
         .options(joinedload(Transaction.account), joinedload(Transaction.category), selectinload(Transaction.splits))
-        .filter(
+        .where(
             Transaction.account_id.in_(owned),
             Transaction.created_at > start,
             Transaction.created_at <= end,
         )
         .order_by(Transaction.date.desc(), Transaction.id.desc())
-        .all()
-    )
+    ).all()
 
 
 def _money(amount: float, currency: str) -> str:
@@ -266,11 +266,10 @@ def transaction_balances(db: Session, user_id: int, rows: list[Transaction]) -> 
     """The user's balance on each row, as the Transactions screen shows it
     (utils/transactions.ts's balanceFor()): their share minus the part of the
     amount their ownership of the account pays."""
-    ownership = dict(
-        db.query(AccountUser.account_id, AccountUser.ownership_percentage)
-        .filter(AccountUser.user_id == user_id, AccountUser.account_id.in_({t.account_id for t in rows}))
-        .all()
-    )
+    ownership = dict(db.execute(
+        select(AccountUser.account_id, AccountUser.ownership_percentage)
+        .where(AccountUser.user_id == user_id, AccountUser.account_id.in_({t.account_id for t in rows}))
+    ).all())
     return {
         t.id: round(
             sum(s.share_amount for s in t.splits if s.user_id == user_id)
@@ -517,7 +516,7 @@ def run_due_alerts(db: Session, now: datetime | None = None, manual: bool = Fals
     now = now or _utcnow()
     sent = 0
     failed = 0
-    alerts = db.query(EmailAlert).all()
+    alerts = db.scalars(select(EmailAlert)).all()
     for alert in alerts:
         frequencies = due_frequencies(alert, now, manual)
         if not frequencies:

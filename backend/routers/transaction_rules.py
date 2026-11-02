@@ -1,7 +1,7 @@
 """Endpoints for the automatic rules (logic in transaction_rules.py)."""
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 import audit
@@ -61,11 +61,11 @@ def _validate(db: Session, data: RuleCreate | RuleUpdate) -> None:
     if actions.payee is not None and not actions.payee.strip():
         raise RuleViolation("The new payee cannot be blank.")
     if actions.category_id is not None:
-        if db.query(Category.id).filter(Category.id == actions.category_id).first() is None:
+        if db.execute(select(Category.id).where(Category.id == actions.category_id).limit(1)).first() is None:
             raise HTTPException(404, f"Category {actions.category_id} not found")
     if actions.add_tag_ids:
         tag_ids = set(actions.add_tag_ids)
-        known = {row[0] for row in db.query(Tag.id).filter(Tag.id.in_(tag_ids)).all()}
+        known = set(db.scalars(select(Tag.id).where(Tag.id.in_(tag_ids))).all())
         if tag_ids - known:
             raise HTTPException(404, f"Tag(s) not found: {sorted(tag_ids - known)}")
     if actions.split_weights is not None:
@@ -73,7 +73,7 @@ def _validate(db: Session, data: RuleCreate | RuleUpdate) -> None:
             raise RuleViolation("A split needs at least one person; leave the split action off instead.")
         validate_weights(actions.split_weights)
         user_ids = {w.user_id for w in actions.split_weights}
-        known = {row[0] for row in db.query(User.id).filter(User.id.in_(user_ids)).all()}
+        known = set(db.scalars(select(User.id).where(User.id.in_(user_ids))).all())
         if user_ids - known:
             raise HTTPException(404, f"User(s) not found: {sorted(user_ids - known)}")
 
@@ -88,13 +88,13 @@ def _store(rule: TransactionRule, data: RuleCreate | RuleUpdate) -> None:
 
 @router.get("", response_model=list[RuleOut])
 def list_rules(db: Session = Depends(get_db)):
-    return db.query(TransactionRule).order_by(TransactionRule.position, TransactionRule.id).all()
+    return db.scalars(select(TransactionRule).order_by(TransactionRule.position, TransactionRule.id)).all()
 
 
 @router.post("", response_model=RuleOut, status_code=201)
 def create_rule(data: RuleCreate, db: Session = Depends(get_db)):
     _validate(db, data)
-    last = db.query(func.max(TransactionRule.position)).scalar()
+    last = db.scalar(select(func.max(TransactionRule.position)))
     rule = TransactionRule(position=(last if last is not None else -1) + 1)
     _store(rule, data)
     db.add(rule)
@@ -106,7 +106,7 @@ def create_rule(data: RuleCreate, db: Session = Depends(get_db)):
 # Registered before /{rule_id} so "order" is never read as an id.
 @router.put("/order", response_model=list[RuleOut])
 def reorder_rules(data: RuleOrderRequest, db: Session = Depends(get_db)):
-    rules = {r.id: r for r in db.query(TransactionRule).all()}
+    rules = {r.id: r for r in db.scalars(select(TransactionRule)).all()}
     if sorted(data.rule_ids) != sorted(rules):
         raise RuleViolation("The new order must list every rule exactly once.")
     for position, rule_id in enumerate(data.rule_ids):
@@ -121,10 +121,11 @@ def _selection(db: Session, req: RulePreviewRequest) -> tuple[list[Transaction],
     if len(req.transaction_ids) > MAX_RULE_SELECTION:
         raise RuleViolation(f"At most {MAX_RULE_SELECTION} transactions at a time.")
     rows = (
-        db.query(Transaction)
-        .filter(Transaction.id.in_(req.transaction_ids))
-        .order_by(Transaction.date.desc(), Transaction.id.desc())
-        .all()
+        db.scalars(
+            select(Transaction)
+            .where(Transaction.id.in_(req.transaction_ids))
+            .order_by(Transaction.date.desc(), Transaction.id.desc())
+        ).all()
     )
     missing = sorted(set(req.transaction_ids) - {t.id for t in rows})
     if missing:
@@ -141,7 +142,7 @@ def _selection(db: Session, req: RulePreviewRequest) -> tuple[list[Transaction],
 def preview_rules(req: RulePreviewRequest, db: Session = Depends(get_db)):
     rows, rules = _selection(db, req)
     outcomes = transaction_rules.evaluate_many(db, rules, rows)
-    names = {c.id: c.name for c in db.query(Category).all()}
+    names = {c.id: c.name for c in db.scalars(select(Category)).all()}
     tag_names = transaction_rules.tag_names(db)
     items = [
         RulePreviewItem(
@@ -171,7 +172,7 @@ def apply_rules(req: RuleApplyRequest, actor_user_id: int | None = Query(None), 
 
 @router.put("/{rule_id}", response_model=RuleOut)
 def update_rule(rule_id: int, data: RuleUpdate, db: Session = Depends(get_db)):
-    rule = db.query(TransactionRule).filter(TransactionRule.id == rule_id).first()
+    rule = db.scalar(select(TransactionRule).where(TransactionRule.id == rule_id).limit(1))
     if rule is None:
         raise HTTPException(404, "Rule not found")
     _validate(db, data)
@@ -183,7 +184,7 @@ def update_rule(rule_id: int, data: RuleUpdate, db: Session = Depends(get_db)):
 
 @router.delete("/{rule_id}", status_code=204)
 def delete_rule(rule_id: int, db: Session = Depends(get_db)):
-    rule = db.query(TransactionRule).filter(TransactionRule.id == rule_id).first()
+    rule = db.scalar(select(TransactionRule).where(TransactionRule.id == rule_id).limit(1))
     if rule is None:
         raise HTTPException(404, "Rule not found")
     db.delete(rule)

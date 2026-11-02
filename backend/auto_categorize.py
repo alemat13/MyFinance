@@ -23,6 +23,7 @@ ticked). Two rules hold in all three:
 import logging
 from dataclasses import dataclass
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 import cache_service
@@ -66,10 +67,10 @@ def load_active_model(db: Session) -> tuple[CategorizerModel, "categorizer._Mode
     Unpickling costs about a second (it pulls scikit-learn in with it), so a
     caller scoring a batch loads once and keeps it for the whole batch.
     """
-    record = (
-        db.query(CategorizerModel)
-        .filter(CategorizerModel.is_active.is_(True), CategorizerModel.status == "ready")
-        .first()
+    record = db.scalar(
+        select(CategorizerModel)
+        .where(CategorizerModel.is_active.is_(True), CategorizerModel.status == "ready")
+        .limit(1)
     )
     if record is None or record.blob is None:
         return None

@@ -7,6 +7,7 @@ from collections import Counter
 from datetime import date, datetime
 from pathlib import Path
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 import auto_categorize
@@ -166,8 +167,8 @@ def preview_import(db: Session, raw: bytes, data: ImportPreviewRequest) -> list[
             f"{MAX_IMPORT_ROWS}-row import limit. Split it into smaller files and import them separately."
         )
 
-    categories_by_name = {c.name.lower(): c for c in db.query(Category).all()}
-    accounts_by_name = {a.name.strip().lower(): a for a in db.query(Account).all()}
+    categories_by_name = {c.name.lower(): c for c in db.scalars(select(Category)).all()}
+    accounts_by_name = {a.name.strip().lower(): a for a in db.scalars(select(Account)).all()}
 
     resolved_account_ids = {data.account_id}
     for raw_row in raw_rows:
@@ -179,10 +180,12 @@ def preview_import(db: Session, raw: bytes, data: ImportPreviewRequest) -> list[
     # same day are only both flagged when both already exist.
     existing_counts: Counter[tuple[int | None, date, float]] = Counter(
         (account_id, row_date, round(amount, 2))
-        for account_id, row_date, amount in db.query(Transaction.account_id, Transaction.date, Transaction.amount)
-        .filter(Transaction.account_id.in_(resolved_account_ids))
-        # A checkpoint is the account's value, never a row a file could carry.
-        .filter(Transaction.checkpoint_value.is_(None))
+        for account_id, row_date, amount in db.execute(
+            select(Transaction.account_id, Transaction.date, Transaction.amount)
+            .where(Transaction.account_id.in_(resolved_account_ids))
+            # A checkpoint is the account's value, never a row a file could carry.
+            .where(Transaction.checkpoint_value.is_(None))
+        )
     )
 
     weights_cache: dict[tuple[int | None, int | None], tuple[str | None, dict[int, int]]] = {}
@@ -281,7 +284,7 @@ def _attach_rules(db: Session, rows: list[ImportPreviewRow]) -> None:
     except Exception:  # noqa: BLE001 - the preview is worth more than the rules
         logger.exception("Could not evaluate the automatic rules on the import preview")
         return
-    names = {c.id: c.name for c in db.query(Category).all()}
+    names = {c.id: c.name for c in db.scalars(select(Category)).all()}
     tag_names = transaction_rules.tag_names(db)
     for row, outcome in zip(candidates, outcomes):
         row.rules = transaction_rules.outcome_out(outcome, names, tag_names)
@@ -327,7 +330,7 @@ def _attach_suggestions(db: Session, rows: list[ImportPreviewRow]) -> None:
         logger.exception("Could not score the import preview; showing it without suggestions")
         return
 
-    names = {c.id: c.name for c in db.query(Category).all()}
+    names = {c.id: c.name for c in db.scalars(select(Category)).all()}
     for row, (category_id, confidence) in zip(scorable, predictions):
         row.suggested_category_id = category_id
         row.suggested_category_name = names.get(category_id)

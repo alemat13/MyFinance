@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, selectinload
 
 import account_totals
@@ -14,7 +15,7 @@ router = APIRouter(prefix="/api/accounts")
 
 
 def _sync_account_users(db: Session, account: Account, users: list[AccountUserCreate]):
-    db.query(AccountUser).filter(AccountUser.account_id == account.id).delete()
+    db.execute(delete(AccountUser).where(AccountUser.account_id == account.id))
     for u in users:
         db.add(AccountUser(
             account_id=account.id,
@@ -25,16 +26,16 @@ def _sync_account_users(db: Session, account: Account, users: list[AccountUserCr
 
 @router.get("", response_model=list[AccountOut])
 def get_accounts(user_id: int | None = Query(None), db: Session = Depends(get_db)):
-    query = db.query(Account).options(
+    query = select(Account).options(
         selectinload(Account.user_associations).joinedload(AccountUser.user),
         selectinload(Account.split_weight_associations).joinedload(AccountSplitWeight.user),
     )
     if user_id is not None:
-        query = query.join(AccountUser).filter(
+        query = query.join(AccountUser).where(
             AccountUser.user_id == user_id,
             AccountUser.ownership_percentage > 0,
         ).distinct()
-    accounts = query.all()
+    accounts = db.scalars(query).all()
     totals = account_totals.get_transaction_totals(db)
     return [build_account_out(a, totals.get(a.id, 0.0)) for a in accounts]
 
@@ -63,7 +64,7 @@ def create_account(data: AccountCreate, db: Session = Depends(get_db)):
 
 @router.put("/{account_id}", response_model=AccountOut)
 def update_account(account_id: int, data: AccountUpdate, db: Session = Depends(get_db)):
-    account = db.query(Account).filter(Account.id == account_id).first()
+    account = db.scalar(select(Account).where(Account.id == account_id).limit(1))
     if not account:
         raise HTTPException(404, "Account not found")
     update_data = data.model_dump(exclude_unset=True)
@@ -102,7 +103,7 @@ def update_account(account_id: int, data: AccountUpdate, db: Session = Depends(g
 
 @router.delete("/{account_id}", status_code=204)
 def delete_account(account_id: int, db: Session = Depends(get_db)):
-    account = db.query(Account).filter(Account.id == account_id).first()
+    account = db.scalar(select(Account).where(Account.id == account_id).limit(1))
     if not account:
         raise HTTPException(404, "Account not found")
     if account.transactions:

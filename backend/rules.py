@@ -1,3 +1,4 @@
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from models import Account, BankAccountLink, Category, User
@@ -28,7 +29,7 @@ def validate_users_exist(db: Session, users: list[AccountUserCreate]) -> None:
     if not users:
         return
     requested_ids = {u.user_id for u in users}
-    existing_ids = {uid for (uid,) in db.query(User.id).filter(User.id.in_(requested_ids)).all()}
+    existing_ids = set(db.scalars(select(User.id).where(User.id.in_(requested_ids))).all())
     missing = sorted(requested_ids - existing_ids)
     if missing:
         raise RuleViolation(f"Unknown user_id(s): {missing}")
@@ -140,10 +141,10 @@ def validate_bank_link_account(db: Session, link: BankAccountLink, account_id: i
         raise RuleViolation(f"Account {account_id} does not exist")
     if account.archived:
         raise RuleViolation(f"'{account.name}' is archived and can't receive synced transactions")
-    clash = db.query(BankAccountLink).filter(
+    clash = db.scalar(select(BankAccountLink).where(
         BankAccountLink.account_id == account_id,
         BankAccountLink.id != link.id,
-    ).first()
+    ).limit(1))
     if clash is not None:
         raise RuleViolation(f"'{account.name}' is already linked to another bank account")
 
@@ -160,7 +161,7 @@ def validate_category_hierarchy(db: Session, category: Category | None, parent_i
             raise RuleViolation("A category cannot be its own parent")
         if category.children:
             raise RuleViolation("Cannot set a parent on a category that has its own subcategories")
-    parent = db.query(Category).filter(Category.id == parent_id).first()
+    parent = db.scalar(select(Category).where(Category.id == parent_id).limit(1))
     if not parent:
         raise RuleViolation(f"Parent category {parent_id} not found")
     if parent.parent_id is not None:

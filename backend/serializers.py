@@ -1,5 +1,6 @@
 from datetime import date
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session, object_session
 
 import account_totals
@@ -108,11 +109,13 @@ def build_transaction_out_from_row(
 
 def get_transaction_out(db: Session, transaction_id: int) -> TransactionOut:
     t, account_name, currency, category_name, category_color, category_icon = (
-        db.query(Transaction, Account.name, Account.currency, Category.name, Category.color, Category.icon)
-        .join(Account, Transaction.account_id == Account.id)
-        .outerjoin(Category, Transaction.category_id == Category.id)
-        .filter(Transaction.id == transaction_id)
-        .first()
+        db.execute(
+            select(Transaction, Account.name, Account.currency, Category.name, Category.color, Category.icon)
+            .join(Account, Transaction.account_id == Account.id)
+            .outerjoin(Category, Transaction.category_id == Category.id)
+            .where(Transaction.id == transaction_id)
+            .limit(1)
+        ).first()
     )
     return build_transaction_out_from_row(t, account_name, currency, category_name, category_color, category_icon)
 

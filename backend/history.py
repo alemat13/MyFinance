@@ -111,11 +111,11 @@ def scan(db: Session, *, before_id: int | None, limit: int,
     for the page after (None once the history is exhausted). Reads rows in
     chunks until the last entry is known to be complete, so one entry can span
     any number of rows."""
-    query = db.query(TransactionHistory)
+    query = select(TransactionHistory)
     if action:
-        query = query.filter(TransactionHistory.action == action)
+        query = query.where(TransactionHistory.action == action)
     if source:
-        query = query.filter(_source_filter(source))
+        query = query.where(_source_filter(source))
 
     entries: list[Entry] = []
     current: Entry | None = None
@@ -123,8 +123,8 @@ def scan(db: Session, *, before_id: int | None, limit: int,
     while True:
         chunk_query = query
         if cursor is not None:
-            chunk_query = chunk_query.filter(TransactionHistory.id < cursor)
-        rows = chunk_query.order_by(TransactionHistory.id.desc()).limit(SCAN_CHUNK).all()
+            chunk_query = chunk_query.where(TransactionHistory.id < cursor)
+        rows = db.scalars(chunk_query.order_by(TransactionHistory.id.desc()).limit(SCAN_CHUNK)).all()
         for row in rows:
             signature = _signature(row)
             if current is not None and _fits(current, row, signature):
