@@ -582,3 +582,148 @@ def test_payee_links_to_the_transaction(
         .get_content()
     )
     assert "transaction=" not in body and "Boulangerie" in body
+
+
+# ── Shared with the user (MYF-73) ─────────────────────────────────────
+
+
+def _split(db, t, weights):
+    from models import TransactionSplit
+
+    total = sum(weights.values())
+    db.add_all(
+        TransactionSplit(
+            transaction_id=t.id,
+            user_id=uid,
+            weight=w,
+            share_amount=round(t.amount * w / total, 2),
+            source="custom",
+        )
+        for uid, w in weights.items()
+    )
+    db.commit()
+
+
+def test_lists_a_new_row_on_someone_elses_account_that_carries_a_share(
+    db, sample_user, sample_user2, sample_account_with_user, outbox
+):
+    # sample_user owns the account alone; sample_user2 gets half of one row.
+    last = datetime(2026, 10, 15, 5)
+    shared = _tx(db, sample_account_with_user, "Restaurant", -60.0, last + timedelta(hours=1))
+    _split(db, shared, {sample_user.id: 1, sample_user2.id: 1})
+    alone = _tx(db, sample_account_with_user, "Not shared", -9.0, last + timedelta(hours=1))
+    _split(db, alone, {sample_user.id: 1})
+    db.add(
+        EmailAlert(
+            user_id=sample_user2.id, email="olivia@olivex.fr", daily=True, last_daily_sent_at=last
+        )
+    )
+    db.commit()
+
+    assert email_alerts.run_due_alerts(db, FRI_0500_UTC) == (1, 0)
+    message = outbox[0]
+    assert message["Subject"] == "MyFinance – 1 shared with you (daily alert)"
+    text = message.get_body(("plain",)).get_content()
+    body = message.get_body(("html",)).get_content()
+    assert "Restaurant" in text and "Not shared" not in text
+    assert "== Test Checking (shared with you) ==" in text
+    assert "(your share -30,00 €)" in text
+    assert "Your share: -30,00 €" in text
+    # The owner's account balance is not hers to see.
+    assert "Balance:" not in text
+    assert "new transaction" not in text
+    assert "shared with you</span>" in body and "Your share <span" in body
+    assert "Split changed" not in body
+
+
+def test_a_split_changed_after_the_sync_is_listed_once(
+    client, db, sample_user, sample_user2, sample_account_with_user, outbox
+):
+    now = utcnow()
+    # Synced two days ago, all on its owner; re-split by hand just now.
+    t = _tx(db, sample_account_with_user, "Courses", -80.0, now - timedelta(days=2))
+    _split(db, t, {sample_user.id: 1})
+    db.add(
+        EmailAlert(
+            user_id=sample_user2.id,
+            email="olivia@olivex.fr",
+            daily=True,
+            last_daily_sent_at=now - timedelta(hours=1),
+        )
+    )
+    db.commit()
+    response = client.put(
+        f"/api/transactions/{t.id}",
+        json={
+            "split_weights": [
+                {"user_id": sample_user.id, "weight": 1},
+                {"user_id": sample_user2.id, "weight": 1},
+            ]
+        },
+    )
+    assert response.status_code == 200, response.text
+
+    later = utcnow() + timedelta(minutes=1)
+    assert email_alerts.run_due_alerts(db, later, manual=True) == (1, 0)
+    text = outbox[0].get_body(("plain",)).get_content()
+    assert "Courses" in text and "(your share -40,00 €) [split changed]" in text
+    assert "Split changed</span>" in outbox[0].get_body(("html",)).get_content()
+
+    # The next alert doesn't list it again.
+    assert email_alerts.run_due_alerts(db, later + timedelta(minutes=1), manual=True) == (0, 0)
+
+
+def test_resplit_ids_need_the_users_weight_to_change(db, sample_user, sample_user2):
+    from models import TransactionHistory
+
+    start = datetime(2026, 10, 15, 5)
+
+    def snap(**weights):
+        return [{"user_id": u, "weight": w, "source": "custom"} for u, w in weights.items()]
+
+    a, b = sample_user.id, sample_user2.id
+    rows = [
+        # Her weight 0 -> 1: counts.
+        (1, {"splits": {"old": [{"user_id": a, "weight": 1}], "new": snap(**{str(a): 1})}}),
+        (
+            2,
+            {
+                "splits": {
+                    "old": [{"user_id": a, "weight": 1}],
+                    "new": [{"user_id": b, "weight": 1}],
+                }
+            },
+        ),
+        # Only the source moved: doesn't.
+        (
+            3,
+            {
+                "splits": {
+                    "old": [{"user_id": b, "weight": 1, "source": "global"}],
+                    "new": [{"user_id": b, "weight": 1, "source": "custom"}],
+                }
+            },
+        ),
+        # A category change, no split: doesn't.
+        (4, {"category_id": {"old": 1, "new": 2}}),
+    ]
+    for transaction_id, changes in rows:
+        db.add(
+            TransactionHistory(
+                transaction_id=transaction_id,
+                action="updated",
+                changed_at=start + timedelta(hours=1),
+                changes=changes,
+            )
+        )
+    # Outside the window: doesn't.
+    db.add(
+        TransactionHistory(
+            transaction_id=5,
+            action="updated",
+            changed_at=start - timedelta(hours=1),
+            changes={"splits": {"old": None, "new": [{"user_id": b, "weight": 1}]}},
+        )
+    )
+    db.commit()
+    assert email_alerts.resplit_transaction_ids(db, b, start, start + timedelta(days=1)) == {2}
