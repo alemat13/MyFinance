@@ -1147,6 +1147,16 @@ if any, and the amount in green for money in and red for money out, with your ow
 transaction in small under it (your share minus what your accounts paid, as in the Balance
 column of the Transactions screen). Tapping the payee opens that transaction in MyFinance.
 
+The email also lists what was **shared with you** on someone else's account: a new
+expense on another person's account whose split gives you a part (by a rule, the default
+weights or a hand edit) shows under that account, marked "shared with you", with **your
+share** under the amount instead of the account's balance (that balance stays its owner's
+business). An expense whose split changes for you later, for example re-split by hand a few
+days after the bank sync, shows in the next email too, with a **Split changed** label: on
+someone else's account as long as it still gives you a part, and on your own accounts
+whatever the change. Each of these shows once, in the first email after the change, and
+the top of the email counts them apart ("2 shared with you") with your total share.
+
 **Send a test email** sends, right away, what a weekly alert would hold (the last 7
 days), so you can check the address and see what it looks like. It doesn't change when the
 next real alert goes out. Save your changes first: the button waits until you have.
