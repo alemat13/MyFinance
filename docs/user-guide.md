@@ -575,6 +575,12 @@ date) simply peel an amount off into its own row.
   sibling parts, so you can jump between them. A part can be divided again to add
   more siblings to the same group; but if you open one of the *other* parts, its
   Divide button won't appear — divide the original part instead.
+- Deleting a part keeps the total right: its amount goes back to the original part
+  (shown in that part's History), so the parts still add up to what the bank reported.
+  Once no other part remains, the original part is an ordinary transaction again.
+  The original part itself can't be deleted while other parts remain; delete those
+  first. Bulk delete in admin mode follows the same rules, and removes a group whose
+  parts are all selected.
 
 ### Linking transactions
 
@@ -1140,6 +1146,16 @@ Transactions screen of a phone: payee, date, the category with its icon and colo
 if any, and the amount in green for money in and red for money out, with your own balance on that
 transaction in small under it (your share minus what your accounts paid, as in the Balance
 column of the Transactions screen). Tapping the payee opens that transaction in MyFinance.
+
+The email also lists what was **shared with you** on someone else's account: a new
+expense on another person's account whose split gives you a part (by a rule, the default
+weights or a hand edit) shows under that account, marked "shared with you", with **your
+share** under the amount instead of the account's balance (that balance stays its owner's
+business). An expense whose split changes for you later, for example re-split by hand a few
+days after the bank sync, shows in the next email too, with a **Split changed** label: on
+someone else's account as long as it still gives you a part, and on your own accounts
+whatever the change. Each of these shows once, in the first email after the change, and
+the top of the email counts them apart ("2 shared with you") with your total share.
 
 **Send a test email** sends, right away, what a weekly alert would hold (the last 7
 days), so you can check the address and see what it looks like. It doesn't change when the

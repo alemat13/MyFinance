@@ -145,8 +145,7 @@ def test_bulk_delete_does_not_protect_divide_group_transactions(
     parts = divide_response.json()["transactions"]
     anchor_id, sibling_id = parts[0]["id"], parts[1]["id"]
 
-    # Bulk delete stays as permissive as single delete: no new protection
-    # against removing divide-group anchors/siblings.
+    # Selecting a whole divide group removes it, anchor included.
     response = _bulk_delete(client, [anchor_id, sibling_id])
     assert response.status_code == 200
     assert response.json()["deleted_count"] == 2

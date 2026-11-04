@@ -20,6 +20,14 @@ one on Sunday evening (the 18h sync), the monthly one on the last day of the
 month (the 18h sync). A sync started by hand calls `run_quietly(db,
 manual=True)`, which also sends the daily alert of whoever has something new
 since their last one, whatever the time.
+
+Beyond their own accounts, an alert also lists what was shared with the user
+(MYF-73): a row new in the window on an account they don't own that carries a
+share for them, and any row whose split changed for them in the window (a
+rule, a bulk edit or a hand edit, found in `transaction_history`), on any
+account they own or that now carries a share for them. Those rows show under
+their account marked "shared with you", with the user's share, never the
+owner's account balance.
 """
 
 import base64
@@ -39,13 +47,20 @@ from email.utils import formataddr, make_msgid
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+from sqlalchemy import exists, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 import account_totals
 import cache_service
 import split_engine
-from models import AccountUser, EmailAlert, Transaction, User
+from models import (
+    AccountUser,
+    EmailAlert,
+    Transaction,
+    TransactionHistory,
+    TransactionSplit,
+    User,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -158,26 +173,82 @@ def due_frequencies(alert: EmailAlert, now: datetime, manual: bool = False) -> l
 # ── Content ───────────────────────────────────────────────────────────
 
 
+def _owned_accounts(db: Session, user_id: int) -> set[int]:
+    return set(
+        db.scalars(
+            select(AccountUser.account_id).where(
+                AccountUser.user_id == user_id, AccountUser.ownership_percentage > 0
+            )
+        )
+    )
+
+
+def _weight(snapshot: list[dict] | None, user_id: int) -> int:
+    return next((s.get("weight") or 0 for s in snapshot or [] if s.get("user_id") == user_id), 0)
+
+
+def resplit_transaction_ids(db: Session, user_id: int, start: datetime, end: datetime) -> set[int]:
+    """Rows whose split weight for `user_id` changed in the window, from the
+    history every split edit leaves (`changes["splits"]`, old and new). A
+    change of source alone, the same weights, doesn't count."""
+    rows = db.execute(
+        select(TransactionHistory.transaction_id, TransactionHistory.changes).where(
+            TransactionHistory.action == "updated",
+            TransactionHistory.changed_at > start,
+            TransactionHistory.changed_at <= end,
+        )
+    ).all()
+    ids = set()
+    for transaction_id, changes in rows:
+        splits = (changes or {}).get("splits") if isinstance(changes, dict) else None
+        if isinstance(splits, dict) and _weight(splits.get("old"), user_id) != _weight(
+            splits.get("new"), user_id
+        ):
+            ids.add(transaction_id)
+    return ids
+
+
 def new_transactions(
     db: Session, user_id: int, start: datetime, end: datetime
 ) -> list[Transaction]:
-    owned = select(AccountUser.account_id).where(
-        AccountUser.user_id == user_id, AccountUser.ownership_percentage > 0
+    """What an alert over (start, end] lists: rows new on the user's own
+    accounts, rows new elsewhere that carry a share for them, and rows whose
+    split changed for them (see the module docstring)."""
+    owned = _owned_accounts(db, user_id)
+    has_share = exists().where(
+        TransactionSplit.transaction_id == Transaction.id,
+        TransactionSplit.user_id == user_id,
+        TransactionSplit.share_amount != 0,
     )
-    return db.scalars(
+    options = (
+        joinedload(Transaction.account),
+        joinedload(Transaction.category),
+        selectinload(Transaction.splits),
+    )
+    created = db.scalars(
         select(Transaction)
-        .options(
-            joinedload(Transaction.account),
-            joinedload(Transaction.category),
-            selectinload(Transaction.splits),
-        )
+        .options(*options)
         .where(
-            Transaction.account_id.in_(owned),
             Transaction.created_at > start,
             Transaction.created_at <= end,
+            Transaction.account_id.in_(owned) | has_share,
         )
-        .order_by(Transaction.date.desc(), Transaction.id.desc())
     ).all()
+    seen = {t.id for t in created}
+    resplit_ids = resplit_transaction_ids(db, user_id, start, end) - seen
+    resplit = (
+        db.scalars(
+            select(Transaction)
+            .options(*options)
+            .where(
+                Transaction.id.in_(resplit_ids),
+                Transaction.account_id.in_(owned) | has_share,
+            )
+        ).all()
+        if resplit_ids
+        else []
+    )
+    return sorted([*created, *resplit], key=lambda t: (t.date, t.id), reverse=True)
 
 
 def _money(amount: float, currency: str) -> str:
@@ -283,11 +354,18 @@ def _by_account(rows: list[Transaction]) -> list[tuple[int | None, str, str, lis
     return sorted(out, key=lambda item: item[1].lower())
 
 
-def account_balances(db: Session, rows: list[Transaction]) -> dict[int, float]:
+def account_balances(
+    db: Session, rows: list[Transaction], shared_accounts: set[int] = frozenset()
+) -> dict[int, float]:
     """Today's balance of every account `rows` touch, as the app shows it
-    (offset + all its transactions, not only the new ones)."""
+    (offset + all its transactions, not only the new ones). Not for an
+    account the user doesn't own: that balance is the owner's business."""
     totals = account_totals.get_transaction_totals(db)
-    accounts = {t.account_id: t.account for t in rows if t.account is not None}
+    accounts = {
+        t.account_id: t.account
+        for t in rows
+        if t.account is not None and t.account_id not in shared_accounts
+    }
     return {
         aid: account_totals.account_balance(a, totals.get(aid, 0.0)) for aid, a in accounts.items()
     }
@@ -302,6 +380,12 @@ class AlertFigures:
         default_factory=dict
     )  # transaction id -> the user's balance
     overall: list[tuple[str, float]] = field(default_factory=list)  # (currency, net position)
+    # Accounts among the rows that the user doesn't own: their rows are listed
+    # because they carry a share for the user ("shared with you").
+    shared_accounts: set[int] = field(default_factory=set)
+    # Rows listed because their split changed for the user in the window,
+    # not because they are new.
+    resplit: set[int] = field(default_factory=set)
 
 
 def transaction_balances(db: Session, user_id: int, rows: list[Transaction]) -> dict[int, float]:
@@ -338,11 +422,23 @@ def overall_balances(db: Session, user_id: int) -> list[tuple[str, float]]:
     return sorted((currency, net) for uid, _, currency, net in rows if uid == user_id)
 
 
-def alert_figures(db: Session, user: User, rows: list[Transaction]) -> AlertFigures:
+def alert_figures(
+    db: Session, user: User, rows: list[Transaction], start: datetime | None = None
+) -> AlertFigures:
+    """`start` is the window's start: a listed row created at or before it
+    is there because its split changed for the user."""
+    owned = _owned_accounts(db, user.id)
+    shared = {t.account_id for t in rows if t.account_id not in owned}
     return AlertFigures(
-        accounts=account_balances(db, rows),
+        accounts=account_balances(db, rows, shared),
         transactions=transaction_balances(db, user.id, rows),
         overall=overall_balances(db, user.id),
+        shared_accounts=shared,
+        resplit=(
+            {t.id for t in rows if t.created_at is not None and t.created_at <= start}
+            if start is not None
+            else set()
+        ),
     )
 
 
@@ -363,13 +459,32 @@ def build_message(
     is not shown."""
     figures = figures or AlertFigures()
     balances = figures.accounts
-    count = len(rows)
+    shared_accounts = figures.shared_accounts
+    resplit = figures.resplit
+    # Rows new on the user's own accounts, and the rest: shared with them
+    # (on someone else's account, or re-split for them in the window).
+    own = [t for t in rows if t.account_id not in shared_accounts and t.id not in resplit]
+    shared = [t for t in rows if t.account_id in shared_accounts or t.id in resplit]
+    count = len(own)
     label = FREQUENCY_LABELS[frequency]
     noun = "transaction" if count == 1 else "transactions"
-    subject = f"MyFinance – {count} new {noun} ({label.lower()} alert)"
+    parts = [f"{count} new {noun}"] if count or not shared else []
+    if shared:
+        parts.append(f"{len(shared)} shared with you")
+    subject = f"MyFinance – {', '.join(parts)} ({label.lower()} alert)"
+    shared_noun = "transaction" if len(shared) == 1 else "transactions"
+    intro = f"{count} new {noun} reached MyFinance on your accounts." if count or not shared else ""
+    shared_intro = (
+        f"{len(shared)} {shared_noun} shared with you (your share of the split)." if shared else ""
+    )
+    shares: dict[str, float] = {}
+    for t in shared:
+        if t.id in figures.transactions:
+            currency = t.account.currency if t.account else "EUR"
+            shares[currency] = shares.get(currency, 0.0) + figures.transactions[t.id]
 
     totals: dict[str, tuple[float, float]] = {}
-    for t in rows:
+    for t in own:
         currency = t.account.currency if t.account else "EUR"
         income, spent = totals.get(currency, (0.0, 0.0))
         if t.amount >= 0:
@@ -379,7 +494,7 @@ def build_message(
         totals[currency] = (income, spent)
 
     listed = rows[:MAX_LISTED]
-    hidden = count - len(listed)
+    hidden = len(rows) - len(listed)
     groups = _by_account(listed)
     app_url = os.environ.get("FRONTEND_BASE_URL", "")
     esc = html.escape
@@ -387,19 +502,27 @@ def build_message(
     # ── Plain text ──
     text = [f"Hello {user.name},", ""]
     text += [f"Your balance: {_money(net, cur)}" for cur, net in figures.overall]
-    text += [f"{count} new {noun} reached MyFinance on your accounts."]
-    text += [
-        f"In {_money(i, cur)} · Out {_money(o, cur)}" for cur, (i, o) in sorted(totals.items())
-    ]
+    if intro:
+        text += [intro]
+        text += [
+            f"In {_money(i, cur)} · Out {_money(o, cur)}" for cur, (i, o) in sorted(totals.items())
+        ]
+    if shared_intro:
+        text += [shared_intro]
+        text += [f"Your share: {_money(v, cur)}" for cur, v in sorted(shares.items())]
     for account_id, name, currency, group in groups:
-        text += ["", f"== {name} =="]
+        heading = f"{name} (shared with you)" if account_id in shared_accounts else name
+        text += ["", f"== {heading} =="]
         if account_id in balances:
             text.append(f"Balance: {_balance(balances[account_id], currency)}")
         for t in group:
             category = _category_style(t)[0]
             line = f"{t.date.strftime('%d/%m/%Y')}  {t.payee}  {category}  {_money(t.amount, currency)}"
             if t.id in figures.transactions:
-                line += f" (your balance {_money(figures.transactions[t.id], currency)})"
+                what = "your share" if account_id in shared_accounts else "your balance"
+                line += f" ({what} {_money(figures.transactions[t.id], currency)})"
+            if t.id in resplit:
+                line += " [split changed]"
             text.append(line)
             if t.memo:
                 text.append(f"    {t.memo}")
@@ -437,10 +560,18 @@ def build_message(
             else ""
         )
         mine = (
-            f'<div style="font-size:11px;color:#94a3b8;padding-top:2px;white-space:nowrap;">Balance '
+            f'<div style="font-size:11px;color:#94a3b8;padding-top:2px;white-space:nowrap;">'
+            f"{'Your share' if t.account_id in shared_accounts else 'Balance'} "
             f'<span style="color:{_amount_color(figures.transactions[t.id])};">'
             f"{esc(_money(figures.transactions[t.id], currency))}</span></div>"
             if t.id in figures.transactions
+            else ""
+        )
+        changed = (
+            '<td style="padding-left:8px;"><span style="font-size:11px;color:#4f46e5;'
+            'background:#eef2ff;border-radius:6px;padding:2px 6px;white-space:nowrap;">'
+            "Split changed</span></td>"
+            if t.id in resplit
             else ""
         )
         # Opens the row's detail panel, the same deep link as the WhatsApp share.
@@ -462,13 +593,18 @@ def build_message(
 <table role="presentation" cellpadding="0" cellspacing="0"><tr>
 <td width="20" height="20" align="center" valign="middle" bgcolor="{_tint(color)}" style="width:20px;height:20px;background:{_tint(color)};border-radius:6px;line-height:0;">
 <img src="cid:{icon_cid(icon, color)}" width="12" height="12" alt="" style="display:block;border:0;width:12px;height:12px;"></td>
-<td style="padding-left:6px;font-size:13px;{name_style}">{esc(name)}</td>
+<td style="padding-left:6px;font-size:13px;{name_style}">{esc(name)}</td>{changed}
 </tr></table></td></tr>{memo}
 </table></td></tr></table></td></tr>"""
 
     def section(account_id: int | None, name: str, currency: str, group: list[Transaction]) -> str:
         net = sum(t.amount for t in group)
         n = len(group)
+        tag = (
+            '<span style="font-weight:400;color:#4f46e5;font-size:12px;">&nbsp;· shared with you</span>'
+            if account_id in shared_accounts
+            else ""
+        )
         balance = (
             f'<tr><td colspan="2" style="font-size:12px;color:#64748b;padding-top:2px;">Balance '
             f'<span style="color:{"#0f172a" if balances[account_id] >= 0 else DEBIT_COLOR};font-weight:600;'
@@ -478,7 +614,7 @@ def build_message(
         )
         return f"""<tr><td style="padding:16px 4px 8px 4px;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
-<td style="font-size:14px;font-weight:700;color:#0f172a;">{esc(name)}
+<td style="font-size:14px;font-weight:700;color:#0f172a;">{esc(name)}{tag}
 <span style="font-weight:400;color:#64748b;font-size:12px;">&nbsp;· {n} {"transaction" if n == 1 else "transactions"}</span></td>
 <td align="right" style="font-size:13px;">{money_span(net, currency, 600)}</td>
 </tr>{balance}</table></td></tr>{"".join(card(t, currency) for t in group)}"""
@@ -487,6 +623,10 @@ def build_message(
         f'<div style="margin-top:6px;font-size:14px;">In {money_span(i, cur)}'
         f'<span style="color:#94a3b8;"> &nbsp;·&nbsp; </span>Out {money_span(o, cur)}</div>'
         for cur, (i, o) in sorted(totals.items())
+    )
+    share_summary = "".join(
+        f'<div style="margin-top:6px;font-size:14px;">Your share {money_span(v, cur)}</div>'
+        for cur, v in sorted(shares.items())
     )
     overall = "".join(
         f'<div style="font-size:13px;color:#64748b;">Your balance{f" ({cur})" if len(figures.overall) > 1 else ""}</div>'
@@ -505,6 +645,19 @@ def build_message(
         if app_url
         else ""
     )
+    own_html = (
+        f"<br><strong>{count} new {noun}</strong> reached MyFinance on your accounts.{summary}"
+        if intro
+        else ""
+    )
+    shared_html = (
+        f'<div style="margin-top:{10 if intro else 0}px;"><strong>{len(shared)} {shared_noun}</strong> '
+        f"shared with you (your share of the split).{share_summary}</div>"
+        if shared
+        else ""
+    )
+    if shared and not intro:
+        shared_html = "<br>" + shared_html
     html_body = f"""<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"></head>
 <body style="margin:0;padding:0;background:#f1f5f9;{font}">
@@ -513,7 +666,7 @@ def build_message(
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;{font}">
 <tr><td style="padding:0 4px 12px 4px;font-size:18px;font-weight:700;color:#4f46e5;">MyFinance</td></tr>
 <tr><td style="background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;padding:14px 16px;color:#0f172a;font-size:14px;">
-{overall}Hello {esc(user.name)},<br><strong>{count} new {noun}</strong> reached MyFinance on your accounts.{summary}</td></tr>
+{overall}Hello {esc(user.name)},{own_html}{shared_html}</td></tr>
 {"".join(section(*g) for g in groups)}{more}{button}
 <tr><td style="padding:16px 4px 0 4px;color:#94a3b8;font-size:12px;">You can change or stop these alerts in MyFinance, More → Email alerts.</td></tr>
 </table></td></tr></table></body></html>"""
@@ -569,7 +722,9 @@ def send_alert(db: Session, user: User, alert: EmailAlert, frequency: str, now: 
     rows = new_transactions(db, user.id, start, now)
     sent = False
     if rows:
-        send_message(build_message(user, alert, frequency, rows, alert_figures(db, user, rows)))
+        send_message(
+            build_message(user, alert, frequency, rows, alert_figures(db, user, rows, start))
+        )
         sent = True
     setattr(alert, f"last_{frequency}_sent_at", now)
     return sent
@@ -626,8 +781,9 @@ def send_test(db: Session, user: User, alert: EmailAlert, now: datetime | None =
     whether or not that list is empty, without moving any window. Returns
     the number of transactions listed."""
     now = now or _utcnow()
-    rows = new_transactions(db, user.id, now - FIRST_WINDOW["weekly"], now)
-    message = build_message(user, alert, "weekly", rows, alert_figures(db, user, rows))
+    start = now - FIRST_WINDOW["weekly"]
+    rows = new_transactions(db, user.id, start, now)
+    message = build_message(user, alert, "weekly", rows, alert_figures(db, user, rows, start))
     message.replace_header("Subject", f"[Test] {message['Subject']}")
     send_message(message)
     return len(rows)

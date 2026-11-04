@@ -562,6 +562,30 @@ test('shows a "Divided transaction" section with links to other parts, and navig
   expect(onNavigateToTransaction).toHaveBeenCalledWith(2)
 })
 
+test('hides Delete on an anchor that still has other parts', async () => {
+  mockFetchTransaction.mockResolvedValue({ ...baseTxn, divide_group_id: 1 })
+  mockFetchDivideSiblings.mockResolvedValue([{ ...baseTxn, id: 2, divide_group_id: 1 }])
+
+  renderWithProviders(<TransactionDetail {...baseProps} />)
+
+  expect(await screen.findByText(/delete the other parts first/)).toBeInTheDocument()
+  expect(screen.queryByText('Delete')).not.toBeInTheDocument()
+})
+
+test('confirming the deletion of a part says its amount goes back to the original part', async () => {
+  mockFetchTransaction.mockResolvedValue({ ...baseTxn, id: 2, divide_group_id: 1 })
+  mockFetchDivideSiblings.mockResolvedValue([{ ...baseTxn, divide_group_id: 1 }])
+
+  renderWithProviders(<TransactionDetail {...baseProps} transactionId={2} />)
+
+  await screen.findByDisplayValue('Test')
+  await screen.findByText(/Divided transaction/)
+  fireEvent.click(screen.getByText('Delete'))
+
+  const dialog = await screen.findByRole('dialog', { name: 'Delete transaction' })
+  expect(within(dialog).getByText(/goes back to the original part/)).toBeInTheDocument()
+})
+
 test('hides the Divide button for a non-anchor divide sibling', async () => {
   // divide_group_id set to a different transaction's id than this one's own —
   // this transaction is a sibling produced by a divide, not the group's anchor.

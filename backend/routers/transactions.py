@@ -22,6 +22,7 @@ from filtering import apply_transaction_filters, visible_transaction_filter
 from models import Account, Category, Transaction, TransactionHistory, TransactionSplit, User
 from rules import (
     validate_account_not_archived,
+    validate_divide_anchors_deletable,
     validate_divide_parts,
     validate_not_divide_sibling,
     validate_resolved_weights_present,
@@ -549,6 +550,62 @@ def bulk_update_transactions(
     )
 
 
+def _divide_members(db: Session, group_id: int | None = None) -> dict[int, set[int]]:
+    """Row ids of every divide group (or of just `group_id`), by group id."""
+    query = select(Transaction.id, Transaction.divide_group_id).where(
+        Transaction.divide_group_id.is_not(None)
+        if group_id is None
+        else Transaction.divide_group_id == group_id
+    )
+    members: dict[int, set[int]] = {}
+    for transaction_id, member_group_id in db.execute(query).all():
+        members.setdefault(member_group_id, set()).add(transaction_id)
+    return members
+
+
+def _return_divide_parts_to_anchors(
+    db: Session,
+    deleted: list[Transaction],
+    members: dict[int, set[int]],
+    deleted_ids: set[int],
+    actor_user_id: int | None,
+) -> None:
+    # A divide's parts add up to what the bank reported, so a deleted part's
+    # amount goes back to its anchor rather than vanishing from the group. A
+    # part since moved to another account no longer counts towards that total.
+    parts_by_anchor: dict[int, list[Transaction]] = {}
+    for part in deleted:
+        group_id = part.divide_group_id
+        if group_id is not None and group_id != part.id and group_id not in deleted_ids:
+            parts_by_anchor.setdefault(group_id, []).append(part)
+    if not parts_by_anchor:
+        return
+    for anchor in db.scalars(select(Transaction).where(Transaction.id.in_(parts_by_anchor))).all():
+        old_amount = anchor.amount
+        returned = sum(
+            p.amount for p in parts_by_anchor[anchor.id] if p.account_id == anchor.account_id
+        )
+        anchor.amount = round(old_amount + returned, 2)
+        if anchor.splits:
+            split_engine.apply_split(
+                db,
+                anchor,
+                {s.user_id: s.weight for s in anchor.splits},
+                anchor.splits[0].source,
+            )
+        if not members[anchor.id] - deleted_ids - {anchor.id}:
+            anchor.divide_group_id = None
+        if anchor.amount != old_amount:
+            record_transaction_history(
+                db,
+                anchor,
+                "updated",
+                actor_user_id,
+                source="divide",
+                changes={"amount": {"old": old_amount, "new": anchor.amount}},
+            )
+
+
 @router.delete("/bulk-delete", response_model=BulkDeleteTransactionsResponse)
 @audit.batched
 def bulk_delete_transactions(
@@ -563,6 +620,9 @@ def bulk_delete_transactions(
     target_ids = _resolve_bulk_target_ids(
         db, data.transaction_ids, data.filter, data.expected_count
     )
+    target_id_set = set(target_ids)
+    members = _divide_members(db)
+    validate_divide_anchors_deletable(members, target_id_set)
 
     # Chunked for the same reason as bulk-update: a filter can select the
     # whole ledger.
@@ -571,9 +631,11 @@ def bulk_delete_transactions(
         chunk_ids = target_ids[start : start + BULK_UPDATE_CHUNK_SIZE]
         link_ids = set()
         account_ids = set()
-        for transaction in db.scalars(
+        chunk = db.scalars(
             select(Transaction).where(Transaction.id.in_(chunk_ids)).order_by(Transaction.id)
-        ).all():
+        ).all()
+        _return_divide_parts_to_anchors(db, chunk, members, target_id_set, actor_user_id)
+        for transaction in chunk:
             record_transaction_history(db, transaction, "deleted", actor_user_id, source="bulk")
             link_ids.add(transaction.link_id)
             account_ids.add(transaction.account_id)
@@ -758,12 +820,20 @@ def update_transaction_raw_fields(
 
 
 @router.delete("/{transaction_id}", status_code=204)
+@audit.batched
 def delete_transaction(
     transaction_id: int, actor_user_id: int | None = Query(None), db: Session = Depends(get_db)
 ):
     transaction = db.scalar(select(Transaction).where(Transaction.id == transaction_id).limit(1))
     if not transaction:
         raise HTTPException(404, "Transaction not found")
+    members = (
+        {}
+        if transaction.divide_group_id is None
+        else _divide_members(db, transaction.divide_group_id)
+    )
+    validate_divide_anchors_deletable(members, {transaction.id})
+    _return_divide_parts_to_anchors(db, [transaction], members, {transaction.id}, actor_user_id)
     record_transaction_history(db, transaction, "deleted", actor_user_id)
     link_id = transaction.link_id
     account_id = transaction.account_id

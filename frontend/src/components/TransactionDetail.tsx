@@ -186,6 +186,13 @@ export default function TransactionDetail({
   const isNonAnchorDivideSibling = transaction != null
     && transaction.divide_group_id != null
     && transaction.divide_group_id !== transaction.id
+  // A deleted part's amount goes back to the anchor, so the anchor itself can
+  // only be deleted once its other parts are gone.
+  const isAnchorWithParts = transaction != null
+    && transaction.divide_group_id === transaction.id
+    && divideSiblings.length > 0
+  const returnsToAnchor = isNonAnchorDivideSibling
+    && divideSiblings.some(s => s.id === transaction?.divide_group_id)
 
   const isCheckpoint = transactionId === null ? newCheckpoint : transaction?.checkpoint_value != null
 
@@ -372,7 +379,7 @@ export default function TransactionDetail({
             {transactionId !== null && !isNonAnchorDivideSibling && !isCheckpoint && (
               <Button variant="secondary" onClick={() => setDividing(true)}>Divide</Button>
             )}
-            {transactionId !== null && (
+            {transactionId !== null && !isAnchorWithParts && (
               <Button variant="danger" onClick={() => setConfirmingDelete(true)}>Delete</Button>
             )}
             <Button variant="secondary" onClick={onClose}>Cancel</Button>
@@ -396,6 +403,11 @@ export default function TransactionDetail({
                   </button>
                 ))}
               </div>
+              {isAnchorWithParts && (
+                <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
+                  This is the original part: delete the other parts first to delete it.
+                </p>
+              )}
             </div>
           )}
 
@@ -457,7 +469,9 @@ export default function TransactionDetail({
         <ConfirmDialog
           isOpen={confirmingDelete}
           title="Delete transaction"
-          message={`Delete transaction "${transaction?.payee}"?`}
+          message={returnsToAnchor
+            ? `Delete part "${transaction?.payee}"? Its ${transaction?.amount.toFixed(2)} ${transaction?.currency} goes back to the original part, so the parts still add up to the same total.`
+            : `Delete transaction "${transaction?.payee}"?`}
           onConfirm={confirmDelete}
           onCancel={() => setConfirmingDelete(false)}
         />
