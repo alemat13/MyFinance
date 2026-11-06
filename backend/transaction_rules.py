@@ -6,7 +6,8 @@ to be confused with `rules.py`, which holds input validation.)
 A rule is the Transactions screen's advanced filter plus a bulk edit, run on
 its own, the way a mail client's rules are. **Conditions** are
 `FilterCondition`s — the very objects the advanced filter sends — combined by
-the rule's `match_mode`. **Actions** (`RuleActions`) are the bulk edit's
+the rule's `match_mode`, some of them possibly bracketed in a `ConditionGroup`
+with a match mode of its own ("account is X AND (payee contains A OR B)"). **Actions** (`RuleActions`) are the bulk edit's
 fields plus a payee rename; moving to another account and deleting are left
 out on purpose, since nothing should do either unseen.
 
@@ -35,6 +36,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
+from pydantic import TypeAdapter
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -60,6 +62,8 @@ from schemas import (
     MONTH_FIELDS,
     TAG_FIELDS,
     TEXT_FIELDS,
+    ConditionGroup,
+    ConditionItem,
     FilterCondition,
     RuleActions,
     RuleOutcomeOut,
@@ -211,13 +215,29 @@ def _matches(condition: FilterCondition, state: dict) -> bool:
 
 
 def rule_matches(rule: TransactionRule, state: dict) -> bool:
-    conditions = [FilterCondition.model_validate(c) for c in rule.conditions or []]
+    conditions = _CONDITIONS.validate_python(rule.conditions or [])
     if not conditions:
         # Refused on save; an archive could still carry one. A rule with no
         # condition would rewrite every transaction, so it matches nothing.
         return False
-    results = (_matches(c, state) for c in conditions)
-    return all(results) if rule.match_mode == "all" else any(results)
+    return _items_match(conditions, rule.match_mode, state)
+
+
+_CONDITIONS = TypeAdapter(list[ConditionItem])
+
+
+def _items_match(
+    items: list[FilterCondition | ConditionGroup], match_mode: str, state: dict
+) -> bool:
+    """Mirrors filtering.build_where_clause(): a group is one bracketed
+    condition, joined inside by its own match mode."""
+    results = (
+        _items_match(c.conditions, c.match_mode, state)
+        if isinstance(c, ConditionGroup)
+        else _matches(c, state)
+        for c in items
+    )
+    return all(results) if match_mode == "all" else any(results)
 
 
 @dataclass

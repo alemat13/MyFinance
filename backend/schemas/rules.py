@@ -8,7 +8,7 @@ from pydantic import Field, model_validator
 from .base import Schema, _DateType
 from .entities import SplitWeightCreate
 from .imports import ImportPreviewRow
-from .search import FilterCondition
+from .search import ConditionItem
 
 # ── Automatic rules (see transaction_rules.py) ───────────────────
 
@@ -60,7 +60,7 @@ class RuleBase(Schema):
     name: str = Field(..., min_length=1, max_length=100)
     enabled: bool = True
     match_mode: Literal["all", "any"] = "all"
-    conditions: list[FilterCondition]
+    conditions: list[ConditionItem]
     actions: RuleActions
 
 

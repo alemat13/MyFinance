@@ -66,6 +66,8 @@ from .transactions import (
 from .search import (
     BOOL_FIELDS,
     BOOL_OPERATORS,
+    ConditionGroup,
+    ConditionItem,
     DATE_FIELDS,
     DATE_OPERATORS,
     FilterCondition,
@@ -83,6 +85,7 @@ from .search import (
     TransactionSearchRequest,
     TransactionSearchResponse,
     USER_FIELDS,
+    flatten_conditions,
 )
 from .reports import (
     AccountValueOut,

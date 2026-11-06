@@ -21,6 +21,7 @@ from schemas import (
     RulePreviewRequest,
     RulePreviewResponse,
     RuleUpdate,
+    flatten_conditions,
 )
 
 router = APIRouter(prefix="/api/rules")
@@ -34,7 +35,7 @@ def _validate(db: Session, data: RuleCreate | RuleUpdate) -> None:
     if not data.conditions:
         # A rule with no condition would rewrite every transaction it meets.
         raise RuleViolation("A rule needs at least one condition.")
-    for condition in data.conditions:
+    for condition in flatten_conditions(data.conditions):
         if condition.field in USER_FIELDS:
             # The import preview runs rules on rows that have no split yet.
             raise RuleViolation("A rule cannot test a person's split, share or balance.")
