@@ -1021,7 +1021,8 @@ category you set yourself is never replaced unless you explicitly ask for it.
 **When a bank sync brings in new rows**, they are categorized as they arrive, with no
 prompt. There is nothing to compare against — the bank sends no category — and the bank's
 own wording is kept in the transaction's Original label whatever the payee becomes, so
-nothing is lost. Rows synced before you activated a model keep whatever they had; use the bulk action
+nothing is lost. A row filed this way also gets its split from the category (or the account,
+if the account has its own split weights), exactly as if it had arrived with that category. Rows synced before you activated a model keep whatever they had; use the bulk action
 below on them.
 
 **When you import a file**, the Review step shows a **Suggested** column next to the
