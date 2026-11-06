@@ -2,7 +2,7 @@
 // is read back from the URL (and the date order from localStorage), so a
 // link or a reload reopens the screen exactly as it was.
 import { HistoryGroupRef } from '../../api/client'
-import { ConditionRow } from '../TransactionConditions'
+import { ConditionItemRow, ConditionRow } from '../TransactionConditions'
 import { getParam } from '../../utils/urlState'
 
 export type FilterMode = 'simple' | 'advanced'
@@ -17,14 +17,25 @@ export function loadInitialMode(): FilterMode {
   return getParam('mode') === 'advanced' ? 'advanced' : 'simple'
 }
 
-export function loadInitialConditions(): ConditionRow[] {
+const isRow = (c: unknown): c is ConditionRow =>
+  !!c && typeof c === 'object' && typeof (c as ConditionRow).field === 'string'
+  && typeof (c as ConditionRow).operator === 'string'
+
+export function loadInitialConditions(): ConditionItemRow[] {
   const raw = getParam('conditions')
   if (!raw) return []
   try {
     const parsed = JSON.parse(decodeURIComponent(raw))
     if (!Array.isArray(parsed)) return []
-    return parsed.filter((c): c is ConditionRow =>
-      c && typeof c === 'object' && typeof c.field === 'string' && typeof c.operator === 'string')
+    // A group of conditions keeps only its well-formed rows.
+    return parsed.flatMap((c): ConditionItemRow[] => {
+      if (isRow(c)) return [c]
+      if (c && typeof c === 'object' && Array.isArray(c.conditions)) {
+        const rows = c.conditions.filter(isRow)
+        return rows.length > 0 ? [{ matchMode: c.matchMode === 'all' ? 'all' : 'any', conditions: rows }] : []
+      }
+      return []
+    })
   } catch {
     return []
   }

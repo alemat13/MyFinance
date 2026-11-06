@@ -1,4 +1,4 @@
-import { FilterCondition, RuleActions, RuleOutcome, SplitTier, TransactionSearchRequest, User } from '../api/client'
+import { ConditionItem, FilterCondition, RuleActions, RuleOutcome, SplitTier, TransactionSearchRequest, User } from '../api/client'
 
 export const SPLIT_TIER_LABELS: Record<SplitTier, string> = {
   global: 'Global split',
@@ -51,7 +51,7 @@ export function describeActions(
 /** The conditions a new rule starts from, taken from the Transactions screen's
  *  filters. */
 export interface RuleDraft {
-  conditions: FilterCondition[]
+  conditions: ConditionItem[]
   match_mode: 'all' | 'any'
 }
 

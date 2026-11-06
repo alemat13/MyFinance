@@ -98,6 +98,12 @@ export type FilterField = 'payee' | 'memo' | 'raw_label' | 'amount' | 'amount_ab
 
 export type FilterCondition = Schemas['FilterCondition-Input']
 
+/** Conditions in brackets, with an ALL/ANY of their own (one level deep). */
+export type ConditionGroup = Schemas['ConditionGroup-Input']
+
+/** One entry of an advanced filter or a rule: a condition, or a group of them. */
+export type ConditionItem = FilterCondition | ConditionGroup
+
 export type TransactionSearchRequest = Schemas['TransactionSearchRequest']
 
 export type TransactionSearchResponse = With<Schemas['TransactionSearchResponse'], { items: Transaction[] }>
@@ -808,9 +814,13 @@ export interface SimpleFilterState {
   sort_dir?: 'asc' | 'desc'
 }
 
+type ConditionRowState = { field: string; operator: string; value: string; value2: string }
+
 export interface AdvancedFilterState {
   match_mode: 'all' | 'any'
-  conditions: { field: string; operator: string; value: string; value2: string }[]
+  // The builder's rows as it holds them, a group of rows being
+  // { matchMode, conditions } (TransactionConditions' ConditionItemRow).
+  conditions: (ConditionRowState | { matchMode: 'all' | 'any'; conditions: ConditionRowState[] })[]
   sort_dir?: 'asc' | 'desc'
 }
 

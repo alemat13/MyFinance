@@ -13,7 +13,7 @@ import RulesApplyModal from './RulesApplyModal'
 import LinkTransactionsModal from './LinkTransactionsModal'
 import CategoryPicker from './CategoryPicker'
 import AccountPicker from './AccountPicker'
-import TransactionConditions, { ConditionRow, SEARCH_ONLY_FIELDS, conditionsToFilters } from './TransactionConditions'
+import TransactionConditions, { ConditionItemRow, SEARCH_ONLY_FIELDS, conditionsToFilters } from './TransactionConditions'
 import ExportMenu from './ExportMenu'
 import WhatsAppIcon from './WhatsAppIcon'
 import { whatsAppListShareUrl } from '../utils/whatsapp'
@@ -86,8 +86,8 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
   const [amountMax, setAmountMax] = useState(() => getParam('amount_max') ?? '')
   const [filterReconciled, setFilterReconciled] = useState(() => getParam('reconciled') ?? '')
   const [historyGroup, setHistoryGroup] = useState<HistoryGroupRef | null>(loadInitialHistoryGroup)
-  const [conditions, setConditions] = useState<ConditionRow[]>(loadInitialConditions)
-  const [debouncedConditions, setDebouncedConditions] = useState<ConditionRow[]>(loadInitialConditions)
+  const [conditions, setConditions] = useState<ConditionItemRow[]>(loadInitialConditions)
+  const [debouncedConditions, setDebouncedConditions] = useState<ConditionItemRow[]>(loadInitialConditions)
   const [matchMode, setMatchMode] = useState<'all' | 'any'>(() => (getParam('match') === 'any' ? 'any' : 'all'))
   const [page, setPage] = useState(() => loadInitialInt('page', 1))
   const [pageSize, setPageSize] = useState(loadInitialPageSize)
@@ -298,7 +298,7 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
     const draft: RuleDraft = mode === 'advanced'
       // A rule cannot test a person's split, share or balance (the import
       // preview runs rules on rows that have none yet), so those are left out.
-      ? { conditions: conditionsToFilters(conditions).filter(c => !SEARCH_ONLY_FIELDS.includes(c.field)), match_mode: matchMode }
+      ? { conditions: conditionsToFilters(conditions, SEARCH_ONLY_FIELDS), match_mode: matchMode }
       : { conditions: simpleFiltersToConditions(buildSearchRequest()), match_mode: 'all' }
     return draft.conditions.length > 0 ? draft : null
   }
@@ -335,7 +335,7 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
   // follows at once.
   const applySavedFilter = (saved: SavedFilter) => {
     if (saved.mode === 'advanced') {
-      const rows = (saved.filters.conditions ?? []) as ConditionRow[]
+      const rows = (saved.filters.conditions ?? []) as ConditionItemRow[]
       setConditions(rows)
       setDebouncedConditions(rows)
       setMatchMode(saved.filters.match_mode === 'any' ? 'any' : 'all')
