@@ -12,7 +12,14 @@ import pytest
 import auto_categorize
 import categorizer
 import enable_banking
-from models import CategorizerModel, Category, Transaction, TransactionHistory
+from models import (
+    CategorizerModel,
+    Category,
+    CategorySplit,
+    Transaction,
+    TransactionHistory,
+    TransactionSplit,
+)
 
 # The bank-sync fixtures live with the bank-sync tests; pytest collects them
 # from here because they are imported into this module's namespace.
@@ -196,6 +203,76 @@ def test_a_sync_files_the_rows_it_imports(
         .all()
     }
     assert sources == {"bank_sync", "categorizer"}
+
+
+def test_a_sync_gives_a_filed_row_its_category_split(
+    db, linked_connection, global_weights, active_model, categories
+):
+    """MYF-76: the sync creates the row with the global split (no category
+    yet); once the model files it, the category's own split takes over."""
+    groceries, _ = categories
+    db.add(CategorySplit(category_id=groceries.id, user_id=global_weights.id, weight=3))
+    db.commit()
+    rows = enable_banking.normalize_transactions(
+        [
+            _booked(
+                "12.00",
+                "DBIT",
+                "2026-08-02",
+                remittance_information=["CARTE 02/08 SUPERMARCHE DU COIN"],
+            ),
+        ]
+    )
+    enable_banking.import_transactions(
+        db, linked_connection, rows, date(2026, 8, 1), date(2026, 8, 31)
+    )
+
+    imported = db.query(Transaction).filter(Transaction.external_id.isnot(None)).one()
+    assert imported.category_id == groceries.id
+    split = db.query(TransactionSplit).filter(TransactionSplit.transaction_id == imported.id).one()
+    assert (split.weight, split.source) == (3, "category")
+    assert split.share_amount == imported.amount
+    entry = (
+        db.query(TransactionHistory)
+        .filter(
+            TransactionHistory.transaction_id == imported.id,
+            TransactionHistory.source == "categorizer",
+        )
+        .one()
+    )
+    assert entry.changes["category_id"]["new"] == groceries.id
+    assert "splits" in entry.changes
+
+
+def test_a_sync_keeps_the_global_split_when_the_category_has_none(
+    db, linked_connection, global_weights, active_model, categories
+):
+    rows = enable_banking.normalize_transactions(
+        [
+            _booked(
+                "12.00",
+                "DBIT",
+                "2026-08-02",
+                remittance_information=["CARTE 02/08 SUPERMARCHE DU COIN"],
+            ),
+        ]
+    )
+    enable_banking.import_transactions(
+        db, linked_connection, rows, date(2026, 8, 1), date(2026, 8, 31)
+    )
+
+    imported = db.query(Transaction).filter(Transaction.external_id.isnot(None)).one()
+    split = db.query(TransactionSplit).filter(TransactionSplit.transaction_id == imported.id).one()
+    assert (split.weight, split.source) == (1, "global")
+    entry = (
+        db.query(TransactionHistory)
+        .filter(
+            TransactionHistory.transaction_id == imported.id,
+            TransactionHistory.source == "categorizer",
+        )
+        .one()
+    )
+    assert "splits" not in entry.changes
 
 
 def test_a_sync_with_no_active_model_imports_uncategorised_as_before(

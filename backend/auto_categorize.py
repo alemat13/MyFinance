@@ -28,8 +28,9 @@ from sqlalchemy.orm import Session
 
 import cache_service
 import categorizer
-from audit import TRACKED_FIELDS, _jsonify, record_transaction_history
-from models import CategorizerModel
+import split_engine
+from audit import TRACKED_FIELDS, _jsonify, diff_splits, record_transaction_history
+from models import CategorizerModel, TransactionSplit
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +85,12 @@ def file_rows(db: Session, transactions: list, *, actor_user_id: int | None = No
     how many rows were changed; 0 when no model is active, which is the normal
     state until someone trains and activates one, so this is never an error.
 
+    The rows are brand new, created with a split resolved before any category
+    was known (the global or account tier), so the split is resolved again
+    once the model has filed them: a row filed under a category with its own
+    split gets that split, as it would have if created with the category
+    (MYF-76; the automatic rules do the same with `fresh=True`).
+
     Does not commit — the caller's own commit is what makes the write and its
     cache invalidation land together.
     """
@@ -103,7 +110,7 @@ def file_rows(db: Session, transactions: list, *, actor_user_id: int | None = No
     predictions = model.predict(rows)
     changed = 0
     for transaction, (category_id, _confidence) in zip(rows, predictions):
-        if write_fields(db, transaction, {"category_id": category_id}, actor_user_id):
+        if write_fields(db, transaction, {"category_id": category_id}, actor_user_id, resplit=True):
             changed += 1
 
     if changed:
@@ -126,12 +133,24 @@ def file_rows_quietly(db: Session, transactions: list, *, actor_user_id: int | N
         return 0
 
 
-def write_fields(db: Session, transaction, fields: dict, actor_user_id: int | None) -> bool:
+def write_fields(
+    db: Session,
+    transaction,
+    fields: dict,
+    actor_user_id: int | None,
+    *,
+    resplit: bool = False,
+) -> bool:
     """Set the given fields on a transaction, unreconcile it and record it.
 
     Returns whether anything actually changed, so a caller can count rows
     rather than attempts. Shared with the apply endpoint so that a suggestion
     ticked by hand and one applied by a sync leave the same trail.
+
+    `resplit` is for a row just created with a split resolved before its
+    category was known (the bank sync): the split is resolved again through
+    the usual cascade once the category is set, and recorded on the same
+    history row. Never for a row somebody may have split by hand.
     """
     before = {
         field: getattr(transaction, field)
@@ -146,9 +165,39 @@ def write_fields(db: Session, transaction, fields: dict, actor_user_id: int | No
         for field, value in before.items()
         if value != getattr(transaction, field)
     }
+    if resplit and "category_id" in changes:
+        splits_diff = _resplit(db, transaction)
+        if splits_diff:
+            changes["splits"] = splits_diff
     if not changes:
         return False
     record_transaction_history(
         db, transaction, "updated", actor_user_id, source=HISTORY_SOURCE, changes=changes
     )
     return True
+
+
+def _resplit(db: Session, transaction) -> dict | None:
+    """Re-resolve a fresh row's default split for its new category; the diff
+    when it moved, None otherwise. Mirrors `transaction_rules.write(fresh=True)`."""
+    source, weights = split_engine.resolve_default_weights(
+        db, transaction.category_id, transaction.account_id
+    )
+    if not weights:
+        return None
+    # Read from the table rather than the relationship, which the caller that
+    # has just written the row's first split may hold stale, flushed first
+    # since that split may not even be in the table yet.
+    db.flush()
+    existing = {
+        s.user_id: (s.weight, s.source)
+        for s in db.scalars(
+            select(TransactionSplit).where(TransactionSplit.transaction_id == transaction.id)
+        ).all()
+    }
+    source = source or "custom"
+    splits_diff = diff_splits(existing, {uid: (w, source) for uid, w in weights.items()})
+    if not splits_diff:
+        return None
+    split_engine.apply_split(db, transaction, weights, source)
+    return splits_diff
