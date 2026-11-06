@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Sun, Moon, ShieldAlert } from 'lucide-react'
 import { fetchUsers, HistoryGroupRef, User } from './api/client'
-import { ConditionRow } from './components/TransactionConditions'
+import { ConditionItemRow } from './components/TransactionConditions'
 import { useTheme } from './context/ThemeContext'
 import { getParam, navigateQueryParams } from './utils/urlState'
 import { isAdminMode } from './utils/admin'
@@ -98,7 +98,7 @@ export default function App() {
   // left over from an earlier visit) before switching the view.
   const navigateToFilteredTransactions = (filter: {
     account_id?: number; tag_id?: number; history_group?: HistoryGroupRef; transaction?: number
-    conditions?: ConditionRow[]
+    conditions?: ConditionItemRow[]
   }) => {
     navigateQueryParams({
       view: 'transactions',

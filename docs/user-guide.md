@@ -282,7 +282,11 @@ Two filtering modes are available:
   below). **Clear** resets all of these.
 - **Advanced filters**: build arbitrary AND/OR conditions across payee, memo, amount,
   date, account, or category, each with its own operator (contains, equals, between,
-  greater/less than, etc.). In **contains**, **starts with** and **ends with** (and in
+  greater/less than, etc.). **+ Add group** adds a group of conditions in brackets with its
+  own ALL / ANY, to mix the two: Match ALL with "Account is Compte perso" and an ANY group
+  "Payee contains Deliveroo / Payee contains Uber Eats" finds the Deliveroo or Uber Eats
+  transactions of that account only. A group goes one level deep, an empty group is
+  ignored, and a saved filter or a link keeps its groups. In **contains**, **starts with** and **ends with** (and in
   the simple filter's search box), `*` stands for any run of characters and `?` for
   exactly one: "Payee contains carte*sncf" finds "CARTE 12/09 SNCF". Every other
   character, `%` and `_` included, is matched as itself. **Account** and **Category** use **is in** / **is not in**
@@ -1059,7 +1063,12 @@ amount, date, account, category, tag, reconciled, accounting month shift and the
 fields — except the per-person ones, **Added on** and **Linked** (a transaction being
 imported has not been added, nor linked, yet). The most useful is **Original label**, the bank's (or the file's)
 own wording before any cleanup or renaming, which is the steadiest way to recognise a
-merchant. Combine them with **ALL** or **ANY**. As you type, the editor says how many
+merchant. Combine them with **ALL** or **ANY**, and use **+ Add group** to mix the two:
+a group is a set of conditions in brackets with its own ALL / ANY, counting as one
+condition. "Account is Compte perso" and a group "ANY: Payee contains Deliveroo, Payee
+contains Uber Eats, Payee contains Europcar" makes one rule for "my own account AND
+(Deliveroo OR Uber Eats OR Europcar)"; the rules list shows it as such, with the
+brackets. Groups go one level deep (a group holds plain conditions). As you type, the editor says how many
 existing transactions match today, the quickest check that a condition says what you
 meant. A condition on an empty field never matches (a transaction with no memo is not
 caught by "Memo is not …").

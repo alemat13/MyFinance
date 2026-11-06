@@ -5,7 +5,7 @@ import {
   activateCategorizerModel, deleteCategorizerModel, fetchAccounts, fetchCategories,
   fetchCategorizerModels, fetchTags, fetchUsers, searchTransactions, trainCategorizerModel,
 } from '../api/client'
-import TransactionConditions, { ConditionRow, conditionsToFilters } from './TransactionConditions'
+import TransactionConditions, { ConditionItemRow, conditionsToFilters } from './TransactionConditions'
 import { BackButton, Badge, Button, Card, ConfirmDialog, Input, StatusMessage, Table, Thead, Tbody, Tr, Th, Td } from './ui'
 import { useToast } from '../context/ToastContext'
 import { formatServerTimestamp } from '../utils/datetime'
@@ -133,10 +133,10 @@ export default function CategorizerPage({ onBack }: Props) {
   const [error, setError] = useState<string | null>(null)
 
   const cutoff = monthsAgo(12)
-  const [trainConditions, setTrainConditions] = useState<ConditionRow[]>(
+  const [trainConditions, setTrainConditions] = useState<ConditionItemRow[]>(
     [{ field: 'date', operator: 'before', value: cutoff, value2: '' }])
   const [trainMatch, setTrainMatch] = useState<'all' | 'any'>('all')
-  const [testConditions, setTestConditions] = useState<ConditionRow[]>(
+  const [testConditions, setTestConditions] = useState<ConditionItemRow[]>(
     [{ field: 'date', operator: 'between', value: cutoff, value2: isoToday() }])
   const [testMatch, setTestMatch] = useState<'all' | 'any'>('all')
   const [trainCount, setTrainCount] = useState<Count>(null)
@@ -169,10 +169,10 @@ export default function CategorizerPage({ onBack }: Props) {
   // No `user_id` on either selection, deliberately: there is one model for the
   // whole household (so it learns from both people's filing), and scoping a
   // selection to the signed-in user would silently train on half the ledger.
-  const selection = (conditions: ConditionRow[], matchMode: 'all' | 'any'): TransactionSearchRequest =>
+  const selection = (conditions: ConditionItemRow[], matchMode: 'all' | 'any'): TransactionSearchRequest =>
     ({ match_mode: matchMode, conditions: conditionsToFilters(conditions) })
 
-  const countFor = (conditions: ConditionRow[], matchMode: 'all' | 'any', set: (n: Count) => void) => {
+  const countFor = (conditions: ConditionItemRow[], matchMode: 'all' | 'any', set: (n: Count) => void) => {
     searchTransactions({ ...selection(conditions, matchMode), page: 1, page_size: 1 })
       .then(res => set(res.total))
       .catch(() => set('error'))

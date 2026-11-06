@@ -287,6 +287,82 @@ def test_match_mode_any_and_all(db, sample_account):
     assert _evaluate(db, [all_rule], row).fields == {}
 
 
+def _group(match_mode, *conditions):
+    return {"match_mode": match_mode, "conditions": list(conditions)}
+
+
+def test_groups_mix_and_with_or(db, sample_account, sample_account_2):
+    """Mirrors filtering.build_where_clause(): account is X AND (payee
+    contains A OR payee contains B)."""
+    rule = _rule(
+        db,
+        "food",
+        [
+            {"field": "account_id", "operator": "in", "value": [sample_account.id]},
+            _group("any", _contains("payee", "deliveroo"), _contains("payee", "europcar")),
+        ],
+        {"reconciled": True},
+    )
+    matched = {
+        (payee, account.id): _evaluate(db, [rule], _txn(db, account.id, payee)).fields != {}
+        for payee, account in (
+            ("Deliveroo", sample_account),
+            ("Europcar", sample_account),
+            ("Carrefour", sample_account),
+            ("Deliveroo", sample_account_2),
+        )
+    }
+    assert matched == {
+        ("Deliveroo", sample_account.id): True,
+        ("Europcar", sample_account.id): True,
+        ("Carrefour", sample_account.id): False,
+        ("Deliveroo", sample_account_2.id): False,
+    }
+
+    # And the other way round: (A AND B) OR (C AND D).
+    either = _rule(
+        db,
+        "either",
+        [
+            _group(
+                "all", _contains("payee", "sfr"), {"field": "amount", "operator": "lt", "value": 0}
+            ),
+            _group(
+                "all", _contains("payee", "edf"), {"field": "amount", "operator": "gt", "value": 0}
+            ),
+        ],
+        {"reconciled": True},
+        match_mode="any",
+    )
+    assert _evaluate(db, [either], _txn(db, sample_account.id, "SFR", amount=-5)).fields
+    assert not _evaluate(db, [either], _txn(db, sample_account.id, "EDF", amount=-5)).fields
+    assert _evaluate(db, [either], _txn(db, sample_account.id, "EDF", amount=5)).fields
+
+
+def test_a_rule_with_groups_round_trips_and_is_checked(client):
+    group = _group("any", _contains("payee", "deliveroo"), _contains("payee", "uber eats"))
+    body = {
+        "name": "Food",
+        "conditions": [{"field": "amount", "operator": "lt", "value": 0}, group],
+        "actions": {"reconciled": True},
+    }
+    created = client.post("/api/rules", json=body)
+    assert created.status_code == 201, created.text
+    assert created.json()["conditions"][1] == {
+        **group,
+        "conditions": [{**c, "value2": None, "user_id": None} for c in group["conditions"]],
+    }
+
+    # What a rule cannot test stays refused inside a group, and so does an empty group.
+    for bad in (
+        _group("any", {"field": "split_share", "user_id": 1, "operator": "gt", "value": 0}),
+        _group("any", _contains("payee", "")),
+        _group("any"),
+    ):
+        response = client.post("/api/rules", json={**body, "conditions": [bad]})
+        assert response.status_code == 422, (bad, response.text)
+
+
 def test_later_rules_see_earlier_changes_and_win(db, sample_account, groceries, phone):
     row = _txn(db, sample_account.id, "PRLV SEPA SFR", raw_label="PRLV SEPA SFR")
     rename = _rule(

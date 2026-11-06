@@ -13,6 +13,7 @@ from schemas import (
     TAG_FIELDS,
     TEXT_FIELDS,
     USER_FIELDS,
+    ConditionGroup,
     FilterCondition,
 )
 
@@ -257,10 +258,18 @@ def build_condition_expr(condition: FilterCondition):
     return _numeric_expr(column, condition)
 
 
-def build_where_clause(conditions: list[FilterCondition], match_mode: str):
+def build_where_clause(conditions: list[FilterCondition | ConditionGroup], match_mode: str):
+    """The conditions joined by AND ("all") or OR ("any"), a group being
+    one bracketed condition joined by its own match mode. Mirrored by
+    transaction_rules.rule_matches()."""
     if not conditions:
         return None
-    exprs = [build_condition_expr(c) for c in conditions]
+    exprs = [
+        build_where_clause(c.conditions, c.match_mode)
+        if isinstance(c, ConditionGroup)
+        else build_condition_expr(c)
+        for c in conditions
+    ]
     return and_(*exprs) if match_mode == "all" else or_(*exprs)
 
 

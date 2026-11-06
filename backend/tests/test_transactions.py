@@ -1124,6 +1124,47 @@ def test_search_match_mode_all_vs_any(client, db, sample_account, sample_categor
     assert payees == {"Alpha", "Beta"}
 
 
+def test_search_groups_mix_and_with_or(
+    client, db, sample_account, sample_account_2, sample_category
+):
+    """A group is one bracketed condition with its own match mode: "account
+    is X AND (payee contains A OR payee contains B)"."""
+    _make_transaction(db, sample_account, sample_category, payee="Deliveroo", amount=-20.0)
+    _make_transaction(db, sample_account, sample_category, payee="Europcar", amount=-80.0)
+    _make_transaction(db, sample_account, sample_category, payee="Carrefour", amount=-30.0)
+    other = _make_transaction(db, sample_account, sample_category, payee="Deliveroo", amount=-5.0)
+    other.account_id = sample_account_2.id
+    db.commit()
+
+    group = {
+        "match_mode": "any",
+        "conditions": [
+            {"field": "payee", "operator": "contains", "value": "deliveroo"},
+            {"field": "payee", "operator": "contains", "value": "europcar"},
+        ],
+    }
+    response = client.post(
+        "/api/transactions/search",
+        json={
+            "conditions": [
+                {"field": "account_id", "operator": "in", "value": [sample_account.id]},
+                group,
+            ],
+            "match_mode": "all",
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert sorted(i["amount"] for i in response.json()["items"]) == [-80.0, -20.0]
+
+    # An empty group, or a bad condition inside one, is refused.
+    for bad in (
+        {"match_mode": "any", "conditions": []},
+        {"conditions": [{"field": "payee", "operator": "gt", "value": 1}]},
+    ):
+        response = client.post("/api/transactions/search", json={"conditions": [bad]})
+        assert response.status_code == 422, response.text
+
+
 def test_search_advanced_per_user_split_fields(
     client, sample_account_with_user, sample_category, sample_user, sample_user2
 ):

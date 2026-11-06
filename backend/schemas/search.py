@@ -1,9 +1,10 @@
 """The Transactions screen's search request and its advanced-filter conditions."""
 
+from collections.abc import Iterable
 from datetime import date
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import model_validator
+from pydantic import Discriminator, Field, Tag, model_validator
 
 from .base import Schema
 from .transactions import (
@@ -122,6 +123,36 @@ class FilterCondition(Schema):
         return self
 
 
+class ConditionGroup(Schema):
+    """Conditions in brackets, with an ALL/ANY of their own, standing as one
+    condition among the others: "account is X AND (payee contains A OR
+    payee contains B)". One level deep: a group holds plain conditions only."""
+
+    match_mode: Literal["all", "any"] = "all"
+    conditions: list[FilterCondition] = Field(..., min_length=1)
+
+
+def _condition_kind(value) -> str:
+    if isinstance(value, dict):
+        return "group" if "conditions" in value else "condition"
+    return "group" if isinstance(value, ConditionGroup) else "condition"
+
+
+# One entry of an advanced filter or a rule: a condition, or a group of them.
+ConditionItem = Annotated[
+    Annotated[FilterCondition, Tag("condition")] | Annotated[ConditionGroup, Tag("group")],
+    Discriminator(_condition_kind),
+]
+
+
+def flatten_conditions(items: Iterable[FilterCondition | ConditionGroup]) -> list[FilterCondition]:
+    """Every plain condition, those inside groups included."""
+    out: list[FilterCondition] = []
+    for item in items:
+        out.extend(item.conditions if isinstance(item, ConditionGroup) else [item])
+    return out
+
+
 class HistoryGroupRef(Schema):
     """One History entry's rows (history.group_filter()): the id range they
     span plus what they share."""
@@ -157,7 +188,7 @@ class TransactionSearchRequest(Schema):
     reconciled: bool | None = None
 
     # advanced mode
-    conditions: list[FilterCondition] = []
+    conditions: list[ConditionItem] = []
     match_mode: Literal["all", "any"] = "all"
 
     # pagination

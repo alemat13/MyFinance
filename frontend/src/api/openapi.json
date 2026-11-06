@@ -1943,6 +1943,61 @@
         "title": "ChartsResponse",
         "type": "object"
       },
+      "ConditionGroup-Input": {
+        "description": "Conditions in brackets, with an ALL/ANY of their own, standing as one\ncondition among the others: \"account is X AND (payee contains A OR\npayee contains B)\". One level deep: a group holds plain conditions only.",
+        "properties": {
+          "conditions": {
+            "items": {
+              "$ref": "#/components/schemas/FilterCondition-Input"
+            },
+            "minItems": 1,
+            "title": "Conditions",
+            "type": "array"
+          },
+          "match_mode": {
+            "default": "all",
+            "enum": [
+              "all",
+              "any"
+            ],
+            "title": "Match Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "conditions"
+        ],
+        "title": "ConditionGroup",
+        "type": "object"
+      },
+      "ConditionGroup-Output": {
+        "description": "Conditions in brackets, with an ALL/ANY of their own, standing as one\ncondition among the others: \"account is X AND (payee contains A OR\npayee contains B)\". One level deep: a group holds plain conditions only.",
+        "properties": {
+          "conditions": {
+            "items": {
+              "$ref": "#/components/schemas/FilterCondition-Output"
+            },
+            "minItems": 1,
+            "title": "Conditions",
+            "type": "array"
+          },
+          "match_mode": {
+            "default": "all",
+            "enum": [
+              "all",
+              "any"
+            ],
+            "title": "Match Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "match_mode",
+          "conditions"
+        ],
+        "title": "ConditionGroup",
+        "type": "object"
+      },
       "DashboardResponse": {
         "properties": {
           "accounts": {
@@ -3930,7 +3985,14 @@
           },
           "conditions": {
             "items": {
-              "$ref": "#/components/schemas/FilterCondition-Input"
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/FilterCondition-Input"
+                },
+                {
+                  "$ref": "#/components/schemas/ConditionGroup-Input"
+                }
+              ]
             },
             "title": "Conditions",
             "type": "array"
@@ -3988,7 +4050,14 @@
           },
           "conditions": {
             "items": {
-              "$ref": "#/components/schemas/FilterCondition-Output"
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/FilterCondition-Output"
+                },
+                {
+                  "$ref": "#/components/schemas/ConditionGroup-Output"
+                }
+              ]
             },
             "title": "Conditions",
             "type": "array"
@@ -4323,7 +4392,14 @@
           },
           "conditions": {
             "items": {
-              "$ref": "#/components/schemas/FilterCondition-Input"
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/FilterCondition-Input"
+                },
+                {
+                  "$ref": "#/components/schemas/ConditionGroup-Input"
+                }
+              ]
             },
             "title": "Conditions",
             "type": "array"
@@ -5633,7 +5709,14 @@
           "conditions": {
             "default": [],
             "items": {
-              "$ref": "#/components/schemas/FilterCondition-Input"
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/FilterCondition-Input"
+                },
+                {
+                  "$ref": "#/components/schemas/ConditionGroup-Input"
+                }
+              ]
             },
             "title": "Conditions",
             "type": "array"

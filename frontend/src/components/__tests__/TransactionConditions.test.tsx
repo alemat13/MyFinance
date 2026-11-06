@@ -1,6 +1,6 @@
 import { test, expect, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
-import TransactionConditions, { ConditionRow, conditionsToFilters } from '../TransactionConditions'
+import { render, screen, fireEvent, within } from '@testing-library/react'
+import TransactionConditions, { ConditionItemRow, ConditionRow, conditionsToFilters } from '../TransactionConditions'
 import { User } from '../../api/client'
 
 const users = [
@@ -130,4 +130,58 @@ test('Reconciled picks Yes or No, and rules are not offered Added on', () => {
   render(<TransactionConditions {...props} forRules conditions={[{ field: 'payee', operator: 'contains', value: '', value2: '' }]} />)
   expect(screen.queryByRole('option', { name: 'Added on' })).toBeNull()
   expect(screen.getByRole('option', { name: 'Booking date' })).toBeInTheDocument()
+})
+
+test('a group is sent with its own match mode, one complete row as itself, none at all dropped', () => {
+  expect(conditionsToFilters([
+    { field: 'account_id', operator: 'in', value: '4', value2: '' },
+    { matchMode: 'any', conditions: [
+      { field: 'payee', operator: 'contains', value: 'deliveroo', value2: '' },
+      { field: 'payee', operator: 'contains', value: 'europcar', value2: '' },
+      { field: 'payee', operator: 'contains', value: '', value2: '' },
+    ] },
+    { matchMode: 'any', conditions: [{ field: 'memo', operator: 'contains', value: 'trip', value2: '' }] },
+    { matchMode: 'all', conditions: [{ field: 'memo', operator: 'contains', value: '', value2: '' }] },
+  ])).toEqual([
+    { field: 'account_id', operator: 'in', value: [4] },
+    { match_mode: 'any', conditions: [
+      { field: 'payee', operator: 'contains', value: 'deliveroo', value2: undefined },
+      { field: 'payee', operator: 'contains', value: 'europcar', value2: undefined },
+    ] },
+    { field: 'memo', operator: 'contains', value: 'trip', value2: undefined },
+  ])
+})
+
+test('excluded fields are left out of groups too', () => {
+  expect(conditionsToFilters([
+    { matchMode: 'any', conditions: [
+      { field: 'payee', operator: 'contains', value: 'a', value2: '' },
+      { field: 'created_at', operator: 'on', value: '2026-11-01', value2: '' },
+    ] },
+  ], ['created_at'])).toEqual([{ field: 'payee', operator: 'contains', value: 'a', value2: undefined }])
+})
+
+test('"+ Add group" adds an ANY group, whose rows and match mode can be edited', () => {
+  const onChange = vi.fn()
+  const row: ConditionRow = { field: 'payee', operator: 'contains', value: 'x', value2: '' }
+  const { rerender } = render(
+    <TransactionConditions conditions={[row]} onChange={onChange} matchMode="all" onMatchModeChange={() => {}}
+                           accounts={[]} categories={[]} />,
+  )
+  fireEvent.click(screen.getByText('+ Add group'))
+  const added = onChange.mock.calls[0][0] as ConditionItemRow[]
+  expect(added[1]).toEqual({ matchMode: 'any', conditions: [{ field: 'payee', operator: 'contains', value: '', value2: '' }] })
+
+  rerender(
+    <TransactionConditions conditions={added} onChange={onChange} matchMode="all" onMatchModeChange={() => {}}
+                           accounts={[]} categories={[]} />,
+  )
+  const group = screen.getByRole('group', { name: 'Group 2' })
+  fireEvent.change(within(group).getByRole('textbox'), { target: { value: 'uber' } })
+  expect(onChange.mock.calls[1][0][1].conditions[0].value).toBe('uber')
+  fireEvent.change(within(group).getByLabelText('Group match'), { target: { value: 'all' } })
+  expect(onChange.mock.calls[2][0][1].matchMode).toBe('all')
+  // Removing a group's last row removes the group.
+  fireEvent.click(within(group).getByLabelText('Remove condition'))
+  expect(onChange.mock.calls[3][0]).toEqual([row])
 })
