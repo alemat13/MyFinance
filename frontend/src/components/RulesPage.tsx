@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
 import { ArrowDown, ArrowUp } from 'lucide-react'
 import {
-  Account, Category, FilterCondition, GlobalSplitWeight, Rule, RuleActions, RuleInput, SplitSource, SplitTier, Tag, User,
+  Account, Category, ConditionItem, FilterCondition, GlobalSplitWeight, Rule, RuleActions, RuleInput, SplitSource, SplitTier, Tag, User,
   createRule, deleteRule, fetchAccounts, fetchCategories, fetchRules, fetchSplitWeights, fetchTags, fetchUsers,
   reorderRules, searchTransactions, updateRule,
 } from '../api/client'
 import TransactionConditions, {
-  ConditionRow, FIELD_LABELS, OPERATORS_BY_FIELD, conditionsToFilters, emptyCondition,
+  ConditionItemRow, ConditionRow, FIELD_LABELS, OPERATORS_BY_FIELD, conditionsToFilters, emptyCondition, isConditionGroup,
 } from './TransactionConditions'
 import TransactionSplitFields from './TransactionSplitFields'
 import CategoryPicker from './CategoryPicker'
@@ -29,8 +29,8 @@ const ACCOUNTING_MONTH_OFFSETS = [-3, -2, -1, 0, 1, 2, 3] as const
 // The split preview needs an amount; a rule has none of its own.
 const SPLIT_PREVIEW_AMOUNT = -100
 
-function toRows(conditions: FilterCondition[]): ConditionRow[] {
-  return conditions.map(c => ({
+function toRow(c: FilterCondition): ConditionRow {
+  return {
     field: c.field,
     operator: c.operator,
     value: Array.isArray(c.value)
@@ -39,7 +39,25 @@ function toRows(conditions: FilterCondition[]): ConditionRow[] {
         ? (c.field === 'category_id' ? String(UNCATEGORIZED_ID) : c.field === 'tag_id' ? String(UNTAGGED_ID) : '')
         : String(c.value),
     value2: c.value2 == null ? '' : String(c.value2),
-  }))
+  }
+}
+
+function toRows(conditions: ConditionItem[]): ConditionItemRow[] {
+  return conditions.map(c => isConditionGroup(c)
+    ? { matchMode: c.match_mode ?? 'all', conditions: c.conditions.map(toRow) }
+    : toRow(c))
+}
+
+const joiner = (matchMode: string | undefined) => matchMode === 'any' ? ' or ' : ' and '
+
+/** The rule's conditions in a sentence, a group in brackets. */
+function describeConditions(
+  conditions: ConditionItem[], matchMode: string, accounts: Account[], categories: Category[], tags: Tag[],
+): string {
+  return conditions.map(c => isConditionGroup(c)
+    ? `(${c.conditions.map(x => describeCondition(x, accounts, categories, tags)).join(joiner(c.match_mode))})`
+    : describeCondition(c, accounts, categories, tags))
+    .join(joiner(matchMode))
 }
 
 function describeCondition(c: FilterCondition, accounts: Account[], categories: Category[], tags: Tag[]): string {
@@ -77,7 +95,7 @@ function RuleEditor({
   const actions: RuleActions = rule?.actions ?? {}
   const [name, setName] = useState(rule?.name ?? '')
   const [enabled, setEnabled] = useState(rule?.enabled ?? true)
-  const [conditions, setConditions] = useState<ConditionRow[]>(
+  const [conditions, setConditions] = useState<ConditionItemRow[]>(
     rule ? toRows(rule.conditions) : draft ? toRows(draft.conditions) : [{ ...emptyCondition, field: 'raw_label' }])
   const [matchMode, setMatchMode] = useState<'all' | 'any'>(rule?.match_mode ?? draft?.match_mode ?? 'all')
 
@@ -407,8 +425,7 @@ export default function RulesPage({ onBack, draft, onDraftUsed }: Props) {
                 </div>
                 <div className="text-[13px] text-slate-600 dark:text-slate-300 mt-1">
                   <span className="text-slate-500 dark:text-slate-400">When </span>
-                  {rule.conditions.map(c => describeCondition(c, accounts, categories, tags))
-                    .join(rule.match_mode === 'all' ? ' and ' : ' or ')}
+                  {describeConditions(rule.conditions, rule.match_mode, accounts, categories, tags)}
                 </div>
                 <div className="text-[13px] text-slate-600 dark:text-slate-300">
                   <span className="text-slate-500 dark:text-slate-400">Then </span>

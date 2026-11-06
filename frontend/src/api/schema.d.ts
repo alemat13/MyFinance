@@ -1887,6 +1887,38 @@ export interface components {
             net_by_month: components["schemas"]["NetMonthChartItem"][];
             parent_category: components["schemas"]["ParentCategoryOut"] | null;
         };
+        /**
+         * ConditionGroup
+         * @description Conditions in brackets, with an ALL/ANY of their own, standing as one
+         *     condition among the others: "account is X AND (payee contains A OR
+         *     payee contains B)". One level deep: a group holds plain conditions only.
+         */
+        "ConditionGroup-Input": {
+            /** Conditions */
+            conditions: components["schemas"]["FilterCondition-Input"][];
+            /**
+             * Match Mode
+             * @default all
+             * @enum {string}
+             */
+            match_mode?: "all" | "any";
+        };
+        /**
+         * ConditionGroup
+         * @description Conditions in brackets, with an ALL/ANY of their own, standing as one
+         *     condition among the others: "account is X AND (payee contains A OR
+         *     payee contains B)". One level deep: a group holds plain conditions only.
+         */
+        "ConditionGroup-Output": {
+            /** Conditions */
+            conditions: components["schemas"]["FilterCondition-Output"][];
+            /**
+             * Match Mode
+             * @default all
+             * @enum {string}
+             */
+            match_mode: "all" | "any";
+        };
         /** DashboardResponse */
         DashboardResponse: {
             /** Accounts */
@@ -2484,7 +2516,7 @@ export interface components {
         RuleCreate: {
             actions: components["schemas"]["RuleActions-Input"];
             /** Conditions */
-            conditions: components["schemas"]["FilterCondition-Input"][];
+            conditions: (components["schemas"]["FilterCondition-Input"] | components["schemas"]["ConditionGroup-Input"])[];
             /**
              * Enabled
              * @default true
@@ -2511,7 +2543,7 @@ export interface components {
         RuleOut: {
             actions: components["schemas"]["RuleActions-Output"];
             /** Conditions */
-            conditions: components["schemas"]["FilterCondition-Output"][];
+            conditions: (components["schemas"]["FilterCondition-Output"] | components["schemas"]["ConditionGroup-Output"])[];
             /**
              * Created At
              * Format: date-time
@@ -2620,7 +2652,7 @@ export interface components {
         RuleUpdate: {
             actions: components["schemas"]["RuleActions-Input"];
             /** Conditions */
-            conditions: components["schemas"]["FilterCondition-Input"][];
+            conditions: (components["schemas"]["FilterCondition-Input"] | components["schemas"]["ConditionGroup-Input"])[];
             /**
              * Enabled
              * @default true
@@ -3024,7 +3056,7 @@ export interface components {
              * Conditions
              * @default []
              */
-            conditions?: components["schemas"]["FilterCondition-Input"][];
+            conditions?: (components["schemas"]["FilterCondition-Input"] | components["schemas"]["ConditionGroup-Input"])[];
             /** Date From */
             date_from?: string | null;
             /** Date To */

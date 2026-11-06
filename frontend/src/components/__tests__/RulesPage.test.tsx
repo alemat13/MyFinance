@@ -111,6 +111,22 @@ test('a saved tier is listed as read when the rule runs', async () => {
     'Split: Default split (account, else category, else global), as set when the rule runs')).toBeInTheDocument()
 })
 
+test('a rule with a group reads with brackets, and opens with the group in its editor', async () => {
+  mocks.fetchRules.mockResolvedValue([rule({ conditions: [
+    { field: 'amount', operator: 'lt', value: 0 },
+    { match_mode: 'any', conditions: [
+      { field: 'payee', operator: 'contains', value: 'deliveroo' },
+      { field: 'payee', operator: 'contains', value: 'europcar' },
+    ] },
+  ] })])
+  renderWithProviders(<RulesPage onBack={() => {}} />)
+  expect(await screen.findByText('Amount < 0 and (Payee contains "deliveroo" or Payee contains "europcar")'))
+    .toBeInTheDocument()
+  fireEvent.click(screen.getByText('Edit'))
+  expect(await screen.findByRole('group', { name: 'Group 2' })).toBeInTheDocument()
+  expect(screen.getByDisplayValue('europcar')).toBeInTheDocument()
+})
+
 test('a draft from the Transactions filters opens a new rule with its conditions', async () => {
   const onDraftUsed = vi.fn()
   renderWithProviders(<RulesPage onBack={() => {}} onDraftUsed={onDraftUsed} draft={{
