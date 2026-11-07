@@ -11,6 +11,22 @@ export function netByCurrency(transactions: Pick<Transaction, 'amount' | 'curren
     .map(([currency, amount]) => ({ currency, amount: Math.round(amount * 100) / 100 }))
 }
 
+// The user's split share of each transaction, summed per currency: what the
+// group costs (or brings) them once shared out. 0 for a row they have no share in.
+export function myShareByCurrency(
+  transactions: { currency: string, splits: { user_id: number, share_amount: number }[] }[],
+  userId: number,
+): TransactionLinkTotal[] {
+  const totals = new Map<string, number>()
+  transactions.forEach(t => {
+    const share = t.splits.find(s => s.user_id === userId)?.share_amount ?? 0
+    totals.set(t.currency, (totals.get(t.currency) ?? 0) + share)
+  })
+  return [...totals.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([currency, amount]) => ({ currency, amount: Math.round(amount * 100) / 100 }))
+}
+
 export function formatNet(totals: TransactionLinkTotal[]): string {
   return totals.map(t => formatMoney(t.amount, t.currency)).join(' / ')
 }

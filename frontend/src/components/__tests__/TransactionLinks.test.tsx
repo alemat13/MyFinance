@@ -78,6 +78,29 @@ test('the detail section lists the group and its net, and navigates to a member'
   expect(onNavigate).toHaveBeenCalledWith(2)
 })
 
+test('the detail section shows the selected user\'s share under the net, and hides it without a user', async () => {
+  const split = (user_id: number, share_amount: number) => ({ user_id, user_name: `U${user_id}`, weight: 1, share_amount })
+  const shared = {
+    ...group,
+    transactions: [
+      { ...doctor, splits: [split(2, -30), split(3, -30)] },
+      { ...cpam, splits: [split(2, 21), split(3, 21)] },
+      { ...mgen, splits: [split(3, 12)] },
+    ],
+  }
+  mockFetch.mockResolvedValue(shared)
+  const { unmount } = renderWithProviders(
+    <TransactionLinkSection transaction={doctor} actorUserId={2} onChanged={() => {}} />,
+  )
+  expect(await screen.findByText('My share: -€9.00')).toBeInTheDocument()
+  unmount()
+  renderWithProviders(
+    <TransactionLinkSection transaction={doctor} actorUserId={null} onChanged={() => {}} />,
+  )
+  expect(await screen.findByText('Net: -€6.00')).toBeInTheDocument()
+  expect(screen.queryByText(/My share/)).not.toBeInTheDocument()
+})
+
 test('unlinking this one reports the transaction as no longer linked', async () => {
   mockFetch.mockResolvedValue(group)
   mockUnlink.mockResolvedValue({ ...group, transactions: [cpam, mgen] })
