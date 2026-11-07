@@ -6,7 +6,7 @@ import {
 } from '../api/client'
 import { useToast } from '../context/ToastContext'
 import { formatMoney } from '../utils/currency'
-import { formatNet } from '../utils/links'
+import { formatNet, myShareByCurrency } from '../utils/links'
 import { Button, IconButton, Input } from './ui'
 
 interface Props {
@@ -18,7 +18,8 @@ interface Props {
 }
 
 // TransactionDetail's "Linked transactions" section: the group this
-// transaction belongs to, its members and their net. Renders nothing for a
+// transaction belongs to, its members, their net and (with a user selected)
+// that user's share of it. Renders nothing for a
 // transaction that isn't linked; linking happens from the list's selection.
 export default function TransactionLinkSection({ transaction, actorUserId, onNavigateToTransaction, onChanged }: Props) {
   const [link, setLink] = useState<TransactionLink | null>(null)
@@ -73,7 +74,14 @@ export default function TransactionLinkSection({ transaction, actorUserId, onNav
             </IconButton>
           )}
         </h4>
-        <span className="shrink-0 text-sm font-semibold">Net: {formatNet(link.totals)}</span>
+        <span className="shrink-0 flex flex-col items-end">
+          <span className="text-sm font-semibold">Net: {formatNet(link.totals)}</span>
+          {actorUserId != null && (
+            <span className="text-xs text-slate-500 dark:text-slate-400">
+              My share: {formatNet(myShareByCurrency(link.transactions, actorUserId))}
+            </span>
+          )}
+        </span>
       </div>
       {renaming && (
         <div className="flex gap-2 mb-2">
