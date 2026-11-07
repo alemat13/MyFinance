@@ -602,8 +602,9 @@ what the CPAM and the mutuelle paid back, a shared dinner and what the others re
 - A linked transaction shows a small link icon next to its payee, in the list and on
   the phone's cards.
 - Opening one shows a **Linked transactions** section (under the Save button): every
-  transaction of the group with its date, account and amount, the group's **Net**, and
-  a click on any of them opens it. The pencil renames the group. **Unlink this one**
+  transaction of the group with its date, account and amount, the group's **Net**
+  (with a user selected, **My share** under it in smaller text: that user's split share
+  of each transaction, added up), and a click on any of them opens it. The pencil renames the group. **Unlink this one**
   takes the open transaction out; **Unlink all** dissolves the group. A group needs two
   transactions, so taking one out of a group of two dissolves it, and so does deleting
   one of them.
