@@ -1282,7 +1282,9 @@ Two charts are shown:
   money paid in (yellow line: every other transaction, deposits minus withdrawals, plus
   the balance it started with). Above the chart, **Paid in** and **Gain / loss** (the
   checkpoints' gains and losses) over the period picked under it: **1M**, **6M**,
-  **1Y** or **All** (since the account opened). On a joint account every figure is
+  **1Y** or **All** (since the account opened). Under Gain / loss, **avg … / month** is
+  that gain spread evenly over the months the period covers (since the account opened
+  for All; a period shorter than a month counts as one month). On a joint account every figure is
   your share of it ("your share: 50%"). An account with no checkpoint draws both lines
   on top of each other. The selection is remembered per user on that device; this
   chart ignores the From/To range and currency above.

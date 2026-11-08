@@ -71,6 +71,9 @@ export default function AccountValueChart({ accountId, name, currency, points, p
                 <p className={cn('font-semibold tabular-nums', summary.gain < 0 ? 'text-red-600 dark:text-red-400' : summary.gain > 0 ? 'text-green-700 dark:text-green-400' : '')}>
                   {signed(summary.gain, currency)}
                 </p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 tabular-nums" aria-label="Average gain per month">
+                  avg {signed(summary.gainPerMonth, currency)} / month
+                </p>
               </div>
             </div>
           </div>
