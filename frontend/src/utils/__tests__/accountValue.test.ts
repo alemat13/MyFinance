@@ -32,6 +32,22 @@ describe('summarizeAccountValue', () => {
     expect(s.points[0]).toMatchObject({ date: '2025-10-28', value: 1100, contributions: 1000 })
     expect(s.paidIn).toBe(500)
     expect(s.gain).toBe(100)
+    // 100 over 365 days ≈ 12 months.
+    expect(s.gainPerMonth).toBeCloseTo(8.34, 2)
+  })
+
+  test('gain per month: over every month since the account opened', () => {
+    const s = summarizeAccountValue(points, 'ALL', '2026-10-28')
+    // 2025-01-10 → 2026-10-28 is 656 days, ~21.55 months.
+    expect(s.gainPerMonth).toBeCloseTo(200 / (656 / 30.4375), 2)
+  })
+
+  test('gain per month: a period shorter than a month counts as one', () => {
+    const s = summarizeAccountValue([
+      { date: '2026-10-20', value: 100, contributions: 100 },
+      { date: '2026-10-25', value: 130, contributions: 100 },
+    ], 'ALL', '2026-10-28')
+    expect(s.gainPerMonth).toBe(30)
   })
 
   test('scales to the ownership share', () => {
@@ -39,11 +55,13 @@ describe('summarizeAccountValue', () => {
     expect(s.value).toBe(850)
     expect(s.paidIn).toBe(750)
     expect(s.gain).toBe(100)
+    expect(s.gainPerMonth).toBe(summarizeAccountValue(points, 'ALL', '2026-10-28').gainPerMonth / 2)
   })
 
   test('no movement: nothing to draw', () => {
     const s = summarizeAccountValue([], 'ALL', '2026-10-28')
     expect(s.points).toEqual([])
     expect(s.value).toBe(0)
+    expect(s.gainPerMonth).toBe(0)
   })
 })

@@ -21,11 +21,16 @@ export interface ValueSummary {
   paidIn: number
   /** Value change over the period that isn't money paid in: the checkpoints' gains and losses. */
   gain: number
+  /** The gain spread evenly over the months the figures cover (`startDate` → `endDate`,
+   *  counted as at least one month so a young account isn't extrapolated). */
+  gainPerMonth: number
   points: ValueChartPoint[]
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100
 const toTime = (date: string) => Date.parse(`${date}T00:00:00Z`)
+/** Average length of a month in days (365.25 / 12). */
+const DAYS_PER_MONTH = 30.4375
 const isoDay = (t: number) => new Date(t).toISOString().slice(0, 10)
 
 /** The first day a period covers, counted back from `today` ("YYYY-MM-DD"); null for All. */
@@ -68,12 +73,16 @@ export function summarizeAccountValue(
   const value = end ? end.value : 0
   const paidIn = round2((end ? end.contributions : 0) - (baseline ? baseline.contributions : 0))
   const gain = round2(value - (baseline ? baseline.value : 0) - paidIn)
+  const startDate = chart.length > 0 ? chart[0].date : null
+  const endDate = chart.length > 0 ? chart[chart.length - 1].date : null
+  const months = startDate && endDate ? (toTime(endDate) - toTime(startDate)) / 86_400_000 / DAYS_PER_MONTH : 0
   return {
-    startDate: chart.length > 0 ? chart[0].date : null,
-    endDate: chart.length > 0 ? chart[chart.length - 1].date : null,
+    startDate,
+    endDate,
     value: round2(value),
     paidIn,
     gain,
+    gainPerMonth: round2(gain / Math.max(months, 1)),
     points: chart,
   }
 }
