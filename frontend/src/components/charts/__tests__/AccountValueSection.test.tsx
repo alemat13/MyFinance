@@ -40,7 +40,7 @@ test('charts the remembered accounts, scaled to the user share, and remembers a 
 
   const card = await screen.findByRole('region', { name: 'Joint AV value' })
   expect(mockFetchAccountValue).toHaveBeenCalledWith([2])
-  expect(within(card).getByText('your share: 50%')).toBeInTheDocument()
+  expect(within(card).getByRole('button', { name: 'My share 50%' })).toHaveAttribute('aria-pressed', 'true')
   expect(within(card).getByText('€650.00')).toBeInTheDocument()
   expect(within(card).getByText('+€550.00')).toBeInTheDocument()
   expect(within(card).getByText('+€100.00')).toBeInTheDocument()
@@ -58,4 +58,22 @@ test('nothing picked: no chart and no fetch', async () => {
   render(<AccountValueSection userId={1} />)
   expect(await screen.findByRole('button', { name: /Pick accounts to chart/ })).toBeInTheDocument()
   expect(mockFetchAccountValue).not.toHaveBeenCalled()
+})
+
+test('a shared account toggles between the user share and the whole account; a sole account has no toggle', async () => {
+  localStorage.setItem('chartsValueAccountIds:1', JSON.stringify([2, 1]))
+  render(<AccountValueSection userId={1} />)
+
+  const card = await screen.findByRole('region', { name: 'Joint AV value' })
+  fireEvent.click(within(card).getByRole('button', { name: 'Total' }))
+  expect(within(card).getByRole('button', { name: 'Total' })).toHaveAttribute('aria-pressed', 'true')
+  expect(within(card).getByText('€1,300.00')).toBeInTheDocument()
+  expect(within(card).getByText('+€1,100.00')).toBeInTheDocument()
+  expect(within(card).getByText('+€200.00')).toBeInTheDocument()
+
+  fireEvent.click(within(card).getByRole('button', { name: 'My share 50%' }))
+  expect(within(card).getByText('€650.00')).toBeInTheDocument()
+
+  const sole = await screen.findByRole('region', { name: 'PEA value' })
+  expect(within(sole).queryByRole('group', { name: 'Amounts shown' })).not.toBeInTheDocument()
 })
