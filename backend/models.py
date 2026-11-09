@@ -4,17 +4,48 @@ from sqlalchemy import (
     Column,
     Date,
     DateTime,
-    Float,
     ForeignKey,
     Index,
     Integer,
     LargeBinary,
+    Numeric,
     String,
     Text,
+    TypeDecorator,
 )
 from sqlalchemy.orm import relationship
 
 from database import Base, utcnow
+
+
+class _Cents(TypeDecorator):
+    """An exact decimal column with two decimal places (MYF-16).
+
+    The database stores the exact value (`NUMERIC(p, 2)`), so sums and
+    comparisons done in SQL carry no binary rounding dust. Python keeps
+    seeing plain floats (`asdecimal=False`), which every computation and the
+    API already work with, and each value is rounded to the cent on the way
+    in, so SQLite (tests, local dev) stores what Postgres would.
+    """
+
+    impl = Numeric
+    cache_ok = True
+
+    def __init__(self, precision: int) -> None:
+        super().__init__(precision=precision, scale=2, asdecimal=False)
+
+    def process_bind_param(self, value, dialect):
+        return None if value is None else round(float(value), 2)
+
+
+def Money() -> _Cents:
+    """An amount in a currency: up to 9 999 999 999.99, exact to the cent."""
+    return _Cents(12)
+
+
+def Percent() -> _Cents:
+    """A percentage from 0.00 to 100.00, exact to two decimals."""
+    return _Cents(5)
 
 
 class Account(Base):
@@ -26,7 +57,7 @@ class Account(Base):
     # Internal: the displayed balance is this plus the sum of the account's
     # transaction amounts (see account_totals.py). Never exposed by the API —
     # AccountOut.balance is the computed total, not this column.
-    balance_offset = Column(Float, default=0.0)
+    balance_offset = Column(Money(), default=0.0)
     currency = Column(String(3), nullable=False, default="EUR")
     created_at = Column(DateTime, default=utcnow)
     archived = Column(Boolean, nullable=False, default=False)
@@ -83,7 +114,7 @@ class Transaction(Base):
     date = Column(Date, nullable=False, index=True)
     payee = Column(String(200), nullable=False)
     memo = Column(Text, nullable=True)
-    amount = Column(Float, nullable=False)
+    amount = Column(Money(), nullable=False)
     account_id = Column(Integer, ForeignKey("accounts.id"), index=True)
     category_id = Column(Integer, ForeignKey("categories.id"), index=True)
     # Months relative to `date` this transaction should be accounted in, e.g.
@@ -113,7 +144,7 @@ class Transaction(Base):
     # the checkpoint — and recomputed whenever an earlier row of the account
     # changes, so the sum of the account's amounts always lands on it. NULL
     # for every ordinary transaction.
-    checkpoint_value = Column(Float, nullable=True)
+    checkpoint_value = Column(Money(), nullable=True)
     # The identifier the bank gave this transaction, for rows pulled in by
     # bank sync (see enable_banking.py) — an ASPSP's own entry_reference /
     # transaction_id, or a locally derived "fp:" fingerprint when the bank
@@ -227,7 +258,7 @@ class AccountUser(Base):
 
     account_id = Column(Integer, ForeignKey("accounts.id"), primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id"), primary_key=True, index=True)
-    ownership_percentage = Column(Float, nullable=False, default=0.0)
+    ownership_percentage = Column(Percent(), nullable=False, default=0.0)
 
     account = relationship("Account", back_populates="user_associations")
     user = relationship("User", back_populates="account_associations")
@@ -284,7 +315,7 @@ class TransactionSplit(Base):
     weight = Column(Integer, nullable=False, default=0)
     # Derived from weight + the transaction's current amount, recomputed and
     # persisted on every create/update. Never directly client-editable.
-    share_amount = Column(Float, nullable=False)
+    share_amount = Column(Money(), nullable=False)
     # Which tier/button produced the current weight set.
     source = Column(String(20), nullable=False)  # 'global' | 'account' | 'category' | 'custom'
 
@@ -468,7 +499,7 @@ class TransactionHistory(Base):
     date = Column(Date, nullable=True)
     payee = Column(String(200), nullable=True)
     memo = Column(Text, nullable=True)
-    amount = Column(Float, nullable=True)
+    amount = Column(Money(), nullable=True)
     account_id = Column(Integer, nullable=True)
     category_id = Column(Integer, nullable=True)
     accounting_month_offset = Column(Integer, nullable=True)

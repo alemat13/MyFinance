@@ -30,7 +30,7 @@ erDiagram
         date date "nullable snapshot"
         string payee "nullable snapshot"
         text memo "nullable snapshot"
-        float amount "nullable snapshot"
+        decimal amount "nullable snapshot"
         int account_id "nullable snapshot"
         int category_id "nullable snapshot"
         int accounting_month_offset "nullable snapshot"
@@ -47,14 +47,14 @@ erDiagram
     account_users {
         int account_id PK,FK
         int user_id PK,FK
-        float ownership_percentage "0-100, sum=100 per account"
+        decimal ownership_percentage "0-100, sum=100 per account"
     }
 
     accounts {
         int id PK
         string name
         string type
-        float balance_offset "internal; displayed balance = this + sum(transactions)"
+        decimal balance_offset "internal; displayed balance = this + sum(transactions)"
         string currency "ISO 4217 code, e.g. EUR, USD"
         datetime created_at
         boolean archived "default false; hides account from dashboard/new-tx picker, history unaffected"
@@ -91,7 +91,7 @@ erDiagram
         date date
         string payee
         text memo "nullable"
-        float amount "negative=expense, positive=income"
+        decimal amount "negative=expense, positive=income"
         int account_id FK
         int category_id FK "nullable"
         int accounting_month_offset "months from date's month, -3..+3, default 0"
@@ -99,7 +99,7 @@ erDiagram
         datetime created_at
         int divide_group_id "nullable, NOT a FK; anchor transaction's own id, shared by every part of a divide"
         int link_id FK "nullable, indexed, ON DELETE SET NULL; the group of linked transactions"
-        float checkpoint_value "nullable; set on a checkpoint only, its amount is derived from it"
+        decimal checkpoint_value "nullable; set on a checkpoint only, its amount is derived from it"
     }
 
     transaction_links {
@@ -124,12 +124,14 @@ erDiagram
         int transaction_id PK,FK
         int user_id PK,FK
         int weight "this transaction's own stored weight"
-        float share_amount "derived from weight, recomputed on every write"
+        decimal share_amount "derived from weight, recomputed on every write"
         string source "global | account | category | custom"
     }
 ```
 
 ## Tables
+
+**Money columns** (`amount`, `share_amount`, `balance_offset`, `checkpoint_value`, the history snapshot's `amount`) are `NUMERIC(12, 2)` and `ownership_percentage` is `NUMERIC(5, 2)` (Alembic `0028`, MYF-16): the database keeps exact cents, so its sums carry no binary rounding dust. Python still reads them as floats (`models.Money()`/`Percent()`, `asdecimal=False`) and rounds each value to the cent on write, and the API sends plain JSON numbers. Split `weight`s stay integers.
 
 ### `users`
 Stores application users. Each user can own one or more accounts (via `account_users`).
@@ -148,7 +150,7 @@ Junction table linking users to accounts with ownership percentages. Enables joi
 |--------|------|-------|
 | `account_id` | Integer | Foreign key → `accounts.id`, part of composite PK |
 | `user_id` | Integer | Foreign key → `users.id`, part of composite PK |
-| `ownership_percentage` | Float | Percentage of ownership (0–100). Sum must equal 100 per account |
+| `ownership_percentage` | Numeric(5,2) | Percentage of ownership (0–100). Sum must equal 100 per account |
 
 ### `accounts`
 Financial accounts (checking, savings, credit card, etc.).
@@ -158,7 +160,7 @@ Financial accounts (checking, savings, credit card, etc.).
 | `id` | Integer | Primary key, autoincrement |
 | `name` | String(100) | Required |
 | `type` | String(50) | Required. One of `Income`, `Expense`, `Transfer, other` (`schemas.CATEGORY_TYPES`, enforced by the API, not the DB; Alembic `0020` moved any older free-text value to `Transfer, other`, and a backup archive's unknown type is mapped the same way on restore). Charts count only `Income` and `Expense` |
-| `balance_offset` | Float | Default: 0.0. **Internal** — never exposed by the API. The balance a client sees is `balance_offset + sum(that account's transaction amounts)`, so it tracks activity instead of staying frozen. When a user enters a balance (on create, or by editing the Balance field), the backend stores `entered balance − current transaction total` here, so the account shows exactly what they typed until its next transaction |
+| `balance_offset` | Numeric(12,2) | Default: 0.0. **Internal** — never exposed by the API. The balance a client sees is `balance_offset + sum(that account's transaction amounts)`, so it tracks activity instead of staying frozen. When a user enters a balance (on create, or by editing the Balance field), the backend stores `entered balance − current transaction total` here, so the account shows exactly what they typed until its next transaction |
 | `currency` | String(3) | ISO 4217 code, e.g. `EUR`, `USD`. Default: `EUR` |
 | `created_at` | DateTime | Default: current UTC time |
 | `archived` | Boolean | Default: `false`. Hides the account from the dashboard and the new-transaction account picker; doesn't affect existing transactions, balances, or charts |
@@ -184,14 +186,14 @@ Individual financial transactions.
 | `date` | Date | Required |
 | `payee` | String(200) | Required |
 | `memo` | Text | Optional |
-| `amount` | Float | Negative = expense, positive = income. Denominated in the parent account's `currency` — a transaction has no currency of its own |
+| `amount` | Numeric(12,2) | Negative = expense, positive = income. Denominated in the parent account's `currency` — a transaction has no currency of its own |
 | `account_id` | Integer | Foreign key → `accounts.id` |
 | `category_id` | Integer | Foreign key → `categories.id`, nullable — an uncategorized transaction is shown as "Uncategorized" |
 | `accounting_month_offset` | Integer | Months relative to `date`'s month this transaction should be accounted in. Range -3..+3, default 0 (same month as `date`) |
 | `reconciled` | Boolean | Default: `false`. Manually set by the user once they've reviewed/validated the transaction — never inferred. Always `false` on creation and on CSV import |
 | `created_at` | DateTime | Default: current UTC time |
 | `divide_group_id` | Integer | Nullable, indexed, **not** a foreign key (same reasoning as `transaction_history` below — a real FK would block deleting one part of a divide while siblings still reference it). Set by "Dividing a transaction" (see below) to the group's anchor transaction's own `id`, on every part including the anchor itself (`divide_group_id == id` for the anchor). `NULL` for a transaction that's never been divided |
-| `checkpoint_value` | Float | Nullable (Alembic `0025`). Set on a **checkpoint** only: what the whole account was worth at the end of `date`, as typed. A checkpoint's `amount` is derived and stored — this value minus the account's balance just before it (`balance_offset` plus every earlier row, ordered by date, ordinary rows before checkpoints on the same day, then id) — so balances, charts, splits and exports read it like any amount. `checkpoints.recompute()` re-derives every checkpoint of an account, in order, after anything that can move an earlier row: create, update (amount, date, account, value), delete, bulk move/delete, divide, import commit, bank sync. A checkpoint whose amount moves that way gets a history row `source="checkpoint"` with `changes.amount`; its typed value never moves. `TransactionUpdate.amount` is refused (422) on a checkpoint unless unchanged, `checkpoint_value` is refused on an ordinary row and can't be cleared; a checkpoint can't be divided. `TransactionOut.checkpoint_since` (computed, not stored) is the previous checkpoint's date on the account, where the period its amount covers starts, null for the first. Excluded from the CSV import's and the bank sync's date+amount duplicate detection, so a real row is never mistaken for one. On an account with checkpoints, `PUT /api/accounts/{id}` refuses a changed `balance` (the first checkpoint would absorb the new offset). In the backup archive |
+| `checkpoint_value` | Numeric(12,2) | Nullable (Alembic `0025`). Set on a **checkpoint** only: what the whole account was worth at the end of `date`, as typed. A checkpoint's `amount` is derived and stored — this value minus the account's balance just before it (`balance_offset` plus every earlier row, ordered by date, ordinary rows before checkpoints on the same day, then id) — so balances, charts, splits and exports read it like any amount. `checkpoints.recompute()` re-derives every checkpoint of an account, in order, after anything that can move an earlier row: create, update (amount, date, account, value), delete, bulk move/delete, divide, import commit, bank sync. A checkpoint whose amount moves that way gets a history row `source="checkpoint"` with `changes.amount`; its typed value never moves. `TransactionUpdate.amount` is refused (422) on a checkpoint unless unchanged, `checkpoint_value` is refused on an ordinary row and can't be cleared; a checkpoint can't be divided. `TransactionOut.checkpoint_since` (computed, not stored) is the previous checkpoint's date on the account, where the period its amount covers starts, null for the first. Excluded from the CSV import's and the bank sync's date+amount duplicate detection, so a real row is never mistaken for one. On an account with checkpoints, `PUT /api/accounts/{id}` refuses a changed `balance` (the first checkpoint would absorb the new offset). In the backup archive |
 | `external_id` | String(120) | Nullable. The identifier the bank gave a transaction pulled in by [Bank sync](#bank_connections) — the ASPSP's own `entry_reference`/`transaction_id`, or a locally derived `fp:` fingerprint when the bank supplies neither. `NULL` for everything else (manual entry, CSV import, divide parts, migrated history). Covered by a unique index on `(account_id, external_id)`, which is what makes a re-sync of an overlapping window a no-op; NULLs are exempt from uniqueness in both SQLite and Postgres, so pre-existing rows are unaffected |
 | `raw_source` | String(20) | Nullable. Which feed wrote the `raw_*` columns below: `enable_banking` for a row pulled in by [Bank sync](#bank_connections), `csv_import` for a row brought in by CSV import (which fills only `raw_label`, with the file's payee as it was read), `linxo_export` for migrated history backfilled from the Linxo GDPR export. `NULL` for everything else. It exists because the two feeds share these columns but not their vocabularies — `raw_transaction_code` is an ISO 20022 code from a bank and a Linxo transaction type from the export, and nothing tells them apart from the value alone |
 | `raw_label` | Text | Nullable. The label the source reported, before any renaming. This is the point of the whole `raw_*` group: `payee` and `memo` are the user's to rewrite, so without a frozen copy the original wording is lost the first time a transaction is renamed |
@@ -238,7 +240,7 @@ Every transaction stores its **own** integer `weight` per involved user — free
 | `transaction_id` | Integer | Foreign key → `transactions.id`, part of composite PK |
 | `user_id` | Integer | Foreign key → `users.id`, part of composite PK |
 | `weight` | Integer | This transaction's own stored weight for this user |
-| `share_amount` | Float | What this user is liable for — derived from `weight`, recomputed on every write |
+| `share_amount` | Numeric(12,2) | What this user is liable for — derived from `weight`, recomputed on every write |
 | `source` | String(20) | Which tier/button last produced this weight set: `global`, `account`, `category`, or `custom` (hand-typed) — display-only, never used for split logic |
 
 ### `transaction_history`
