@@ -31,6 +31,7 @@ python seed.py                           # drops & recreates all data
 pytest                                   # run all backend tests
 pytest tests/test_accounts.py            # run a single test file
 pytest tests/test_accounts.py::test_name # run a single test
+TEST_DATABASE_URL=postgresql+psycopg://user:pw@localhost/db pytest  # same suite on a local Postgres (10 split_engine tests fail there on users they never create: SQLite skips FK checks)
 pip install -r requirements-dev.txt      # ruff + mypy (dev only, not in the image)
 ruff check --fix . && ruff format .      # lint + format; CI runs `ruff check .` and `ruff format --check .`
 mypy .                                   # type check; modules listed in mypy.ini still have errors silenced: fix one, remove it
