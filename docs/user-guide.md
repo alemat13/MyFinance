@@ -1285,7 +1285,10 @@ Two charts are shown:
   **1Y** or **All** (since the account opened). Under Gain / loss, **avg … / month** is
   that gain spread evenly over the months the period covers (since the account opened
   for All; a period shorter than a month counts as one month). On a joint account every figure is
-  your share of it ("your share: 50%"). An account with no checkpoint draws both lines
+  your share of it by default; the **My share 50% / Total** switch at the top right of
+  its card shows the whole account instead (value, Paid in, Gain / loss, avg / month and
+  the chart), for that card only and until you leave the page. An account you own alone
+  has no switch. An account with no checkpoint draws both lines
   on top of each other. The selection is remembered per user on that device; this
   chart ignores the From/To range and currency above.
 

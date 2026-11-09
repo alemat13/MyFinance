@@ -37,17 +37,40 @@ const signed = (v: number, currency: string) => `${v > 0 ? '+' : ''}${formatMone
  *  money paid into it, over a period picked under the chart. */
 export default function AccountValueChart({ accountId, name, currency, points, percentage, today }: Props) {
   const [period, setPeriod] = useState<ValuePeriod>('ALL')
-  const summary = summarizeAccountValue(points, period, today, percentage)
+  const shared = percentage < 100
+  const [showTotal, setShowTotal] = useState(false)
+  const summary = summarizeAccountValue(points, period, today, shared && showTotal ? 100 : percentage)
   const gradientId = `account-value-${accountId}`
 
   return (
     <Card className="p-4" role="region" aria-label={`${name} value`}>
-      <h4 className="font-semibold text-sm text-slate-900 dark:text-slate-100">
-        {name}
-        {percentage < 100 && (
-          <span className="ml-2 text-xs font-normal text-slate-500 dark:text-slate-400">your share: {percentage}%</span>
+      <div className="flex items-start justify-between gap-2">
+        <h4 className="font-semibold text-sm text-slate-900 dark:text-slate-100">{name}</h4>
+        {shared && (
+          <div
+            className="flex shrink-0 rounded-full bg-slate-100 dark:bg-slate-800 p-0.5 text-xs"
+            role="group"
+            aria-label="Amounts shown"
+          >
+            {([[false, `My share ${percentage}%`], [true, 'Total']] as const).map(([total, label]) => (
+              <button
+                key={label}
+                type="button"
+                aria-pressed={showTotal === total}
+                onClick={() => setShowTotal(total)}
+                className={cn(
+                  'rounded-full px-2.5 py-0.5 cursor-pointer whitespace-nowrap',
+                  showTotal === total
+                    ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-600 dark:text-slate-100'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200',
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         )}
-      </h4>
+      </div>
       <p className="text-2xl font-semibold tabular-nums text-slate-900 dark:text-slate-100 mt-1">{formatMoney(summary.value, currency)}</p>
       <p className="text-xs text-slate-500 dark:text-slate-400">{formatDay(summary.endDate ?? today)}</p>
 
