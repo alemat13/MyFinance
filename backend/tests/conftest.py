@@ -1,3 +1,4 @@
+import os
 from datetime import date
 
 import pytest
@@ -10,10 +11,17 @@ from database import Base, get_db
 from main import CSRF_HEADER, app
 from models import Account, AccountUser, Category, Transaction, TransactionSplit, User
 
-engine = create_engine(
-    "sqlite://",
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,
+# TEST_DATABASE_URL runs the suite against another database (a local
+# Postgres, to catch what SQLite lets through: Numeric columns, strict types).
+_TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL")
+engine = (
+    create_engine(_TEST_DATABASE_URL)
+    if _TEST_DATABASE_URL
+    else create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
 )
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
