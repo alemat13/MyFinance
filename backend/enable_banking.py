@@ -253,8 +253,8 @@ def probe_pending(
 
     One call per probe (account endpoints can be capped at 4 a day), shaped
     by `end` ("future": up to PENDING_PROBE_FUTURE_DAYS ahead, "today", or
-    "none": no end date, left to the bank) and `status` ("PDNG", or "all":
-    no status filter). Banks differ on what they accept, so each variant is
+    "none": no end date, left to the bank) and `status` (one ISO status such
+    as "PDNG" or "INFO", or "all": no status filter). Banks differ on what they accept, so each variant is
     a separate, deliberate call; a refusal comes back as a note."""
     today = today or datetime.now(UTC).date()
     date_from = today - timedelta(days=PENDING_PROBE_PAST_DAYS)
@@ -278,8 +278,8 @@ def probe_pending(
     future = 0
     samples: list[dict] = []
     for row in raw:
-        status = str(row.get("status") or "none")
-        statuses[status] = statuses.get(status, 0) + 1
+        row_status = str(row.get("status") or "none")
+        statuses[row_status] = statuses.get(row_status, 0) + 1
         fields.update(k for k, v in row.items() if v not in (None, "", [], {}))
         row_date = bank_transactions._parse_date(row)
         if row_date is not None:

@@ -1503,7 +1503,7 @@ export interface components {
              * Status Filter
              * @enum {string}
              */
-            status_filter: "PDNG" | "all";
+            status_filter: "PDNG" | "INFO" | "OTHR" | "BOOK" | "all";
             /** Statuses */
             statuses: {
                 [key: string]: number;
@@ -3951,7 +3951,7 @@ export interface operations {
         parameters: {
             query?: {
                 end?: "future" | "today" | "none";
-                status?: "PDNG" | "all";
+                status?: "PDNG" | "INFO" | "OTHR" | "BOOK" | "all";
             };
             header?: never;
             path: {

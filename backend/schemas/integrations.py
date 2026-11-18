@@ -177,7 +177,7 @@ class BankPendingProbeOut(Schema):
     date_from: _DateType
     date_to: _DateType | None = None
     end: Literal["future", "today", "none"]
-    status_filter: Literal["PDNG", "all"]
+    status_filter: Literal["PDNG", "INFO", "OTHR", "BOOK", "all"]
     pending_count: int
     future_dated_count: int
     earliest_date: _DateType | None = None
