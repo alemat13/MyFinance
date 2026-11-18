@@ -390,6 +390,21 @@ One account a `bank_connections` consent exposes, and the MyFinance account it f
 | `last_sync_error` | Text | Nullable; set only when `last_sync_status` is `failed` |
 | `last_imported_count` | Integer | Default: 0. How many transactions the last successful run created |
 
+### `pending_transactions`
+Operations a bank reports as pending (ISO status `PDNG`), reloaded at every sync (MYF-82). In no balance, split, history, aggregate or backup archive; wiped by an overwrite restore and refilled by the next sync.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | Integer | Primary key, autoincrement |
+| `link_id` | Integer | Foreign key → `bank_account_links.id`, `ON DELETE CASCADE`, indexed |
+| `account_id` | Integer | Foreign key → `accounts.id`, `ON DELETE CASCADE`, indexed |
+| `external_id` | String(120) | The bank's `entry_reference`/`transaction_id`, else an `fp:` fingerprint. Unique per link |
+| `date` / `amount` / `payee` / `memo` | Date / NUMERIC(12,2) / String(200) / Text | As the bank reports them, refreshed at every sync |
+| `user_payee` / `user_category_id` | String(200) / Integer | Nullable. The user's edits, never touched by a sync; carried over to the booked transaction. `user_category_id` → `categories.id`, `ON DELETE SET NULL` |
+| `status` | String(20) | `pending` while reported; `to_reconcile` once gone with edits no single transaction could take |
+| `first_seen_at` / `last_seen_at` | DateTime | First and latest sync that reported it |
+| `missing_since` | DateTime | Nullable; when the bank stopped reporting it (`to_reconcile` only). Dropped 14 days later |
+
 ## Key Relationships
 
 - **Users ↔ Accounts**: Many-to-many via `account_users`. Each user can own multiple accounts; each account can have multiple owners (joint account).

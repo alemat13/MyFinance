@@ -20,6 +20,7 @@ carry an external_id.
 """
 
 import hmac
+import logging
 import os
 import time
 import uuid
@@ -35,6 +36,7 @@ import auto_categorize
 import bank_transactions
 import cache_service
 import checkpoints
+import pending_transactions
 import split_engine
 import transaction_rules
 from audit import record_transaction_history, splits_created_changes
@@ -46,6 +48,8 @@ from bank_transactions import (  # noqa: F401  (re-exported)
     normalize_transactions,
 )
 from models import BankAccountLink, BankConnection, Transaction
+
+logger = logging.getLogger(__name__)
 
 API_BASE = "https://api.enablebanking.com"
 JWT_ISSUER = "enablebanking.com"
@@ -230,6 +234,40 @@ def fetch_transactions(
         continuation_key = page.get("continuation_key")
         if not continuation_key or len(collected) >= MAX_ROWS_PER_SYNC:
             return collected
+
+
+# ── Pending rows (MYF-82) ─────────────────────────────────────────
+
+# Statuses imported as transactions. A row with no status at all is booked:
+# that is what every bank returned while the call asked for BOOK only.
+BOOKED_STATUSES = {"BOOK", None}
+
+
+def fetch_booked_and_pending(
+    account_uid: str, date_from: date, date_to: date
+) -> tuple[list[dict], list[dict] | None]:
+    """One call for every status, split into booked and pending rows, so
+    pending rows cost nothing against the daily cap. A bank that refuses an
+    unfiltered call is asked for booked rows alone, as before: pending is
+    then None (unknown), which leaves the link's pending rows as they were."""
+    try:
+        rows = fetch_transactions(account_uid, date_from, date_to, None)
+    except EnableBankingError:
+        return fetch_transactions(account_uid, date_from, date_to), None
+    booked = [r for r in rows if r.get("status") in BOOKED_STATUSES]
+    pending = [r for r in rows if r.get("status") == "PDNG"]
+    return booked, pending
+
+
+def reload_pending_quietly(db: Session, link: BankAccountLink, raw_pending: list[dict]) -> None:
+    """The booked import has already happened, and pending rows are a
+    convenience: a failure here costs them, never the sync."""
+    try:
+        with db.begin_nested():
+            pending_transactions.reload(db, link, normalize_transactions(raw_pending))
+        db.commit()
+    except Exception:
+        logger.exception("Reloading pending rows failed; booked rows were imported")
 
 
 # ── Pending probe (MYF-82) ────────────────────────────────────────
@@ -500,8 +538,10 @@ def sync_link(db: Session, link: BankAccountLink) -> int:
         if link.account_id is None:
             raise EnableBankingError("This bank account is not linked to a MyFinance account yet")
         date_from, date_to = sync_window(link, started_at.date())
-        raw = fetch_transactions(link.remote_account_uid, date_from, date_to)
-        created = import_transactions(db, link, normalize_transactions(raw), date_from, date_to)
+        booked, pending = fetch_booked_and_pending(link.remote_account_uid, date_from, date_to)
+        created = import_transactions(db, link, normalize_transactions(booked), date_from, date_to)
+        if pending is not None:
+            reload_pending_quietly(db, link, pending)
         link.last_sync_status = "success"
         link.last_sync_error = None
         link.last_imported_count = created

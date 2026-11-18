@@ -3913,6 +3913,164 @@
         "title": "PayeeSuggestionOut",
         "type": "object"
       },
+      "PendingCandidateOut": {
+        "properties": {
+          "amount": {
+            "title": "Amount",
+            "type": "number"
+          },
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "payee": {
+            "title": "Payee",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "date",
+          "payee",
+          "amount"
+        ],
+        "title": "PendingCandidateOut",
+        "type": "object"
+      },
+      "PendingReconcileRequest": {
+        "properties": {
+          "transaction_id": {
+            "title": "Transaction Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "transaction_id"
+        ],
+        "title": "PendingReconcileRequest",
+        "type": "object"
+      },
+      "PendingTransactionOut": {
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "integer"
+          },
+          "amount": {
+            "title": "Amount",
+            "type": "number"
+          },
+          "bank_payee": {
+            "title": "Bank Payee",
+            "type": "string"
+          },
+          "candidates": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PendingCandidateOut"
+            },
+            "title": "Candidates",
+            "type": "array"
+          },
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          },
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "edited": {
+            "title": "Edited",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "memo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Memo"
+          },
+          "payee": {
+            "title": "Payee",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "to_reconcile"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "account_id",
+          "date",
+          "amount",
+          "payee",
+          "bank_payee",
+          "memo",
+          "category_id",
+          "status",
+          "edited",
+          "candidates"
+        ],
+        "title": "PendingTransactionOut",
+        "type": "object"
+      },
+      "PendingTransactionUpdate": {
+        "description": "The user's edits. A null field clears that edit: the bank's payee, no\ncategory.",
+        "properties": {
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          },
+          "payee": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payee"
+          }
+        },
+        "title": "PendingTransactionUpdate",
+        "type": "object"
+      },
       "RuleActions-Input": {
         "description": "What a rule does to a matching transaction: a bulk edit's fields, plus\nrenaming the payee. Moving to another account and deleting are left out\non purpose — too much to happen unseen. An omitted (or None) key leaves\nthat field alone; a rule cannot clear a category.",
         "properties": {
@@ -8700,6 +8858,176 @@
           }
         },
         "summary": "Update Settings"
+      }
+    },
+    "/api/pending-transactions": {
+      "get": {
+        "operationId": "list_pending_api_pending_transactions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "account_id",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "type": "integer"
+              },
+              "title": "Account Id",
+              "type": "array"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PendingTransactionOut"
+                  },
+                  "title": "Response List Pending Api Pending Transactions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Pending"
+      }
+    },
+    "/api/pending-transactions/{pending_id}": {
+      "delete": {
+        "description": "Only a row the bank no longer reports: one it still reports would\nsimply come back at the next sync.",
+        "operationId": "dismiss_pending_api_pending_transactions__pending_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pending_id",
+            "required": true,
+            "schema": {
+              "title": "Pending Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Dismiss Pending"
+      },
+      "put": {
+        "operationId": "update_pending_api_pending_transactions__pending_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pending_id",
+            "required": true,
+            "schema": {
+              "title": "Pending Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PendingTransactionUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PendingTransactionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Pending"
+      }
+    },
+    "/api/pending-transactions/{pending_id}/reconcile": {
+      "post": {
+        "description": "The user says which booked transaction this row became: its edits go\nthere, and the row is gone.",
+        "operationId": "reconcile_pending_api_pending_transactions__pending_id__reconcile_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pending_id",
+            "required": true,
+            "schema": {
+              "title": "Pending Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PendingReconcileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reconcile Pending"
       }
     },
     "/api/rules": {

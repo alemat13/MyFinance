@@ -755,6 +755,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/pending-transactions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Pending */
+        get: operations["list_pending_api_pending_transactions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pending-transactions/{pending_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Pending */
+        put: operations["update_pending_api_pending_transactions__pending_id__put"];
+        post?: never;
+        /**
+         * Dismiss Pending
+         * @description Only a row the bank no longer reports: one it still reports would
+         *     simply come back at the next sync.
+         */
+        delete: operations["dismiss_pending_api_pending_transactions__pending_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pending-transactions/{pending_id}/reconcile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reconcile Pending
+         * @description The user says which booked transaction this row became: its edits go
+         *     there, and the row is gone.
+         */
+        post: operations["reconcile_pending_api_pending_transactions__pending_id__reconcile_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/rules": {
         parameters: {
             query?: never;
@@ -2535,6 +2595,70 @@ export interface components {
             payee: string;
             /** Raw Label */
             raw_label: string | null;
+        };
+        /** PendingCandidateOut */
+        PendingCandidateOut: {
+            /** Amount */
+            amount: number;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Id */
+            id: number;
+            /** Payee */
+            payee: string;
+        };
+        /** PendingReconcileRequest */
+        PendingReconcileRequest: {
+            /** Transaction Id */
+            transaction_id: number;
+        };
+        /** PendingTransactionOut */
+        PendingTransactionOut: {
+            /** Account Id */
+            account_id: number;
+            /** Amount */
+            amount: number;
+            /** Bank Payee */
+            bank_payee: string;
+            /**
+             * Candidates
+             * @default []
+             */
+            candidates: components["schemas"]["PendingCandidateOut"][];
+            /** Category Id */
+            category_id: number | null;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Edited */
+            edited: boolean;
+            /** Id */
+            id: number;
+            /** Memo */
+            memo: string | null;
+            /** Payee */
+            payee: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "to_reconcile";
+        };
+        /**
+         * PendingTransactionUpdate
+         * @description The user's edits. A null field clears that edit: the bank's payee, no
+         *     category.
+         */
+        PendingTransactionUpdate: {
+            /** Category Id */
+            category_id?: number | null;
+            /** Payee */
+            payee?: string | null;
         };
         /**
          * RuleActions
@@ -4813,6 +4937,134 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["OneDriveSettingsOut"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_pending_api_pending_transactions_get: {
+        parameters: {
+            query?: {
+                account_id?: number[];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PendingTransactionOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_pending_api_pending_transactions__pending_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pending_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PendingTransactionUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PendingTransactionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dismiss_pending_api_pending_transactions__pending_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pending_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reconcile_pending_api_pending_transactions__pending_id__reconcile_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pending_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PendingReconcileRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

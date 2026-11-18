@@ -24,6 +24,7 @@ const mockFetchTags = vi.hoisted(() => vi.fn().mockResolvedValue([]))
 const mockCreateTransactionLink = vi.hoisted(() => vi.fn())
 
 vi.mock('../../api/client', () => ({
+  fetchPendingTransactions: () => Promise.resolve([]),
   searchTransactions: mockSearchTransactions,
   fetchAccounts: mockFetchAccounts,
   fetchCategories: mockFetchCategories,
