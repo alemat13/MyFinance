@@ -32,6 +32,7 @@ from sqlalchemy.orm import Session
 
 import audit
 import auto_categorize
+import bank_transactions
 import cache_service
 import checkpoints
 import split_engine
@@ -204,13 +205,15 @@ def delete_session(session_id: str) -> None:
     _request("DELETE", f"/sessions/{session_id}")
 
 
-def fetch_transactions(account_uid: str, date_from: date, date_to: date) -> list[dict]:
-    """Every booked transaction in the window, following continuation_key
-    until the bank stops handing one back."""
+def fetch_transactions(
+    account_uid: str, date_from: date, date_to: date, transaction_status: str = "BOOK"
+) -> list[dict]:
+    """Every transaction of that status in the window (booked by default),
+    following continuation_key until the bank stops handing one back."""
     params = {
         "date_from": date_from.isoformat(),
         "date_to": date_to.isoformat(),
-        "transaction_status": "BOOK",
+        "transaction_status": transaction_status,
     }
     collected: list[dict] = []
     continuation_key = None
@@ -223,6 +226,84 @@ def fetch_transactions(account_uid: str, date_from: date, date_to: date) -> list
         continuation_key = page.get("continuation_key")
         if not continuation_key or len(collected) >= MAX_ROWS_PER_SYNC:
             return collected
+
+
+# ── Pending probe (MYF-82) ────────────────────────────────────────
+
+# How far either side of today the probe asks for pending rows: upcoming
+# direct debits are announced a few days to a few weeks ahead.
+PENDING_PROBE_PAST_DAYS = 14
+PENDING_PROBE_FUTURE_DAYS = 60
+PENDING_PROBE_SAMPLE_SIZE = 10
+
+
+def probe_pending(link: BankAccountLink, today: date | None = None) -> dict:
+    """Read-only: asks the bank for this account's pending (PDNG) rows and
+    describes them, storing nothing. Answers whether a bank sends upcoming
+    debits through open banking at all before anything is built on them.
+
+    At most two calls (account endpoints can be capped at 4 a day): the
+    first window reaches into the future; a bank that refuses a future end
+    date is asked again up to today."""
+    today = today or datetime.now(UTC).date()
+    date_from = today - timedelta(days=PENDING_PROBE_PAST_DAYS)
+    date_to = today + timedelta(days=PENDING_PROBE_FUTURE_DAYS)
+    notes: list[str] = []
+    try:
+        raw = fetch_transactions(link.remote_account_uid, date_from, date_to, "PDNG")
+    except EnableBankingError as exc:
+        notes.append(f"Future end date refused: {str(exc)[:500]}")
+        date_to = today
+        raw = fetch_transactions(link.remote_account_uid, date_from, date_to, "PDNG")
+
+    statuses: dict[str, int] = {}
+    fields: set[str] = set()
+    dates: list[date] = []
+    future = 0
+    samples: list[dict] = []
+    for row in raw:
+        status = str(row.get("status") or "none")
+        statuses[status] = statuses.get(status, 0) + 1
+        fields.update(k for k, v in row.items() if v not in (None, "", [], {}))
+        row_date = bank_transactions._parse_date(row)
+        if row_date is not None:
+            dates.append(row_date)
+            if row_date > today:
+                future += 1
+        if len(samples) < PENDING_PROBE_SAMPLE_SIZE:
+            indicator = row.get("credit_debit_indicator")
+            amount = (
+                bank_transactions._parse_amount(row.get("transaction_amount") or {}, indicator)
+                if indicator in ("CRDT", "DBIT")
+                else None
+            )
+            remittance = bank_transactions._remittance(row)
+            samples.append(
+                {
+                    "status": row.get("status"),
+                    "transaction_date": row.get("transaction_date"),
+                    "booking_date": row.get("booking_date"),
+                    "value_date": row.get("value_date"),
+                    "amount": amount,
+                    "payee": bank_transactions._payee(row, indicator, remittance)[:80],
+                    "has_entry_reference": bool(row.get("entry_reference")),
+                    "has_transaction_id": bool(row.get("transaction_id")),
+                }
+            )
+    return {
+        "link_id": link.id,
+        "remote_name": link.remote_name,
+        "date_from": date_from,
+        "date_to": date_to,
+        "pending_count": len(raw),
+        "future_dated_count": future,
+        "earliest_date": min(dates) if dates else None,
+        "latest_date": max(dates) if dates else None,
+        "statuses": statuses,
+        "fields_present": sorted(fields),
+        "samples": samples,
+        "notes": notes,
+    }
 
 
 # ── Sync ──────────────────────────────────────────────────────────────
