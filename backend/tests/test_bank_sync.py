@@ -1434,5 +1434,24 @@ def test_pending_probe_variants_and_refusal(client, monkeypatch, linked_connecti
     assert "Refused by the bank" in body["notes"][0]
 
 
+def test_pending_probe_all_statuses_counts_each(client, monkeypatch, linked_connection):
+    monkeypatch.setattr(
+        enable_banking,
+        "fetch_transactions",
+        lambda *a, **k: [
+            _booked("1.00", "DBIT", "2026-11-10"),
+            {**_booked("2.00", "DBIT", "2026-11-11"), "status": "PDNG"},
+        ],
+    )
+
+    response = client.get(
+        f"/api/bank-sync/links/{linked_connection.id}/pending-probe?end=today&status=all"
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status_filter"] == "all"
+    assert response.json()["statuses"] == {"BOOK": 1, "PDNG": 1}
+
+
 def test_pending_probe_unknown_link(client):
     assert client.get("/api/bank-sync/links/999/pending-probe").status_code == 404

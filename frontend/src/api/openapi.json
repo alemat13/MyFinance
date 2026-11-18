@@ -776,6 +776,9 @@
           "status_filter": {
             "enum": [
               "PDNG",
+              "INFO",
+              "OTHR",
+              "BOOK",
               "all"
             ],
             "title": "Status Filter",
@@ -7351,6 +7354,9 @@
               "default": "PDNG",
               "enum": [
                 "PDNG",
+                "INFO",
+                "OTHR",
+                "BOOK",
                 "all"
               ],
               "title": "Status",

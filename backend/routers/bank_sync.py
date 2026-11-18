@@ -225,7 +225,7 @@ def resync_link_period(link_id: int, data: BankResyncRequest, db: Session = Depe
 def probe_link_pending(
     link_id: int,
     end: Literal["future", "today", "none"] = "future",
-    status: Literal["PDNG", "all"] = "PDNG",
+    status: Literal["PDNG", "INFO", "OTHR", "BOOK", "all"] = "PDNG",
     db: Session = Depends(get_db),
 ):
     """Read-only diagnostic: what the bank reports as pending for this
