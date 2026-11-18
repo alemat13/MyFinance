@@ -170,6 +170,8 @@ from .integrations import (
     BankConnectionCreated,
     BankConnectionOut,
     BankInstitutionOut,
+    BankPendingProbeOut,
+    BankPendingSample,
     BankResyncRequest,
     BankSyncRunResult,
     EmailAlertExport,

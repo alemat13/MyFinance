@@ -18,6 +18,7 @@ from schemas import (
     BankConnectionCreated,
     BankConnectionOut,
     BankInstitutionOut,
+    BankPendingProbeOut,
     BankResyncRequest,
     BankSyncRunResult,
 )
@@ -217,6 +218,19 @@ def resync_link_period(link_id: int, data: BankResyncRequest, db: Session = Depe
             ran=True, synced_links=1, created_count=0, status="failed", error=str(exc)[:2000]
         )
     return BankSyncRunResult(ran=True, synced_links=1, created_count=created, status="success")
+
+
+@router.get("/links/{link_id}/pending-probe", response_model=BankPendingProbeOut)
+def probe_link_pending(link_id: int, db: Session = Depends(get_db)):
+    """Read-only diagnostic: what the bank reports as pending for this
+    account (see enable_banking.probe_pending). Stores nothing."""
+    link = db.get(BankAccountLink, link_id)
+    if link is None:
+        raise HTTPException(404, "Bank account link not found")
+    try:
+        return enable_banking.probe_pending(link)
+    except enable_banking.EnableBankingError as exc:
+        raise HTTPException(502, str(exc)[:2000]) from exc
 
 
 @router.post("/run-due", response_model=BankSyncRunResult)

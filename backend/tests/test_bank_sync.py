@@ -1376,3 +1376,44 @@ def test_resync_period_rejects_a_reversed_range(client, linked_connection):
         json={"date_from": "2026-09-16", "date_to": "2026-09-01"},
     )
     assert response.status_code == 422
+
+
+def test_pending_probe_describes_pending_rows_and_stores_nothing(
+    client, db, monkeypatch, linked_connection
+):
+    asked = []
+
+    def _fetch(account_uid, date_from, date_to, transaction_status="BOOK"):
+        asked.append((date_from, date_to, transaction_status))
+        if date_to > date.today():
+            raise enable_banking.EnableBankingError("date_to in the future")
+        return [
+            {
+                "status": "PDNG",
+                "credit_debit_indicator": "DBIT",
+                "transaction_amount": {"amount": "42.10", "currency": "EUR"},
+                "booking_date": (date.today() + timedelta(days=0)).isoformat(),
+                "value_date": (date.today() + timedelta(days=3)).isoformat(),
+                "creditor": {"name": "ELECTRICITY CO"},
+            }
+        ]
+
+    monkeypatch.setattr(enable_banking, "fetch_transactions", _fetch)
+    before = db.query(Transaction).count()
+
+    response = client.get(f"/api/bank-sync/links/{linked_connection.id}/pending-probe")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [a[2] for a in asked] == ["PDNG", "PDNG"]
+    assert body["date_to"] == date.today().isoformat()
+    assert body["notes"] and "Future end date refused" in body["notes"][0]
+    assert body["pending_count"] == 1
+    assert body["statuses"] == {"PDNG": 1}
+    assert body["samples"][0]["amount"] == -42.10
+    assert body["samples"][0]["payee"] == "ELECTRICITY CO"
+    assert db.query(Transaction).count() == before
+
+
+def test_pending_probe_unknown_link(client):
+    assert client.get("/api/bank-sync/links/999/pending-probe").status_code == 404
