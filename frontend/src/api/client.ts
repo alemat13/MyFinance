@@ -894,3 +894,29 @@ export function deleteTag(id: number, actorUserId?: number | null): Promise<void
   const query = actorUserId ? `?actor_user_id=${actorUserId}` : ''
   return request<void>(`/tags/${id}${query}`, { method: 'DELETE' })
 }
+
+/** An operation the bank reports as pending (MYF-82): in no balance, split
+ *  or chart, replaced at every sync. `to_reconcile` once the bank stopped
+ *  reporting a row the user had edited. */
+export type PendingTransaction = Schemas['PendingTransactionOut']
+
+export function fetchPendingTransactions(accountIds: number[]): Promise<PendingTransaction[]> {
+  const query = accountIds.map(id => `account_id=${id}`).join('&')
+  return request<PendingTransaction[]>(`/pending-transactions${query ? `?${query}` : ''}`)
+}
+
+export function updatePendingTransaction(
+  id: number, data: { payee: string | null; category_id: number | null },
+): Promise<PendingTransaction> {
+  return request<PendingTransaction>(`/pending-transactions/${id}`, { method: 'PUT', body: JSON.stringify(data) })
+}
+
+export function reconcilePendingTransaction(id: number, transactionId: number): Promise<void> {
+  return request<void>(`/pending-transactions/${id}/reconcile`, {
+    method: 'POST', body: JSON.stringify({ transaction_id: transactionId }),
+  })
+}
+
+export function dismissPendingTransaction(id: number): Promise<void> {
+  return request<void>(`/pending-transactions/${id}`, { method: 'DELETE' })
+}

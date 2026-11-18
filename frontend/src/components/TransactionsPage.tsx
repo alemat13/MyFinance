@@ -36,6 +36,7 @@ import {
 } from './transactions/initialState'
 import TransactionCardList from './transactions/TransactionCardList'
 import TransactionTable from './transactions/TransactionTable'
+import PendingSection from './transactions/PendingSection'
 
 interface Props {
   onBack: () => void
@@ -528,6 +529,15 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
         <p role="alert" className="mb-3 text-sm text-negative">
           This filter could not be applied ({searchError}). Change or clear it to see transactions again.
         </p>
+      )}
+
+      {mode === 'simple' && !historyGroup && (
+        <PendingSection
+          accountIds={filterAccountIds.length > 0 ? filterAccountIds : accounts.map(a => a.id)}
+          accounts={allAccounts}
+          categories={categories}
+          onTransactionsChanged={loadTransactions}
+        />
       )}
 
       {!loading && selectedIds.size > 0 && (
