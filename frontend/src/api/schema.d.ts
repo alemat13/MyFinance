@@ -1474,13 +1474,15 @@ export interface components {
              * Format: date
              */
             date_from: string;
-            /**
-             * Date To
-             * Format: date
-             */
-            date_to: string;
+            /** Date To */
+            date_to: string | null;
             /** Earliest Date */
             earliest_date: string | null;
+            /**
+             * End
+             * @enum {string}
+             */
+            end: "future" | "today" | "none";
             /** Fields Present */
             fields_present: string[];
             /** Future Dated Count */
@@ -1497,6 +1499,11 @@ export interface components {
             remote_name: string | null;
             /** Samples */
             samples: components["schemas"]["BankPendingSample"][];
+            /**
+             * Status Filter
+             * @enum {string}
+             */
+            status_filter: "PDNG" | "all";
             /** Statuses */
             statuses: {
                 [key: string]: number;
@@ -1508,6 +1515,8 @@ export interface components {
             amount: number | null;
             /** Booking Date */
             booking_date: string | null;
+            /** Entry Reference */
+            entry_reference: string | null;
             /** Has Entry Reference */
             has_entry_reference: boolean;
             /** Has Transaction Id */
@@ -3940,7 +3949,10 @@ export interface operations {
     };
     probe_link_pending_api_bank_sync_links__link_id__pending_probe_get: {
         parameters: {
-            query?: never;
+            query?: {
+                end?: "future" | "today" | "none";
+                status?: "PDNG" | "all";
+            };
             header?: never;
             path: {
                 link_id: number;
