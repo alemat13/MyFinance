@@ -158,6 +158,7 @@ class BankSyncRunResult(Schema):
 
 class BankPendingSample(Schema):
     status: str | None = None
+    entry_reference: str | None = None
     transaction_date: str | None = None
     booking_date: str | None = None
     value_date: str | None = None
@@ -174,7 +175,9 @@ class BankPendingProbeOut(Schema):
     link_id: int
     remote_name: str | None = None
     date_from: _DateType
-    date_to: _DateType
+    date_to: _DateType | None = None
+    end: Literal["future", "today", "none"]
+    status_filter: Literal["PDNG", "all"]
     pending_count: int
     future_dated_count: int
     earliest_date: _DateType | None = None

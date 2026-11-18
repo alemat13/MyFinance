@@ -1,5 +1,6 @@
 import os
 from datetime import UTC, datetime
+from typing import Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import RedirectResponse
@@ -221,14 +222,19 @@ def resync_link_period(link_id: int, data: BankResyncRequest, db: Session = Depe
 
 
 @router.get("/links/{link_id}/pending-probe", response_model=BankPendingProbeOut)
-def probe_link_pending(link_id: int, db: Session = Depends(get_db)):
+def probe_link_pending(
+    link_id: int,
+    end: Literal["future", "today", "none"] = "future",
+    status: Literal["PDNG", "all"] = "PDNG",
+    db: Session = Depends(get_db),
+):
     """Read-only diagnostic: what the bank reports as pending for this
     account (see enable_banking.probe_pending). Stores nothing."""
     link = db.get(BankAccountLink, link_id)
     if link is None:
         raise HTTPException(404, "Bank account link not found")
     try:
-        return enable_banking.probe_pending(link)
+        return enable_banking.probe_pending(link, end=end, status=status)
     except enable_banking.EnableBankingError as exc:
         raise HTTPException(502, str(exc)[:2000]) from exc
 
