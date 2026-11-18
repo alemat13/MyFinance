@@ -140,6 +140,7 @@ def write_fields(
     actor_user_id: int | None,
     *,
     resplit: bool = False,
+    source: str = HISTORY_SOURCE,
 ) -> bool:
     """Set the given fields on a transaction, unreconcile it and record it.
 
@@ -172,7 +173,7 @@ def write_fields(
     if not changes:
         return False
     record_transaction_history(
-        db, transaction, "updated", actor_user_id, source=HISTORY_SOURCE, changes=changes
+        db, transaction, "updated", actor_user_id, source=source, changes=changes
     )
     return True
 

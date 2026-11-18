@@ -471,6 +471,58 @@ class BankAccountLink(Base):
     account = relationship("Account")
 
 
+class PendingTransaction(Base):
+    """An operation the bank reports as pending (ISO status PDNG): a card
+    payment not yet booked, an incoming transfer of the day, a card
+    pre-authorisation (MYF-82).
+
+    Kept out of `transactions` on purpose: a pending row is the bank's
+    provisional view, replaced at every sync. It is in no balance, split,
+    history, aggregate or backup. Rows the bank stops reporting are deleted
+    (booked, or a cancelled pre-authorisation), unless the user edited them:
+    those edits are carried over to the booked transaction when it can be
+    told apart (see pending_transactions.py), or the row waits as
+    'to_reconcile' for the user to pick it.
+    """
+
+    __tablename__ = "pending_transactions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    link_id = Column(
+        Integer,
+        ForeignKey("bank_account_links.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    account_id = Column(
+        Integer, ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # The bank's entry_reference / transaction_id, or the same "fp:"
+    # fingerprint the booked import derives when the bank gives neither.
+    external_id = Column(String(120), nullable=False)
+    date = Column(Date, nullable=False)
+    amount = Column(Money(), nullable=False)
+    # What the bank said, refreshed at every sync.
+    payee = Column(String(200), nullable=False)
+    memo = Column(Text, nullable=True)
+    # What the user changed, never touched by a sync. NULL = not edited.
+    user_payee = Column(String(200), nullable=True)
+    user_category_id = Column(
+        Integer, ForeignKey("categories.id", ondelete="SET NULL"), nullable=True
+    )
+    # 'pending' while the bank reports it; 'to_reconcile' once it has gone
+    # with edits that could not be carried over on their own.
+    status = Column(String(20), nullable=False, default="pending")
+    first_seen_at = Column(DateTime, nullable=False, default=utcnow)
+    last_seen_at = Column(DateTime, nullable=False, default=utcnow)
+    # When the bank stopped reporting it (status 'to_reconcile' only).
+    missing_since = Column(DateTime, nullable=True)
+
+    __table_args__ = (
+        Index("ix_pending_transactions_link_id_external_id", "link_id", "external_id", unique=True),
+    )
+
+
 class TransactionHistory(Base):
     __tablename__ = "transaction_history"
 

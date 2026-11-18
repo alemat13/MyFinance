@@ -24,6 +24,7 @@ from routers import (
     history,
     imports,
     onedrive,
+    pending_transactions,
     saved_filters,
     split_weights,
     tags,
@@ -163,3 +164,4 @@ app.include_router(email_alerts.router)
 app.include_router(tags.router)
 app.include_router(history.router)
 app.include_router(transaction_links.router)
+app.include_router(pending_transactions.router)

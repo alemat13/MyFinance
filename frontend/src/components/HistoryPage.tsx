@@ -27,6 +27,7 @@ const ORIGINS: [string, string][] = [
   ['bulk', 'Bulk edit'],
   ['rule', 'Rules'],
   ['categorizer', 'Auto-categorization'],
+  ['pending', 'Pending operation'],
   ['csv_import', 'Import'],
   ['bank_sync', 'Bank sync'],
   ['divide', 'Divide'],
