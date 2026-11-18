@@ -206,15 +206,19 @@ def delete_session(session_id: str) -> None:
 
 
 def fetch_transactions(
-    account_uid: str, date_from: date, date_to: date, transaction_status: str = "BOOK"
+    account_uid: str,
+    date_from: date,
+    date_to: date | None,
+    transaction_status: str | None = "BOOK",
 ) -> list[dict]:
     """Every transaction of that status in the window (booked by default),
-    following continuation_key until the bank stops handing one back."""
-    params = {
-        "date_from": date_from.isoformat(),
-        "date_to": date_to.isoformat(),
-        "transaction_status": transaction_status,
-    }
+    following continuation_key until the bank stops handing one back. A None
+    end date or status leaves that filter to the bank (pending probe only)."""
+    params = {"date_from": date_from.isoformat()}
+    if date_to is not None:
+        params["date_to"] = date_to.isoformat()
+    if transaction_status is not None:
+        params["transaction_status"] = transaction_status
     collected: list[dict] = []
     continuation_key = None
     while True:
@@ -237,24 +241,36 @@ PENDING_PROBE_FUTURE_DAYS = 60
 PENDING_PROBE_SAMPLE_SIZE = 10
 
 
-def probe_pending(link: BankAccountLink, today: date | None = None) -> dict:
-    """Read-only: asks the bank for this account's pending (PDNG) rows and
-    describes them, storing nothing. Answers whether a bank sends upcoming
-    debits through open banking at all before anything is built on them.
+def probe_pending(
+    link: BankAccountLink,
+    today: date | None = None,
+    end: str = "future",
+    status: str = "PDNG",
+) -> dict:
+    """Read-only: asks the bank for this account's pending rows and describes
+    them, storing nothing. Answers whether a bank sends upcoming debits
+    through open banking at all before anything is built on them.
 
-    At most two calls (account endpoints can be capped at 4 a day): the
-    first window reaches into the future; a bank that refuses a future end
-    date is asked again up to today."""
+    One call per probe (account endpoints can be capped at 4 a day), shaped
+    by `end` ("future": up to PENDING_PROBE_FUTURE_DAYS ahead, "today", or
+    "none": no end date, left to the bank) and `status` ("PDNG", or "all":
+    no status filter). Banks differ on what they accept, so each variant is
+    a separate, deliberate call; a refusal comes back as a note."""
     today = today or datetime.now(UTC).date()
     date_from = today - timedelta(days=PENDING_PROBE_PAST_DAYS)
-    date_to = today + timedelta(days=PENDING_PROBE_FUTURE_DAYS)
+    date_to = {
+        "future": today + timedelta(days=PENDING_PROBE_FUTURE_DAYS),
+        "today": today,
+        "none": None,
+    }[end]
     notes: list[str] = []
     try:
-        raw = fetch_transactions(link.remote_account_uid, date_from, date_to, "PDNG")
+        raw = fetch_transactions(
+            link.remote_account_uid, date_from, date_to, None if status == "all" else status
+        )
     except EnableBankingError as exc:
-        notes.append(f"Future end date refused: {str(exc)[:500]}")
-        date_to = today
-        raw = fetch_transactions(link.remote_account_uid, date_from, date_to, "PDNG")
+        notes.append(f"Refused by the bank: {str(exc)[:500]}")
+        raw = []
 
     statuses: dict[str, int] = {}
     fields: set[str] = set()
@@ -281,6 +297,9 @@ def probe_pending(link: BankAccountLink, today: date | None = None) -> dict:
             samples.append(
                 {
                     "status": row.get("status"),
+                    "entry_reference": (
+                        str(row["entry_reference"])[:120] if row.get("entry_reference") else None
+                    ),
                     "transaction_date": row.get("transaction_date"),
                     "booking_date": row.get("booking_date"),
                     "value_date": row.get("value_date"),
@@ -295,6 +314,8 @@ def probe_pending(link: BankAccountLink, today: date | None = None) -> dict:
         "remote_name": link.remote_name,
         "date_from": date_from,
         "date_to": date_to,
+        "end": end,
+        "status_filter": status,
         "pending_count": len(raw),
         "future_dated_count": future,
         "earliest_date": min(dates) if dates else None,

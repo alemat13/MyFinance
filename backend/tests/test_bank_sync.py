@@ -1384,16 +1384,14 @@ def test_pending_probe_describes_pending_rows_and_stores_nothing(
     asked = []
 
     def _fetch(account_uid, date_from, date_to, transaction_status="BOOK"):
-        asked.append((date_from, date_to, transaction_status))
-        if date_to > date.today():
-            raise enable_banking.EnableBankingError("date_to in the future")
+        asked.append((date_to, transaction_status))
         return [
             {
                 "status": "PDNG",
+                "entry_reference": "ref-1",
                 "credit_debit_indicator": "DBIT",
                 "transaction_amount": {"amount": "42.10", "currency": "EUR"},
-                "booking_date": (date.today() + timedelta(days=0)).isoformat(),
-                "value_date": (date.today() + timedelta(days=3)).isoformat(),
+                "transaction_date": (date.today() + timedelta(days=3)).isoformat(),
                 "creditor": {"name": "ELECTRICITY CO"},
             }
         ]
@@ -1405,14 +1403,35 @@ def test_pending_probe_describes_pending_rows_and_stores_nothing(
 
     assert response.status_code == 200
     body = response.json()
-    assert [a[2] for a in asked] == ["PDNG", "PDNG"]
-    assert body["date_to"] == date.today().isoformat()
-    assert body["notes"] and "Future end date refused" in body["notes"][0]
+    assert asked == [(date.today() + timedelta(days=60), "PDNG")]
     assert body["pending_count"] == 1
+    assert body["future_dated_count"] == 1
     assert body["statuses"] == {"PDNG": 1}
     assert body["samples"][0]["amount"] == -42.10
     assert body["samples"][0]["payee"] == "ELECTRICITY CO"
+    assert body["samples"][0]["entry_reference"] == "ref-1"
     assert db.query(Transaction).count() == before
+
+
+def test_pending_probe_variants_and_refusal(client, monkeypatch, linked_connection):
+    asked = []
+
+    def _fetch(account_uid, date_from, date_to, transaction_status="BOOK"):
+        asked.append((date_to, transaction_status))
+        raise enable_banking.EnableBankingError("ASPSP_ERROR")
+
+    monkeypatch.setattr(enable_banking, "fetch_transactions", _fetch)
+
+    response = client.get(
+        f"/api/bank-sync/links/{linked_connection.id}/pending-probe?end=none&status=all"
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert asked == [(None, None)]
+    assert body["date_to"] is None
+    assert body["pending_count"] == 0
+    assert "Refused by the bank" in body["notes"][0]
 
 
 def test_pending_probe_unknown_link(client):
