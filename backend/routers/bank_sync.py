@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 import email_alerts
 import enable_banking
+import pending_transactions
 from database import get_db
 from models import BankAccountLink, BankConnection
 from rules import validate_bank_link_account
@@ -165,6 +166,8 @@ def update_link(link_id: int, data: BankAccountLinkUpdate, db: Session = Depends
         raise HTTPException(404, "Bank account link not found")
     validate_bank_link_account(db, link, data.account_id)
     newly_linked = link.account_id is None and data.account_id is not None
+    if link.account_id != data.account_id:
+        pending_transactions.clear_link(db, link.id)
     link.account_id = data.account_id
     link.sync_enabled = data.sync_enabled
     if data.sync_from_date is not None:

@@ -163,6 +163,12 @@ from .backup import (
     TransactionTagExport,
     UserExport,
 )
+from .pending import (
+    PendingCandidateOut,
+    PendingReconcileRequest,
+    PendingTransactionOut,
+    PendingTransactionUpdate,
+)
 from .integrations import (
     BankAccountLinkOut,
     BankAccountLinkUpdate,
