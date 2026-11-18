@@ -156,4 +156,33 @@ class BankSyncRunResult(Schema):
     error: str | None = None
 
 
+class BankPendingSample(Schema):
+    status: str | None = None
+    transaction_date: str | None = None
+    booking_date: str | None = None
+    value_date: str | None = None
+    amount: float | None = None
+    payee: str
+    has_entry_reference: bool
+    has_transaction_id: bool
+
+
+class BankPendingProbeOut(Schema):
+    """What a bank sends as pending (PDNG) for one account: a read-only
+    diagnostic, nothing is stored (MYF-82)."""
+
+    link_id: int
+    remote_name: str | None = None
+    date_from: _DateType
+    date_to: _DateType
+    pending_count: int
+    future_dated_count: int
+    earliest_date: _DateType | None = None
+    latest_date: _DateType | None = None
+    statuses: dict[str, int]
+    fields_present: list[str]
+    samples: list[BankPendingSample]
+    notes: list[str]
+
+
 DatabaseExport.model_rebuild()

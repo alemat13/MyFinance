@@ -277,6 +277,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/bank-sync/links/{link_id}/pending-probe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Probe Link Pending
+         * @description Read-only diagnostic: what the bank reports as pending for this
+         *     account (see enable_banking.probe_pending). Stores nothing.
+         */
+        get: operations["probe_link_pending_api_bank_sync_links__link_id__pending_probe_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/bank-sync/links/{link_id}/resync": {
         parameters: {
             query?: never;
@@ -1441,6 +1462,64 @@ export interface components {
             logo: string | null;
             /** Name */
             name: string;
+        };
+        /**
+         * BankPendingProbeOut
+         * @description What a bank sends as pending (PDNG) for one account: a read-only
+         *     diagnostic, nothing is stored (MYF-82).
+         */
+        BankPendingProbeOut: {
+            /**
+             * Date From
+             * Format: date
+             */
+            date_from: string;
+            /**
+             * Date To
+             * Format: date
+             */
+            date_to: string;
+            /** Earliest Date */
+            earliest_date: string | null;
+            /** Fields Present */
+            fields_present: string[];
+            /** Future Dated Count */
+            future_dated_count: number;
+            /** Latest Date */
+            latest_date: string | null;
+            /** Link Id */
+            link_id: number;
+            /** Notes */
+            notes: string[];
+            /** Pending Count */
+            pending_count: number;
+            /** Remote Name */
+            remote_name: string | null;
+            /** Samples */
+            samples: components["schemas"]["BankPendingSample"][];
+            /** Statuses */
+            statuses: {
+                [key: string]: number;
+            };
+        };
+        /** BankPendingSample */
+        BankPendingSample: {
+            /** Amount */
+            amount: number | null;
+            /** Booking Date */
+            booking_date: string | null;
+            /** Has Entry Reference */
+            has_entry_reference: boolean;
+            /** Has Transaction Id */
+            has_transaction_id: boolean;
+            /** Payee */
+            payee: string;
+            /** Status */
+            status: string | null;
+            /** Transaction Date */
+            transaction_date: string | null;
+            /** Value Date */
+            value_date: string | null;
         };
         /** BankResyncRequest */
         BankResyncRequest: {
@@ -3846,6 +3925,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BankAccountLinkOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    probe_link_pending_api_bank_sync_links__link_id__pending_probe_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                link_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BankPendingProbeOut"];
                 };
             };
             /** @description Validation Error */
