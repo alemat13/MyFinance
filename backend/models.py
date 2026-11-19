@@ -472,7 +472,7 @@ class BankAccountLink(Base):
 
 
 class PendingTransaction(Base):
-    """An operation the bank reports as pending (ISO status PDNG): a card
+    """A transaction the bank reports as pending (ISO status PDNG): a card
     payment not yet booked, an incoming transfer of the day, a card
     pre-authorisation (MYF-82).
 

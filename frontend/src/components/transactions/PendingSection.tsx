@@ -11,7 +11,7 @@ import { formatDateGroupHeader } from '../../utils/transactions'
 import { useToast } from '../../context/ToastContext'
 
 interface Props {
-  // The accounts whose pending operations to show (the page's account filter,
+  // The accounts whose pending transactions to show (the page's account filter,
   // else every account visible to the selected user).
   accountIds: number[]
   accounts: Account[]
@@ -24,7 +24,7 @@ interface Props {
 // Linxo-like hatching: a pending row reads at a glance as not real yet.
 const HATCH = 'bg-[repeating-linear-gradient(135deg,transparent_0,transparent_6px,rgba(148,163,184,0.12)_6px,rgba(148,163,184,0.12)_12px)]'
 
-/** Pending bank operations above the transaction list (MYF-82): greyed,
+/** Pending bank transactions above the transaction list (MYF-82): greyed,
  *  hatched, outside every balance, with the projected balance when one
  *  account is shown. */
 export default function PendingSection({ accountIds, accounts, categories, onTransactionsChanged }: Props) {
@@ -49,7 +49,7 @@ export default function PendingSection({ accountIds, accounts, categories, onTra
   const toReconcile = rows.length - stillPending.length
 
   return (
-    <section className="mb-3 rounded-lg border border-dashed border-slate-300 dark:border-slate-600" aria-label="Pending operations">
+    <section className="mb-3 rounded-lg border border-dashed border-slate-300 dark:border-slate-600" aria-label="Pending transactions">
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
@@ -153,7 +153,7 @@ function PendingEditModal({ pending, currency, categories, onClose, onDone }: Ed
   )
 
   return (
-    <Modal isOpen onClose={onClose} title={reconciling ? 'Operation to reconcile' : 'Pending operation'}>
+    <Modal isOpen onClose={onClose} title={reconciling ? 'Transaction to reconcile' : 'Pending transaction'}>
       <div className="space-y-3 text-sm">
         <div className="flex justify-between gap-3 text-slate-600 dark:text-slate-300">
           <span>{formatDateGroupHeader(pending.date)}</span>
@@ -166,7 +166,7 @@ function PendingEditModal({ pending, currency, categories, onClose, onDone }: Ed
         {reconciling ? (
           <ReconcileChoices pending={pending} currency={currency} busy={busy}
             onPick={id => run(() => reconcilePendingTransaction(pending.id, id), true, 'Changes applied to the transaction')}
-            onDismiss={() => run(() => dismissPendingTransaction(pending.id), false, 'Pending operation dismissed')}
+            onDismiss={() => run(() => dismissPendingTransaction(pending.id), false, 'Pending transaction dismissed')}
           />
         ) : (
           <>
@@ -202,7 +202,7 @@ function ReconcileChoices({ pending, currency, busy, onPick, onDismiss }: {
   return (
     <>
       <p className="text-slate-500 dark:text-slate-400">
-        The bank no longer shows this operation as pending, and it could not tell which transaction it became.
+        The bank no longer shows this transaction as pending, and it could not tell which booked transaction it became.
         Pick it to apply your changes{pending.category_id != null || pending.payee !== pending.bank_payee ? ` (${pending.payee})` : ''},
         or dismiss it if it was cancelled.
       </p>
