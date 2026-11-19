@@ -1,4 +1,4 @@
-"""Pending bank operations (MYF-82): reloaded at every sync, edits carried
+"""Pending bank transactions (MYF-82): reloaded at every sync, edits carried
 over to the booked transaction, cancelled pre-authorisations dropped."""
 
 from datetime import date, timedelta

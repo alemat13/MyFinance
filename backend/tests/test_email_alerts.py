@@ -727,3 +727,105 @@ def test_resplit_ids_need_the_users_weight_to_change(db, sample_user, sample_use
     )
     db.commit()
     assert email_alerts.resplit_transaction_ids(db, b, start, start + timedelta(days=1)) == {2}
+
+
+# ── Pending transactions (MYF-83) ─────────────────────────────────────
+
+
+def _pending(db, account, payee, amount, first_seen_at, **extra):
+    from models import BankAccountLink, BankConnection, PendingTransaction
+
+    connection = BankConnection(aspsp_name="Bank", state=f"s{first_seen_at.timestamp()}{payee}")
+    db.add(connection)
+    db.flush()
+    link = BankAccountLink(
+        connection_id=connection.id, remote_account_uid="uid", account_id=account.id
+    )
+    db.add(link)
+    db.flush()
+    row = PendingTransaction(
+        link_id=link.id,
+        account_id=account.id,
+        external_id=f"ref-{payee}",
+        date=date(2026, 10, 15),
+        amount=amount,
+        payee=payee,
+        first_seen_at=first_seen_at,
+        last_seen_at=first_seen_at,
+        **extra,
+    )
+    db.add(row)
+    db.commit()
+    return row
+
+
+def test_lists_new_pending_transactions_greyed_and_out_of_the_totals(
+    db, sample_user, sample_account_with_user, outbox
+):
+    from models import Category
+
+    category = Category(name="Fuel", type="Expense", color="#f97316", icon="fuel")
+    db.add(category)
+    db.commit()
+    last = datetime(2026, 10, 15, 5, 0)
+    _tx(db, sample_account_with_user, "Carrefour", -42.5, last + timedelta(hours=3))
+    _pending(
+        db,
+        sample_account_with_user,
+        "CB TOTAL 1234",
+        -60.0,
+        last + timedelta(hours=2),
+        user_payee="Total Energies",
+        user_category_id=category.id,
+    )
+    _pending(db, sample_account_with_user, "Seen before", -5.0, last - timedelta(hours=1))
+    _pending(
+        db, sample_account_with_user, "Gone", -7.0, last + timedelta(hours=1), status="to_reconcile"
+    )
+    db.add(
+        EmailAlert(
+            user_id=sample_user.id, email="me@olivex.fr", daily=True, last_daily_sent_at=last
+        )
+    )
+    db.commit()
+
+    assert email_alerts.run_due_alerts(db, FRI_0500_UTC) == (1, 0)
+    message = outbox[0]
+    assert message["Subject"] == "MyFinance – 1 new transaction, 1 pending (daily alert)"
+    text = message.get_body(("plain",)).get_content()
+    assert "Total Energies  Fuel  -60,00 €  [pending]" in text
+    assert "CB TOTAL" not in text and "Seen before" not in text and "Gone" not in text
+    # Pending rows are in no total.
+    assert "In 0,00 € · Out -42,50 €" in text
+    body = message.get_body(("html",)).get_content()
+    assert "Pending · 1 not booked yet" in body and "border:1px dashed" in body
+
+
+def test_a_pending_transaction_alone_sends_an_email(
+    db, sample_user, sample_user2, sample_account_with_user, outbox
+):
+    other = Account(name="Not mine", type="Checking")
+    db.add(other)
+    db.flush()
+    db.add(AccountUser(account_id=other.id, user_id=sample_user2.id, ownership_percentage=100.0))
+    last = datetime(2026, 10, 15, 5, 0)
+    _pending(db, other, "Someone else's", -9.0, last + timedelta(hours=1))
+    db.add(
+        EmailAlert(
+            user_id=sample_user.id, email="me@olivex.fr", daily=True, last_daily_sent_at=last
+        )
+    )
+    db.commit()
+    # Only someone else's pending row: nothing for this user.
+    assert email_alerts.run_due_alerts(db, FRI_0500_UTC) == (0, 0)
+
+    _pending(db, sample_account_with_user, "Getaround", -300.0, FRI_0500_UTC + timedelta(hours=1))
+    assert email_alerts.run_due_alerts(db, datetime(2026, 10, 17, 4, 0)) == (1, 0)
+    message = outbox[0]
+    assert message["Subject"] == "MyFinance – 1 pending (daily alert)"
+    text = message.get_body(("plain",)).get_content()
+    assert "1 pending transaction, not booked yet by the bank" in text
+    assert "Getaround  Uncategorized  -300,00 €  [pending]" in text
+    assert "new transaction" not in text
+    # Its account's balance still shows under the heading.
+    assert "Balance:" in text

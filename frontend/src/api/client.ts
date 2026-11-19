@@ -895,7 +895,7 @@ export function deleteTag(id: number, actorUserId?: number | null): Promise<void
   return request<void>(`/tags/${id}${query}`, { method: 'DELETE' })
 }
 
-/** An operation the bank reports as pending (MYF-82): in no balance, split
+/** A transaction the bank reports as pending (MYF-82): in no balance, split
  *  or chart, replaced at every sync. `to_reconcile` once the bank stopped
  *  reporting a row the user had edited. */
 export type PendingTransaction = Schemas['PendingTransactionOut']

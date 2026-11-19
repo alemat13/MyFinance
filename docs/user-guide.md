@@ -622,31 +622,34 @@ what the CPAM and the mutuelle paid back, a shared dinner and what the others re
 Linking is a different thing from [Dividing a transaction](#dividing-a-transaction),
 which turns one transaction into several new ones.
 
-### Pending operations
+### Pending transactions
 
-When a [synced bank](#bank-sync) reports operations it hasn't booked yet (a card payment
+When a [synced bank](#bank-sync) reports transactions it hasn't booked yet (a card payment
 from yesterday, today's incoming transfer, a card pre-authorisation such as a rental
 deposit), they appear in a **Pending** box above the transaction list, hatched and greyed.
-They are not transactions yet: they count in **no balance**, chart or split, and they
+They are not booked yet: they count in **no balance**, chart or split, and they
 are refreshed at every sync. With a single account in the account filter, the box also
 shows the **Projected balance**: the account's balance plus what is still pending.
 
 Some banks don't hand their scheduled direct debits to open banking at all, even when
 their own app shows them as upcoming, so the box shows only what the bank sends.
 
-Click a pending operation to set its **payee** and **category** ahead of time. When the
-bank books it, MyFinance finds the transaction it became and applies your changes there
-(they show in [History](#history) as *Pending operation*):
+Click a pending transaction to set its **payee** and **category** ahead of time. When the
+bank books it, MyFinance finds the booked transaction it became and applies your changes there
+(they show in [History](#history) as *Pending transaction*):
 
 - by the bank's identifier when the bank keeps the same one, even if the amount moved
   (a fuel pre-authorisation booked at what you actually spent);
 - otherwise by the same amount within a week, provided exactly one new transaction fits.
 
-When it can't tell for sure, the operation stays in the box marked **To reconcile**:
+When it can't tell for sure, the pending transaction stays in the box marked **To reconcile**:
 open it, then pick the right transaction with **This one**, or **Dismiss** it if it was
-cancelled. One left alone disappears after two weeks. A pending operation you never
+cancelled. One left alone disappears after two weeks. A pending transaction you never
 edited simply disappears once the bank stops reporting it, whether it was booked or
 cancelled (a released deposit, for example).
+
+[Email alerts](#email-alerts) also list the new pending transactions, greyed, after the
+booked ones of their account.
 
 ### Reconciling transactions
 
@@ -1193,6 +1196,12 @@ days after the bank sync, shows in the next email too, with a **Split changed** 
 someone else's account as long as it still gives you a part, and on your own accounts
 whatever the change. Each of these shows once, in the first email after the change, and
 the top of the email counts them apart ("2 shared with you") with your total share.
+
+[Pending transactions](#pending-transactions) the bank reported since the last email show
+too, after the booked transactions of their account, under a greyed **Pending** heading:
+dashed cards with a **Pending** badge and the payee and category you set, if any. They count
+in no total, and one alone is enough for an email to go out. Once the bank books it, the
+same transaction comes back in the next email as a new one.
 
 **Send a test email** sends, right away, what a weekly alert would hold (the last 7
 days), so you can check the address and see what it looks like. It doesn't change when the
