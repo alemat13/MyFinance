@@ -28,6 +28,13 @@ rule, a bulk edit or a hand edit, found in `transaction_history`), on any
 account they own or that now carries a share for them. Those rows show under
 their account marked "shared with you", with the user's share, never the
 owner's account balance.
+
+Pending transactions (MYF-83): the ones a synced bank first reported in the
+window, still pending, on an account the user owns, are listed under their
+account after its booked rows, greyed under a "Pending" heading. They are in
+no balance or total, and they alone are enough for an email to go out. The
+same row shows again, as a new transaction, in the alert after the bank
+books it.
 """
 
 import base64
@@ -54,8 +61,11 @@ import account_totals
 import cache_service
 import split_engine
 from models import (
+    Account,
     AccountUser,
+    Category,
     EmailAlert,
+    PendingTransaction,
     Transaction,
     TransactionHistory,
     TransactionSplit,
@@ -251,6 +261,61 @@ def new_transactions(
     return sorted([*created, *resplit], key=lambda t: (t.date, t.id), reverse=True)
 
 
+@dataclass
+class PendingItem:
+    """A pending transaction as an email lists it: the user's own payee and
+    category when they set one, else the bank's."""
+
+    id: int
+    account_id: int
+    account: Account | None
+    category: Category | None
+    date: date
+    payee: str
+    amount: float
+    memo: str | None
+
+
+def new_pending(db: Session, user_id: int, start: datetime, end: datetime) -> list[PendingItem]:
+    """Pending transactions first reported in (start, end], still pending,
+    on the user's own accounts, most recent first."""
+    owned = _owned_accounts(db, user_id)
+    if not owned:
+        return []
+    rows = db.scalars(
+        select(PendingTransaction).where(
+            PendingTransaction.status == "pending",
+            PendingTransaction.first_seen_at > start,
+            PendingTransaction.first_seen_at <= end,
+            PendingTransaction.account_id.in_(owned),
+        )
+    ).all()
+    accounts = {
+        a.id: a
+        for a in db.scalars(select(Account).where(Account.id.in_({r.account_id for r in rows})))
+    }
+    category_ids = {r.user_category_id for r in rows if r.user_category_id is not None}
+    categories = (
+        {c.id: c for c in db.scalars(select(Category).where(Category.id.in_(category_ids)))}
+        if category_ids
+        else {}
+    )
+    items = [
+        PendingItem(
+            id=r.id,
+            account_id=r.account_id,
+            account=accounts.get(r.account_id),
+            category=categories.get(r.user_category_id) if r.user_category_id is not None else None,
+            date=r.date,
+            payee=r.user_payee or r.payee,
+            amount=r.amount,
+            memo=r.memo,
+        )
+        for r in rows
+    ]
+    return sorted(items, key=lambda p: (p.date, p.id), reverse=True)
+
+
 def _money(amount: float, currency: str) -> str:
     sign = "-" if amount < 0 else "+" if amount > 0 else ""
     whole, cents = f"{abs(amount):,.2f}".split(".")
@@ -320,7 +385,7 @@ def _tint(color: str) -> str:
     )
 
 
-def _category_style(t: Transaction) -> tuple[str, str | None, str]:
+def _category_style(t: Transaction | PendingItem) -> tuple[str, str | None, str]:
     """(name, icon, colour) as the app's CategoryBadge shows them."""
     if t.category is None:
         return "Uncategorized", None, UNCATEGORIZED_COLOR
@@ -336,26 +401,36 @@ def _amount_color(amount: float) -> str:
     return CREDIT_COLOR if amount >= 0 else DEBIT_COLOR
 
 
-def _by_account(rows: list[Transaction]) -> list[tuple[int | None, str, str, list[Transaction]]]:
-    """(account id, account name, currency, rows) per account, by account
-    name, each keeping the rows' own order (most recent first)."""
-    groups: dict[int | None, list[Transaction]] = {}
+def _by_account(
+    rows: list[Transaction], pending: list[PendingItem] | None = None
+) -> list[tuple[int | None, str, str, list[Transaction], list[PendingItem]]]:
+    """(account id, account name, currency, rows, pending rows) per account,
+    by account name, each keeping the rows' own order (most recent first)."""
+    groups: dict[int | None, tuple[list[Transaction], list[PendingItem]]] = {}
+    accounts: dict[int | None, Account | None] = {}
     for t in rows:
-        groups.setdefault(t.account_id, []).append(t)
+        groups.setdefault(t.account_id, ([], []))[0].append(t)
+        accounts.setdefault(t.account_id, t.account)
+    for p in pending or []:
+        groups.setdefault(p.account_id, ([], []))[1].append(p)
+        accounts.setdefault(p.account_id, p.account)
     out = [
         (
             aid,
-            g[0].account.name if g[0].account else "",
-            g[0].account.currency if g[0].account else "EUR",
-            g,
+            accounts[aid].name if accounts[aid] else "",
+            accounts[aid].currency if accounts[aid] else "EUR",
+            booked,
+            waiting,
         )
-        for aid, g in groups.items()
+        for aid, (booked, waiting) in groups.items()
     ]
     return sorted(out, key=lambda item: item[1].lower())
 
 
 def account_balances(
-    db: Session, rows: list[Transaction], shared_accounts: set[int] = frozenset()
+    db: Session,
+    rows: list[Transaction] | list[PendingItem],
+    shared_accounts: set[int] = frozenset(),
 ) -> dict[int, float]:
     """Today's balance of every account `rows` touch, as the app shows it
     (offset + all its transactions, not only the new ones). Not for an
@@ -423,14 +498,21 @@ def overall_balances(db: Session, user_id: int) -> list[tuple[str, float]]:
 
 
 def alert_figures(
-    db: Session, user: User, rows: list[Transaction], start: datetime | None = None
+    db: Session,
+    user: User,
+    rows: list[Transaction],
+    start: datetime | None = None,
+    pending: list[PendingItem] | None = None,
 ) -> AlertFigures:
     """`start` is the window's start: a listed row created at or before it
     is there because its split changed for the user."""
     owned = _owned_accounts(db, user.id)
     shared = {t.account_id for t in rows if t.account_id not in owned}
     return AlertFigures(
-        accounts=account_balances(db, rows, shared),
+        accounts={
+            **account_balances(db, pending or []),
+            **account_balances(db, rows, shared),
+        },
         transactions=transaction_balances(db, user.id, rows),
         overall=overall_balances(db, user.id),
         shared_accounts=shared,
@@ -453,11 +535,14 @@ def build_message(
     frequency: str,
     rows: list[Transaction],
     figures: AlertFigures | None = None,
+    pending: list[PendingItem] | None = None,
 ) -> EmailMessage:
     """`figures` adds the balances: each account's under its heading, the
     user's own on each row and overall at the top. Whatever it leaves out
-    is not shown."""
+    is not shown. `pending` are the pending transactions to list, greyed,
+    in no total."""
     figures = figures or AlertFigures()
+    pending = pending or []
     balances = figures.accounts
     shared_accounts = figures.shared_accounts
     resplit = figures.resplit
@@ -468,12 +553,24 @@ def build_message(
     count = len(own)
     label = FREQUENCY_LABELS[frequency]
     noun = "transaction" if count == 1 else "transactions"
-    parts = [f"{count} new {noun}"] if count or not shared else []
+    parts = [f"{count} new {noun}"] if count or not (shared or pending) else []
     if shared:
         parts.append(f"{len(shared)} shared with you")
+    if pending:
+        parts.append(f"{len(pending)} pending")
     subject = f"MyFinance – {', '.join(parts)} ({label.lower()} alert)"
     shared_noun = "transaction" if len(shared) == 1 else "transactions"
-    intro = f"{count} new {noun} reached MyFinance on your accounts." if count or not shared else ""
+    intro = (
+        f"{count} new {noun} reached MyFinance on your accounts."
+        if count or not (shared or pending)
+        else ""
+    )
+    pending_noun = "transaction" if len(pending) == 1 else "transactions"
+    pending_intro = (
+        f"{len(pending)} pending {pending_noun}, not booked yet by the bank (in no balance)."
+        if pending
+        else ""
+    )
     shared_intro = (
         f"{len(shared)} {shared_noun} shared with you (your share of the split)." if shared else ""
     )
@@ -494,8 +591,9 @@ def build_message(
         totals[currency] = (income, spent)
 
     listed = rows[:MAX_LISTED]
-    hidden = len(rows) - len(listed)
-    groups = _by_account(listed)
+    listed_pending = pending[: max(0, MAX_LISTED - len(listed))]
+    hidden = len(rows) - len(listed) + len(pending) - len(listed_pending)
+    groups = _by_account(listed, listed_pending)
     app_url = os.environ.get("FRONTEND_BASE_URL", "")
     esc = html.escape
 
@@ -510,7 +608,9 @@ def build_message(
     if shared_intro:
         text += [shared_intro]
         text += [f"Your share: {_money(v, cur)}" for cur, v in sorted(shares.items())]
-    for account_id, name, currency, group in groups:
+    if pending_intro:
+        text += [pending_intro]
+    for account_id, name, currency, group, waiting in groups:
         heading = f"{name} (shared with you)" if account_id in shared_accounts else name
         text += ["", f"== {heading} =="]
         if account_id in balances:
@@ -526,6 +626,13 @@ def build_message(
             text.append(line)
             if t.memo:
                 text.append(f"    {t.memo}")
+        if waiting:
+            text.append("-- Pending --")
+        for p in waiting:
+            category = _category_style(p)[0]
+            text.append(
+                f"{p.date.strftime('%d/%m/%Y')}  {p.payee}  {category}  {_money(p.amount, currency)}  [pending]"
+            )
     if hidden:
         text += ["", f"… and {hidden} more."]
     if app_url:
@@ -597,9 +704,51 @@ def build_message(
 </tr></table></td></tr>{memo}
 </table></td></tr></table></td></tr>"""
 
-    def section(account_id: int | None, name: str, currency: str, group: list[Transaction]) -> str:
+    def pending_card(p: PendingItem, currency: str) -> str:
+        name, icon, color = _category_style(p)
+        memo = (
+            f'<tr><td colspan="2" style="padding-top:6px;font-size:12px;color:#94a3b8;">{esc(p.memo)}</td></tr>'
+            if p.memo
+            else ""
+        )
+        return f"""<tr><td style="padding:0 0 8px 0;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px dashed #cbd5e1;border-radius:12px;border-collapse:separate;">
+<tr><td style="padding:12px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+<tr><td valign="top" style="font-size:15px;font-weight:600;color:#475569;word-break:break-word;">{esc(p.payee)}</td>
+<td align="right" valign="top" style="font-size:15px;padding-left:8px;font-weight:600;color:#64748b;white-space:nowrap;">{esc(_money(p.amount, currency))}</td></tr>
+<tr><td style="font-size:12px;color:#94a3b8;padding-top:2px;">{p.date.strftime("%d/%m/%Y")}</td>
+<td align="right" valign="top" style="padding-left:8px;"><span style="font-size:11px;color:#475569;background:#e2e8f0;border-radius:6px;padding:2px 6px;white-space:nowrap;">Pending</span></td></tr>
+<tr><td colspan="2" style="padding-top:8px;">
+<table role="presentation" cellpadding="0" cellspacing="0"><tr>
+<td width="20" height="20" align="center" valign="middle" bgcolor="{_tint(color)}" style="width:20px;height:20px;background:{_tint(color)};border-radius:6px;line-height:0;">
+<img src="cid:{icon_cid(icon, color)}" width="12" height="12" alt="" style="display:block;border:0;width:12px;height:12px;"></td>
+<td style="padding-left:6px;font-size:13px;color:#64748b;{"font-style:italic;" if p.category is None else ""}">{esc(name)}</td>
+</tr></table></td></tr>{memo}
+</table></td></tr></table></td></tr>"""
+
+    def section(
+        account_id: int | None,
+        name: str,
+        currency: str,
+        group: list[Transaction],
+        waiting: list[PendingItem],
+    ) -> str:
         net = sum(t.amount for t in group)
         n = len(group)
+        waiting_html = (
+            '<tr><td style="padding:4px 4px 8px 4px;font-size:12px;font-weight:600;color:#64748b;">'
+            f"Pending · {len(waiting)} not booked yet</td></tr>"
+            + "".join(pending_card(p, currency) for p in waiting)
+            if waiting
+            else ""
+        )
+        count_html = (
+            f'<span style="font-weight:400;color:#64748b;font-size:12px;">&nbsp;· {n} {"transaction" if n == 1 else "transactions"}</span>'
+            if n
+            else ""
+        )
+        net_html = money_span(net, currency, 600) if n else ""
         tag = (
             '<span style="font-weight:400;color:#4f46e5;font-size:12px;">&nbsp;· shared with you</span>'
             if account_id in shared_accounts
@@ -615,9 +764,9 @@ def build_message(
         return f"""<tr><td style="padding:16px 4px 8px 4px;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
 <td style="font-size:14px;font-weight:700;color:#0f172a;">{esc(name)}{tag}
-<span style="font-weight:400;color:#64748b;font-size:12px;">&nbsp;· {n} {"transaction" if n == 1 else "transactions"}</span></td>
-<td align="right" style="font-size:13px;">{money_span(net, currency, 600)}</td>
-</tr>{balance}</table></td></tr>{"".join(card(t, currency) for t in group)}"""
+{count_html}</td>
+<td align="right" style="font-size:13px;">{net_html}</td>
+</tr>{balance}</table></td></tr>{"".join(card(t, currency) for t in group)}{waiting_html}"""
 
     summary = "".join(
         f'<div style="margin-top:6px;font-size:14px;">In {money_span(i, cur)}'
@@ -658,6 +807,14 @@ def build_message(
     )
     if shared and not intro:
         shared_html = "<br>" + shared_html
+    pending_html = (
+        f'<div style="margin-top:{10 if intro or shared else 0}px;color:#64748b;">'
+        f"<strong>{len(pending)} pending {pending_noun}</strong>, not booked yet by the bank (in no balance).</div>"
+        if pending
+        else ""
+    )
+    if pending and not (intro or shared):
+        pending_html = "<br>" + pending_html
     html_body = f"""<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"></head>
 <body style="margin:0;padding:0;background:#f1f5f9;{font}">
@@ -666,7 +823,7 @@ def build_message(
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;{font}">
 <tr><td style="padding:0 4px 12px 4px;font-size:18px;font-weight:700;color:#4f46e5;">MyFinance</td></tr>
 <tr><td style="background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;padding:14px 16px;color:#0f172a;font-size:14px;">
-{overall}Hello {esc(user.name)},{own_html}{shared_html}</td></tr>
+{overall}Hello {esc(user.name)},{own_html}{shared_html}{pending_html}</td></tr>
 {"".join(section(*g) for g in groups)}{more}{button}
 <tr><td style="padding:16px 4px 0 4px;color:#94a3b8;font-size:12px;">You can change or stop these alerts in MyFinance, More → Email alerts.</td></tr>
 </table></td></tr></table></body></html>"""
@@ -720,10 +877,18 @@ def send_alert(db: Session, user: User, alert: EmailAlert, frequency: str, now: 
     last = getattr(alert, f"last_{frequency}_sent_at")
     start = last or now - FIRST_WINDOW[frequency]
     rows = new_transactions(db, user.id, start, now)
+    pending = new_pending(db, user.id, start, now)
     sent = False
-    if rows:
+    if rows or pending:
         send_message(
-            build_message(user, alert, frequency, rows, alert_figures(db, user, rows, start))
+            build_message(
+                user,
+                alert,
+                frequency,
+                rows,
+                alert_figures(db, user, rows, start, pending),
+                pending,
+            )
         )
         sent = True
     setattr(alert, f"last_{frequency}_sent_at", now)

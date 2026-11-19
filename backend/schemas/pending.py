@@ -1,4 +1,4 @@
-"""Pending bank operations (MYF-82)."""
+"""Pending bank transactions (MYF-82)."""
 
 from typing import Literal
 

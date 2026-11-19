@@ -1,4 +1,4 @@
-"""Endpoints for pending bank operations (models.PendingTransaction, see
+"""Endpoints for pending bank transactions (models.PendingTransaction, see
 pending_transactions.py): the list, the user's edits, picking the booked
 transaction a gone row became, and dismissing it."""
 
@@ -23,7 +23,7 @@ router = APIRouter(prefix="/api/pending-transactions")
 def _get(db: Session, pending_id: int) -> PendingTransaction:
     pending = db.get(PendingTransaction, pending_id)
     if pending is None:
-        raise HTTPException(404, "Pending operation not found")
+        raise HTTPException(404, "Pending transaction not found")
     return pending
 
 
@@ -96,6 +96,6 @@ def dismiss_pending(pending_id: int, db: Session = Depends(get_db)):
     simply come back at the next sync."""
     pending = _get(db, pending_id)
     if pending.status != "to_reconcile":
-        raise HTTPException(409, "The bank still reports this operation as pending")
+        raise HTTPException(409, "The bank still reports this transaction as pending")
     db.delete(pending)
     db.commit()

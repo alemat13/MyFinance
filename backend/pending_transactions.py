@@ -1,4 +1,4 @@
-"""Operations a bank reports as pending (MYF-82).
+"""Transactions a bank reports as pending (MYF-82).
 
 A sync asks the bank for every status in one call (no extra call against the
 daily cap), imports the booked rows as before and hands the pending ones to
