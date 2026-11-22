@@ -1,6 +1,6 @@
 // How the Transactions screen starts: every filter, sort and paging setting
-// is read back from the URL (and the date order from localStorage), so a
-// link or a reload reopens the screen exactly as it was.
+// is read back from the URL, so a link or a reload reopens the screen exactly
+// as it was.
 import { HistoryGroupRef } from '../../api/client'
 import { ConditionItemRow, ConditionRow } from '../TransactionConditions'
 import { getParam } from '../../utils/urlState'
@@ -10,7 +10,8 @@ export type FilterMode = 'simple' | 'advanced'
 export const SORT_BY_VALUES = ['date', 'amount', 'payee', 'created_at'] as const
 export const SORT_DIR_VALUES = ['asc', 'desc'] as const
 export const PAGE_SIZE_VALUES = [25, 50, 100] as const
-// The date order picked with the Newest/Oldest first toggle, remembered across visits.
+// Where the date order used to be remembered across visits (MYF-85 dropped
+// that: the screen always opens newest first). Only read to clear it.
 export const SORT_DIR_STORAGE_KEY = 'transactionsSortDir'
 
 export function loadInitialMode(): FilterMode {
@@ -80,10 +81,9 @@ export function loadInitialSortBy(): typeof SORT_BY_VALUES[number] {
   return (SORT_BY_VALUES as readonly string[]).includes(val ?? '') ? (val as typeof SORT_BY_VALUES[number]) : 'date'
 }
 
+/** The URL's date order, else newest first. */
 export function loadInitialSortDir(): typeof SORT_DIR_VALUES[number] {
-  let val = getParam('sort_dir')
-  if (val === null) {
-    try { val = localStorage.getItem(SORT_DIR_STORAGE_KEY) } catch { val = null }
-  }
+  try { localStorage.removeItem(SORT_DIR_STORAGE_KEY) } catch { /* storage unavailable */ }
+  const val = getParam('sort_dir')
   return (SORT_DIR_VALUES as readonly string[]).includes(val ?? '') ? (val as typeof SORT_DIR_VALUES[number]) : 'desc'
 }
