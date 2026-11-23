@@ -32,7 +32,7 @@ import { buildCsv } from '../utils/csv'
 import { buildXlsxBlob } from '../utils/xlsx'
 import { downloadBlob } from '../utils/download'
 import {
-  FilterMode, SORT_DIR_STORAGE_KEY, loadInitialMode, loadInitialConditions, loadInitialHistoryGroup, loadInitialInt, loadInitialIds, savedIds, idsToSaved, loadInitialPageSize, loadInitialSortBy, loadInitialSortDir,
+  FilterMode, loadInitialMode, loadInitialConditions, loadInitialHistoryGroup, loadInitialInt, loadInitialIds, savedIds, idsToSaved, loadInitialPageSize, loadInitialSortBy, loadInitialSortDir,
 } from './transactions/initialState'
 import TransactionCardList from './transactions/TransactionCardList'
 import TransactionTable from './transactions/TransactionTable'
@@ -274,10 +274,6 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
     amountMin, amountMax, filterReconciled, JSON.stringify(debouncedConditions), matchMode, page, pageSize, sortBy, sortDir,
   ])
 
-  useEffect(() => {
-    try { localStorage.setItem(SORT_DIR_STORAGE_KEY, sortDir) } catch { /* storage unavailable */ }
-  }, [sortDir])
-
   const toggleSortDir = () => {
     setSortDir(d => (d === 'desc' ? 'asc' : 'desc'))
     setPage(1)
@@ -331,6 +327,15 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
       ? { mode: 'simple', filters: { ...filters, sort_dir: sortDir } }
       : null
   })()
+
+  // A date order only goes with a filter: once the last criterion is gone
+  // (Clear, or the last advanced condition removed), back to newest first.
+  const hasFilter = currentFilter !== null
+  const hadFilter = useRef(hasFilter)
+  useEffect(() => {
+    if (hadFilter.current && !hasFilter) setSortDir('desc')
+    hadFilter.current = hasFilter
+  }, [hasFilter])
 
   // Puts a saved filter back on screen, skipping the debounce so the list
   // follows at once.

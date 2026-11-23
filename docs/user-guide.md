@@ -330,8 +330,9 @@ Saving under a name that already exists replaces that filter with the one on scr
 computer, drag a saved filter's button onto another to reorder them.
 
 Results are sorted by date, newest first by default. The **Newest first** / **Oldest first**
-button at the right of the Simple/Advanced buttons flips the order; the app remembers your
-choice for your next visit on that device. Exports and "Select all N" bulk actions cover the
+button at the right of the Simple/Advanced buttons flips the order. An order only goes with a
+filter: as soon as no filter is left (**Clear**, or the last advanced condition removed), the
+list goes back to newest first, and opening Transactions always starts newest first. Exports and "Select all N" bulk actions cover the
 same rows whichever order is shown. Results are paginated (25, 50, or 100 rows per page).
 Your filters, sort order, and page are all kept in the page URL, so you can bookmark
 or share a specific search.

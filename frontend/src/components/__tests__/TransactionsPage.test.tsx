@@ -306,7 +306,7 @@ test('pagination controls change page', async () => {
   })
 })
 
-test('the date order toggle flips newest/oldest first and is remembered', async () => {
+test('the date order toggle flips newest/oldest first, and a new visit opens newest first', async () => {
   mockSearchTransactions.mockResolvedValue(searchResult([]))
   mockFetchAccounts.mockResolvedValue([baseAccount])
   mockFetchCategories.mockResolvedValue([baseCategory])
@@ -324,18 +324,21 @@ test('the date order toggle flips newest/oldest first and is remembered', async 
   })
   expect(screen.getByRole('button', { name: /Oldest first/ })).toBeInTheDocument()
   expect(window.location.search).toContain('sort_dir=asc')
-  expect(localStorage.getItem('transactionsSortDir')).toBe('asc')
+  expect(localStorage.getItem('transactionsSortDir')).toBeNull()
 
-  // A later visit without the URL parameter still opens oldest first.
+  // A later visit without the URL parameter opens newest first, even with an
+  // order left in storage by an older version.
   unmount()
   window.history.replaceState(null, '', '/')
+  localStorage.setItem('transactionsSortDir', 'asc')
   mockSearchTransactions.mockClear()
   renderWithProviders(<TransactionsPage onBack={() => {}} selectedUserId={null} onOpenCategorizer={() => {}} />)
 
   await waitFor(() => {
-    expect(mockSearchTransactions).toHaveBeenCalledWith(expect.objectContaining({ sort_dir: 'asc' }))
+    expect(mockSearchTransactions).toHaveBeenCalledWith(expect.objectContaining({ sort_dir: 'desc' }))
   })
-  expect(screen.getByRole('button', { name: /Oldest first/ })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: /Newest first/ })).toBeInTheDocument()
+  expect(localStorage.getItem('transactionsSortDir')).toBeNull()
 })
 
 test('hydrates simple-mode filters from the URL on mount', async () => {
@@ -1149,6 +1152,28 @@ test('a saved filter keeps its date order', async () => {
   expect(screen.getByRole('button', { name: 'Save filter' })).toBeDisabled()
   fireEvent.click(screen.getByRole('button', { name: /Oldest first/ }))
   expect(screen.getByRole('button', { name: 'Save filter' })).toBeEnabled()
+})
+
+test('clearing a saved filter brings the order back to newest first', async () => {
+  mockFetchSavedFilters.mockResolvedValue([savedFilter(1, 'To reconcile', { filters: {
+    search: '', date_from: '', date_to: '', account_id: 0, category_id: 0,
+    amount_min: '', amount_max: '', reconciled: 'false', sort_dir: 'asc' } })])
+  renderPage()
+  fireEvent.click(await screen.findByRole('button', { name: 'To reconcile' }))
+  expect(screen.getByRole('button', { name: /Oldest first/ })).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Clear' }))
+  expect(await screen.findByRole('button', { name: /Newest first/ })).toBeInTheDocument()
+  await waitFor(() => expect(mockSearchTransactions).toHaveBeenLastCalledWith(expect.objectContaining({ sort_dir: 'desc' })))
+})
+
+test('removing the last advanced condition brings the order back to newest first', async () => {
+  mockFetchSavedFilters.mockResolvedValue([savedFilter(1, 'Oldest', { mode: 'advanced', filters: {
+    match_mode: 'all', conditions: [{ field: 'payee', operator: 'contains', value: 'sfr', value2: '' }], sort_dir: 'asc' } })])
+  renderPage()
+  fireEvent.click(await screen.findByRole('button', { name: 'Oldest' }))
+  expect(screen.getByRole('button', { name: /Oldest first/ })).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Remove condition' }))
+  expect(await screen.findByRole('button', { name: /Newest first/ })).toBeInTheDocument()
 })
 
 test('the Tag filter searches by tag, or for transactions with none', async () => {
