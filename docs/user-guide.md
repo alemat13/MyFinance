@@ -237,6 +237,10 @@ alphabetical order.
   transaction — picking the most specific one is never required.
 - The color and icon show up as a small colored badge wherever the category appears —
   in this table, on Transactions rows, and in the Dashboard's recent transactions.
+- **Only a top-level category has a color.** A subcategory always takes its parent's:
+  its form shows that color in a dashed box instead of a color picker, and changing the
+  parent's color changes all of its subcategories at once. A subcategory moved to the
+  top level keeps the color it was showing, which you can then change.
 - Weights just need to be zero or greater, with at least one greater than zero — unlike
   ownership, there's no requirement that they add up to any particular total, since
   they're a ratio (e.g. 2:1) rather than a percentage. A subcategory does **not**
@@ -1289,7 +1293,8 @@ Two charts are shown:
   tooltip lists the month's categories biggest first, then the total.
   Click a category, in the legend or on its segment of a bar, to drill into it: the chart
   then shows its subcategories for the same date range, plus a "(directly)" segment for
-  the transactions filed on the category itself. A breadcrumb appears above the chart,
+  the transactions filed on the category itself, each in its own shade of the
+  category's color (the biggest darkest, the smallest palest). A breadcrumb appears above the chart,
   and clicking "Overview" in it returns to the top-level view. In that drilled-down view,
   clicking a subcategory (or the "(directly)" one) opens the Transactions screen on
   exactly the transactions it adds up: that category, by accounting month (the date

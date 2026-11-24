@@ -389,11 +389,8 @@ def _category_style(t: Transaction | PendingItem) -> tuple[str, str | None, str]
     """(name, icon, colour) as the app's CategoryBadge shows them."""
     if t.category is None:
         return "Uncategorized", None, UNCATEGORIZED_COLOR
-    color = (
-        t.category.color
-        if t.category.color and _HEX.match(t.category.color)
-        else DEFAULT_CATEGORY_COLOR
-    )
+    own = t.category.effective_color
+    color = own if own and _HEX.match(own) else DEFAULT_CATEGORY_COLOR
     return t.category.name, t.category.icon, color
 
 
