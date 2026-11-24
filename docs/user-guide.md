@@ -238,7 +238,7 @@ alphabetical order.
 - The color and icon show up as a small colored badge wherever the category appears —
   in this table, on Transactions rows, and in the Dashboard's recent transactions.
 - **Only a top-level category has a color.** A subcategory always takes its parent's:
-  its form shows that color in a dashed box instead of a color picker, and changing the
+  its form has no color picker, and changing the
   parent's color changes all of its subcategories at once. A subcategory moved to the
   top level keeps the color it was showing, which you can then change.
 - Weights just need to be zero or greater, with at least one greater than zero — unlike

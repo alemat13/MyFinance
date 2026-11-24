@@ -11,7 +11,6 @@ import {
   Button, Input, Select, Table, Thead, Tbody, Tr, Th, Td, StatusMessage, ConfirmDialog,
   CategoryBadge, IconPicker, ColorPicker, BackButton,
 } from './ui'
-import { DEFAULT_CATEGORY_COLOR } from '../utils/categoryColors'
 import { CATEGORY_TYPES, groupCategoriesByParent, isValidParentCandidate } from '../utils/categoryHierarchy'
 
 interface Props {
@@ -82,20 +81,9 @@ export default function CategoriesList({ onBack }: Props) {
   }
 
   // A subcategory has no colour of its own: it shows its parent's (MYF-87),
-  // so its form shows that colour, read-only, instead of a picker.
-  const colorField = (parentId: number | null | undefined, value: string | null | undefined, onChange: (color: string | null) => void) => {
-    const parent = parentId ? categories.find(x => x.id === parentId) : undefined
-    if (!parent) return <ColorPicker value={value ?? null} onChange={onChange} />
-    return (
-      <span
-        title={`Color of ${parent.name}`}
-        aria-label={`Color of ${parent.name}`}
-        className="inline-flex items-center justify-center w-8 h-8 shrink-0 rounded-md border border-dashed border-slate-300 dark:border-slate-600"
-      >
-        <span className="inline-block w-4 h-4 rounded-sm" style={{ backgroundColor: parent.color ?? DEFAULT_CATEGORY_COLOR }} />
-      </span>
-    )
-  }
+  // so its form has no colour field at all.
+  const colorField = (parentId: number | null | undefined, value: string | null | undefined, onChange: (color: string | null) => void) =>
+    parentId ? null : <ColorPicker value={value ?? null} onChange={onChange} />
 
   const renderRow = (
     c: Category,
