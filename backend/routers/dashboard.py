@@ -44,7 +44,7 @@ def get_dashboard(user_id: int | None = Query(None), db: Session = Depends(get_d
             Account.name,
             Account.currency,
             Category.name,
-            Category.color,
+            Category.effective_color,
             Category.icon,
         )
         .join(Account, Transaction.account_id == Account.id)

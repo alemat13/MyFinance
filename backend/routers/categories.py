@@ -88,7 +88,12 @@ def create_category(data: CategoryCreate, db: Session = Depends(get_db)):
     validate_weights(data.splits)
     validate_category_hierarchy(db, None, data.parent_id, data.type)
     category = Category(
-        name=data.name, type=data.type, color=data.color, icon=data.icon, parent_id=data.parent_id
+        name=data.name,
+        type=data.type,
+        # A subcategory has no colour of its own: it shows its parent's (MYF-87).
+        color=None if data.parent_id is not None else data.color,
+        icon=data.icon,
+        parent_id=data.parent_id,
     )
     db.add(category)
     db.flush()
@@ -112,8 +117,16 @@ def update_category(category_id: int, data: CategoryUpdate, db: Session = Depend
 
     if splits_data is not None:
         _sync_category_splits(db, category, data.splits)
+    former_parent = category.parent
     for field, value in update_data.items():
         setattr(category, field, value)
+    # A subcategory has no colour of its own: it shows its parent's (MYF-87).
+    # Promoted to the top level without a colour given, it keeps the one it
+    # was showing.
+    if category.parent_id is not None:
+        category.color = None
+    elif former_parent is not None and "color" not in update_data:
+        category.color = former_parent.color
     # A category's type can move it in/out of charts' Income/Expense/Transfer
     # grouping without any Transaction row changing.
     cache_service.invalidate(db, "charts")

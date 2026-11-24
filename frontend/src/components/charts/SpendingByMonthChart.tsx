@@ -6,6 +6,7 @@ import { Card } from '../ui'
 import { formatMoney } from '../../utils/currency'
 import { monthsBetween } from '../../utils/dateRange'
 import { categoryDataKey, pivotMonthCategory } from './pivotMonthCategory'
+import { categoryShades, DEFAULT_CATEGORY_COLOR } from '../../utils/categoryColors'
 import { AXIS_PROPS, GRID_STROKE, TREND_LINE, UNCATEGORIZED } from './chartTheme'
 
 interface Props {
@@ -35,6 +36,13 @@ export default function SpendingByMonthChart({
   const money = (v: number) => formatMoney(v, currency ?? '')
   const months = monthsBetween(startMonth, endMonth)
   const pivoted = pivotMonthCategory(items, categories, months)
+
+  // Subcategories all carry their parent's colour (MYF-87); split by
+  // subcategory, each gets its own shade of it, biggest (first) darkest.
+  const shades = parentCategory
+    ? categoryShades(categories.find(c => c.color)?.color ?? DEFAULT_CATEGORY_COLOR, categories.length)
+    : null
+  const colorOf = (c: ChartCategoryOut, i: number) => shades?.[i] ?? c.color ?? UNCATEGORIZED
 
   // In the overview a category opens its subcategories (plus what is filed on
   // the category itself); Uncategorized has none, so it opens its transactions,
@@ -110,13 +118,13 @@ export default function SpendingByMonthChart({
               <YAxis {...AXIS_PROPS} />
               <ReferenceLine y={0} stroke="currentColor" strokeOpacity={0.4} />
               <Tooltip content={renderTooltip} cursor={{ fill: 'currentColor', fillOpacity: 0.06 }} />
-              {categories.map(c => (
+              {categories.map((c, i) => (
                 <Bar
                   key={categoryDataKey(c.category_id)}
                   dataKey={categoryDataKey(c.category_id)}
                   name={c.name}
                   stackId="spend"
-                  fill={c.color ?? UNCATEGORIZED}
+                  fill={colorOf(c, i)}
                   maxBarSize={24}
                   cursor="pointer"
                   onClick={(entry: { payload?: { month?: string } }) => select(c.category_id, entry?.payload?.month ?? null)}
@@ -127,14 +135,14 @@ export default function SpendingByMonthChart({
           </ResponsiveContainer>
 
           <div className="flex flex-wrap gap-2 mt-3">
-            {categories.map(c => (
+            {categories.map((c, i) => (
               <button
                 key={categoryDataKey(c.category_id)}
                 type="button"
                 onClick={() => select(c.category_id, null)}
                 className="inline-flex items-center gap-1.5 text-xs rounded-full px-2 py-1 border border-transparent text-slate-600 dark:text-slate-300 cursor-pointer hover:border-slate-300 dark:hover:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800"
               >
-                <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: c.color ?? UNCATEGORIZED }} />
+                <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: colorOf(c, i) }} />
                 {c.name}
                 {parentCategory && c.category_id === parentCategory.id && (
                   <span className="text-slate-400"> (directly)</span>

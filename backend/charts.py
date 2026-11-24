@@ -90,7 +90,7 @@ def _query_rows(
             Category.id,
             Category.name,
             Category.type,
-            Category.color,
+            Category.effective_color,
             Category.icon,
             Category.parent_id,
             Account.currency,
@@ -154,7 +154,7 @@ def _build_chart_categories(
         ChartCategory(
             category_id=s,
             name=category_by_id[s].name,
-            color=category_by_id[s].color,
+            color=category_by_id[s].effective_color,
             icon=category_by_id[s].icon,
         )
         for s in ordered
