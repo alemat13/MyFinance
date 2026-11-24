@@ -90,7 +90,7 @@ def search_transactions(req: TransactionSearchRequest, db: Session = Depends(get
             Account.name,
             Account.currency,
             Category.name,
-            Category.color,
+            Category.effective_color,
             Category.icon,
         )
         .join(Account, Transaction.account_id == Account.id)

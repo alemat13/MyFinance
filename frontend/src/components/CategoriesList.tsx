@@ -80,6 +80,11 @@ export default function CategoriesList({ onBack }: Props) {
     return <StatusMessage error={error} />
   }
 
+  // A subcategory has no colour of its own: it shows its parent's (MYF-87),
+  // so its form has no colour field at all.
+  const colorField = (parentId: number | null | undefined, value: string | null | undefined, onChange: (color: string | null) => void) =>
+    parentId ? null : <ColorPicker value={value ?? null} onChange={onChange} />
+
   const renderRow = (
     c: Category,
     opts: { hasChildren?: boolean; isExpanded?: boolean; childCount?: number; indent?: boolean } = {},
@@ -95,7 +100,7 @@ export default function CategoriesList({ onBack }: Props) {
             <Td>
               <div className={`flex gap-1.5 items-center ${opts.indent ? 'pl-6' : ''}`}>
                 <IconPicker value={editData.icon ?? null} onChange={icon => setEditData({ ...editData, icon })} />
-                <ColorPicker value={editData.color ?? null} onChange={color => setEditData({ ...editData, color })} />
+                {colorField(editData.parent_id, editData.color, color => setEditData({ ...editData, color }))}
                 <Input value={editData.name ?? ''} onChange={e => setEditData({ ...editData, name: e.target.value })} />
               </div>
             </Td>
@@ -195,7 +200,7 @@ export default function CategoriesList({ onBack }: Props) {
         <div className="p-3 mb-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60">
           <div className="flex gap-2 flex-wrap items-end">
             <IconPicker value={newData.icon ?? null} onChange={icon => setNewData({ ...newData, icon })} />
-            <ColorPicker value={newData.color ?? null} onChange={color => setNewData({ ...newData, color })} />
+            {colorField(newData.parent_id, newData.color, color => setNewData({ ...newData, color }))}
             <Input placeholder="Name" value={newData.name} onChange={e => setNewData({ ...newData, name: e.target.value })} />
             <Select
               value={newData.parent_id ?? 0}

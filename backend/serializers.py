@@ -123,7 +123,7 @@ def get_transaction_out(db: Session, transaction_id: int) -> TransactionOut:
             Account.name,
             Account.currency,
             Category.name,
-            Category.color,
+            Category.effective_color,
             Category.icon,
         )
         .join(Account, Transaction.account_id == Account.id)
@@ -141,7 +141,7 @@ def build_category_out(category: Category) -> CategoryOut:
         id=category.id,
         name=category.name,
         type=category.type,
-        color=category.color,
+        color=category.effective_color,
         icon=category.icon,
         parent_id=category.parent_id,
         parent_name=category.parent.name if category.parent else None,

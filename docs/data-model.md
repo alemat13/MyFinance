@@ -173,7 +173,7 @@ Transaction categories (income, expense, transfer).
 | `id` | Integer | Primary key, autoincrement |
 | `name` | String(100) | Required, unique |
 | `type` | String(50) | Required |
-| `color` | String(7) | Optional, hex color (e.g. `#4f46e5`) shown as the category's badge color |
+| `color` | String(7) | Optional, hex color (e.g. `#4f46e5`) shown as the category's badge color. Top-level categories only: a subcategory's is `NULL` and it shows its parent's (`Category.effective_color`, MYF-87) |
 | `icon` | String(50) | Optional, `lucide-react` icon name shown as the category's badge icon |
 | `parent_id` | Integer | Optional, self-referential foreign key → `categories.id`. A strict 2-level hierarchy: a category with `parent_id` set is a subcategory, and its parent must itself have no parent. A subcategory's `type` must match its parent's |
 

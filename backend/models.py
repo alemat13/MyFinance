@@ -12,8 +12,11 @@ from sqlalchemy import (
     String,
     Text,
     TypeDecorator,
+    case,
+    select,
 )
-from sqlalchemy.orm import relationship
+from sqlalchemy.ext.hybrid import hybrid_property
+from sqlalchemy.orm import aliased, relationship
 
 from database import Base, utcnow
 
@@ -100,6 +103,25 @@ class Category(Base):
     # parent_id set is a subcategory, and its parent must itself have no
     # parent (enforced in rules.py, not at the DB level).
     parent_id = Column(Integer, ForeignKey("categories.id"), nullable=True, index=True)
+
+    # Colour is a parent's alone (MYF-87): a subcategory shows its parent's,
+    # whatever its own `color` column holds (left NULL by the API). Every
+    # read that shows a category's colour goes through this, in Python or
+    # in a query.
+    @hybrid_property
+    def effective_color(self) -> str | None:
+        if self.parent_id is not None and self.parent is not None:
+            return self.parent.color
+        return self.color
+
+    @effective_color.inplace.expression
+    @classmethod
+    def _effective_color_expression(cls):
+        parent = aliased(Category)
+        return case(
+            (cls.parent_id.is_(None), cls.color),
+            else_=select(parent.color).where(parent.id == cls.parent_id).scalar_subquery(),
+        )
 
     transactions = relationship("Transaction", back_populates="category")
     splits = relationship("CategorySplit", back_populates="category", cascade="all, delete-orphan")
