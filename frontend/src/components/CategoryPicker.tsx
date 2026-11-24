@@ -34,6 +34,7 @@ export default function CategoryPicker({
   const [expanded, setExpanded] = useState<Set<number>>(new Set())
   const [alignRight, setAlignRight] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
 
   const multi = values !== undefined
   const isSelected = (id: number | null) => multi ? id != null && values.includes(id) : value === id
@@ -66,6 +67,12 @@ export default function CategoryPicker({
     if (!open) return
     const rect = ref.current?.getBoundingClientRect()
     setAlignRight(!!rect && rect.left + MENU_WIDTH > window.innerWidth - 8)
+  }, [open])
+
+  // Inside a scrolling window (a modal's body), a menu opened near the bottom
+  // was cut off by it: scroll just enough to bring the whole menu into view.
+  useEffect(() => {
+    if (open) menuRef.current?.scrollIntoView?.({ block: 'nearest' })
   }, [open])
 
   const searching = search.trim().length > 0
@@ -123,7 +130,7 @@ export default function CategoryPicker({
         <ChevronDown size={14} className="text-slate-400 shrink-0" />
       </button>
       {open && (
-        <div className={`absolute z-10 mt-1 w-72 max-w-[calc(100vw-1rem)] ${alignRight ? 'right-0' : 'left-0'} rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-lg`}>
+        <div ref={menuRef} className={`absolute z-10 mt-1 w-72 max-w-[calc(100vw-1rem)] ${alignRight ? 'right-0' : 'left-0'} rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-lg`}>
           <div className="p-2 border-b border-slate-100 dark:border-slate-700">
             <input
               autoFocus
