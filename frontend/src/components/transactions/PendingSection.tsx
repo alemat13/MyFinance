@@ -153,7 +153,7 @@ function PendingEditModal({ pending, currency, categories, onClose, onDone }: Ed
   )
 
   return (
-    <Modal isOpen onClose={onClose} title={reconciling ? 'Transaction to reconcile' : 'Pending transaction'}>
+    <Modal isOpen size="lg" onClose={onClose} title={reconciling ? 'Transaction to reconcile' : 'Pending transaction'}>
       <div className="space-y-3 text-sm">
         <div className="flex justify-between gap-3 text-slate-600 dark:text-slate-300">
           <span>{formatDateGroupHeader(pending.date)}</span>
