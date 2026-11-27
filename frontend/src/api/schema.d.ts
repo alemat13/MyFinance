@@ -2644,6 +2644,11 @@ export interface components {
             /** Payee */
             payee: string;
             /**
+             * Split Weights
+             * @default []
+             */
+            split_weights: components["schemas"]["SplitWeightCreate"][];
+            /**
              * Status
              * @enum {string}
              */
@@ -2652,13 +2657,15 @@ export interface components {
         /**
          * PendingTransactionUpdate
          * @description The user's edits. A null field clears that edit: the bank's payee, no
-         *     category.
+         *     category, the default split tiers.
          */
         PendingTransactionUpdate: {
             /** Category Id */
             category_id?: number | null;
             /** Payee */
             payee?: string | null;
+            /** Split Weights */
+            split_weights?: components["schemas"]["SplitWeightCreate"][] | null;
         };
         /**
          * RuleActions

@@ -141,6 +141,7 @@ def write_fields(
     *,
     resplit: bool = False,
     source: str = HISTORY_SOURCE,
+    split_weights: dict[int, int] | None = None,
 ) -> bool:
     """Set the given fields on a transaction, unreconcile it and record it.
 
@@ -152,6 +153,10 @@ def write_fields(
     category was known (the bank sync): the split is resolved again through
     the usual cascade once the category is set, and recorded on the same
     history row. Never for a row somebody may have split by hand.
+
+    `split_weights` sets the row's split to those weights ('custom'), on the
+    same history row: the split a user chose on a pending row (MYF-88). It
+    wins over `resplit`.
     """
     before = {
         field: getattr(transaction, field)
@@ -166,7 +171,11 @@ def write_fields(
         for field, value in before.items()
         if value != getattr(transaction, field)
     }
-    if resplit and "category_id" in changes:
+    if split_weights:
+        splits_diff = _set_split(db, transaction, split_weights)
+        if splits_diff:
+            changes["splits"] = splits_diff
+    elif resplit and "category_id" in changes:
         splits_diff = _resplit(db, transaction)
         if splits_diff:
             changes["splits"] = splits_diff
@@ -186,6 +195,16 @@ def _resplit(db: Session, transaction) -> dict | None:
     )
     if not weights:
         return None
+    return _write_split(db, transaction, weights, source or "custom")
+
+
+def _set_split(db: Session, transaction, weights: dict[int, int]) -> dict | None:
+    """Give the row a split of its own; the diff when it moved."""
+    return _write_split(db, transaction, weights, "custom")
+
+
+def _write_split(db: Session, transaction, weights: dict[int, int], source: str) -> dict | None:
+    """Replace the row's split with `weights`; the diff when it moved."""
     # Read from the table rather than the relationship, which the caller that
     # has just written the row's first split may hold stale, flushed first
     # since that split may not even be in the table yet.
@@ -196,7 +215,6 @@ def _resplit(db: Session, transaction) -> dict | None:
             select(TransactionSplit).where(TransactionSplit.transaction_id == transaction.id)
         ).all()
     }
-    source = source or "custom"
     splits_diff = diff_splits(existing, {uid: (w, source) for uid, w in weights.items()})
     if not splits_diff:
         return None

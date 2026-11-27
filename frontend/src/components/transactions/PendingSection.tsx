@@ -1,11 +1,14 @@
-import { useEffect, useState } from 'react'
+import { ReactNode, useEffect, useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight, Clock } from 'lucide-react'
 import {
-  Account, Category, PendingTransaction,
+  Account, Category, GlobalSplitWeight, PendingTransaction, SplitSource, User,
   dismissPendingTransaction, fetchPendingTransactions, reconcilePendingTransaction, updatePendingTransaction,
 } from '../../api/client'
 import { Badge, Button, CategoryBadge, Input, Modal } from '../ui'
 import CategoryPicker from '../CategoryPicker'
+import TransactionSplitFields from '../TransactionSplitFields'
+import { SplitRow } from '../SplitEditor'
+import { resolveDefaultSplitRows } from '../../utils/splitWeights'
 import { formatMoney } from '../../utils/currency'
 import { formatDateGroupHeader } from '../../utils/transactions'
 import { useToast } from '../../context/ToastContext'
@@ -16,6 +19,8 @@ interface Props {
   accountIds: number[]
   accounts: Account[]
   categories: Category[]
+  users: User[]
+  globalWeights: GlobalSplitWeight[]
   // Called after a pending row's edits went to a transaction, which the page
   // then reloads.
   onTransactionsChanged: () => void
@@ -27,7 +32,9 @@ const HATCH = 'bg-[repeating-linear-gradient(135deg,transparent_0,transparent_6p
 /** Pending bank transactions above the transaction list (MYF-82): greyed,
  *  hatched, outside every balance, with the projected balance when one
  *  account is shown. */
-export default function PendingSection({ accountIds, accounts, categories, onTransactionsChanged }: Props) {
+export default function PendingSection({
+  accountIds, accounts, categories, users, globalWeights, onTransactionsChanged,
+}: Props) {
   const [rows, setRows] = useState<PendingTransaction[]>([])
   const [open, setOpen] = useState(true)
   const [editing, setEditing] = useState<PendingTransaction | null>(null)
@@ -106,8 +113,10 @@ export default function PendingSection({ accountIds, accounts, categories, onTra
       {editing && (
         <PendingEditModal
           pending={editing}
-          currency={accountOf(editing.account_id)?.currency ?? 'EUR'}
+          account={accountOf(editing.account_id) ?? null}
           categories={categories}
+          users={users}
+          globalWeights={globalWeights}
           onClose={() => setEditing(null)}
           onDone={changedTransactions => {
             setEditing(null)
@@ -122,15 +131,41 @@ export default function PendingSection({ accountIds, accounts, categories, onTra
 
 interface EditProps {
   pending: PendingTransaction
-  currency: string
+  account: Account | null
   categories: Category[]
+  users: User[]
+  globalWeights: GlobalSplitWeight[]
   onClose: () => void
   onDone: (changedTransactions: boolean) => void
 }
 
-function PendingEditModal({ pending, currency, categories, onClose, onDone }: EditProps) {
+const sameSplit = (a: SplitRow[], b: SplitRow[]) => {
+  const key = (rows: SplitRow[]) => rows.filter(r => r.value > 0).map(r => `${r.user_id}:${r.value}`).sort().join(',')
+  return key(a) === key(b)
+}
+
+function PendingEditModal({ pending, account, categories, users, globalWeights, onClose, onDone }: EditProps) {
+  const currency = account?.currency ?? 'EUR'
   const [payee, setPayee] = useState(pending.payee)
   const [categoryId, setCategoryId] = useState<number | null>(pending.category_id ?? null)
+  const category = categories.find(c => c.id === categoryId) ?? null
+  // What the booked row gets when no split is set here: the usual tiers.
+  const defaultSplit = useMemo(
+    () => resolveDefaultSplitRows(category, account, globalWeights),
+    [category, account, globalWeights],
+  )
+  const ownSplit = pending.split_weights.length > 0
+  const [split, setSplit] = useState<SplitRow[]>(() => ownSplit
+    ? pending.split_weights.map(w => ({ user_id: w.user_id, value: w.weight }))
+    : defaultSplit.rows)
+  const [splitSource, setSplitSource] = useState<SplitSource | null>(ownSplit ? 'custom' : defaultSplit.source)
+  // Like a new transaction: the split follows the category until edited by hand.
+  useEffect(() => {
+    if (splitSource === 'custom') return
+    setSplit(defaultSplit.rows)
+    setSplitSource(defaultSplit.source)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaultSplit])
   const [busy, setBusy] = useState(false)
   const { showToast } = useToast()
   const reconciling = pending.status === 'to_reconcile'
@@ -147,9 +182,46 @@ function PendingEditModal({ pending, currency, categories, onClose, onDone }: Ed
     }
   }
 
-  const save = () => run(
-    () => updatePendingTransaction(pending.id, { payee: payee.trim() || null, category_id: categoryId }),
-    false, 'Kept for when the bank books it',
+  const saveEdits = () => {
+    if (split.length > 0 && !split.some(r => r.value > 0)) {
+      return Promise.reject(new Error('At least one weight must be greater than 0'))
+    }
+    return updatePendingTransaction(pending.id, {
+      payee: payee.trim() || null,
+      category_id: categoryId,
+      // Only a split that differs from the tiers is kept: an untouched one
+      // keeps following the category, as for any synced transaction.
+      split_weights: split.length === 0 || sameSplit(split, defaultSplit.rows)
+        ? null
+        : split.filter(r => r.value > 0).map(r => ({ user_id: r.user_id, weight: r.value })),
+    })
+  }
+
+  const save = () => run(saveEdits, false, 'Kept for when the bank books it')
+
+  const fields = (
+    <>
+      <label className="block">
+        <span className="block mb-1 text-slate-600 dark:text-slate-300">Payee</span>
+        <Input value={payee} onChange={e => setPayee(e.target.value)} className="w-full" maxLength={200} />
+      </label>
+      <label className="block">
+        <span className="block mb-1 text-slate-600 dark:text-slate-300">Category</span>
+        <CategoryPicker categories={categories} value={categoryId} onChange={setCategoryId} className="w-full" />
+      </label>
+      <TransactionSplitFields
+        rows={split}
+        onChange={setSplit}
+        amount={pending.amount}
+        currency={currency}
+        allUsers={users}
+        account={account}
+        category={category}
+        globalWeights={globalWeights}
+        source={splitSource}
+        onSourceChange={setSplitSource}
+      />
+    </>
   )
 
   return (
@@ -164,8 +236,11 @@ function PendingEditModal({ pending, currency, categories, onClose, onDone }: Ed
         </div>
 
         {reconciling ? (
-          <ReconcileChoices pending={pending} currency={currency} busy={busy}
-            onPick={id => run(() => reconcilePendingTransaction(pending.id, id), true, 'Changes applied to the transaction')}
+          <ReconcileChoices pending={pending} currency={currency} busy={busy} fields={fields}
+            onPick={id => run(
+              async () => { await saveEdits(); await reconcilePendingTransaction(pending.id, id) },
+              true, 'Changes applied to the transaction',
+            )}
             onDismiss={() => run(() => dismissPendingTransaction(pending.id), false, 'Pending transaction dismissed')}
           />
         ) : (
@@ -173,14 +248,7 @@ function PendingEditModal({ pending, currency, categories, onClose, onDone }: Ed
             <p className="text-slate-500 dark:text-slate-400">
               Not in any balance yet. What you set here goes to the transaction once the bank books it.
             </p>
-            <label className="block">
-              <span className="block mb-1 text-slate-600 dark:text-slate-300">Payee</span>
-              <Input value={payee} onChange={e => setPayee(e.target.value)} className="w-full" maxLength={200} />
-            </label>
-            <label className="block">
-              <span className="block mb-1 text-slate-600 dark:text-slate-300">Category</span>
-              <CategoryPicker categories={categories} value={categoryId} onChange={setCategoryId} className="w-full" />
-            </label>
+            {fields}
             <div className="flex justify-end gap-2 pt-1">
               <Button variant="secondary" onClick={onClose} disabled={busy}>Cancel</Button>
               <Button onClick={save} disabled={busy}>Save</Button>
@@ -192,10 +260,11 @@ function PendingEditModal({ pending, currency, categories, onClose, onDone }: Ed
   )
 }
 
-function ReconcileChoices({ pending, currency, busy, onPick, onDismiss }: {
+function ReconcileChoices({ pending, currency, busy, fields, onPick, onDismiss }: {
   pending: PendingTransaction
   currency: string
   busy: boolean
+  fields: ReactNode
   onPick: (transactionId: number) => void
   onDismiss: () => void
 }) {
@@ -203,9 +272,9 @@ function ReconcileChoices({ pending, currency, busy, onPick, onDismiss }: {
     <>
       <p className="text-slate-500 dark:text-slate-400">
         The bank no longer shows this transaction as pending, and it could not tell which booked transaction it became.
-        Pick it to apply your changes{pending.category_id != null || pending.payee !== pending.bank_payee ? ` (${pending.payee})` : ''},
-        or dismiss it if it was cancelled.
+        Pick it to apply what is set below, or dismiss it if it was cancelled.
       </p>
+      {fields}
       {pending.candidates.length === 0 ? (
         <p className="italic text-slate-500">No transaction of this account matches yet.</p>
       ) : (

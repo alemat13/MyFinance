@@ -9,12 +9,14 @@ from sqlalchemy.orm import Session
 import audit
 import pending_transactions
 from database import get_db
-from models import Category, PendingTransaction, Transaction
+from models import Category, PendingTransaction, Transaction, User
+from rules import validate_weights
 from schemas import (
     PendingCandidateOut,
     PendingReconcileRequest,
     PendingTransactionOut,
     PendingTransactionUpdate,
+    SplitWeightCreate,
 )
 
 router = APIRouter(prefix="/api/pending-transactions")
@@ -42,6 +44,10 @@ def _out(db: Session, pending: PendingTransaction) -> PendingTransactionOut:
         bank_payee=pending.payee,
         memo=pending.memo,
         category_id=pending.user_category_id,
+        split_weights=[
+            SplitWeightCreate(user_id=uid, weight=w)
+            for uid, w in pending_transactions.split_weights(db, pending).items()
+        ],
         status=pending.status,
         edited=pending_transactions.has_edits(pending),
         candidates=[
@@ -69,6 +75,14 @@ def update_pending(pending_id: int, data: PendingTransactionUpdate, db: Session 
     payee = (data.payee or "").strip()
     pending.user_payee = payee if payee and payee != pending.payee else None
     pending.user_category_id = data.category_id
+    if data.split_weights:
+        validate_weights(data.split_weights)
+        ids = {w.user_id for w in data.split_weights}
+        if len(set(db.scalars(select(User.id).where(User.id.in_(ids))).all())) != len(ids):
+            raise HTTPException(422, "User not found")
+        pending.user_split = {str(w.user_id): w.weight for w in data.split_weights if w.weight > 0}
+    else:
+        pending.user_split = None
     db.commit()
     db.refresh(pending)
     return _out(db, pending)

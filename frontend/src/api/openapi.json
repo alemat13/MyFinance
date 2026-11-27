@@ -4016,6 +4016,14 @@
             "title": "Payee",
             "type": "string"
           },
+          "split_weights": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SplitWeightCreate"
+            },
+            "title": "Split Weights",
+            "type": "array"
+          },
           "status": {
             "enum": [
               "pending",
@@ -4034,6 +4042,7 @@
           "bank_payee",
           "memo",
           "category_id",
+          "split_weights",
           "status",
           "edited",
           "candidates"
@@ -4042,7 +4051,7 @@
         "type": "object"
       },
       "PendingTransactionUpdate": {
-        "description": "The user's edits. A null field clears that edit: the bank's payee, no\ncategory.",
+        "description": "The user's edits. A null field clears that edit: the bank's payee, no\ncategory, the default split tiers.",
         "properties": {
           "category_id": {
             "anyOf": [
@@ -4066,6 +4075,20 @@
               }
             ],
             "title": "Payee"
+          },
+          "split_weights": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SplitWeightCreate"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Split Weights"
           }
         },
         "title": "PendingTransactionUpdate",

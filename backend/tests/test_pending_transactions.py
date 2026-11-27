@@ -12,6 +12,7 @@ from models import (
     PendingTransaction,
     Transaction,
     TransactionHistory,
+    TransactionSplit,
 )
 from tests.test_bank_sync import (  # noqa: F401  (fixtures)
     _booked,
@@ -272,3 +273,98 @@ def test_update_rejects_unknown_category_and_clears_edits(
     assert client.put(url, json={"payee": "Y"}).json()["payee"] == "Y"
     cleared = client.put(url, json={"payee": None}).json()
     assert (cleared["payee"], cleared["edited"]) == ("X", False)
+
+
+def _weights(db, transaction_id):
+    return {
+        s.user_id: (s.weight, s.source)
+        for s in db.query(TransactionSplit).filter_by(transaction_id=transaction_id).all()
+    }
+
+
+def test_split_set_on_pending_row_goes_to_the_booked_row(
+    client, db, bank, linked_connection, global_weights, sample_user2, groceries
+):
+    """MYF-88: the user's split wins over the category and global tiers, on
+    the same history row as the other edits."""
+    me = global_weights
+    bank["rows"] = [_pending("40.00", "DBIT", TODAY, entry_reference="p1")]
+    _sync(db, linked_connection)
+    pending = _all_pending(db)[0]
+    url = f"/api/pending-transactions/{pending.id}"
+    body = client.put(
+        url,
+        json={
+            "category_id": groceries.id,
+            "split_weights": [
+                {"user_id": me.id, "weight": 1},
+                {"user_id": sample_user2.id, "weight": 3},
+            ],
+        },
+    ).json()
+    assert body["edited"] is True
+    assert {w["user_id"]: w["weight"] for w in body["split_weights"]} == {
+        me.id: 1,
+        sample_user2.id: 3,
+    }
+
+    bank["rows"] = [_booked("40.00", "DBIT", TODAY.isoformat(), entry_reference="p1")]
+    _sync(db, linked_connection)
+
+    assert _all_pending(db) == []
+    booked = db.query(Transaction).one()
+    assert booked.category_id == groceries.id
+    assert _weights(db, booked.id) == {me.id: (1, "custom"), sample_user2.id: (3, "custom")}
+    shares = {
+        s.user_id: s.share_amount
+        for s in db.query(TransactionSplit).filter_by(transaction_id=booked.id)
+    }
+    assert shares == {me.id: -10.0, sample_user2.id: -30.0}
+    (carried,) = (
+        db.query(TransactionHistory).filter_by(transaction_id=booked.id, source="pending").all()
+    )
+    assert "splits" in carried.changes and "category_id" in carried.changes
+
+
+def test_split_alone_is_an_edit_and_survives_manual_reconcile(
+    client, db, bank, linked_connection, global_weights, sample_user2
+):
+    me = global_weights
+    bank["rows"] = [_pending("0.58", "DBIT", TODAY, entry_reference="p")]
+    _sync(db, linked_connection)
+    pending = _all_pending(db)[0]
+    client.put(
+        f"/api/pending-transactions/{pending.id}",
+        json={"split_weights": [{"user_id": sample_user2.id, "weight": 1}]},
+    )
+    bank["rows"] = [
+        _booked("0.58", "DBIT", TODAY.isoformat(), entry_reference="b1"),
+        _booked("0.58", "DBIT", TODAY.isoformat(), entry_reference="b2"),
+    ]
+    _sync(db, linked_connection)
+
+    (listed,) = client.get("/api/pending-transactions").json()
+    assert listed["status"] == "to_reconcile"
+    target = listed["candidates"][0]["id"]
+    assert _weights(db, target) == {me.id: (1, "global")}
+    client.post(
+        f"/api/pending-transactions/{listed['id']}/reconcile", json={"transaction_id": target}
+    )
+    db.expire_all()
+    assert _weights(db, target) == {sample_user2.id: (1, "custom")}
+
+
+def test_split_validation_and_clearing(client, db, bank, linked_connection, global_weights):
+    bank["rows"] = [_pending("9.00", "DBIT", TODAY, entry_reference="p1")]
+    _sync(db, linked_connection)
+    url = f"/api/pending-transactions/{_all_pending(db)[0].id}"
+    me = global_weights.id
+    assert (
+        client.put(url, json={"split_weights": [{"user_id": me, "weight": 0}]}).status_code == 422
+    )
+    assert (
+        client.put(url, json={"split_weights": [{"user_id": 999, "weight": 1}]}).status_code == 422
+    )
+    assert client.put(url, json={"split_weights": [{"user_id": me, "weight": 2}]}).json()["edited"]
+    cleared = client.put(url, json={"split_weights": []}).json()
+    assert (cleared["split_weights"], cleared["edited"]) == ([], False)

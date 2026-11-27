@@ -16,7 +16,8 @@ daily cap), imports the booked rows as before and hands the pending ones to
   dropped after RECONCILE_KEEP_DAYS.
 
 Pending rows are in no balance, split, history, aggregate or backup: they
-are the bank's provisional view, rebuilt at every sync.
+are the bank's provisional view, rebuilt at every sync. The split a user sets
+on one waits in `user_split` and becomes the booked row's own (MYF-88).
 """
 
 from datetime import timedelta
@@ -28,7 +29,7 @@ import audit
 import auto_categorize
 import cache_service
 from database import utcnow
-from models import PendingTransaction, Transaction
+from models import PendingTransaction, Transaction, User
 
 HISTORY_SOURCE = "pending"
 # How far apart the pending row's date and the booked row's date may be: a
@@ -42,7 +43,21 @@ _SEEN_SLACK = timedelta(minutes=5)
 
 
 def has_edits(pending: PendingTransaction) -> bool:
-    return pending.user_payee is not None or pending.user_category_id is not None
+    return (
+        pending.user_payee is not None
+        or pending.user_category_id is not None
+        or bool(pending.user_split)
+    )
+
+
+def split_weights(db: Session, pending: PendingTransaction) -> dict[int, int]:
+    """The user's split as {user_id: weight}, users deleted since dropped;
+    empty when none is set or none of its users is left."""
+    if not pending.user_split:
+        return {}
+    weights = {int(uid): int(w) for uid, w in pending.user_split.items() if int(w) > 0}
+    known = set(db.scalars(select(User.id).where(User.id.in_(weights))).all())
+    return {uid: w for uid, w in weights.items() if uid in known}
 
 
 def candidates(db: Session, pending: PendingTransaction, *, any_amount: bool = False) -> list:
@@ -89,18 +104,27 @@ def apply_edits(
     resplit: bool = True,
 ) -> bool:
     """Carry the user's edits over to the booked transaction, with a history
-    row. `resplit` (a row just imported by this sync) resolves its split again
-    for the new category, as a sync would (MYF-76); never for a row the user
-    picked by hand, which they may have split themselves."""
+    row. The split the user chose on the pending row, if any, becomes the
+    transaction's own (MYF-88). Without one, `resplit` (a row just imported by
+    this sync) resolves its split again for the new category, as a sync would
+    (MYF-76); never for a row the user picked by hand, which they may have
+    split themselves."""
     fields: dict = {}
     if pending.user_payee is not None:
         fields["payee"] = pending.user_payee
     if pending.user_category_id is not None:
         fields["category_id"] = pending.user_category_id
-    if not fields:
+    weights = split_weights(db, pending)
+    if not fields and not weights:
         return False
     changed = auto_categorize.write_fields(
-        db, transaction, fields, actor_user_id, resplit=resplit, source=HISTORY_SOURCE
+        db,
+        transaction,
+        fields,
+        actor_user_id,
+        resplit=resplit,
+        source=HISTORY_SOURCE,
+        split_weights=weights or None,
     )
     if changed:
         cache_service.invalidate(db, "balances", "charts", "account_totals", "category_usage")
