@@ -294,7 +294,9 @@ def new_pending(db: Session, user_id: int, start: datetime, end: datetime) -> li
         a.id: a
         for a in db.scalars(select(Account).where(Account.id.in_({r.account_id for r in rows})))
     }
-    category_ids = {r.user_category_id for r in rows if r.user_category_id is not None}
+    # The user's payee/category, else what the model and rules suggest (MYF-88).
+    category_of = {r.id: r.user_category_id or r.suggested_category_id for r in rows}
+    category_ids = {c for c in category_of.values() if c is not None}
     categories = (
         {c.id: c for c in db.scalars(select(Category).where(Category.id.in_(category_ids)))}
         if category_ids
@@ -305,9 +307,9 @@ def new_pending(db: Session, user_id: int, start: datetime, end: datetime) -> li
             id=r.id,
             account_id=r.account_id,
             account=accounts.get(r.account_id),
-            category=categories.get(r.user_category_id) if r.user_category_id is not None else None,
+            category=categories.get(category_of[r.id]) if category_of[r.id] is not None else None,
             date=r.date,
-            payee=r.user_payee or r.payee,
+            payee=r.user_payee or r.suggested_payee or r.payee,
             amount=r.amount,
             memo=r.memo,
         )

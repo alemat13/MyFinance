@@ -541,6 +541,8 @@ export default function TransactionsPage({ onBack, selectedUserId, onOpenCategor
           accountIds={filterAccountIds.length > 0 ? filterAccountIds : accounts.map(a => a.id)}
           accounts={allAccounts}
           categories={categories}
+          users={allUsers}
+          globalWeights={globalWeights}
           onTransactionsChanged={loadTransactions}
         />
       )}

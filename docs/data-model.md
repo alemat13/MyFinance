@@ -401,6 +401,8 @@ Operations a bank reports as pending (ISO status `PDNG`), reloaded at every sync
 | `external_id` | String(120) | The bank's `entry_reference`/`transaction_id`, else an `fp:` fingerprint. Unique per link |
 | `date` / `amount` / `payee` / `memo` | Date / NUMERIC(12,2) / String(200) / Text | As the bank reports them, refreshed at every sync |
 | `user_payee` / `user_category_id` | String(200) / Integer | Nullable. The user's edits, never touched by a sync; carried over to the booked transaction. `user_category_id` → `categories.id`, `ON DELETE SET NULL` |
+| `user_split` | JSON | Nullable. The user's own split, `{"<user_id>": weight}` (MYF-88, Alembic `0030`); becomes the booked transaction's `custom` split. NULL = the default tiers. A deleted user's entry is ignored |
+| `suggested_payee` / `suggested_category_id` / `suggested_split` | String(200) / Integer / JSON | Nullable. What the active categorisation model and the automatic rules make of the row, worked out again at every sync (MYF-88, Alembic `0030`). Shown while the user hasn't set their own, never carried over (the booked row runs the model and rules on its own wording). `suggested_category_id` → `categories.id`, `ON DELETE SET NULL` |
 | `status` | String(20) | `pending` while reported; `to_reconcile` once gone with edits no single transaction could take |
 | `first_seen_at` / `last_seen_at` | DateTime | First and latest sync that reported it |
 | `missing_since` | DateTime | Nullable; when the bank stopped reporting it (`to_reconcile` only). Dropped 14 days later |

@@ -9,12 +9,14 @@ from sqlalchemy.orm import Session
 import audit
 import pending_transactions
 from database import get_db
-from models import Category, PendingTransaction, Transaction
+from models import Category, PendingTransaction, Transaction, User
+from rules import validate_weights
 from schemas import (
     PendingCandidateOut,
     PendingReconcileRequest,
     PendingTransactionOut,
     PendingTransactionUpdate,
+    SplitWeightCreate,
 )
 
 router = APIRouter(prefix="/api/pending-transactions")
@@ -38,10 +40,21 @@ def _out(db: Session, pending: PendingTransaction) -> PendingTransactionOut:
         account_id=pending.account_id,
         date=pending.date,
         amount=pending.amount,
-        payee=pending.user_payee or pending.payee,
+        payee=pending.user_payee or pending.suggested_payee or pending.payee,
         bank_payee=pending.payee,
         memo=pending.memo,
+        user_payee=pending.user_payee,
         category_id=pending.user_category_id,
+        split_weights=[
+            SplitWeightCreate(user_id=uid, weight=w)
+            for uid, w in pending_transactions.split_weights(db, pending).items()
+        ],
+        suggested_payee=pending.suggested_payee,
+        suggested_category_id=pending.suggested_category_id,
+        suggested_split_weights=[
+            SplitWeightCreate(user_id=uid, weight=w)
+            for uid, w in pending_transactions.split_weights(db, pending, suggested=True).items()
+        ],
         status=pending.status,
         edited=pending_transactions.has_edits(pending),
         candidates=[
@@ -67,8 +80,19 @@ def update_pending(pending_id: int, data: PendingTransactionUpdate, db: Session 
     if data.category_id is not None and db.get(Category, data.category_id) is None:
         raise HTTPException(422, "Category not found")
     payee = (data.payee or "").strip()
-    pending.user_payee = payee if payee and payee != pending.payee else None
+    # The wording shown by default (the suggestion's, else the bank's) is not
+    # an edit: the booked row works its own out.
+    shown = pending.suggested_payee or pending.payee
+    pending.user_payee = payee if payee and payee != shown else None
     pending.user_category_id = data.category_id
+    if data.split_weights:
+        validate_weights(data.split_weights)
+        ids = {w.user_id for w in data.split_weights}
+        if len(set(db.scalars(select(User.id).where(User.id.in_(ids))).all())) != len(ids):
+            raise HTTPException(422, "User not found")
+        pending.user_split = {str(w.user_id): w.weight for w in data.split_weights if w.weight > 0}
+    else:
+        pending.user_split = None
     db.commit()
     db.refresh(pending)
     return _out(db, pending)
