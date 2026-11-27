@@ -906,7 +906,7 @@ export function fetchPendingTransactions(accountIds: number[]): Promise<PendingT
 }
 
 export function updatePendingTransaction(
-  id: number, data: { payee: string | null; category_id: number | null },
+  id: number, data: Schemas['PendingTransactionUpdate'],
 ): Promise<PendingTransaction> {
   return request<PendingTransaction>(`/pending-transactions/${id}`, { method: 'PUT', body: JSON.stringify(data) })
 }

@@ -499,7 +499,8 @@ class PendingTransaction(Base):
     pre-authorisation (MYF-82).
 
     Kept out of `transactions` on purpose: a pending row is the bank's
-    provisional view, replaced at every sync. It is in no balance, split,
+    provisional view, replaced at every sync. It is in no balance, split
+    (the user's chosen weights wait in `user_split`),
     history, aggregate or backup. Rows the bank stops reporting are deleted
     (booked, or a cancelled pre-authorisation), unless the user edited them:
     those edits are carried over to the booked transaction when it can be
@@ -532,6 +533,18 @@ class PendingTransaction(Base):
     user_category_id = Column(
         Integer, ForeignKey("categories.id", ondelete="SET NULL"), nullable=True
     )
+    # The user's own split, {"<user_id>": weight} (MYF-88). NULL = the
+    # default cascade (account > category > global) once booked.
+    user_split = Column(JSON, nullable=True)
+    # What the active categorisation model and the automatic rules would do
+    # with it, worked out again at every sync (MYF-88). Shown while the user
+    # hasn't set their own; never carried over: the booked row runs the model
+    # and the rules on its own wording.
+    suggested_payee = Column(String(200), nullable=True)
+    suggested_category_id = Column(
+        Integer, ForeignKey("categories.id", ondelete="SET NULL"), nullable=True
+    )
+    suggested_split = Column(JSON, nullable=True)
     # 'pending' while the bank reports it; 'to_reconcile' once it has gone
     # with edits that could not be carried over on their own.
     status = Column(String(20), nullable=False, default="pending")

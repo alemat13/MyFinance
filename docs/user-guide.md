@@ -639,7 +639,15 @@ shows the **Projected balance**: the account's balance plus what is still pendin
 Some banks don't hand their scheduled direct debits to open banking at all, even when
 their own app shows them as upcoming, so the box shows only what the bank sends.
 
-Click a pending transaction to set its **payee** and **category** ahead of time. When the
+Click a pending transaction to set its **payee**, **category** and **split** ahead of time
+(the split works as on any transaction: quick-fill buttons, weights per person, each
+person's share shown; left alone, it follows the category).
+
+If you use [automatic categorisation](#auto-categorization) or automatic rules, a pending
+transaction already shows what they suggest (payee, category, split), marked with a small
+sparkle. A suggestion is only a preview: what you change in the window is yours and wins;
+what you leave as suggested is worked out again on the booked transaction, whose bank wording
+is often cleaner. When the
 bank books it, MyFinance finds the booked transaction it became and applies your changes there
 (they show in [History](#history) as *Pending transaction*):
 
@@ -648,7 +656,8 @@ bank books it, MyFinance finds the booked transaction it became and applies your
 - otherwise by the same amount within a week, provided exactly one new transaction fits.
 
 When it can't tell for sure, the pending transaction stays in the box marked **To reconcile**:
-open it, then pick the right transaction with **This one**, or **Dismiss** it if it was
+open it, adjust the payee, category or split if needed, then pick the right transaction
+with **This one**, or **Dismiss** it if it was
 cancelled. One left alone disappears after two weeks. A pending transaction you never
 edited simply disappears once the bank stops reporting it, whether it was booked or
 cancelled (a released deposit, for example).
