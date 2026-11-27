@@ -2653,6 +2653,17 @@ export interface components {
              * @enum {string}
              */
             status: "pending" | "to_reconcile";
+            /** Suggested Category Id */
+            suggested_category_id: number | null;
+            /** Suggested Payee */
+            suggested_payee: string | null;
+            /**
+             * Suggested Split Weights
+             * @default []
+             */
+            suggested_split_weights: components["schemas"]["SplitWeightCreate"][];
+            /** User Payee */
+            user_payee: string | null;
         };
         /**
          * PendingTransactionUpdate

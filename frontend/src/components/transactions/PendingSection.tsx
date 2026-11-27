@@ -1,5 +1,5 @@
 import { ReactNode, useEffect, useMemo, useState } from 'react'
-import { ChevronDown, ChevronRight, Clock } from 'lucide-react'
+import { ChevronDown, ChevronRight, Clock, Sparkles } from 'lucide-react'
 import {
   Account, Category, GlobalSplitWeight, PendingTransaction, SplitSource, User,
   dismissPendingTransaction, fetchPendingTransactions, reconcilePendingTransaction, updatePendingTransaction,
@@ -82,7 +82,10 @@ export default function PendingSection({
         <ul className="border-t border-dashed border-slate-300 dark:border-slate-600">
           {rows.map(r => {
             const account = accountOf(r.account_id)
-            const category = r.category_id != null ? categories.find(c => c.id === r.category_id) : undefined
+            // The user's category, else the suggestion of the model or the rules.
+            const shownCategoryId = r.category_id ?? r.suggested_category_id
+            const category = shownCategoryId != null ? categories.find(c => c.id === shownCategoryId) : undefined
+            const suggested = r.category_id == null && category != null
             return (
               <li key={r.id}>
                 <button
@@ -99,6 +102,11 @@ export default function PendingSection({
                         ? <Badge>Pending</Badge>
                         : <Badge variant="warning">To reconcile</Badge>}
                       {category && <CategoryBadge name={category.name} color={category.color} icon={category.icon} />}
+                      {suggested && (
+                        <span title="Suggested automatically" aria-label="Suggested automatically" className="text-slate-400">
+                          <Sparkles size={12} />
+                        </span>
+                      )}
                     </div>
                   </div>
                   <span className={`shrink-0 font-medium tabular-nums ${r.amount < 0 ? 'text-slate-500 dark:text-slate-400' : 'text-positive/70'}`}>
@@ -147,12 +155,18 @@ const sameSplit = (a: SplitRow[], b: SplitRow[]) => {
 function PendingEditModal({ pending, account, categories, users, globalWeights, onClose, onDone }: EditProps) {
   const currency = account?.currency ?? 'EUR'
   const [payee, setPayee] = useState(pending.payee)
-  const [categoryId, setCategoryId] = useState<number | null>(pending.category_id ?? null)
+  const suggestedCategoryId = pending.suggested_category_id ?? null
+  const [categoryId, setCategoryId] = useState<number | null>(pending.category_id ?? suggestedCategoryId)
   const category = categories.find(c => c.id === categoryId) ?? null
-  // What the booked row gets when no split is set here: the usual tiers.
+  const categorySuggested = pending.category_id == null && categoryId != null && categoryId === suggestedCategoryId
+  // What the booked row gets when no split is set here: the split a rule
+  // suggests, else the usual tiers.
+  const suggestedSplit = pending.suggested_split_weights
   const defaultSplit = useMemo(
-    () => resolveDefaultSplitRows(category, account, globalWeights),
-    [category, account, globalWeights],
+    () => suggestedSplit.length > 0
+      ? { rows: suggestedSplit.map(w => ({ user_id: w.user_id, value: w.weight })), source: null }
+      : resolveDefaultSplitRows(category, account, globalWeights),
+    [suggestedSplit, category, account, globalWeights],
   )
   const ownSplit = pending.split_weights.length > 0
   const [split, setSplit] = useState<SplitRow[]>(() => ownSplit
@@ -188,7 +202,9 @@ function PendingEditModal({ pending, account, categories, users, globalWeights, 
     }
     return updatePendingTransaction(pending.id, {
       payee: payee.trim() || null,
-      category_id: categoryId,
+      // Keeping the suggested category is no edit: the booked row gets the
+      // model's and the rules' own answer on its final wording.
+      category_id: categorySuggested ? null : categoryId,
       // Only a split that differs from the tiers is kept: an untouched one
       // keeps following the category, as for any synced transaction.
       split_weights: split.length === 0 || sameSplit(split, defaultSplit.rows)
@@ -209,6 +225,12 @@ function PendingEditModal({ pending, account, categories, users, globalWeights, 
         <span className="block mb-1 text-slate-600 dark:text-slate-300">Category</span>
         <CategoryPicker categories={categories} value={categoryId} onChange={setCategoryId} className="w-full" />
       </label>
+      {(categorySuggested || (pending.user_payee == null && pending.suggested_payee != null) || suggestedSplit.length > 0) && (
+        <p className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400" data-testid="suggestion-note">
+          <Sparkles size={12} className="shrink-0" />
+          Suggested automatically. Change anything to make it yours; the rest is worked out again once booked.
+        </p>
+      )}
       <TransactionSplitFields
         rows={split}
         onChange={setSplit}

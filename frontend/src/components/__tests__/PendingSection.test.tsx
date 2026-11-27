@@ -2,7 +2,7 @@ import { test, expect, vi, beforeEach } from 'vitest'
 import { screen, fireEvent, waitFor } from '@testing-library/react'
 import { renderWithProviders } from '../../test-utils'
 import PendingSection from '../transactions/PendingSection'
-import { Account, GlobalSplitWeight, PendingTransaction, User } from '../../api/client'
+import { Account, Category, GlobalSplitWeight, PendingTransaction, User } from '../../api/client'
 
 const { mockFetch, mockUpdate, mockReconcile, mockDismiss } = vi.hoisted(() => ({
   mockFetch: vi.fn(),
@@ -24,14 +24,19 @@ const globalWeights = [{ user_id: 1, weight: 1 }, { user_id: 2, weight: 1 }] as 
 
 const pending = (id: number, payee: string, amount: number, extra: Partial<PendingTransaction> = {}): PendingTransaction => ({
   id, account_id: 1, date: '2026-11-18', amount, payee, bank_payee: payee, memo: null, category_id: null,
-  status: 'pending', edited: false, candidates: [], split_weights: [], ...extra,
+  status: 'pending', edited: false, candidates: [], split_weights: [],
+  user_payee: null, suggested_payee: null, suggested_category_id: null, suggested_split_weights: [], ...extra,
 })
 
 beforeEach(() => { vi.clearAllMocks() })
 
+const categories = [
+  { id: 7, name: 'Theatre', color: '#f00', icon: null, splits: [], type: 'Expense', parent_id: null },
+] as unknown as Category[]
+
 const renderSection = (onChanged = vi.fn()) => renderWithProviders(
   <PendingSection
-    accountIds={[1]} accounts={[account]} categories={[]} users={users} globalWeights={globalWeights}
+    accountIds={[1]} accounts={[account]} categories={categories} users={users} globalWeights={globalWeights}
     onTransactionsChanged={onChanged}
   />,
 )
@@ -102,4 +107,20 @@ test('a row to reconcile is applied to the picked transaction', async () => {
   await waitFor(() => expect(mockReconcile).toHaveBeenCalledWith(4, 42))
   expect(mockUpdate).toHaveBeenCalledWith(4, { payee: 'Coffee', category_id: null, split_weights: null })
   await waitFor(() => expect(onChanged).toHaveBeenCalled())
+})
+
+test('a suggestion is shown, and saving it untouched is no edit', async () => {
+  mockFetch.mockResolvedValue([pending(1, 'Theatre', -9, {
+    bank_payee: 'THEATRE', suggested_payee: 'Theatre', suggested_category_id: 7,
+    suggested_split_weights: [{ user_id: 2, weight: 1 }],
+  })])
+  mockUpdate.mockResolvedValue(pending(1, 'Theatre', -9))
+  renderSection()
+  expect(await screen.findByLabelText('Suggested automatically')).toBeInTheDocument()
+  fireEvent.click(screen.getByText('Theatre', { selector: 'div' }))
+  expect(screen.getByTestId('suggestion-note')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+  await waitFor(() => expect(mockUpdate).toHaveBeenCalledWith(1, {
+    payee: 'Theatre', category_id: null, split_weights: null,
+  }))
 })

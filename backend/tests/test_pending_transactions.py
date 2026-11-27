@@ -12,6 +12,7 @@ from models import (
     PendingTransaction,
     Transaction,
     TransactionHistory,
+    TransactionRule,
     TransactionSplit,
 )
 from tests.test_bank_sync import (  # noqa: F401  (fixtures)
@@ -368,3 +369,107 @@ def test_split_validation_and_clearing(client, db, bank, linked_connection, glob
     assert client.put(url, json={"split_weights": [{"user_id": me, "weight": 2}]}).json()["edited"]
     cleared = client.put(url, json={"split_weights": []}).json()
     assert (cleared["split_weights"], cleared["edited"]) == ([], False)
+
+
+def _theatre_rule(db, category, user):
+    db.add(
+        TransactionRule(
+            name="Theatre",
+            conditions=[{"field": "payee", "operator": "contains", "value": "theatre"}],
+            actions={
+                "payee": "Theatre",
+                "category_id": category.id,
+                "split_weights": [{"user_id": user.id, "weight": 1}],
+            },
+        )
+    )
+    db.commit()
+
+
+def test_rules_suggest_payee_category_and_split_while_pending(
+    client, db, bank, linked_connection, global_weights, sample_user2, groceries
+):
+    """MYF-88: shown as a suggestion, not an edit, and not carried over: the
+    booked row runs the rules on its own wording."""
+    _theatre_rule(db, groceries, sample_user2)
+    bank["rows"] = [
+        _pending("9.00", "DBIT", TODAY, entry_reference="p1", creditor={"name": "THEATRE"})
+    ]
+    _sync(db, linked_connection)
+
+    (listed,) = client.get("/api/pending-transactions").json()
+    assert listed["payee"] == "Theatre"
+    assert (listed["user_payee"], listed["category_id"], listed["edited"]) == (None, None, False)
+    assert listed["suggested_category_id"] == groceries.id
+    assert listed["suggested_split_weights"] == [{"user_id": sample_user2.id, "weight": 1}]
+
+    # Saving the suggestion as shown is no edit either.
+    saved = client.put(
+        f"/api/pending-transactions/{listed['id']}", json={"payee": "Theatre"}
+    ).json()
+    assert saved["edited"] is False
+
+    bank["rows"] = [
+        _booked(
+            "9.00", "DBIT", TODAY.isoformat(), entry_reference="p1", creditor={"name": "THEATRE"}
+        )
+    ]
+    _sync(db, linked_connection)
+    assert _all_pending(db) == []
+    booked = db.query(Transaction).one()
+    assert (booked.payee, booked.category_id) == ("Theatre", groceries.id)
+    assert _weights(db, booked.id) == {sample_user2.id: (1, "custom")}
+
+
+def test_user_edits_win_over_the_suggestion(
+    client, db, bank, linked_connection, global_weights, sample_user2, groceries
+):
+    me = global_weights
+    _theatre_rule(db, groceries, sample_user2)
+    bank["rows"] = [
+        _pending("9.00", "DBIT", TODAY, entry_reference="p1", creditor={"name": "THEATRE"})
+    ]
+    _sync(db, linked_connection)
+    pending = _all_pending(db)[0]
+    client.put(
+        f"/api/pending-transactions/{pending.id}",
+        json={"payee": "Opera", "split_weights": [{"user_id": me.id, "weight": 1}]},
+    )
+    bank["rows"] = [
+        _booked(
+            "9.00", "DBIT", TODAY.isoformat(), entry_reference="p1", creditor={"name": "THEATRE"}
+        )
+    ]
+    _sync(db, linked_connection)
+    booked = db.query(Transaction).one()
+    # Payee and split are the user's; the category, untouched, is the rule's.
+    assert (booked.payee, booked.category_id) == ("Opera", groceries.id)
+    assert _weights(db, booked.id) == {me.id: (1, "custom")}
+
+
+def test_a_broken_suggestion_never_fails_the_sync(
+    db, bank, linked_connection, global_weights, monkeypatch
+):
+    def _boom(*args, **kwargs):
+        raise RuntimeError("bad model")
+
+    monkeypatch.setattr(pending_transactions, "suggest", _boom)
+    bank["rows"] = [_pending("9.00", "DBIT", TODAY, entry_reference="p1")]
+    _sync(db, linked_connection)
+    assert len(_all_pending(db)) == 1
+
+
+def test_the_active_model_suggests_a_category(
+    client, db, bank, linked_connection, global_weights, groceries, monkeypatch
+):
+    import auto_categorize
+
+    class _Model:
+        def predict(self, rows):
+            return [(groceries.id, 0.9) for _ in rows]
+
+    monkeypatch.setattr(auto_categorize, "load_active_model", lambda db: (None, _Model()))
+    bank["rows"] = [_pending("9.00", "DBIT", TODAY, entry_reference="p1")]
+    _sync(db, linked_connection)
+    (listed,) = client.get("/api/pending-transactions").json()
+    assert (listed["suggested_category_id"], listed["category_id"]) == (groceries.id, None)

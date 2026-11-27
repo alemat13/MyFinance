@@ -20,13 +20,21 @@ class PendingTransactionOut(Schema):
     account_id: int
     date: _DateType
     amount: float
-    # What to show: the user's wording when they set one, else the bank's.
+    # What to show: the user's wording when they set one, else the
+    # suggestion's, else the bank's.
     payee: str
     bank_payee: str
     memo: str | None = None
+    # The user's own payee and category (null: not set) and split (empty: the
+    # default tiers once booked).
+    user_payee: str | None = None
     category_id: int | None = None
-    # The user's own split (MYF-88); empty = the default tiers once booked.
     split_weights: list[SplitWeightCreate] = []
+    # What the categorisation model and the automatic rules suggest (MYF-88):
+    # shown while the user hasn't set their own, never carried over.
+    suggested_payee: str | None = None
+    suggested_category_id: int | None = None
+    suggested_split_weights: list[SplitWeightCreate] = []
     status: Literal["pending", "to_reconcile"]
     edited: bool
     # Booked transactions this row may have become; to_reconcile rows only.

@@ -4031,6 +4031,47 @@
             ],
             "title": "Status",
             "type": "string"
+          },
+          "suggested_category_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested Category Id"
+          },
+          "suggested_payee": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested Payee"
+          },
+          "suggested_split_weights": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SplitWeightCreate"
+            },
+            "title": "Suggested Split Weights",
+            "type": "array"
+          },
+          "user_payee": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Payee"
           }
         },
         "required": [
@@ -4041,8 +4082,12 @@
           "payee",
           "bank_payee",
           "memo",
+          "user_payee",
           "category_id",
           "split_weights",
+          "suggested_payee",
+          "suggested_category_id",
+          "suggested_split_weights",
           "status",
           "edited",
           "candidates"

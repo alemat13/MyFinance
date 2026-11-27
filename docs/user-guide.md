@@ -641,7 +641,13 @@ their own app shows them as upcoming, so the box shows only what the bank sends.
 
 Click a pending transaction to set its **payee**, **category** and **split** ahead of time
 (the split works as on any transaction: quick-fill buttons, weights per person, each
-person's share shown; left alone, it follows the category). When the
+person's share shown; left alone, it follows the category).
+
+If you use [automatic categorisation](#auto-categorization) or automatic rules, a pending
+transaction already shows what they suggest (payee, category, split), marked with a small
+sparkle. A suggestion is only a preview: what you change in the window is yours and wins;
+what you leave as suggested is worked out again on the booked transaction, whose bank wording
+is often cleaner. When the
 bank books it, MyFinance finds the booked transaction it became and applies your changes there
 (they show in [History](#history) as *Pending transaction*):
 

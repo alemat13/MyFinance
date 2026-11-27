@@ -40,13 +40,20 @@ def _out(db: Session, pending: PendingTransaction) -> PendingTransactionOut:
         account_id=pending.account_id,
         date=pending.date,
         amount=pending.amount,
-        payee=pending.user_payee or pending.payee,
+        payee=pending.user_payee or pending.suggested_payee or pending.payee,
         bank_payee=pending.payee,
         memo=pending.memo,
+        user_payee=pending.user_payee,
         category_id=pending.user_category_id,
         split_weights=[
             SplitWeightCreate(user_id=uid, weight=w)
             for uid, w in pending_transactions.split_weights(db, pending).items()
+        ],
+        suggested_payee=pending.suggested_payee,
+        suggested_category_id=pending.suggested_category_id,
+        suggested_split_weights=[
+            SplitWeightCreate(user_id=uid, weight=w)
+            for uid, w in pending_transactions.split_weights(db, pending, suggested=True).items()
         ],
         status=pending.status,
         edited=pending_transactions.has_edits(pending),
@@ -73,7 +80,10 @@ def update_pending(pending_id: int, data: PendingTransactionUpdate, db: Session 
     if data.category_id is not None and db.get(Category, data.category_id) is None:
         raise HTTPException(422, "Category not found")
     payee = (data.payee or "").strip()
-    pending.user_payee = payee if payee and payee != pending.payee else None
+    # The wording shown by default (the suggestion's, else the bank's) is not
+    # an edit: the booked row works its own out.
+    shown = pending.suggested_payee or pending.payee
+    pending.user_payee = payee if payee and payee != shown else None
     pending.user_category_id = data.category_id
     if data.split_weights:
         validate_weights(data.split_weights)

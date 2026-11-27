@@ -20,6 +20,7 @@ are the bank's provisional view, rebuilt at every sync. The split a user sets
 on one waits in `user_split` and becomes the booked row's own (MYF-88).
 """
 
+import logging
 from datetime import timedelta
 
 from sqlalchemy import delete, select
@@ -28,8 +29,11 @@ from sqlalchemy.orm import Session
 import audit
 import auto_categorize
 import cache_service
+import transaction_rules
 from database import utcnow
-from models import PendingTransaction, Transaction, User
+from models import Category, PendingTransaction, Transaction, User
+
+logger = logging.getLogger(__name__)
 
 HISTORY_SOURCE = "pending"
 # How far apart the pending row's date and the booked row's date may be: a
@@ -50,12 +54,16 @@ def has_edits(pending: PendingTransaction) -> bool:
     )
 
 
-def split_weights(db: Session, pending: PendingTransaction) -> dict[int, int]:
-    """The user's split as {user_id: weight}, users deleted since dropped;
-    empty when none is set or none of its users is left."""
-    if not pending.user_split:
+def split_weights(
+    db: Session, pending: PendingTransaction, *, suggested: bool = False
+) -> dict[int, int]:
+    """The user's split (or with `suggested`, the rules') as {user_id:
+    weight}, users deleted since dropped; empty when none is set or none of
+    its users is left."""
+    stored = pending.suggested_split if suggested else pending.user_split
+    if not stored:
         return {}
-    weights = {int(uid): int(w) for uid, w in pending.user_split.items() if int(w) > 0}
+    weights = {int(uid): int(w) for uid, w in stored.items() if int(w) > 0}
     known = set(db.scalars(select(User.id).where(User.id.in_(weights))).all())
     return {uid: w for uid, w in weights.items() if uid in known}
 
@@ -143,6 +151,7 @@ def reload(db: Session, link, rows: list[dict]) -> dict:
         ).all()
     }
     seen: set[str] = set()
+    reported: list[tuple[PendingTransaction, dict]] = []
     summary = {"pending": 0, "carried_over": 0, "to_reconcile": 0, "removed": 0}
     for row in rows:
         external_id = row["external_id"]
@@ -166,7 +175,10 @@ def reload(db: Session, link, rows: list[dict]) -> dict:
         pending.status = "pending"
         pending.missing_since = None
         pending.last_seen_at = now
+        reported.append((pending, row))
         summary["pending"] += 1
+
+    suggest_quietly(db, reported)
 
     with audit.batch():
         for external_id, pending in existing.items():
@@ -191,6 +203,55 @@ def reload(db: Session, link, rows: list[dict]) -> dict:
             else:
                 summary["to_reconcile"] += 1
     return summary
+
+
+def suggest(db: Session, reported: list[tuple[PendingTransaction, dict]]) -> None:
+    """What the categorisation model and then the automatic rules would do
+    with each row, as a booked row of the same wording would get (MYF-88):
+    kept apart from the user's own edits, shown while the user has none."""
+    if not reported:
+        return
+    candidates_ = [
+        auto_categorize.Candidate(
+            raw_label=row.get("raw_label"),
+            payee=row["payee"] or "Unknown",
+            memo=row.get("memo"),
+            amount=float(row["amount"]),
+            account_id=pending.account_id,
+            raw_transaction_code=row.get("raw_transaction_code"),
+            date=row["date"],
+        )
+        for pending, row in reported
+    ]
+    loaded = auto_categorize.load_active_model(db)
+    if loaded is not None:
+        predictions = loaded[1].predict(candidates_)
+        for candidate, (category_id, _confidence) in zip(candidates_, predictions):
+            candidate.category_id = category_id
+    known = set(db.scalars(select(Category.id)).all())
+    for candidate in candidates_:
+        if candidate.category_id not in known:
+            candidate.category_id = None
+    rules = transaction_rules.load_rules(db)
+    outcomes = transaction_rules.evaluate_many(db, rules, candidates_) if rules else []
+    for index, (pending, _row) in enumerate(reported):
+        candidate = candidates_[index]
+        outcome = outcomes[index] if outcomes else None
+        fields = outcome.fields if outcome else {}
+        payee = fields.get("payee", candidate.payee)
+        pending.suggested_payee = payee if payee != pending.payee else None
+        pending.suggested_category_id = fields.get("category_id", candidate.category_id)
+        weights = outcome.split_weights if outcome else None
+        pending.suggested_split = {str(u): w for u, w in weights.items()} if weights else None
+
+
+def suggest_quietly(db: Session, reported: list[tuple[PendingTransaction, dict]]) -> None:
+    """`suggest` that never fails the sync: a broken model or rule costs the
+    suggestions, nothing else."""
+    try:
+        suggest(db, reported)
+    except Exception:
+        logger.exception("Suggestions for pending transactions failed")
 
 
 def clear_link(db: Session, link_id: int) -> None:
